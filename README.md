@@ -455,6 +455,13 @@ Sources/UI/                SwiftUI : plateau, carte des clusters, chronologie,
 Tools/RenderTrace/         rendu hors-ligne en WAV
 ```
 
+## Journal de bord
+
+[`LEDGER.md`](LEDGER.md) garde la trace de ce que chaque chantier a décidé, de
+ce qu'il a mesuré et de ce qu'il laisse ouvert — y compris les fiches écartées
+et les tentatives sans effet. Ce README décrit le modèle tel qu'il est ; le
+journal dit pourquoi il est ainsi.
+
 ## Pistes
 
 1. Remplacer la couche rotation par un sample CC0 bouclé (spin-up, boucle,
