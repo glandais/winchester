@@ -469,3 +469,125 @@ avec `SpindleVoice` — si les deux divergent, l'image cesse de coller au son.
 - Le **sens de rotation** n'est documenté nulle part. Repères et traînée sont
   cohérents entre eux, ce qui est l'essentiel, mais la convention mériterait
   d'être vérifiée plutôt que devinée.
+---
+
+## Chantier 6 — démarrer n'importe quel disque
+
+**Fait** · branche `boot-all`
+
+### Le problème
+
+La galerie fabriquait vingt disques, et le simulateur ne savait en faire qu'une
+chose : les défragmenter — quand le format s'y prêtait, soit douze sur vingt. Le
+scénario de démarrage, lui, ne vivait que sur un disque : le Barracuda de 2001.
+
+La raison n'était pas le matériel — `GeneratedVolumeBridge.drive` déduisait déjà
+la géométrie et la loi de seek de n'importe quelle fiche — mais la **description
+de la charge**. `WorkloadLibrary.windowsBootAndOffice` décrit le démarrage en
+fractions du plateau : `Region.drivers = 0.075`, `Region.registry = 0.125`. Ces
+constantes ont été réglées à l'oreille pour un 20 Go de 2001. Sur un 210 Mo de
+1993, elles ne désignent rien.
+
+### Les décisions
+
+- **Un démarrage se décrit en fichiers, pas en fractions.** Un acte du
+  démarrage est une requête sur le catalogue — catégorie, extension, plafonds —
+  et les fichiers retenus sont lus avec exactement les extents que l'allocateur
+  leur a donnés. Où va la tête devient un résidu de l'histoire du volume, comme
+  la fragmentation en est un. C'est la même bascule que pour la génération de
+  disques : on décrit une intention, jamais un résultat.
+- **La durée est mesurée, pas décrétée.** Entre deux fichiers, la machine
+  calcule, et le disque attend. Ce temps entre dans le simulateur par un champ
+  de plus sur une requête (`thinkTime`, nul pour les deux scénarios livrés) et
+  devient le **plancher** du démarrage. Il vaut 29 à 52 % du total selon les
+  profils : assez pour que le disque reste audible, assez pour qu'un disque
+  parfait ne donne pas un démarrage instantané.
+- **Les constantes de calcul sont assumées comme un calage**, deux par époque,
+  choisies pour que le total tombe sur les durées d'alors (29,5 à 68,9 s sur les
+  vingt profils). Elles ne prétendent pas mesurer un processeur. Ce qu'elles
+  fixent honnêtement, c'est le plancher ; ce qui s'y ajoute est du disque, et
+  c'est la seule grandeur qu'on revendique.
+- **Un témoin accompagne chaque mesure** : le même contenu jamais fragmenté,
+  chaque fichier d'un seul tenant, tassé contre le début du volume. Sans lui une
+  durée de démarrage ne veut rien dire — on ne saurait pas ce qui, dedans, vient
+  du disque. Il ne change qu'une chose, la place ; la sélection des fichiers est
+  identique, et l'ordre est celui que le système tirerait de chaque placement.
+- **Le préchargeur est un trait d'époque, pas de matériel.** Jusqu'à Windows 98
+  les fichiers partent dans l'ordre du registre ; à partir de XP, le préchargeur
+  range la liste par position sur le disque. C'est modélisé par un ordre de plus
+  (`byPosition`) porté par la table des époques.
+- **Rien n'est refusé, et sans outil supplémentaire.** Le chantier voisin a dû
+  écrire un second défragmenteur pour NTFS, parce que le format datait l'outil.
+  Un démarrage n'en demande aucun : lire des fichiers ne suppose aucune
+  stratégie de rangement, et les vingt profils passent par le même chemin.
+
+### Ce qui a été mesuré
+
+**Sur FAT, la fragmentation ne coûte presque rien à un démarrage** — de 0 à 4 %.
+**Sur NTFS, le témoin perd**, jusqu'à −11 %.
+
+| | durée | témoin | écart |
+|---|---|---|---|
+| `dev-1996` (VFAT, 11 % de fichiers fragmentés) | 57,5 s | 57,5 s | +0 % |
+| `secretaire-1999` (FAT32) | 54,5 s | 52,4 s | +4 % |
+| `famille-2007` (NTFS 320 Go) | 38,9 s | 36,4 s | +7 % |
+| `gamer-2003` (NTFS 80 Go) | 68,9 s | 69,6 s | −1 % |
+| `dev-2003` (NTFS 40 Go) | 50,4 s | 56,4 s | −11 % |
+
+Le premier résultat n'est pas un défaut du modèle, c'est ce qu'il dit : un
+démarrage lit les fichiers qu'un installeur a écrits d'affilée sur un disque
+encore vide — la population **la moins** fragmentée du volume. Les fichiers en
+morceaux d'un `dev-1996`, ce sont ses sorties de compilation, que personne ne
+lit au démarrage. Ce qui fait le bruit, c'est l'ordre des demandes et
+l'étalement de ce qu'il faut lire, pas le morcellement. Windows a fini par en
+tirer la même conclusion : c'est `layout.ini`, et non le défragmenteur, qui
+s'occupait des fichiers de démarrage.
+
+Le second dit la même chose que la galerie depuis le début : NTFS choisit le
+trou qui convient plutôt que le premier venu. Sa disposition réelle après trois
+ans d'usage bat un rangement naïf qui empile tout dans l'ordre du répertoire
+derrière la zone MFT. Le témoin reste une borne — ce qu'un rangement bête
+donnerait — mais il cesse d'être un majorant, et c'est écrit plutôt qu'arrondi.
+
+**Le préchargeur de XP se voit dans les chiffres.** Sur `famille-2007`, le seek
+moyen tombe de 100 202 à 32 693 cylindres et le nombre de seeks de 1 140 à 684.
+
+**La lecture groupée des métadonnées NTFS était indispensable.** Sans elle,
+chaque ouverture faisait un aller-retour entre l'enregistrement de MFT, en tête
+du volume, et un fichier posé trois cents gigaoctets plus loin : deux courses
+quasi complètes par fichier, un seek moyen de 100 000 cylindres, et un démarrage
+qui ne ressemblait à rien. Le préchargeur lisait bien les métadonnées d'un bloc,
+et c'est ce qui est modélisé.
+
+### Ce qui a été écarté
+
+- **Le mode « live ».** Un démarrage dure une minute et coûte quelques milliers
+  de requêtes : le précalculer prend quelques millisecondes et garde le
+  déplacement dans la chronologie, la barre de progression et les séries
+  d'affichage. Le rendu au fil de l'eau reste le chantier 3, pour la
+  défragmentation — qui, elle, dure des heures.
+- **La carte des clusters pendant un démarrage.** Un démarrage ne déplace rien,
+  et la carte par cluster pèse 80 Mo sur un volume de 320 Go. Le plateau et sa
+  traînée disent déjà où va la tête ; le panneau se contente du bilan.
+- **Déduire le système des manifestes** qui posent des fichiers système : c'est
+  faux, Internet Explorer 5 en posait autant qu'un pilote et reste une
+  application qu'on lance. La liste des six manifestes de système est écrite en
+  clair.
+
+### Ce qui reste ouvert
+
+- **Le crépitement est plus clairsemé que celui du scénario livré** : 1 056
+  requêtes sur tout un démarrage de `dev-1996`, contre 90 à 150 par seconde dans
+  le scénario réglé à l'oreille. Un vrai démarrage consulte le registre à chaque
+  périphérique, relit des `.INI`, rouvre des répertoires — autant d'accès courts
+  qui ne correspondent à aucun fichier du catalogue, et qu'il faudrait poser
+  comme un modèle à part plutôt que d'inventer des fichiers pour les porter.
+- **L'entrée de répertoire d'un fichier FAT est lue là où vivent ses fichiers**,
+  faute de savoir où l'allocateur a posé les clusters du répertoire. C'est la
+  seule approximation de placement du modèle, et elle ne coûte qu'une lecture
+  par répertoire.
+- **Le témoin coûte une seconde planification et une seconde simulation.**
+  Négligeable sur un démarrage, mais c'est un patron à ne pas reprendre tel quel
+  pour une passe de défragmentation de cinq heures.
+- Une **session sans fin** — laisser le disque travailler en fond — demanderait
+  le mode live, et c'est le seul usage qui l'exige vraiment.

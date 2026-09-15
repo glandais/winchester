@@ -10,9 +10,11 @@ import AVFAudio
 //
 // `SCENARIO` accepte aussi l'identifiant d'un profil de la galerie : le disque
 // est alors généré, converti en volume FAT16, et sa passe rendue sur le
-// matériel que décrit sa fiche.
+// matériel que décrit sa fiche. Préfixé de `boot:`, c'est le **démarrage** de
+// ce disque qui est rendu — celui-là ne refuse aucun format.
 //
 //   SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav
+//   SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav
 //
 //   SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav
 //   TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
@@ -24,16 +26,23 @@ let outputPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "d
 
 let requested = ProcessInfo.processInfo.environment["SCENARIO"] ?? ""
 
+let wantsBoot = requested.hasPrefix("boot:")
+let profileID = wantsBoot ? String(requested.dropFirst(5)) : requested
+
 let scenario: Scenario
 if let kind = ScenarioKind(rawValue: requested) {
     scenario = ScenarioBuilder.build(kind)
-} else if let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == requested }) {
+} else if let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == profileID }) {
     FileHandle.standardError.write("génération de \(spec.id)…\n".data(using: .utf8)!)
-    scenario = try ScenarioBuilder.build(generated: DiskGenerator.generate(spec))
+    let disk = try DiskGenerator.generate(spec)
+    scenario = wantsBoot
+        ? ScenarioBuilder.build(boot: disk)
+        : try ScenarioBuilder.build(generated: disk)
 } else if requested.isEmpty {
     scenario = ScenarioBuilder.build(.windowsBoot)
 } else {
     let known = ScenarioKind.allCases.map(\.rawValue) + ScenarioLibrary.identifiers
+        + ScenarioLibrary.identifiers.map { "boot:\($0)" }
     FileHandle.standardError.write(
         "scénario inconnu : \(requested)\nconnus : \(known.joined(separator: ", "))\n"
             .data(using: .utf8)!)
@@ -57,6 +66,37 @@ func describe(_ playback: DefragPlayback) -> String {
     """
 }
 
+/// Ce qu'un démarrage a lu, et qui du processeur ou du disque l'a fait durer.
+func describe(_ playback: BootPlayback, duration: Double) -> String {
+    let total = playback.thinkSeconds + playback.diskSeconds
+    let share = total > 0 ? playback.diskSeconds / total * 100 : 0
+    return """
+    système       : \(playback.osName)\(playback.appName.map { " puis \($0)" } ?? "")
+    fichiers      : \(playback.filesRead) ouverts, \(playback.residentFiles) résidents
+    calcul        : \(String(format: "%.1f", playback.thinkSeconds)) s
+    disque        : \(String(format: "%.1f", playback.diskSeconds)) s \
+    (\(String(format: "%.0f", share)) % de l'attente)
+    témoin        : \(String(format: "%.1f", playback.freshSeconds)) s jamais fragmenté, \
+    soit \(String(format: "%+.0f", (duration / max(playback.freshSeconds, 0.001) - 1) * 100)) %
+    """
+}
+
+/// Ce que chaque étape a duré. Sur un démarrage décrit en fichiers, aucune de
+/// ces durées n'est imposée : elles tombent de la simulation.
+func describePhases(_ spans: [PhaseSpan], throughput: [Double]) -> String {
+    spans.map { span in
+        let first = Int(span.start / ScenarioBuilder.bucketDuration)
+        let last = min(Int(span.end / ScenarioBuilder.bucketDuration), throughput.count)
+        let megabytes = first < last
+            ? throughput[first..<last].reduce(0, +) * ScenarioBuilder.bucketDuration
+            : 0
+        let label = span.label.count > 36
+            ? String(span.label.prefix(35)) + "…"
+            : span.label.padding(toLength: 36, withPad: " ", startingAt: 0)
+        return String(format: "  %@ %6.1f s  %6.1f Mo", label, span.duration, megabytes)
+    }.joined(separator: "\n")
+}
+
 let geometry = scenario.geometry
 let spans = scenario.spans
 let cues = scenario.cues
@@ -66,10 +106,13 @@ FileHandle.standardError.write("""
 scénario      : \(scenario.label.title) — \(geometry.model)
 requêtes      : \(scenario.requestCount)
 seeks         : \(trace.stats.seekCount) (moy. \(trace.stats.averageSeekDistance) cyl.)
+lu / écrit    : \(trace.stats.bytesRead / 1_000_000) / \(trace.stats.bytesWritten / 1_000_000) Mo
 événements    : \(trace.events.count)
 repères audio : \(cues.count)
 durée         : \(String(format: "%.1f", scenario.duration)) s
 \(scenario.defrag.map(describe) ?? "")
+\(scenario.boot.map { describe($0, duration: scenario.duration) } ?? "")
+\(describePhases(spans, throughput: scenario.throughputMBs))
 
 """.data(using: .utf8)!)
 

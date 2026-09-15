@@ -15,7 +15,7 @@ struct DiskLibraryView: View {
     /// Confie le disque affiché au simulateur, qui en planifie la passe et
     /// bascule dessus. Lève si le pont refuse le volume — ce que le bouton
     /// empêche normalement d'atteindre.
-    let onDefragment: (GeneratedDisk) throws -> Void
+    let onHandover: (GeneratedDisk, GeneratedActivity) throws -> Void
 
     @State private var handoverFailure: String?
 
@@ -29,7 +29,7 @@ struct DiskLibraryView: View {
                 progress(fraction: fraction, day: day, fileCount: fileCount, fill: fill)
             case let .ready(disk):
                 map
-                defragmentButton(for: disk)
+                handover(for: disk)
                 metrics(of: disk)
             case let .failed(message):
                 Text(message)
@@ -124,41 +124,23 @@ struct DiskLibraryView: View {
 
     // MARK: - Passage au simulateur
 
-    /// Le seul pont entre les deux écrans : défragmenter à voix haute le disque
-    /// qu'on vient de fabriquer.
+    /// Les deux ponts entre les écrans : **démarrer** ce disque, ou le
+    /// **défragmenter** à voix haute.
     ///
-    /// Les vingt disques de la galerie s'y prêtent désormais, chacun avec
-    /// l'outil de son époque : le défragmenteur de Windows 95 sur les volumes
-    /// FAT, celui de Windows XP sur les NTFS. Le bouton reste malgré tout
-    /// capable de s'éteindre, avec la raison écrite dessous — un disque décrit
-    /// n'importe comment n'a pas à faire planter l'écran suivant.
+    /// Les deux marchent sur les vingt disques : démarrer ne suppose aucune
+    /// stratégie de rangement, et chaque format a désormais le défragmenteur de
+    /// son époque — celui de Windows 95 sur les volumes FAT, celui de
+    /// Windows XP sur les NTFS. Le second bouton reste malgré tout capable de
+    /// s'éteindre, avec la raison écrite dessous : un disque décrit n'importe
+    /// comment n'a pas à faire planter l'écran suivant.
     @ViewBuilder
-    private func defragmentButton(for disk: GeneratedDisk) -> some View {
+    private func handover(for disk: GeneratedDisk) -> some View {
         let refusal = GeneratedVolumeBridge.refusal(for: disk)
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                handoverFailure = nil
-                do {
-                    try onDefragment(disk)
-                } catch {
-                    handoverFailure = "\(error)"
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "waveform")
-                    Text("Défragmenter ce disque")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(refusal == nil ? Theme.read : Color.white.opacity(0.06))
-                )
-                .foregroundStyle(refusal == nil ? Theme.background : Theme.dim)
+            HStack(spacing: 8) {
+                handoverButton(.boot, icon: "power", for: disk, refusal: nil)
+                handoverButton(.defrag, icon: "waveform", for: disk, refusal: refusal)
             }
-            .buttonStyle(.plain)
-            .disabled(refusal != nil)
 
             if let refusal {
                 Text(refusal)
@@ -174,6 +156,38 @@ struct DiskLibraryView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
+    }
+
+    private func handoverButton(_ activity: GeneratedActivity,
+                                icon: String,
+                                for disk: GeneratedDisk,
+                                refusal: String?) -> some View {
+        Button {
+            handoverFailure = nil
+            do {
+                try onHandover(disk, activity)
+            } catch {
+                handoverFailure = "\(error)"
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                Text(activity.action)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(refusal == nil ? Theme.read : Color.white.opacity(0.06))
+            )
+            .foregroundStyle(refusal == nil ? Theme.background : Theme.dim)
+        }
+        .buttonStyle(.plain)
+        .disabled(refusal != nil)
     }
 
     // MARK: - Résultat

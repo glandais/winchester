@@ -209,6 +209,30 @@ extension PartitionGeometry {
         Int(Double(clusterCount) * 0.125) * clusterSectors
     }
 
+    /// Ce que coûte l'**ouverture** d'un fichier, avant d'en lire un octet.
+    ///
+    /// Sur FAT, presque rien : la table est lue une fois au montage et tient en
+    /// mémoire, et l'entrée de répertoire a été lue en même temps que celles de
+    /// ses voisines. Seule la première ouverture dans un répertoire coûte une
+    /// lecture — et elle se paie là où vit ce répertoire, c'est-à-dire près des
+    /// fichiers qu'il contient, faute de savoir où l'allocateur a posé ses
+    /// clusters : c'est une approximation, et la seule de ce modèle.
+    ///
+    /// Sur NTFS, chaque ouverture lit l'enregistrement de MFT qui décrit le
+    /// fichier. La MFT est en tête de la zone de données, les données sont
+    /// ailleurs : c'est cet aller-retour, une fois par fichier, qui donne à un
+    /// démarrage NTFS son bruit à lui.
+    func openAccesses(fileIndex: Int, directoryFirstCluster: UInt32?) -> [MetadataAccess] {
+        switch format {
+        case .fat16, .fat32:
+            guard let cluster = directoryFirstCluster else { return [] }
+            return [MetadataAccess(lba: lba(ofCluster: Int(cluster)), sectors: clusterSectors)]
+        case .ntfs:
+            return [MetadataAccess(lba: dataStartLBA + fileIndex * mftRecordSectors,
+                                   sectors: mftRecordSectors)]
+        }
+    }
+
     /// Ce que lit l'analyse initiale : les tables, puis l'arborescence.
     var scanAccesses: [MetadataAccess] {
         switch format {

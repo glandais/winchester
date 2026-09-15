@@ -1,12 +1,15 @@
 # DiskNoise — spike
 
 Simulation d'I/O **au niveau bloc** d'un disque dur à plateaux, convertie en son
-via AVFAudio. Application iOS de démonstration, avec deux scénarios :
+via AVFAudio. Application iOS de démonstration, avec deux scénarios livrés :
 
 - **Démarrage** — « démarrage Windows puis lancement d'une suite bureautique »,
   une minute, sur un Seagate Barracuda ATA IV de 20 Go (2001) ;
 - **Défragmentation** — passe complète du défragmenteur de Windows 95 sur un
   volume FAT16 vieilli, 3 min 24, sur un Quantum Fireball 1080AT (1996).
+
+Et une galerie de vingt disques d'époque, générés sur l'appareil, qu'on peut
+**démarrer** ou **défragmenter** à voix haute.
 
 Spike : l'objectif est de valider la chaîne complète et le réglage du synthé,
 pas de livrer une bibliothèque.
@@ -14,11 +17,12 @@ pas de livrer une bibliothèque.
 ## Chaîne
 
 ```
-scénario de phases                     volume FAT16 vieilli
-        │ WorkloadGenerator                     │ DefragPlanner
-        │ localité, débit, rafales              │ empaquetage, évacuations, FAT
-        └───────────────┬───────────────────────┘
-                        ▼
+scénario de phases      catalogue d'un volume généré      volume à ranger
+    │ WorkloadGenerator      │ BootPlanner                      │ DefragPlanner
+    │ localité, débit,       │ quels fichiers, dans quel ordre, │ empaquetage,
+    │ rafales                │ calcul entre deux lectures       │ évacuations, FAT
+    └────────────────────────┴────────────┬─────────────────────┘
+                                          ▼
 requêtes bloc                     (date, LBA, nb secteurs, R/W)
         │  DiskSimulator          LBA→CHS zoné, seek, latence rotationnelle, transfert
         ▼
@@ -238,10 +242,93 @@ Le second vient de NTFS lui-même, qui place encore bien à 93 % de remplissage.
 hors du fil principal, rapporte son avancement et s'annule si l'on change de
 scénario en route.
 
+### Démarrer un disque généré
+
+Les deux écrans se rejoignent par deux boutons. Le premier, **Démarrer cet
+OS**, confie le disque affiché au simulateur, qui en joue le démarrage.
+
+**Le démarrage livré décrit le disque en fractions ; celui-ci le décrit en
+fichiers.** Le premier dit « les pilotes sont à 7,5 % du plateau, la base de
+registre à 12,5 % » — des constantes réglées à l'oreille pour un disque de 2001,
+qui ne veulent rien dire sur un 210 Mo de 1993. Le second ne nomme aucune
+position : il dit « charge le noyau », « charge les pilotes », « lance
+l'application », et va chercher dans le **catalogue du volume** les fichiers qui
+répondent à cette description — avec exactement les extents que l'allocateur
+leur a donnés. Où va la tête est alors un résidu de l'histoire du volume,
+comme la fragmentation en est un.
+
+Rien n'est refusé ici : lire des fichiers ne suppose aucune stratégie de
+rangement, donc **les vingt profils démarrent** — et il n'a même pas fallu, pour
+cela, écrire un chargeur par format. Là où la défragmentation a demandé deux
+outils parce que le format datait l'outil, un démarrage n'en demande aucun : il
+ouvre des fichiers.
+
+**La durée n'est pas décrétée, elle est mesurée.** Un démarrage n'est pas une
+suite de lectures collées : entre deux fichiers, la machine décompresse,
+relocalise, initialise, et le disque attend. Ce temps de calcul est le
+**plancher** d'un démarrage — deux constantes par époque, calées pour que le
+total tombe sur les durées d'alors — et tout ce qui dépasse ce plancher est du
+disque. Sur les vingt profils il pèse entre 29 et 52 % du total, et les vingt
+démarrages tiennent entre 29,5 et 68,9 s.
+
+| | système | fichiers | lu | durée | dont calcul | témoin |
+|---|---|---|---|---|---|---|
+| `gamer-1993` | MS-DOS 6.22 et Windows 3.1 | 95 | 8 Mo | 29,5 s | 29 % | +1 % |
+| `dev-1993` | MS-DOS 6.22 et Windows 3.1 | 121 | 15 Mo | 41,8 s | 34 % | +0 % |
+| `gamer-1996` | Windows 95 | 346 | 38 Mo | 43,3 s | 43 % | +0 % |
+| `famille-1999` | Windows 98 SE | 620 | 122 Mo | 66,7 s | 48 % | +3 % |
+| `secretaire-1999` | Windows 98 SE | 504 | 101 Mo | 54,5 s | 49 % | +4 % |
+| `gamer-2003` | Windows XP | 912 | 225 Mo | 68,9 s | 52 % | −1 % |
+| `dev-2003` | Windows XP | 427 | 178 Mo | 50,4 s | 51 % | −11 % |
+| `famille-2007` | Windows Vista | 557 | 124 Mo | 38,9 s | 40 % | +7 % |
+
+**Le témoin** est la colonne qui compte. C'est le même contenu posé comme au
+premier jour — mêmes fichiers, mêmes tailles, chacun d'un seul tenant, tassé
+contre le début du volume, derrière la zone que NTFS réserve à sa MFT. Seule la
+place change. Sans lui une durée de démarrage ne dit rien : on ne saurait pas ce
+qui, dedans, vient du disque.
+
+Et ce qu'il dit est inattendu deux fois. **Sur les volumes FAT, la
+fragmentation ne coûte presque rien à un démarrage** : de 0 à 4 %. La raison
+tient en une phrase — un démarrage lit les fichiers qu'un installeur a écrits
+d'affilée sur un disque encore vide, c'est-à-dire la population la **moins**
+fragmentée du volume. Les fichiers en morceaux d'un `dev-1996`, ce sont ses
+sorties de compilation, que personne ne lit au démarrage. Ce qui fait le bruit,
+ce n'est pas que les fichiers soient hachés, c'est **l'ordre dans lequel on les
+demande** et **l'étalement** de ce qu'il faut lire. Windows a fini par en tirer
+la même conclusion : défragmenter n'accélérait pas le démarrage, et c'est un
+rangement à part — `layout.ini` — qui s'en chargeait.
+
+**Sur NTFS, le témoin perd purement et simplement**, jusqu'à −11 % sur
+`dev-2003`. Ce n'est pas une anomalie, c'est la même chose que dit la galerie
+plus bas : NTFS choisit le trou qui convient plutôt que le premier venu. Sa
+disposition réelle, après trois ans d'usage, bat un rangement naïf qui se
+contenterait de tout empiler dans l'ordre du répertoire. Le témoin garde donc
+son sens de borne — il dit ce qu'un rangement bête donnerait — mais il cesse
+d'être un majorant.
+
+**Le préchargeur est la seule différence d'époque qui ne tienne pas au
+matériel.** Jusqu'à Windows 98, les fichiers partent dans l'ordre du registre et
+le bras suit : sur un volume étalé, c'est du va-et-vient pur. Windows XP a
+introduit le préchargeur de démarrage — il garde la trace des derniers
+démarrages et **range la liste par position sur le disque**, métadonnées
+comprises, pour tout relire d'une course ; Vista a poussé l'idée avec
+SuperFetch. Le modèle fait les deux, et le gain est là où on l'attend : sur
+`famille-2007`, le seek moyen passe de 100 202 à 32 693 cylindres et le nombre
+de seeks de 1 140 à 684. La même étape crépite en 1995 et ronronne en 2003.
+
+Ce qui rend ce préchargement décisif, c'est le format. Sur FAT, ouvrir un
+fichier ne coûte presque rien : la table est lue une fois au montage et tient en
+mémoire. Sur NTFS, chaque ouverture lit l'enregistrement de MFT qui décrit le
+fichier — en tête du volume, quand les données sont ailleurs. Sans lecture
+groupée, c'est deux courses quasi complètes du bras par fichier sur un volume de
+320 Go, et un démarrage qui ne ressemble à rien : c'est exactement ce que donne
+le modèle quand on la lui retire, et c'est pour cela qu'elle y est.
+
 ### Défragmenter un disque généré
 
-Les deux écrans se rejoignent par un bouton : **Défragmenter ce disque** confie
-le volume affiché au simulateur, qui en planifie la passe et la fait sonner.
+L'autre bouton, **Défragmenter ce disque**, confie le volume affiché au
+simulateur, qui en planifie la passe et la fait sonner.
 
 Les fichiers gardent exactement les clusters que l'allocateur leur a donnés —
 c'est ce volume-là qui est défragmenté, pas une approximation — et le matériel
@@ -316,10 +403,12 @@ contenu, en 23 284 évacuations. C'est ce va-et-vient que l'on entend, et c'est
 pour cela que l'outil d'époque demandait de faire de la place avant de le
 lancer.
 
-Le rendu hors-ligne accepte les mêmes identifiants :
+Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
+démarrage :
 
 ```sh
-SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav
+SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav        # la passe
+SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
 ```
 
 ## Ce qui ne l'est pas
@@ -336,6 +425,13 @@ SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav
 - Pas de réordonnancement d'ascenseur, pas de cache disque, pas de NCQ. File
   FIFO : représentatif d'un contrôleur IDE de l'époque, et c'est ce qui rend le
   crépitement si dense.
+- **Le démarrage d'un disque généré est moins dense que le scénario livré** :
+  1 056 requêtes pour tout un démarrage de `dev-1996`, contre 90 à 150
+  par seconde dans le scénario réglé à l'oreille. Un vrai démarrage consulte le
+  registre à chaque périphérique, relit des `.INI`, rouvre des répertoires —
+  autant d'accès courts que ce modèle ne pose pas, parce qu'aucun d'eux ne
+  correspond à un fichier du catalogue. Le crépitement est donc un peu plus
+  clairsemé qu'il ne devrait.
 - **Tout est calculé avant que le premier son ne sorte.** La passe entière —
   requêtes, chronologie mécanique, repères audio — est matérialisée en mémoire :
   1,1 million de requêtes et 780 Mo de pic pour `dev-1999`, un FAT32 de 6,4 Go
@@ -430,6 +526,7 @@ rapide en boucle d'itération :
 /tmp/rendertrace sortie.wav                         # scénario de démarrage
 SCENARIO=defrag /tmp/rendertrace defrag.wav         # passe de défragmentation
 SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav      # passe sur un disque généré
+SCENARIO=boot:dev-1993 /tmp/rendertrace boot.wav    # démarrage d'un disque généré
 
 SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav      # isoler une couche
 TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
@@ -480,6 +577,10 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     Resources/scenarios/   vingt scénarios : cinq époques, quatre profils
 Sources/Model/
     Workload.swift         phases du scénario, générateur de requêtes déterministe
+    BootSession.swift      démarrage décrit en fichiers : ce que chaque époque
+                           va chercher dans le catalogue, dans quel ordre, et ce
+                           que la machine calcule entre deux lectures ; plus le
+                           témoin « jamais fragmenté »
     VolumeLayout.swift     plan d'une partition FAT16, FAT32 ou NTFS : où sont
                            les métadonnées, et ce que coûte une validation
     Volume.swift           volume vieilli sur place, allocateur next-fit

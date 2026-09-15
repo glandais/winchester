@@ -5,9 +5,10 @@ import DiskCore
 ///
 /// Ils ne partagent rien d'autre que le thème — le premier fait du bruit à
 /// partir d'un scénario figé, le second fabrique des volumes et les montre. La
-/// jonction entre les deux (défragmenter à voix haute un disque qu'on vient de
-/// générer) passe par `GeneratedVolumeBridge`, et n'a de sens que sur les
-/// volumes qu'un défragmenteur de 1995 pourrait ouvrir.
+/// jonction entre les deux se fait par deux boutons : **démarrer** le disque
+/// qu'on vient de générer, ou le **défragmenter**. Le premier marche sur les
+/// vingt profils, le second n'a de sens que sur les volumes qu'un
+/// défragmenteur de 1995 pourrait ouvrir.
 enum Workspace: String, CaseIterable, Identifiable {
     case simulator
     case library
@@ -43,8 +44,8 @@ struct ContentView: View {
                     SimulatorScreen(model: model, engine: model.engine)
                 case .library:
                     ScrollView {
-                        DiskLibraryView(model: library) { disk in
-                            try model.load(generated: disk)
+                        DiskLibraryView(model: library) { disk, activity in
+                            try model.load(generated: disk, as: activity)
                             workspace = .simulator
                         }
                         .padding(16)
@@ -79,6 +80,7 @@ struct SimulatorScreen: View {
                     header
                     scenarioPicker
                     if model.defrag != nil { defragPanel }
+                    if let boot = model.boot { bootPanel(boot) }
                     PlatterView(track: model.platter, frame: platter)
                         .frame(maxHeight: 300)
                         .panel()
@@ -242,6 +244,40 @@ struct SimulatorScreen: View {
             }
             Text(span?.detail ?? "")
                 .font(.system(size: 12))
+                .foregroundStyle(Theme.dim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel()
+    }
+
+    /// Le bilan d'un démarrage. Il n'y a pas de carte à montrer — un démarrage
+    /// ne déplace rien — mais il y a une chose à dire : ce que ce volume-là
+    /// coûte par rapport au même contenu jamais fragmenté.
+    private func bootPanel(_ boot: BootPlayback) -> some View {
+        let penalty = boot.freshSeconds > 0
+            ? (model.duration / boot.freshSeconds - 1) * 100
+            : 0
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(boot.appName.map { "\(boot.osName), puis \($0)" } ?? boot.osName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.text)
+
+            FlowRow(spacing: 10) {
+                StatTile(label: "Fichiers lus", value: "\(boot.filesRead)",
+                         unit: boot.residentFiles > 0 ? "\(boot.residentFiles) résidents" : "ouverts")
+                StatTile(label: "Calcul", value: String(format: "%.0f", boot.thinkSeconds), unit: "s")
+                StatTile(label: "Disque", value: String(format: "%.0f", boot.diskSeconds), unit: "s d'attente")
+                StatTile(label: "Jamais fragmenté",
+                         value: String(format: "%.0f", boot.freshSeconds),
+                         unit: String(format: "%+.0f %%", penalty))
+            }
+
+            Text("Le témoin lit exactement les mêmes fichiers, d'un seul tenant chacun et "
+                 + "rangés dans l'ordre du répertoire. L'écart dit ce que ce volume-ci fait "
+                 + "payer à son démarrage — ou ce qu'il lui fait gagner, quand son "
+                 + "allocateur place mieux qu'un empilement.")
+                .font(.system(size: 11))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
         }

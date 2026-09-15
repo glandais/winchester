@@ -44,15 +44,33 @@ enum ScenarioKind: String, CaseIterable, Identifiable {
     }
 }
 
+/// Ce qu'on demande à un disque de la galerie : de démarrer, ou d'être rangé.
+///
+/// Les deux passent par le même disque et le même matériel, et diffèrent
+/// entièrement par ce qu'ils vont chercher — l'un lit des fichiers là où ils
+/// sont, l'autre les déplace là où ils devraient être.
+enum GeneratedActivity: String, Hashable, CaseIterable, Sendable {
+    case boot
+    case defrag
+
+    /// Ce que le bouton de la galerie dit qu'il va faire.
+    var action: String {
+        switch self {
+        case .boot:   return "Démarrer cet OS"
+        case .defrag: return "Défragmenter ce disque"
+        }
+    }
+}
+
 /// Ce que le sélecteur de scénario propose.
 ///
 /// Les deux scénarios livrés sont toujours là ; un disque de la galerie s'y
-/// ajoute quand on demande à le défragmenter, et y reste tant qu'on n'en
-/// défragmente pas un autre.
+/// ajoute quand on demande à le démarrer ou à le défragmenter, et y reste tant
+/// qu'on n'en confie pas un autre au simulateur.
 enum ScenarioSelection: Hashable, Identifiable {
     case builtin(ScenarioKind)
-    /// Identifiant du profil de la galerie.
-    case generated(String)
+    /// Identifiant du profil de la galerie, et ce qu'on lui demande.
+    case generated(String, GeneratedActivity)
 
     var isGenerated: Bool {
         if case .generated = self { return true }
@@ -65,8 +83,8 @@ enum ScenarioSelection: Hashable, Identifiable {
         switch self {
         case let .builtin(kind):
             return "0\(ScenarioKind.allCases.firstIndex(of: kind) ?? 0)"
-        case let .generated(id):
-            return "1\(id)"
+        case let .generated(id, activity):
+            return "1\(activity.rawValue)\(id)"
         }
     }
 
@@ -113,6 +131,26 @@ struct DefragPlayback {
     let workEndTime: Double
 }
 
+/// Ce qu'un démarrage a lu, une fois la passe simulée. C'est le bilan que
+/// l'écran affiche et que le rendu hors-ligne imprime : un démarrage n'a pas de
+/// carte de clusters à montrer — il ne déplace rien — mais il a des comptes à
+/// rendre.
+struct BootPlayback {
+    let osName: String
+    let appName: String?
+    let filesRead: Int
+    let residentFiles: Int
+    /// Ce que le système aurait mis sans disque : la somme des calculs.
+    let thinkSeconds: Double
+    /// Ce que le disque a ajouté par-dessus.
+    let diskSeconds: Double
+    /// Ce qu'aurait duré le même démarrage si le volume n'avait jamais vieilli :
+    /// mêmes fichiers, mêmes tailles, même ordre, chacun d'un seul tenant. La
+    /// différence avec la durée réelle est le prix de la fragmentation, et il
+    /// n'y a aucun autre écart entre les deux mesures.
+    let freshSeconds: Double
+}
+
 /// Un scénario entièrement calculé : requêtes, chronologie mécanique, repères
 /// audio et séries d'affichage.
 struct Scenario {
@@ -134,6 +172,7 @@ struct Scenario {
     let peakIOPS: Double
 
     let defrag: DefragPlayback?
+    let boot: BootPlayback?
 
     var stats: TraceStats { trace.stats }
 }
@@ -186,8 +225,101 @@ enum ScenarioBuilder {
             iops: series.iops,
             throughputMBs: series.throughput,
             peakIOPS: series.peak,
-            defrag: nil
+            defrag: nil,
+            boot: nil
         )
+    }
+
+    // MARK: - Démarrage d'un disque de la galerie
+
+    /// Le même geste que le démarrage livré, mais sur un disque qu'on vient de
+    /// fabriquer — et surtout, décrit autrement.
+    ///
+    /// Le scénario livré nomme des **fractions du plateau** ; celui-ci nomme
+    /// des **fichiers**, et les prend là où l'allocateur les a laissés. C'est
+    /// ce qui lui permet d'exister sur les vingt disques de la galerie au lieu
+    /// d'un seul, et c'est aussi ce qui rend sa durée intéressante : elle n'est
+    /// pas décrétée. Le système calcule entre deux lectures — c'est le
+    /// plancher — et le disque ajoute ce qu'il ajoute.
+    ///
+    /// Rien n'est refusé ici : lire des fichiers ne suppose aucune stratégie de
+    /// rangement, donc NTFS démarre comme les autres.
+    static func build(boot disk: GeneratedDisk) -> Scenario {
+        let plan = BootPlanner.plan(disk: disk)
+        let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
+                                                   atLeast: plan.partition.totalSectors)
+
+        let trace = DiskSimulator.run(
+            geometry: hardware.geometry,
+            seekModel: hardware.seek,
+            requests: plan.requests,
+            totalDuration: 0,
+            spinUpAt: 0.35,
+            spinUpDuration: max(plan.post - 0.6, 0.5)
+        )
+
+        let duration = (trace.timings.last?.end ?? 0) + plan.tail
+
+        // Le témoin : le même contenu jamais fragmenté. Une seconde passe de
+        // planification et de simulation, sur quelques milliers de requêtes —
+        // le prix d'une phrase qui dit ce que ce volume-ci coûte.
+        let fresh = BootPlanner.plan(disk: disk.freshlyInstalled())
+        let freshTrace = DiskSimulator.run(geometry: hardware.geometry,
+                                           seekModel: hardware.seek,
+                                           requests: fresh.requests,
+                                           totalDuration: 0,
+                                           spinUpAt: 0.35,
+                                           spinUpDuration: max(plan.post - 0.6, 0.5))
+        let freshSeconds = (freshTrace.timings.last?.end ?? 0) + fresh.tail
+
+        let spans = closedLoopSpans(requests: plan.requests,
+                                    trace: trace,
+                                    descriptors: plan.phases,
+                                    duration: duration)
+        let series = buildSeries(requests: plan.requests, trace: trace, duration: duration)
+
+        let launch = plan.appName.map { " puis lancement de \($0)" } ?? ""
+        let note = "« \(disk.spec.displayName) », généré par la galerie : "
+            + "\(disk.spec.fileSystem.type.rawValue.uppercased()) de \(disk.spec.disk.sizeMB) Mo "
+            + "en clusters de \(disk.clusterBytes / 1_024) Ko, vieilli sur \(disk.dayCount) jours. "
+            + "Le démarrage n'est pas décrit en fractions du plateau mais en fichiers : "
+            + "\(plan.filesRead) fichiers du catalogue sont ouverts et lus là où l'allocateur "
+            + "les a laissés. Le système compte \(format(seconds: plan.thinkSeconds)) de calcul "
+            + "entre deux lectures ; tout ce que la passe dure en plus vient du disque. "
+            + "Le même contenu jamais fragmenté démarrerait en "
+            + "\(format(seconds: freshSeconds))."
+
+        return Scenario(
+            kind: .windowsBoot,
+            label: ScenarioLabel(title: disk.spec.displayName,
+                                 summary: "Démarrage de \(plan.osName)\(launch), "
+                                     + "sur \(hardware.geometry.model)",
+                                 volumeNote: note),
+            geometry: hardware.geometry,
+            seekModel: hardware.seek,
+            requestCount: plan.requests.count,
+            spans: spans,
+            trace: trace.summarized(),
+            cues: AudioCueBuilder.build(from: trace, cylinders: hardware.geometry.cylinders),
+            duration: duration,
+            iops: series.iops,
+            throughputMBs: series.throughput,
+            peakIOPS: series.peak,
+            defrag: nil,
+            boot: BootPlayback(osName: plan.osName,
+                               appName: plan.appName,
+                               filesRead: plan.filesRead,
+                               residentFiles: plan.residentFiles,
+                               thinkSeconds: plan.thinkSeconds,
+                               diskSeconds: max(duration - plan.tail - plan.thinkSeconds, 0),
+                               freshSeconds: freshSeconds)
+        )
+    }
+
+    private static func format(seconds: Double) -> String {
+        seconds >= 60
+            ? String(format: "%d min %02d s", Int(seconds) / 60, Int(seconds) % 60)
+            : String(format: "%.1f s", seconds).replacingOccurrences(of: ".", with: ",")
     }
 
     // MARK: - Défragmentation
@@ -340,7 +472,8 @@ enum ScenarioBuilder {
                                    mutations: mutations,
                                    activity: activity,
                                    movedBytes: movedBytes,
-                                   workEndTime: workEnd)
+                                   workEndTime: workEnd),
+            boot: nil
         )
     }
 
@@ -367,20 +500,28 @@ enum ScenarioBuilder {
             }
         }
 
-        var indices = Array(0..<descriptors.count).filter { firstTime[$0] != nil || $0 == descriptors.count - 1 }
-        indices.sort()
+        // Une phase peut n'avoir aucune opération — le POST d'un démarrage, où
+        // le plateau monte en régime sans que rien ne soit lu. Elle garde sa
+        // place et sa durée : elle s'arrête quand la suivante commence.
+        var starts = [Double](repeating: duration, count: descriptors.count)
+        var next = duration
+        for index in stride(from: descriptors.count - 1, through: 0, by: -1) {
+            if let time = firstTime[index] { next = min(next, time) }
+            starts[index] = next
+        }
 
         var spans: [PhaseSpan] = []
-        for (position, index) in indices.enumerated() {
-            let start = firstTime[index] ?? (trace.timings.last?.end ?? 0)
-            let end: Double
-            if position + 1 < indices.count {
-                end = firstTime[indices[position + 1]] ?? duration
-            } else {
-                end = duration
-            }
+        var cursor = 0.0
+        for index in descriptors.indices {
+            // La première phase commence à zéro : ce qui précède la première
+            // opération lui appartient, c'est le temps de mise en rotation.
+            let start = index == 0 ? 0 : max(starts[index], cursor)
+            let end = index + 1 < descriptors.count
+                ? max(starts[index + 1], start)
+                : duration
             spans.append(PhaseSpan(descriptor: descriptors[index], index: index,
-                                   start: max(start, spans.last?.end ?? 0), end: end))
+                                   start: start, end: end))
+            cursor = end
         }
         return spans
     }

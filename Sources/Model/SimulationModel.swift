@@ -133,6 +133,7 @@ final class SimulationModel: ObservableObject {
     var duration: Double { scenario.duration }
     var stats: TraceStats { scenario.trace.stats }
     var defrag: DefragPlayback? { scenario.defrag }
+    var boot: BootPlayback? { scenario.boot }
 
     init() {
         let scenario = ScenarioBuilder.build(.windowsBoot)
@@ -168,7 +169,7 @@ final class SimulationModel: ObservableObject {
 
     private func built(_ selection: ScenarioSelection) -> Scenario? {
         // Un disque généré n'est jamais reconstruit à la volée : il n'existe
-        // que dans la galerie, et n'entre ici que par `load(generated:)`.
+        // que dans la galerie, et n'entre ici que par `load(generated:as:)`.
         guard case let .builtin(kind) = selection else { return nil }
         return ScenarioBuilder.build(kind)
     }
@@ -181,9 +182,17 @@ final class SimulationModel: ObservableObject {
     /// C'est court pour une action explicite, et c'est pour cela que rien de
     /// tout cela ne part en tâche de fond — la génération du disque, elle, en
     /// vient déjà.
-    func load(generated disk: GeneratedDisk) throws {
-        let selection = ScenarioSelection.generated(disk.spec.id)
-        let scenario = try ScenarioBuilder.build(generated: disk)
+    ///
+    /// Un seul disque de la galerie est gardé à la fois, quelle que soit
+    /// l'activité : le sélecteur est segmenté, et une quatrième entrée n'y
+    /// tiendrait pas. Revenir sur le précédent se fait depuis la galerie.
+    func load(generated disk: GeneratedDisk, as activity: GeneratedActivity) throws {
+        let selection = ScenarioSelection.generated(disk.spec.id, activity)
+        let scenario: Scenario
+        switch activity {
+        case .boot:   scenario = ScenarioBuilder.build(boot: disk)
+        case .defrag: scenario = try ScenarioBuilder.build(generated: disk)
+        }
         for key in cache.keys where key.isGenerated { cache[key] = nil }
         cache[selection] = scenario
         adopt(scenario, as: selection)

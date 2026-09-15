@@ -4,11 +4,33 @@ import DiskCore
 // MARK: - Requête bloc
 
 struct BlockRequest {
+    /// Date d'émission imposée, ou 0 : dès que le disque se libère.
     let issueTime: Double
     let lba: Int
     let sectorCount: Int
     let isWrite: Bool
     let phaseIndex: Int
+    /// Temps de calcul qui s'intercale entre la fin de la requête précédente et
+    /// l'émission de celle-ci.
+    ///
+    /// Un scénario piloté par un débit — le démarrage livré, la
+    /// défragmentation — n'en a pas besoin : dans le premier les dates sont
+    /// imposées, dans le second tout part dès que le disque se libère. Un
+    /// démarrage décrit en fichiers, lui, n'est ni l'un ni l'autre : le système
+    /// ouvre un fichier, le lit, en fait quelque chose, puis ouvre le suivant.
+    /// C'est ce « en fait quelque chose » qui fixe le plancher d'un démarrage,
+    /// et ce que le disque y ajoute est exactement ce qu'on écoute.
+    let thinkTime: Double
+
+    init(issueTime: Double, lba: Int, sectorCount: Int, isWrite: Bool,
+         phaseIndex: Int, thinkTime: Double = 0) {
+        self.issueTime = issueTime
+        self.lba = lba
+        self.sectorCount = sectorCount
+        self.isWrite = isWrite
+        self.phaseIndex = phaseIndex
+        self.thinkTime = thinkTime
+    }
 }
 
 // MARK: - Phase d'activité

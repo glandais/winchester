@@ -60,6 +60,20 @@ enum GeneratedVolumeBridge {
         }
     }
 
+    /// La partition que porte ce disque généré : le nombre de clusters est déjà
+    /// fixé par le générateur, on lui construit le plan qui va autour.
+    ///
+    /// Contrairement à `volume(from:)`, cela ne suppose rien de ce qu'on va en
+    /// faire et n'écarte aucun format — un volume NTFS ne se défragmente pas
+    /// ici, mais il démarre.
+    static func partition(of disk: GeneratedDisk) -> PartitionGeometry {
+        let clusterSectors = max(Int(disk.clusterBytes) / DriveGeometry.bytesPerSector, 1)
+        return PartitionGeometry(startLBA: 0,
+                                 clusterCount: Int(disk.clusterCount),
+                                 clusterSectors: clusterSectors,
+                                 format: format(of: disk))
+    }
+
     /// Construit le volume à défragmenter à partir du disque généré.
     ///
     /// Les fichiers sont adoptés dans l'ordre du parcours de l'arborescence et
@@ -74,10 +88,7 @@ enum GeneratedVolumeBridge {
             throw BridgeError.unusableClusterSize(disk.clusterBytes)
         }
 
-        let partition = PartitionGeometry(startLBA: 0,
-                                          clusterCount: Int(disk.clusterCount),
-                                          clusterSectors: clusterSectors,
-                                          format: format(of: disk))
+        let partition = partition(of: disk)
 
         var files: [DefragFile] = []
         files.reserveCapacity(disk.catalog.files.count)

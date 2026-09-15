@@ -15,6 +15,7 @@ swiftc -O -swift-version 6 -o "${1:-/tmp/rendertrace}" \
     Sources/Model/DefragVolume.swift \
     Sources/Model/Workload.swift \
     Sources/Model/Platter.swift \
+    Sources/Model/BootSession.swift \
     Sources/Model/DiskSimulator.swift \
     Sources/Model/Volume.swift \
     Sources/Model/DefragJob.swift \

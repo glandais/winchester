@@ -132,7 +132,10 @@ enum DiskSimulator {
         var headIndex = 0
 
         for request in requests {
-            let issued = max(clock, request.issueTime)
+            // Le disque ne repart pas à la milliseconde où il s'est arrêté :
+            // la machine a peut-être quelque chose à faire de ce qu'elle vient
+            // de lire. `thinkTime` est nul partout sauf pour un démarrage.
+            let issued = max(clock + request.thinkTime, request.issueTime)
             var t = issued
             let target = geometry.position(ofLBA: request.lba)
 
