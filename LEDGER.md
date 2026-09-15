@@ -264,19 +264,63 @@ comme telle plutôt que lui attribuer un effet qu'elle n'a pas eu.
 
 ### Ce qui reste
 
-1. **JKDefrag / MyDefrag** : analyse, découpage en trois zones (répertoires,
-   fichiers ordinaires, gros fichiers rares), et surtout *fast optimize*, qui ne
-   comble que les trous au lieu de tout tasser — donc beaucoup moins
-   d'évacuations, et une signature sonore radicalement différente. Chantier
-   distinct, et **sans rapport avec NTFS** : la stratégie s'applique aussi bien
-   aux volumes FAT.
+La lecture de `COMPARAISON-DEFRAGMENTEURS.md` a refait le classement. Ce qui
+était un point unique — « JKDefrag / MyDefrag » — en fait trois, et le plus
+intéressant n'est pas celui qu'on croyait. Toutes ces stratégies sont
+**indépendantes du format** : elles s'appliquent aux volumes FAT comme aux NTFS.
 
-Deux pièges déjà repérés. `FindBestItem` n'a pour seul
-garde-fou contre l'explosion combinatoire qu'un **budget de 0,5 s de temps
-réel** (`ALGO.md` §5.2) : inutilisable tel quel, une passe simulée doit être
-reproductible, il faudra une borne déterministe et assumer que le plan diverge
-de l'original. Et la licence du dépôt amont est **incohérente** — `LICENSE` dit
-Apache 2.0, tous les en-têtes source disent GPL v2 / LGPL.
+**1. La défragmentation partielle d'UltraDefrag.** C'est la seule qui réponde à
+un échec déjà mesuré. `famille-2007` laisse 155 fichiers sur 244 en morceaux
+parce que ses gros fichiers — 213 Mo en moyenne — ne trouvent aucun trou à leur
+taille. Le `defrag_routine` d'UltraDefrag traite les fichiers les plus
+fragmentés d'abord et, sur un gros fichier, **ne fusionne que les petits
+fragments** au lieu de déplacer des gigaoctets pour gagner peu. La comparaison
+note que JKDefrag n'a pas cet équivalent. C'est donc la seule des trois dont le
+gain se chiffre d'avance, et elle change le son autant que le résultat : des
+rafales courtes sur les bords d'un fichier, au lieu d'un long transfert.
+
+**2. Le comblement de trous d'`OptimizeVolume`.** La signature de placement la
+plus caractéristique de JKDefrag : pour chaque trou, chercher d'abord une
+**combinaison de fichiers qui le comble exactement** (`FindBestItem`), sinon le
+plus gros qui tient (`FindHighestItem`). Beaucoup moins d'évacuations que le
+tassage de 95.
+
+Piège identifié : `FindBestItem` n'a pour seul garde-fou contre l'explosion
+combinatoire qu'un **budget de 0,5 s de temps réel** (`ALGO.md` §5.2).
+Inutilisable tel quel — une passe simulée doit être reproductible. Il faudra une
+borne déterministe, en nombre de candidats ou d'itérations, et assumer que le
+plan diverge de l'original.
+
+**3. Les trois zones et les tris.** `CalculateZones` découpe le volume en
+répertoires / fichiers ordinaires / *space hogs*, avec une réserve d'espace
+libre après les deux premières et une itération à point fixe plafonnée à dix
+passes. S'y ajoutent les cinq tris complets du disque (nom, taille, dernier
+accès, dernière modification, création), `ForcedFill` et `OptimizeUp`. Le plus
+gros morceau, et le moins urgent.
+
+### Deux petits points, et une mise au point de vocabulaire
+
+**Une passe qui n'a rien à faire ne devrait pas se lancer.** `gamer-2003` est
+plein à 8 % et n'a pas un fichier fragmenté : il rend une passe de 17 requêtes
+et 7,8 s. UltraDefrag a exactement la garde qui manque —
+`check_fragmentation_level` annule le job sous un seuil. C'est quelques lignes,
+et c'est plus juste que sept secondes de bruit.
+
+**`SlowDown()` (`-s 1..5`) de JKDefrag bride volontairement l'I/O.** Pour un
+projet qui sonifie une passe, c'est un réglage de tempo directement audible,
+et il est historique.
+
+**Le journal disait « JKDefrag / MyDefrag … *fast optimize* ». C'était
+imprécis.** MyDefrag est un fork **closed source** : rien n'en est lisible dans
+le corpus, et lui attribuer une référence revient à en promettre une qu'on ne
+peut pas ouvrir. Ce qui existe et se lit, c'est `OptimizeVolume` de JKDefrag
+3.36, que `ALGO.md` §6.4 décrit comme « la passe d'optimisation rapide, celle
+des modes 2 et 3 ». Même algorithme, vrai nom, source vérifiable.
+
+Licences, pour mémoire : JKDefrag est **incohérent** (`LICENSE` dit Apache 2.0,
+tous les en-têtes source disent GPL v2 / LGPL), UltraDefrag est en GPL v2
+cohérent partout. Ni l'un ni l'autre ne gêne pour transposer un algorithme
+décrit en prose ; les deux gêneraient pour du code recopié.
 
 ### Pas encore écouté
 
