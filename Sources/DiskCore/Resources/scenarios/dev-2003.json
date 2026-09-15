@@ -40,7 +40,7 @@
   ],
   "os": "winxp-sp1",
   "seed": 2003001,
-  "summary": "Visual Studio .NET : vingt mille fichiers source, une MFT énorme",
+  "summary": "Visual Studio .NET : quatorze compilations par jour, cinq cents objets à chaque fois",
   "timeline": {
     "end": "2006-02-01",
     "start": "2003-02-01"

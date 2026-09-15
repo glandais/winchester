@@ -56,6 +56,47 @@ struct ScenarioLibraryTests {
         }
     }
 
+    /// Les résumés sont de la prose libre, et personne ne les relit quand une
+    /// fiche change : `dev-1993` a annoncé « un disque de 340 Mo » pendant que
+    /// le sien en faisait 210, et `secretaire-1996` des « clusters de 32 Ko »
+    /// alors que `FORMAT` lui en donne 16.
+    ///
+    /// Ne sont contrôlées que les tournures qui décrivent sans ambiguïté le
+    /// **volume** : « un disque de N Mo », « un FAT32 de N Mo », « clusters de
+    /// N Ko ». Une taille de fichier — « des paquets de 400 Mo », « des
+    /// disquettes de 1,44 Mo » — n'est pas concernée et doit pouvoir rester.
+    @Test("Les résumés ne mentent pas sur le volume qu'ils décrivent")
+    func summariesMatchTheirDisk() throws {
+        let volume = /(?:disque|FAT16|VFAT|FAT32|NTFS)\s+de\s+([\d\u{202F} ,]+?)\s*(Mo|Go)/
+        let cluster = /clusters?\s+de\s+(\d+)\s*Ko/
+
+        for spec in try ScenarioLibrary.loadAll() {
+            guard let summary = spec.summary else { continue }
+
+            for match in summary.matches(of: volume) {
+                let digits = match.1
+                    .replacingOccurrences(of: " ", with: "")
+                    .replacingOccurrences(of: "\u{202F}", with: "")
+                    .replacingOccurrences(of: ",", with: ".")
+                guard let stated = Double(digits) else {
+                    Issue.record("\(spec.id) : « \(match.1) » illisible")
+                    continue
+                }
+                let expected = match.2 == "Go"
+                    ? Double(spec.disk.sizeMB) / 1_024
+                    : Double(spec.disk.sizeMB)
+                #expect(abs(stated - expected) / expected < 0.05,
+                        "\(spec.id) annonce \(stated) \(match.2) pour \(spec.disk.sizeMB) Mo")
+            }
+
+            let clusterKB = spec.resolvedFileSystem().clusterBytes / 1_024
+            for match in summary.matches(of: cluster) {
+                #expect(UInt32(match.1) == clusterKB,
+                        "\(spec.id) annonce des clusters de \(match.1) Ko au lieu de \(clusterKB)")
+            }
+        }
+    }
+
     @Test("Le calendrier grégorien compte juste")
     func civilDates() {
         #expect(CivilDate("1996-03-01")?.dayNumber == CivilDate(year: 1996, month: 3, day: 1).dayNumber)

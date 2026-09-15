@@ -35,7 +35,7 @@
   ],
   "os": "msdos-6.22+win31",
   "seed": 1993001,
-  "summary": "Borland C++ sur un 486, compilations en boucle sur un disque de 340 Mo",
+  "summary": "Borland C++ sur un 486, neuf compilations par jour sur un disque de 210 Mo",
   "timeline": {
     "end": "1995-04-01",
     "start": "1993-04-01"
