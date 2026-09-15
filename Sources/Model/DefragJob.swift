@@ -142,8 +142,25 @@ enum DefragPlanner {
         }
     }
 
+    /// Tout ce que la couche sait simuler, dans l'ordre chronologique des
+    /// outils. Seules les deux premières sont choisies par `strategy(for:)` :
+    /// UltraDefrag est de 2018 et n'a jamais tourné sur ces disques-là, il ne
+    /// s'obtient que sur demande — c'est un point de comparaison, pas l'outil
+    /// que la machine avait sous la main.
+    static let all: [any DefragStrategy] = [
+        Windows95Strategy(), WindowsXPStrategy(), UltraDefragStrategy(),
+    ]
+
+    static func strategy(named id: String) -> (any DefragStrategy)? {
+        all.first { $0.id == id }
+    }
+
     static func plan(volume: DefragVolume) -> DefragPlan {
-        strategy(for: volume.partition.format).plan(volume: volume)
+        plan(volume: volume, using: strategy(for: volume.partition.format))
+    }
+
+    static func plan(volume: DefragVolume, using strategy: any DefragStrategy) -> DefragPlan {
+        strategy.plan(volume: volume)
     }
 
     static func stats(of volume: DefragVolume) -> VolumeStats { volume.stats }

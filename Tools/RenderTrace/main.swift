@@ -29,6 +29,25 @@ let requested = ProcessInfo.processInfo.environment["SCENARIO"] ?? ""
 let wantsBoot = requested.hasPrefix("boot:")
 let profileID = wantsBoot ? String(requested.dropFirst(5)) : requested
 
+// `STRATEGY` force le défragmenteur simulé au lieu de laisser le format le
+// dater. C'est ainsi que se compare une passe UltraDefrag à celle de l'outil
+// d'époque sur exactement le même volume :
+//
+//   PLAN_ONLY=1 STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace /dev/null
+let strategyID = ProcessInfo.processInfo.environment["STRATEGY"]
+let strategy: (any DefragStrategy)?
+if let strategyID {
+    guard let found = DefragPlanner.strategy(named: strategyID) else {
+        FileHandle.standardError.write(
+            "stratégie inconnue : \(strategyID)\nconnues : \(DefragPlanner.all.map(\.id).joined(separator: ", "))\n"
+                .data(using: .utf8)!)
+        exit(1)
+    }
+    strategy = found
+} else {
+    strategy = nil
+}
+
 let scenario: Scenario
 if let kind = ScenarioKind(rawValue: requested) {
     scenario = ScenarioBuilder.build(kind)
@@ -37,7 +56,7 @@ if let kind = ScenarioKind(rawValue: requested) {
     let disk = try DiskGenerator.generate(spec)
     scenario = wantsBoot
         ? ScenarioBuilder.build(boot: disk)
-        : try ScenarioBuilder.build(generated: disk)
+        : try ScenarioBuilder.build(generated: disk, using: strategy)
 } else if requested.isEmpty {
     scenario = ScenarioBuilder.build(.windowsBoot)
 } else {

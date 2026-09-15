@@ -823,3 +823,242 @@ struct WindowsXPStrategyTests {
         #expect(elapsed < 60, "\(elapsed) s")
     }
 }
+
+// MARK: - La défragmentation partielle
+
+/// Un volume NTFS dont on choisit le placement, défragmenté par UltraDefrag.
+///
+/// Le seuil de fragment est donné en clusters plutôt qu'en octets : les 20 Mo
+/// de `PART_DEFRAG_MAGIC_CONSTANT` feraient 5 120 clusters de 4 Ko, donc des
+/// volumes de test d'un million de clusters pour vérifier une règle qui tient
+/// en dix. La règle ne dépend pas de l'échelle, les tests non plus.
+private func ultraPlan(clusterCount: Int, files: [TestFile],
+                       thresholdClusters: UInt32 = 10,
+                       mftZone: Range<UInt32>? = nil) -> DefragPlan {
+    let volume = ntfsVolume(clusterCount: clusterCount, files: files, mftZone: mftZone)
+    var strategy = UltraDefragStrategy()
+    strategy.fragmentSizeThreshold = Int(thresholdClusters) * volume.partition.clusterBytes
+    strategy.bufferBytes = 4 * 1024 * 1024
+    return DefragPlanner.plan(volume: volume, using: strategy)
+}
+
+/// Ce que la défragmentation partielle d'UltraDefrag apporte, et ce qu'elle
+/// coûte.
+///
+/// Elle répond à un échec que la passe de Windows XP ne sait pas traiter : un
+/// gros fichier en morceaux sur un volume plein n'a plus aucun trou à sa
+/// taille, donc XP le laisse tel quel. UltraDefrag ne cherche pas à le rendre
+/// contigu — il recolle ses **petits** morceaux et laisse les gros où ils sont.
+@Suite("Défragmentation partielle façon UltraDefrag")
+struct UltraDefragStrategyTests {
+
+    /// Le cas qui justifie l'outil, en dix clusters. Le fichier fait 35
+    /// clusters — plus du double du seuil, donc « gros » — et le volume n'offre
+    /// qu'un trou de 10. XP ne peut rien en faire ; UltraDefrag y recolle les
+    /// trois éclats de tête et laisse le gros bloc où il est.
+    @Test("Un gros fichier sans trou à sa taille voit ses petits morceaux recollés")
+    func littleFragmentsAreMergedInPlace() {
+        let plan = Self.crowdedVolume()
+
+        // Windows XP : aucun trou de 35 clusters, le fichier reste tel quel.
+        #expect(plan.xp.filesMoved == 0)
+        #expect(plan.xp.after.fragments == 4)
+
+        // UltraDefrag : les trois éclats et un cluster du gros bloc n'en font
+        // plus qu'un. Le fichier reste fragmenté — il l'est en deux morceaux au
+        // lieu de quatre, et c'est exactement ce que l'outil promet.
+        #expect(plan.ultra.filesMoved == 1)
+        #expect(plan.ultra.after.fragmentedFiles == 1, "le fichier n'est pas devenu contigu")
+        #expect(plan.ultra.after.fragments == 2)
+        // Et personne n'a été délogé pour cela.
+        #expect(plan.ultra.evacuations == 0)
+    }
+
+    /// Un volume plein à ras bord, où le seul trou fait 10 clusters et le seul
+    /// fichier cassé 35 : la situation de `famille-2007`, en cent clusters.
+    static func crowdedVolume() -> (xp: DefragPlan, ultra: DefragPlan) {
+        let files = [
+            TestFile(category: .application, extents: [Extent(start: 0, length: 10)]),
+            TestFile(category: .document, extents: [
+                Extent(start: 10, length: 2),     // trois éclats,
+                Extent(start: 14, length: 3),     // séparés par d'autres fichiers,
+                Extent(start: 20, length: 4),     // et un gros bloc au bout
+                Extent(start: 40, length: 26),
+            ]),
+            TestFile(category: .application, extents: [Extent(start: 12, length: 2)]),
+            TestFile(category: .application, extents: [Extent(start: 17, length: 3)]),
+            TestFile(category: .application, extents: [Extent(start: 24, length: 16)]),
+            TestFile(category: .application, extents: [Extent(start: 66, length: 24)]),
+        ]
+        return (DefragPlanner.plan(volume: ntfsVolume(clusterCount: 100, files: files),
+                                   using: WindowsXPStrategy()),
+                ultraPlan(clusterCount: 100, files: files))
+    }
+
+    /// Le garde-fou `n < 2` : recoller un morceau tout seul, c'est le déplacer
+    /// sans en supprimer un. UltraDefrag ne le fait pas, et c'est ce qui
+    /// distingue une défragmentation partielle d'un brassage.
+    ///
+    /// Il se déclenche là où le plafond du plus grand trou coupe la suite après
+    /// son premier élément : deux petits morceaux de 3 et 9 clusters, un trou
+    /// de 10, et les recoller demanderait 12. La passe préfère ne rien faire.
+    @Test("Un morceau isolé ne vaut pas le déplacement")
+    func aLoneFragmentIsLeftAlone() {
+        let plan = ultraPlan(clusterCount: 100, files: [
+            TestFile(category: .application, extents: [Extent(start: 0, length: 10)]),
+            // 32 clusters : « gros ». Deux petits morceaux, puis un gros bloc.
+            TestFile(category: .document, extents: [Extent(start: 10, length: 3),
+                                                    Extent(start: 20, length: 9),
+                                                    Extent(start: 40, length: 20)]),
+            TestFile(category: .application, extents: [Extent(start: 13, length: 7)]),
+            TestFile(category: .application, extents: [Extent(start: 29, length: 11)]),
+            TestFile(category: .application, extents: [Extent(start: 60, length: 30)]),
+        ])
+        #expect(plan.before.fragments == 3)
+        #expect(plan.filesMoved == 0)
+        #expect(plan.after.fragments == 3, "le fichier a été brassé pour rien")
+        #expect(plan.operations.allSatisfy { $0.kind != .writeExtent })
+    }
+
+    /// L'ordre de `fragmented_files_compare` (`analyze.c:756`) : décroissant sur
+    /// le nombre de morceaux, là où XP suit les numéros d'enregistrement de la
+    /// MFT. Il ne décide de rien tant qu'il y a de la place pour tout le monde ;
+    /// ici il n'y a qu'un trou, et les deux outils n'y mettent pas le même
+    /// fichier.
+    @Test("Le fichier le plus fragmenté passe en premier")
+    func theWorstFileGoesFirst() {
+        let files = [
+            TestFile(category: .application, extents: [Extent(start: 0, length: 10)]),
+            // Deux morceaux, et c'est le premier de la MFT.
+            TestFile(category: .archive, extents: [Extent(start: 10, length: 3),
+                                                   Extent(start: 20, length: 3)]),
+            TestFile(category: .application, extents: [Extent(start: 13, length: 7)]),
+            // Six morceaux d'un cluster : le pire du volume.
+            TestFile(category: .document, extents: [Extent(start: 23, length: 1),
+                                                    Extent(start: 25, length: 1),
+                                                    Extent(start: 27, length: 1),
+                                                    Extent(start: 29, length: 1),
+                                                    Extent(start: 31, length: 1),
+                                                    Extent(start: 33, length: 1)]),
+            TestFile(category: .application, extents: [Extent(start: 24, length: 1),
+                                                       Extent(start: 26, length: 1),
+                                                       Extent(start: 28, length: 1),
+                                                       Extent(start: 30, length: 1),
+                                                       Extent(start: 32, length: 1)]),
+            // Le seul trou du volume : six clusters, pas un de plus.
+            TestFile(category: .application, extents: [Extent(start: 40, length: 60)]),
+        ]
+        let volume = ntfsVolume(clusterCount: 100, files: files)
+        let firstServed = { (plan: DefragPlan) in
+            plan.mutations.first { $0.category != .free }.map { ($0.start, $0.category) }
+        }
+
+        // UltraDefrag sert le fichier à six morceaux.
+        let ultra = ultraPlan(clusterCount: 100, files: files)
+        #expect(firstServed(ultra)?.0 == 34)
+        #expect(firstServed(ultra)?.1 == .document)
+
+        // XP sert celui que la MFT présente en premier, qui n'en a que deux.
+        let xp = DefragPlanner.plan(volume: volume, using: WindowsXPStrategy())
+        #expect(firstServed(xp)?.1 == .archive)
+    }
+
+    /// La première séquence de `defrag_sequence` a un seuil infini : tout
+    /// fichier y est « petit » et se recopie d'un seul tenant. Un fichier sous
+    /// le double du seuil passe donc par le même chemin que sur une passe XP,
+    /// et ressort contigu.
+    @Test("Un fichier assez petit est recopié d'un seul tenant")
+    func smallFilesAreMovedWhole() {
+        let plan = ultraPlan(clusterCount: 100, files: [
+            TestFile(category: .application, extents: [Extent(start: 0, length: 10)]),
+            TestFile(category: .document, extents: [Extent(start: 10, length: 4),
+                                                    Extent(start: 20, length: 4)]),
+            TestFile(category: .application, extents: [Extent(start: 14, length: 6)]),
+        ])
+        #expect(plan.filesMoved == 1)
+        #expect(plan.after.fragmentedFiles == 0)
+        #expect(plan.after.fragments == 0)
+    }
+
+    /// Ce qu'un déplacement partiel ne doit jamais casser : le fichier garde
+    /// exactement sa taille, ses morceaux ne se recouvrent pas, et aucun ne
+    /// sort du volume. C'est le seul endroit de la couche où une liste
+    /// d'extents est coupée en son milieu.
+    @Test("Un déplacement partiel conserve le fichier")
+    func partialMovesPreserveTheFile() {
+        let files: [TestFile] = (0..<30).map { index in
+            let base = UInt32(index) * 30
+            return TestFile(category: index.isMultiple(of: 2) ? .document : .application,
+                            extents: [Extent(start: base, length: 2),
+                                      Extent(start: base + 4, length: 3),
+                                      Extent(start: base + 9, length: 1),
+                                      Extent(start: base + 12, length: 18)])
+        }
+        let plan = ultraPlan(clusterCount: 1_200, files: files)
+
+        // Rien ne se recouvre : chaque cluster écrit l'est par un seul fichier
+        // à la fois, et les libérations suivent.
+        var occupant = [Int](repeating: -1, count: 1_200)
+        for mutation in plan.mutations {
+            for cluster in mutation.start..<(mutation.start + mutation.count) {
+                #expect(cluster < 1_200, "mutation hors du volume")
+                occupant[cluster] = mutation.category == .free ? -1 : Int(mutation.category.rawValue)
+            }
+        }
+        // Et la taille de chaque fichier est intacte.
+        #expect(plan.before.fileCount == plan.after.fileCount)
+        #expect(plan.after.fragments < plan.before.fragments)
+        #expect(plan.evacuations == 0)
+    }
+
+    /// `adjust_move_at_once_parameter` (`analyze.c:90-117`) : le grain d'un
+    /// déplacement suit la capacité du volume, parce qu'un volume plus gros est
+    /// porté par un disque plus rapide. Les volumes NTFS de la galerie
+    /// s'échelonnent de 39 à 312 Gio et couvrent donc trois paliers.
+    @Test("Le bloc de déplacement suit la capacité du volume")
+    func moveGranularityFollowsCapacity() {
+        #expect(UltraDefragStrategy.moveAtOnce(capacityBytes: 4 << 30) == 256 * 1024)
+        #expect(UltraDefragStrategy.moveAtOnce(capacityBytes: 40 << 30) == 4 << 20)
+        #expect(UltraDefragStrategy.moveAtOnce(capacityBytes: 244 << 30) == 8 << 20)
+        #expect(UltraDefragStrategy.moveAtOnce(capacityBytes: 312 << 30) == 16 << 20)
+        #expect(UltraDefragStrategy.moveAtOnce(capacityBytes: 3 << 40) == 64 << 20)
+    }
+
+    /// La zone MFT est le plus grand trou du volume et elle est interdite :
+    /// `largestGap` doit la sauter, sans quoi la passe partielle composerait
+    /// des morceaux qu'aucun trou réel ne saurait accueillir.
+    @Test("Le plus grand trou ignore la zone réservée à la MFT")
+    func theLargestGapSkipsTheMftZone() {
+        let files = [TestFile(category: .system, extents: [Extent(start: 0, length: 100)])]
+        let free = ntfsVolume(clusterCount: 1_000, files: files)
+        let fenced = ntfsVolume(clusterCount: 1_000, files: files, mftZone: 200..<900)
+
+        #expect(DefragOperations.largestGap(in: free) == Extent(start: 100, length: 900))
+        // Reste 100..<200 d'un côté, 900..<1000 de l'autre : deux fois cent.
+        #expect(DefragOperations.largestGap(in: fenced)?.length == 100)
+    }
+
+    /// Les compteurs d'une passe UltraDefrag ne se lisent pas comme ceux d'une
+    /// passe XP : « 242 fichiers déplacés, 158 encore fragmentés » n'est pas un
+    /// échec, c'est la description exacte de ce que fait l'outil.
+    @Test("La stratégie commente ses propres chiffres")
+    func itNarratesItsOwnCounters() {
+        let plan = Self.crowdedVolume().ultra
+        let text = plan.strategy.summary(of: plan)
+
+        #expect(plan.strategy.label == "UltraDefrag")
+        #expect(text.contains("les plus abîmés"))
+        #expect(text.contains("trop gros pour tenir ailleurs"),
+                "la phrase doit dire pourquoi un fichier déplacé reste fragmenté")
+    }
+
+    /// L'outil d'époque reste celui du format : UltraDefrag est de 2018 et ne
+    /// s'obtient que sur demande.
+    @Test("UltraDefrag ne se choisit pas tout seul")
+    func itIsNeverThePeriodTool() {
+        #expect(DefragPlanner.strategy(for: .ntfs).id == "windowsXP")
+        #expect(DefragPlanner.strategy(for: .fat32).id == "windows95")
+        #expect(DefragPlanner.strategy(named: "ultraDefrag")?.label == "UltraDefrag")
+        #expect(DefragPlanner.strategy(named: "myDefrag") == nil)
+    }
+}

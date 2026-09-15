@@ -381,7 +381,8 @@ enum ScenarioBuilder {
     /// profil, pas le disque de 1996 du scénario livré : un 210 Mo à
     /// 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à 5 400 tr/min de 1996,
     /// et c'est tout l'intérêt de l'exercice.
-    static func build(generated disk: GeneratedDisk) throws -> Scenario {
+    static func build(generated disk: GeneratedDisk,
+                      using strategy: (any DefragStrategy)? = nil) throws -> Scenario {
         let volume = try GeneratedVolumeBridge.volume(from: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
                                                    atLeast: volume.partition.totalSectors)
@@ -393,6 +394,7 @@ enum ScenarioBuilder {
             + "c'est ce volume-là qui est défragmenté, pas une approximation."
 
         return assembleDefrag(volume: volume,
+                              strategy: strategy,
                               geometry: hardware.geometry,
                               seekModel: hardware.seek,
                               label: ScenarioLabel(title: disk.spec.displayName,
@@ -408,6 +410,7 @@ enum ScenarioBuilder {
     /// rejoue chaque déplacement pour connaître l'état d'arrivée — et ne touche
     /// pas à celui qu'on lui passe.
     private static func assembleDefrag(volume: DefragVolume,
+                                       strategy: (any DefragStrategy)? = nil,
                                        geometry: DriveGeometry,
                                        seekModel: SeekModel,
                                        label: ScenarioLabel) -> Scenario {
@@ -415,7 +418,8 @@ enum ScenarioBuilder {
         precondition(geometry.totalSectors >= partition.totalSectors,
                      "la partition déborde du disque qui la porte")
 
-        let plan = DefragPlanner.plan(volume: volume)
+        let plan = strategy.map { DefragPlanner.plan(volume: volume, using: $0) }
+            ?? DefragPlanner.plan(volume: volume)
 
         let requests = plan.operations.map {
             BlockRequest(issueTime: $0.issueTime,
