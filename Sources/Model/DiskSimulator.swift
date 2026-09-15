@@ -58,6 +58,18 @@ struct DiskTrace {
     let timings: [RequestTiming]
     let duration: Double
     let stats: TraceStats
+
+    /// La même trace, débarrassée de ce qui ne sert qu'une fois.
+    ///
+    /// Les événements mécaniques sont consommés par `AudioCueBuilder` et les
+    /// dates de requêtes par la construction des séries d'affichage ; passé ce
+    /// point, plus personne ne les lit. Sur une passe de six gigaoctets ils
+    /// pèsent trois millions et un million d'éléments — les garder vivants
+    /// pendant toute l'écoute coûterait deux cents mégaoctets pour rien.
+    func summarized() -> DiskTrace {
+        DiskTrace(events: [], headSamples: headSamples, timings: [],
+                  duration: duration, stats: stats)
+    }
 }
 
 /// Rejoue une liste de requêtes bloc sur la géométrie et le modèle de seek,
@@ -78,7 +90,12 @@ enum DiskSimulator {
         var events: [DiskEvent] = []
         var samples: [HeadSample] = []
         var timings: [RequestTiming] = []
+        // Une passe d'époque produit des millions d'événements. Sans réserve,
+        // chaque doublement de tableau recopie tout et garde transitoirement
+        // les deux versions : c'est un pic de mémoire pour rien.
         timings.reserveCapacity(requests.count)
+        samples.reserveCapacity(requests.count)
+        events.reserveCapacity(requests.count * 3)
         var stats = TraceStats()
 
         events.append(DiskEvent(time: spinUpAt, kind: .spinUp(duration: spinUpDuration)))

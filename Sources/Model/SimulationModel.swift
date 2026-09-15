@@ -16,8 +16,18 @@ final class ClusterMapPlayer {
     static let rows = 26
     static var cellCount: Int { columns * rows }
 
+    private static let categoryCount = ClusterCategory.allCases.count
+
     private var playback: DefragPlayback?
     private var map: [UInt8] = []
+    /// Combien de clusters de chaque catégorie porte chaque bloc.
+    ///
+    /// C'est ce décompte qui rend la carte tenable sur un gros volume : sans
+    /// lui, afficher une image demandait de reparcourir tous les clusters —
+    /// 1,6 million sur un FAT32 de 1999, soixante fois par seconde. Ici une
+    /// image ne coûte que les blocs affichés, et une mutation que les clusters
+    /// qu'elle touche.
+    private var tally: [UInt32] = []
     private var index = 0
     private var time: Double = 0
 
@@ -35,6 +45,17 @@ final class ClusterMapPlayer {
         map = playback?.plan.initialMap ?? []
         index = 0
         time = 0
+        rebuildTally()
+    }
+
+    private func rebuildTally() {
+        tally = [UInt32](repeating: 0, count: Self.cellCount * Self.categoryCount)
+        guard !map.isEmpty else { return }
+        let perCell = clustersPerCell
+        for cluster in 0..<map.count {
+            let cell = min(cluster / perCell, Self.cellCount - 1)
+            tally[cell * Self.categoryCount + Int(map[cluster])] += 1
+        }
     }
 
     /// Carte agrégée en blocs d'affichage. Un bloc prend la couleur de la
@@ -44,40 +65,40 @@ final class ClusterMapPlayer {
         guard let playback else { return [] }
         advance(to: requestedTime, playback: playback)
 
-        let cellCount = Self.cellCount
-        let perCell = clustersPerCell
-        var cells = [UInt8](repeating: 0, count: cellCount)
-        var counts = [Int](repeating: 0, count: ClusterCategory.allCases.count)
-
-        for cell in 0..<cellCount {
-            let start = cell * perCell
-            guard start < map.count else { break }
-            let end = min(start + perCell, map.count)
-            for i in 0..<counts.count { counts[i] = 0 }
-            for cluster in start..<end { counts[Int(map[cluster])] += 1 }
-
+        var cells = [UInt8](repeating: 0, count: Self.cellCount)
+        for cell in 0..<Self.cellCount {
+            let base = cell * Self.categoryCount
             var best = 0
-            var bestCount = 0
-            for category in 1..<counts.count where counts[category] > bestCount {
+            var bestCount: UInt32 = 0
+            for category in 1..<Self.categoryCount where tally[base + category] > bestCount {
                 best = category
-                bestCount = counts[category]
+                bestCount = tally[base + category]
             }
             cells[cell] = UInt8(best)
         }
         return cells
     }
 
-    func cell(ofCluster cluster: Int) -> Int { cluster / clustersPerCell }
+    func cell(ofCluster cluster: Int) -> Int {
+        min(cluster / clustersPerCell, Self.cellCount - 1)
+    }
 
     private func advance(to requestedTime: Double, playback: DefragPlayback) {
         if requestedTime < time { reset() }
         time = requestedTime
         let mutations = playback.mutations
+        let perCell = clustersPerCell
         while index < mutations.count && mutations[index].time <= requestedTime {
             let mutation = mutations[index]
             let end = min(mutation.start + mutation.count, map.count)
             if mutation.start < end {
-                for cluster in mutation.start..<end { map[cluster] = mutation.category }
+                for cluster in mutation.start..<end {
+                    let cell = min(cluster / perCell, Self.cellCount - 1)
+                    let base = cell * Self.categoryCount
+                    tally[base + Int(map[cluster])] -= 1
+                    tally[base + Int(mutation.category)] += 1
+                    map[cluster] = mutation.category
+                }
             }
             index += 1
         }
@@ -105,7 +126,7 @@ final class SimulationModel: ObservableObject {
 
     var geometry: DriveGeometry { scenario.geometry }
     var spans: [PhaseSpan] { scenario.spans }
-    var requests: [BlockRequest] { scenario.requests }
+    var requestCount: Int { scenario.requestCount }
     var iops: [Double] { scenario.iops }
     var throughputMBs: [Double] { scenario.throughputMBs }
     var peakIOPS: Double { scenario.peakIOPS }

@@ -47,68 +47,6 @@ struct ClusterRun {
     var end: Int { start + count }
 }
 
-/// Géométrie d'une partition FAT16 posée sur le disque.
-///
-/// Le calcul du nombre de clusters est circulaire — la taille de la FAT dépend
-/// du nombre de clusters, qui dépend de la place restante après la FAT — et se
-/// résout par quelques itérations, exactement comme le fait `FORMAT`.
-struct PartitionGeometry {
-
-    let startLBA: Int
-    let clusterSectors: Int
-    let clusterCount: Int
-    let fatSectors: Int
-
-    private static let reservedSectors = 1   // secteur d'amorçage
-    private static let rootSectors = 32      // 512 entrées de racine
-
-    init(startLBA: Int, sectors: Int, clusterSectors: Int) {
-        self.startLBA = startLBA
-        self.clusterSectors = clusterSectors
-
-        let overhead = Self.reservedSectors + Self.rootSectors
-        var n = (sectors - overhead) / clusterSectors
-        var fat = 0
-        for _ in 0..<3 {
-            fat = Int(ceil(Double(n) * 2 / Double(DriveGeometry.bytesPerSector)))
-            n = (sectors - overhead - 2 * fat) / clusterSectors
-        }
-        self.fatSectors = fat
-        self.clusterCount = n
-        precondition(n > 0 && n < 65_525, "hors des bornes FAT16")
-    }
-
-    var fat1LBA: Int { startLBA + Self.reservedSectors }
-    var fat2LBA: Int { fat1LBA + fatSectors }
-    var rootLBA: Int { fat2LBA + fatSectors }
-    var dataStartLBA: Int { rootLBA + Self.rootSectors }
-    var rootSectorCount: Int { Self.rootSectors }
-
-    var clusterBytes: Int { clusterSectors * DriveGeometry.bytesPerSector }
-    var capacityBytes: Int { clusterCount * clusterBytes }
-
-    /// Secteurs occupés par la partition, tables comprises : le disque qui la
-    /// porte doit en compter au moins autant.
-    var totalSectors: Int { dataStartLBA - startLBA + clusterCount * clusterSectors }
-
-    func lba(ofCluster cluster: Int) -> Int {
-        dataStartLBA + cluster * clusterSectors
-    }
-
-    /// Secteur de la FAT qui décrit ce cluster : deux octets par cluster.
-    func fatSector(forCluster cluster: Int) -> Int {
-        cluster * 2 / DriveGeometry.bytesPerSector
-    }
-
-    func clusters(forBytes bytes: Int) -> Int {
-        max(1, Int(ceil(Double(bytes) / Double(clusterBytes))))
-    }
-
-    var capacityDescription: String {
-        String(format: "%.0f Mo", Double(capacityBytes) / 1_000_000)
-    }
-}
-
 struct VolumeFile {
     let id: Int
     let path: String

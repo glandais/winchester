@@ -40,6 +40,23 @@ if let kind = ScenarioKind(rawValue: requested) {
     exit(1)
 }
 
+
+/// Ce que la passe a réellement fait : c'est le rapport entre déplacements et
+/// évacuations qui explique la durée, bien plus que le volume de données.
+func describe(_ playback: DefragPlayback) -> String {
+    let plan = playback.plan
+    let moved = Double(plan.movedBytes) / 1_000_000
+    return """
+    volume        : \(plan.partition.clusterCount) clusters de \(plan.partition.clusterBytes / 1_024) Ko, \
+    \(plan.before.fileCount) fichiers, \(Int(plan.before.fill * 100)) % plein
+    déplacements  : \(plan.filesMoved) fichiers, \(plan.evacuations) évacuations, \
+    \(plan.filesAlreadyInPlace) déjà en place
+    déplacé       : \(String(format: "%.0f", moved)) Mo pour un volume de \
+    \(plan.partition.capacityBytes / 1_000_000) Mo
+    fragmentés    : \(plan.before.fragmentedFiles) avant, \(plan.after.fragmentedFiles) après
+    """
+}
+
 let geometry = scenario.geometry
 let spans = scenario.spans
 let cues = scenario.cues
@@ -47,13 +64,19 @@ let trace = scenario.trace
 
 FileHandle.standardError.write("""
 scénario      : \(scenario.label.title) — \(geometry.model)
-requêtes      : \(scenario.requests.count)
+requêtes      : \(scenario.requestCount)
 seeks         : \(trace.stats.seekCount) (moy. \(trace.stats.averageSeekDistance) cyl.)
 événements    : \(trace.events.count)
 repères audio : \(cues.count)
 durée         : \(String(format: "%.1f", scenario.duration)) s
+\(scenario.defrag.map(describe) ?? "")
 
 """.data(using: .utf8)!)
+
+// Une passe sur un volume d'époque réellement dimensionné dure des heures, et
+// son rendu pèse des gigaoctets. `PLAN_ONLY` s'arrête au bilan : c'est tout ce
+// qu'il faut pour vérifier un planificateur.
+if ProcessInfo.processInfo.environment["PLAN_ONLY"] != nil { exit(0) }
 
 let frameCount = Int(scenario.duration * sampleRate) + 48_000
 var left = [Float](repeating: 0, count: frameCount)

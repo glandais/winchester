@@ -241,19 +241,32 @@ piste-à-piste. C'est leur rapport qui distingue une époque d'une autre : entre
 Un 210 Mo à 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à 5 400 tr/min de
 1996, et n'en est pas loin de sonner comme un 40 Go de 2003.
 
-**Huit scénarios sur vingt y ont droit** : ceux de 1993 et 1996. Au-delà, le
-bouton reste visible mais éteint, avec la raison écrite dessous — le
-défragmenteur simulé est celui de Windows 95, qui ne connaît que la FAT16, et
-un volume NTFS de 320 Go n'a de toute façon pas vocation à y passer.
+**Douze scénarios sur vingt y ont droit** : ceux de 1993, 1996 et 1999. La
+limite n'est plus une taille — le planificateur travaille en extents, et un
+volume de 320 Go ne lui coûte pas plus cher qu'un de 180 Mo — mais un
+**format** : au-delà, le bouton reste visible et éteint, avec la raison écrite
+dessous.
 
-Ces passes-là sont longues : de 27 min (`dev-1993`) à 62 min
-(`secretaire-1993`), contre trois minutes et demie pour le scénario livré,
-dont le volume est délibérément réduit. C'est la vraie durée d'une passe
-d'époque sur un volume d'époque, et ce n'est pas la taille du volume qui la
-fixe : la plus longue des huit est celle du plus petit disque, un 170 Mo de
-1993 dont 71 % des fichiers sont en morceaux, lu à 1,8 Mo/s. La planification et
-la simulation coûtent 70 à 190 ms en release, du même ordre que la passe
-livrée.
+Ce qui bloque NTFS n'est pas l'impossibilité de le décrire, c'est que la passe
+de Windows 95 n'y a **aucun sens**. Sur le volume de 320 Go de `famille-2007`,
+elle tasse trois cents gigaoctets contre le début du disque par tampons de
+256 Ko : vingt-huit millions de requêtes, et quatre-vingt-quatorze heures de
+passe simulée — alors que 244 fichiers seulement, sur 12 220, sont fragmentés.
+C'est une stratégie qu'il faut là, pas une taille de volume.
+
+Ces passes-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`),
+contre 3 min 24 pour le scénario livré, dont le volume est délibérément réduit.
+C'est la vraie durée d'une passe d'époque sur un volume d'époque, et ce n'est
+pas la taille du volume qui la fixe : `secretaire-1993`, le plus petit disque de
+la galerie, y passe 66 minutes — 170 Mo dont 71 % des fichiers sont en morceaux,
+lus à 1,8 Mo/s — quand `dev-1996`, six fois plus gros, en prend 36.
+
+Ce qui la fixe, c'est le **remplissage**. Un volume plein n'a plus où évacuer :
+à 76 % de remplissage la passe livrée déplace 231 Mo pour ranger un volume de
+179 Mo, à 93 % `dev-1999` en déplace 44 938 pour 6 710 — sept fois son propre
+contenu, en 23 284 évacuations. C'est ce va-et-vient que l'on entend, et c'est
+pour cela que l'outil d'époque demandait de faire de la place avant de le
+lancer.
 
 Le rendu hors-ligne accepte les mêmes identifiants :
 
@@ -275,6 +288,14 @@ SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav
 - Pas de réordonnancement d'ascenseur, pas de cache disque, pas de NCQ. File
   FIFO : représentatif d'un contrôleur IDE de l'époque, et c'est ce qui rend le
   crépitement si dense.
+- **Tout est calculé avant que le premier son ne sorte.** La passe entière —
+  requêtes, chronologie mécanique, repères audio — est matérialisée en mémoire :
+  1,1 million de requêtes et 780 Mo de pic pour `dev-1999`, un FAT32 de 6,4 Go
+  rempli à 93 %. Tenable sur un Mac, à la limite sur un téléphone, et c'est ce
+  qui plafonne la taille des volumes bien avant le planificateur, qui lui ne
+  connaît que des extents. Une passe rendue **au fil de l'eau**, sur une fenêtre
+  de quelques secondes d'avance, lèverait cette limite ; c'est le chantier
+  suivant.
 - **La passe de défragmentation est raccourcie par la taille du volume, pas par
   une accélération.** 180 Mo se défragmentent en 3 min 24 ; un
   volume de l'époque réellement dimensionné (500 Mo à 1 Go) en prend vingt-sept
@@ -329,10 +350,13 @@ swift build
 swift test
 ```
 
-`swift test` ne couvre que `Sources/DiskCore`, le seul paquet SPM. La couche
-`Sources/Model` — volume FAT16, planificateur de défragmentation, construction
-des scénarios — se vérifie par le rendu hors-ligne ci-dessous, qui la compile
-et la fait tourner en entier.
+`swift test` couvre le noyau `DiskCore` et la couche défragmentation —
+plan de partition, volume en extents, planificateur, simulateur mécanique. Ces
+fichiers-là appartiennent à l'application, qui les compile de son côté ; le
+paquet les compile une seconde fois sous le nom `DefragKit`, pour pouvoir les
+tester sans avoir à rendre publique la moitié de la couche. Ce qui reste hors
+tests — construction des scénarios, modèles d'interface — se vérifie par le
+rendu hors-ligne ci-dessous, qui compile et fait tourner la chaîne entière.
 
 Ou directement :
 
@@ -361,7 +385,14 @@ SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav      # passe sur un disque géné
 
 SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav      # isoler une couche
 TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
+
+PLAN_ONLY=1 SCENARIO=dev-1999 /tmp/rendertrace x.wav  # bilan seul, sans rendu
 ```
+
+`PLAN_ONLY` s'arrête au bilan de la passe — volume, déplacements, évacuations,
+octets déplacés — sans rendre une note. C'est ce qu'il faut pour juger d'un
+planificateur : une passe d'époque sur un volume d'époque dure des heures, et
+son rendu pèse des gigaoctets.
 
 L'outil imprime le RMS et la crête par phase, ce qui permet de vérifier que la
 dynamique du scénario tient. Mesures actuelles sur l'étage tête seul : ~20 dB
@@ -401,7 +432,11 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     Resources/scenarios/   vingt scénarios : cinq époques, quatre profils
 Sources/Model/
     Workload.swift         phases du scénario, générateur de requêtes déterministe
-    Volume.swift           partition FAT16, allocateur next-fit, vieillissement
+    VolumeLayout.swift     plan d'une partition FAT16, FAT32 ou NTFS : où sont
+                           les métadonnées, et ce que coûte une validation
+    Volume.swift           volume vieilli sur place, allocateur next-fit
+    DefragVolume.swift     le volume vu par le défragmenteur : bitmap, fichiers
+                           décrits par extents, index des occupants par blocs
     DefragJob.swift        planificateur de la passe de défragmentation
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
     Scenario.swift         construction des scénarios, séries d'affichage

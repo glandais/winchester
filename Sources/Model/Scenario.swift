@@ -17,9 +17,11 @@ enum ScenarioKind: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .windowsBoot:
-            return "Démarrage Windows puis lancement d'une suite bureautique, sur un IDE de 2001"
+            return "Démarrage Windows puis lancement d'une suite bureautique, "
+                + "sur un Barracuda ATA IV de 2001"
         case .defrag:
-            return "Passe complète du défragmenteur de Windows 95 sur un volume FAT16 vieilli"
+            return "Passe complète du défragmenteur de Windows 95 sur un volume FAT16 vieilli, "
+                + "sur un Quantum Fireball 1080AT de 1996"
         }
     }
 
@@ -118,7 +120,10 @@ struct Scenario {
     let label: ScenarioLabel
     let geometry: DriveGeometry
     let seekModel: SeekModel
-    let requests: [BlockRequest]
+    /// Nombre de requêtes bloc de la passe. La liste elle-même n'est pas
+    /// conservée : rien ne la relit une fois la chronologie mécanique obtenue,
+    /// et elle compte plus d'un million d'entrées sur les gros volumes.
+    let requestCount: Int
     let spans: [PhaseSpan]
     let trace: DiskTrace
     let cues: [AudioCue]
@@ -173,9 +178,9 @@ enum ScenarioBuilder {
             label: ScenarioKind.windowsBoot.label,
             geometry: geometry,
             seekModel: seekModel,
-            requests: requests,
+            requestCount: requests.count,
             spans: spans,
-            trace: trace,
+            trace: trace.summarized(),
             cues: AudioCueBuilder.build(from: trace, cylinders: geometry.cylinders),
             duration: trace.duration,
             iops: series.iops,
@@ -209,7 +214,7 @@ enum ScenarioBuilder {
                                           clusterSectors: clusterSectors)
         let volume = VolumeFactory.agedWindows95(partition: partition, fill: volumeFill)
 
-        return assembleDefrag(volume: volume,
+        return assembleDefrag(volume: volume.defragVolume(),
                               geometry: DriveCatalog.defragDrive.geometry,
                               seekModel: DriveCatalog.defragDrive.seekModel,
                               label: ScenarioKind.defrag.label)
@@ -219,11 +224,12 @@ enum ScenarioBuilder {
 
     /// Même passe, sur un volume venu du générateur de disques d'époque.
     ///
-    /// Le disque est converti en `Volume` par `GeneratedVolumeBridge` — qui
-    /// refuse tout ce qu'un défragmenteur de 1995 n'aurait pas su ouvrir — et le
-    /// matériel est celui que décrit la fiche du profil, pas le disque de 1996
-    /// du scénario livré : un 210 Mo à 3 600 tr/min de 1993 ne sonne pas comme
-    /// un 1 Go à 4 500 tr/min de 1996, et c'est tout l'intérêt de l'exercice.
+    /// Le disque est converti en volume à défragmenter par
+    /// `GeneratedVolumeBridge` — qui refuse les formats que l'outil simulé ne
+    /// sait pas ranger — et le matériel est celui que décrit la fiche du
+    /// profil, pas le disque de 1996 du scénario livré : un 210 Mo à
+    /// 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à 5 400 tr/min de 1996,
+    /// et c'est tout l'intérêt de l'exercice.
     static func build(generated disk: GeneratedDisk) throws -> Scenario {
         let volume = try GeneratedVolumeBridge.volume(from: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
@@ -247,10 +253,10 @@ enum ScenarioBuilder {
     /// Planifie la passe sur un volume donné, la fait tourner sur le disque
     /// donné, et date tout ce que l'écran doit en montrer.
     ///
-    /// `DefragPlanner.plan` **consomme** le volume : il y rejoue chaque
-    /// déplacement pour connaître l'état d'arrivée. Le volume passé ici ne doit
-    /// donc pas être réutilisé ensuite.
-    private static func assembleDefrag(volume: Volume,
+    /// `DefragPlanner.plan` travaille sur sa propre copie du volume — il y
+    /// rejoue chaque déplacement pour connaître l'état d'arrivée — et ne touche
+    /// pas à celui qu'on lui passe.
+    private static func assembleDefrag(volume: DefragVolume,
                                        geometry: DriveGeometry,
                                        seekModel: SeekModel,
                                        label: ScenarioLabel) -> Scenario {
@@ -291,7 +297,8 @@ enum ScenarioBuilder {
             guard index < trace.timings.count else { break }
             let timing = trace.timings[index]
 
-            for mutation in operation.mutations {
+            for index in Int(operation.mutationStart)..<Int(operation.mutationStart + operation.mutationCount) {
+                let mutation = plan.mutations[index]
                 mutations.append(TimedMutation(time: timing.end,
                                                start: mutation.start,
                                                count: mutation.count,
@@ -320,16 +327,16 @@ enum ScenarioBuilder {
             label: label,
             geometry: geometry,
             seekModel: seekModel,
-            requests: requests,
+            requestCount: requests.count,
             spans: spans,
-            trace: trace,
+            trace: trace.summarized(),
             cues: AudioCueBuilder.build(from: trace, cylinders: geometry.cylinders),
             duration: duration,
             iops: series.iops,
             throughputMBs: series.throughput,
             peakIOPS: series.peak,
             defrag: DefragPlayback(partition: partition,
-                                   plan: plan,
+                                   plan: plan.summarized(),
                                    mutations: mutations,
                                    activity: activity,
                                    movedBytes: movedBytes,

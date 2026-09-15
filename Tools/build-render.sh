@@ -11,6 +11,8 @@ CORE=".build/release"
 
 swiftc -O -swift-version 6 -o "${1:-/tmp/rendertrace}" \
     -I "$CORE/Modules" "$CORE"/DiskCore.build/*.o \
+    Sources/Model/VolumeLayout.swift \
+    Sources/Model/DefragVolume.swift \
     Sources/Model/Workload.swift \
     Sources/Model/DiskSimulator.swift \
     Sources/Model/Volume.swift \

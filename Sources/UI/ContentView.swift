@@ -141,7 +141,7 @@ struct SimulatorScreen: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.text)
                     Spacer()
-                    Text("\(playback.partition.capacityDescription) · FAT16 · clusters de \(playback.partition.clusterBytes / 1024) Ko")
+                    Text("\(playback.partition.capacityDescription) · \(playback.partition.format.label) · clusters de \(playback.partition.clusterBytes / 1024) Ko")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                 }

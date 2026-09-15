@@ -24,78 +24,88 @@ extension ClusterCategory {
     }
 }
 
-/// Passerelle entre un disque généré et le modèle de volume de l'application.
+/// Passerelle entre un disque généré et le volume que défragmente l'application.
 ///
-/// Le planificateur de défragmentation, le rejeu de la carte et toute la chaîne
-/// audio travaillent sur `Volume`. Plutôt que de les réécrire, on leur donne un
-/// `Volume` bâti à partir d'un disque généré : ils ne voient pas la différence,
-/// et le générateur n'a pas à connaître leur existence.
+/// Le planificateur, le rejeu de la carte et toute la chaîne audio travaillent
+/// sur un `DefragVolume` : une bitmap d'occupation et des fichiers décrits par
+/// leurs extents. C'est exactement ce que produit le générateur, à la
+/// nomenclature près — la conversion ne recopie donc que des extents, sans
+/// jamais dérouler un cluster.
 ///
-/// La conversion n'est possible que pour un volume que `PartitionGeometry` sait
-/// décrire, c'est-à-dire un FAT16 de moins de 65 524 clusters. Les volumes NTFS
-/// de 2003 et 2007 s'affichent par leur carte de catégories, qui ne demande
-/// rien de tout cela — un disque de 320 Go n'a de toute façon pas vocation à
-/// passer par un défragmenteur de Windows 95.
+/// C'est ce qui a levé la limite des 65 524 clusters : la passerelle
+/// construisait autrefois un volume FAT16 dont chaque fichier portait la liste
+/// de ses clusters, ce qu'un volume de 320 Go — quatre-vingts millions de
+/// clusters pour cent soixante-dix-huit mille extents — ne pouvait pas payer.
 enum GeneratedVolumeBridge {
 
     enum BridgeError: Error, CustomStringConvertible {
-        case unsupportedGeometry(clusterCount: UInt32)
+        case unsupportedFormat(FileSystemKind)
 
         var description: String {
             switch self {
-            case let .unsupportedGeometry(count):
-                return "un volume de \(count) clusters ne se décrit pas en FAT16"
+            case let .unsupportedFormat(kind):
+                return "le défragmenteur simulé ne range pas un volume "
+                    + "\(kind.rawValue.uppercased())"
             }
         }
     }
 
-    /// Construit un `Volume` équivalent au disque généré.
+    /// Format de partition correspondant à celui du disque généré.
+    static func format(of disk: GeneratedDisk) -> VolumeFormat {
+        switch disk.spec.fileSystem.type {
+        case .fat16, .vfat: return .fat16
+        case .fat32:        return .fat32
+        case .ntfs:         return .ntfs
+        }
+    }
+
+    /// Construit le volume à défragmenter à partir du disque généré.
     ///
-    /// Les fichiers sont adoptés dans l'ordre du parcours de l'arborescence, et
-    /// gardent exactement les clusters que l'allocateur leur a donnés : c'est
-    /// bien le volume généré qu'on défragmente, pas une approximation.
-    static func volume(from disk: GeneratedDisk) throws -> Volume {
+    /// Les fichiers sont adoptés dans l'ordre du parcours de l'arborescence et
+    /// gardent exactement les extents que l'allocateur leur a donnés : c'est
+    /// bien ce volume-là qu'on défragmente, pas une approximation.
+    static func volume(from disk: GeneratedDisk) throws -> DefragVolume {
         let clusterSectors = Int(disk.clusterBytes) / DriveGeometry.bytesPerSector
-        // Une marge d'un cluster : la partition construite ci-dessous se
-        // redimensionne comme le ferait `FORMAT` et peut retomber un cluster
-        // au-dessus du compte, ce que `PartitionGeometry` refuserait.
-        guard disk.clusterCount < 65_524, clusterSectors > 0 else {
-            throw BridgeError.unsupportedGeometry(clusterCount: disk.clusterCount)
+        // Le refus ne vit pas que dans l'écran qui grise le bouton : un
+        // appelant qui passerait outre — le rendu hors-ligne, par exemple — doit
+        // obtenir la même réponse.
+        guard isSupported(disk), clusterSectors > 0 else {
+            throw BridgeError.unsupportedFormat(disk.spec.fileSystem.type)
         }
 
-        // Une partition qui contient exactement ce volume, tables comprises.
-        let dataSectors = Int(disk.clusterCount) * clusterSectors
-        let fatSectors = Int(ceil(Double(disk.clusterCount) * 2 / Double(DriveGeometry.bytesPerSector)))
-        let total = dataSectors + 2 * fatSectors + 33 + clusterSectors
-        let partition = PartitionGeometry(startLBA: 0, sectors: total, clusterSectors: clusterSectors)
+        let partition = PartitionGeometry(startLBA: 0,
+                                          clusterCount: Int(disk.clusterCount),
+                                          clusterSectors: clusterSectors,
+                                          format: format(of: disk))
 
-        let volume = Volume(partition: partition)
-        for record in disk.catalog.directoryWalkOrder() where !record.isResident {
-            guard !record.extents.isEmpty else { continue }
-            var chain: [Int] = []
-            chain.reserveCapacity(Int(record.entry.clusterCount))
-            for extent in record.extents {
-                for cluster in extent.start..<extent.end where Int(cluster) < partition.clusterCount {
-                    chain.append(Int(cluster))
-                }
-            }
-            guard !chain.isEmpty else { continue }
-            volume.adopt(path: disk.catalog.path(of: record),
-                         kind: ClusterCategory(record.category),
-                         chain: chain)
+        var files: [DefragFile] = []
+        files.reserveCapacity(disk.catalog.files.count)
+        for record in disk.catalog.directoryWalkOrder()
+        where !record.isResident && !record.extents.isEmpty {
+            let category = ClusterCategory(record.category)
+            files.append(DefragFile(id: record.id,
+                                    path: disk.catalog.path(of: record),
+                                    category: category,
+                                    walkOrder: files.count,
+                                    extents: record.extents,
+                                    isMovable: category != .swap))
         }
-        return volume
+        return DefragVolume(partition: partition, files: files)
     }
 }
 
 extension GeneratedVolumeBridge {
 
-    /// Le nombre de clusters qu'un `PartitionGeometry` sait décrire, marge
-    /// comprise. Au-delà, il n'y a pas de FAT16 : il y a un autre format.
-    static let maximumClusterCount: UInt32 = 65_524
-
+    /// Ce volume se défragmente-t-il ?
+    ///
+    /// Ce n'est plus une question de taille — le planificateur travaille en
+    /// extents et un volume de 320 Go ne lui coûte pas plus qu'un de 180 Mo —
+    /// mais de **format** : le défragmenteur simulé est celui de Windows 95,
+    /// puis de Windows 98 pour FAT32. NTFS demande une autre stratégie, qui ne
+    /// déplace pas les fichiers de la même façon et ne valide pas au même
+    /// endroit.
     static func isSupported(_ disk: GeneratedDisk) -> Bool {
-        disk.clusterCount < maximumClusterCount
+        format(of: disk) != .ntfs
             && Int(disk.clusterBytes) >= DriveGeometry.bytesPerSector
     }
 
@@ -103,14 +113,8 @@ extension GeneratedVolumeBridge {
     /// s'il se défragmente.
     static func refusal(for disk: GeneratedDisk) -> String? {
         guard !isSupported(disk) else { return nil }
-        switch disk.spec.fileSystem.type {
-        case .fat16, .vfat:
-            return "\(disk.clusterCount) clusters : au-delà des 65 524 qu'une FAT16 adresse."
-        case .fat32, .ntfs:
-            return "Volume \(disk.spec.fileSystem.type.rawValue.uppercased()) de "
-                + "\(disk.spec.disk.sizeMB) Mo : le défragmenteur simulé est celui de "
-                + "Windows 95, qui ne connaît que la FAT16."
-        }
+        return "Volume NTFS de \(disk.spec.disk.sizeMB) Mo : le défragmenteur simulé est "
+            + "celui de Windows 95, qui range les fichiers par la table d'allocation."
     }
 
     /// Matériel décrit par le profil : géométrie zonée et loi de seek.
