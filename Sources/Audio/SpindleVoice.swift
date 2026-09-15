@@ -60,14 +60,18 @@ final class SpindleVoice {
     /// haptique pour doser son grondement.
     var currentSpeed: Double { speed }
 
+    // La constante de temps est celle de `SpindleTimeline`, qui fait tourner le
+    // plateau à l'écran : les deux décrivent le même moteur, et si elles
+    // divergent l'image cesse de coller au son.
+
     func spinUp(duration: Double) {
         target = 1
-        timeConstant = max(duration, 0.2) / 3.2
+        timeConstant = SpindleTimeline.timeConstant(forRamp: duration)
     }
 
     func spinDown(duration: Double) {
         target = 0
-        timeConstant = max(duration, 0.2) / 3.2
+        timeConstant = SpindleTimeline.timeConstant(forRamp: duration)
     }
 
     /// Positionnement instantané, utilisé quand on saute dans la chronologie.

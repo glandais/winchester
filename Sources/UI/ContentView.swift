@@ -66,6 +66,9 @@ struct SimulatorScreen: View {
 
     private var time: Double { engine.currentTime }
     private var span: PhaseSpan? { model.span(at: time) }
+    /// Une seule interrogation de la trace par image, partagée par le plateau et
+    /// par l'afficheur de cylindre.
+    private var platter: PlatterFrame { model.platterFrame(at: time) }
 
     var body: some View {
         ZStack {
@@ -76,15 +79,9 @@ struct SimulatorScreen: View {
                     header
                     scenarioPicker
                     if model.defrag != nil { defragPanel }
-                    PlatterView(
-                        geometry: model.geometry,
-                        cylinder: model.cylinder(at: time),
-                        recent: model.recentAccesses(at: time),
-                        time: time,
-                        spinning: time > 0.6
-                    )
-                    .frame(maxHeight: 300)
-                    .panel()
+                    PlatterView(track: model.platter, frame: platter)
+                        .frame(maxHeight: 300)
+                        .panel()
 
                     phaseBanner
                     timeline
@@ -294,7 +291,7 @@ struct SimulatorScreen: View {
                 Text("cylindre")
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(Theme.dim)
-                Text("\(model.cylinder(at: time))")
+                Text("\(Int(platter.cylinder.rounded()))")
                     .font(.system(size: 20, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.read)
                     .monospacedDigit()

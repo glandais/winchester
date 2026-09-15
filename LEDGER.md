@@ -379,3 +379,93 @@ Reste :
 - la carte par cluster (`initialMap`) pèse 80 Mo sur un volume de 320 Go : à ne
   jamais matérialiser pour ces volumes-là. `GeneratedDisk.cells` montre déjà
   comment agréger sans la construire.
+
+---
+
+## Chantier 5 — le plateau montre ce que le disque fait
+
+**Fait**
+
+### Le problème
+
+`PlatterView` n'avait pas bougé depuis le spike, alors que la couche physique
+avait été reprise trois fois. La vue **affichait des positions que le simulateur
+savait fausses** :
+
+| | ce que le modèle calcule | ce que la vue montrait |
+|---|---|---|
+| bras au repos | cylindre de parcage, au moyeu | cylindre 0, au bord |
+| lecture séquentielle | la tête descend piste après piste | bras immobile, puis saut |
+| rotation | 3 600 à 7 200 tr/min selon le disque | 0,85 tour/s, en dur |
+| mise en rotation | rampe du premier ordre, `spinUp(duration:)` | `time > 0.6` |
+| écriture | `isWrite` est dans l'échantillon | pointe toujours ambre |
+
+Le premier écart contredisait ce que le README donne pour le fondement du « clac »
+du démarrage : le bras parqué au diamètre intérieur, donc un premier accès en
+course quasi complète. On l'entendait ; on voyait l'inverse.
+
+### Les décisions
+
+- **Un échantillon par requête porte son début et sa fin.** `HeadSample` gagne
+  une durée et un cylindre d'arrivée — donc le bras avance pendant le transfert.
+  Un échantillon par piste aurait suivi la taille des transferts ; celui-ci
+  reste à un par requête, et les largeurs sont choisies pour que la structure
+  **garde son pas de vingt-quatre octets**. Le gain d'information est gratuit.
+- **Une seule horloge angulaire, ralentie d'un facteur cent.** Un plateau à
+  120 tours/s n'a pas d'angle affichable à 60 images/s — au mieux un aplat, au
+  pire des repères qui battent en arrière. Les deux échelles qui coexistaient
+  (repères en dur, traînée à l'angle absolu, donc dispersée au hasard et
+  immobile) sont remplacées par un seul ralenti, **proportionnel au régime
+  réel** : 1,2 tour/s pour un 7 200, 0,6 pour un 3 600.
+- **La traînée est solidaire du plateau.** Les données sont gravées dessus : un
+  accès naît sous la tête, puis dérive. Une lecture séquentielle y dessine une
+  spirale, qui est ce qu'elle est. La fenêtre de traînée vaut **un tour
+  apparent** — au-delà, les points anciens repassent sur les récents.
+- **Le fondu se calcule sur l'âge, pas sur le rang.** Il étalait tout le dégradé
+  sur quatre-vingt-dix millisecondes dans un train dense, et affichait presque à
+  pleine opacité deux accès distants d'une seconde.
+- **Le bras part au dernier moment**, en calant le départ sur la durée du seek
+  au lieu de le faire apparaître à destination avec jusqu'à vingt-huit
+  millisecondes de retard. Interpolation par `smoothstep` et **non** par les
+  quatre phases du `SeekProfile` : celui-ci donne des durées, pas une loi de
+  position, et il faudrait intégrer deux fois une vitesse trapézoïdale pour un
+  événement qui dure de 0,06 à 1,2 image. La cubique a déjà la bonne allure —
+  c'est le profil *speedup + slowdown sans coast*, celui des seeks courts.
+- **Le balayage de l'image est montré comme un voile.** Dans un train dense le
+  bras traverse plusieurs cylindres par image ; en afficher un tiré au sort
+  donnait un grésillement.
+- **La géométrie d'affichage descend dans `Sources/Model`** (`Platter.swift`),
+  où `DefragKit` la compile : c'est ce qui la rend testable. La vue ne fait plus
+  que dessiner.
+
+### Ce qui valide
+
+Neuf tests dans `PlatterTests`, dont les quatre invariants qui comptent : le
+bras est au cylindre de parcage avant le premier accès ; le nombre de cylindres
+traversés par un transfert tombe sur `sectorCount / (heads × spt)` à un près ;
+la position ne se téléporte jamais d'une image à l'autre sur quatre cents accès
+aléatoires ; et les tours accomplis sont monotones, nuls avant la mise en
+rotation, avec un retard asymptotique égal à la constante de temps.
+
+Non-régression : passe livrée inchangée à 204,7 s, 390 fichiers déplacés,
+921 évacuations. La constante de temps de la rampe est désormais **partagée**
+avec `SpindleVoice` — si les deux divergent, l'image cesse de coller au son.
+
+### Laissé ouvert
+
+- **`WorkloadPhase.spin` est du code mort** : `WorkloadLibrary` le renseigne,
+  personne ne le lit, et `DiskSimulator` n'émet **jamais** de `spinDown`.
+  `SpindleTimeline` sait déjà le décrire ; l'activer ajoute un repère aux cues,
+  donc change le son.
+- **Le bras n'est jamais re-parqué** après une longue inactivité, alors que les
+  trois secondes et demie de queue de la passe s'y prêteraient — et qu'un
+  parcage s'entend.
+- **Un transfert qui déborde du dernier cylindre tourne en rond** au lieu d'être
+  tronqué (`min(headCylinder + 1, cylinders - 1)`) : préexistant, mais le bras
+  s'y colle maintenant visiblement au moyeu.
+- **La ZBR ne se voit pas** : les cercles de zones sont tracés, mais rien ne
+  montre que le débit chute vers l'intérieur alors que ça s'entend.
+  `sustainedMBs(cylinder:)` existe et n'est utilisé nulle part dans l'interface.
+- Le **sens de rotation** n'est documenté nulle part. Repères et traînée sont
+  cohérents entre eux, ce qui est l'essentiel, mais la convention mériterait
+  d'être vérifiée plutôt que devinée.

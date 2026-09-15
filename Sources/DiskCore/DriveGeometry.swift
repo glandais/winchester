@@ -118,9 +118,21 @@ public struct DriveGeometry: Sendable {
         return Int(f * Double(totalSectors))
     }
 
+    /// Cylindre de parcage du bras, moteur à l'arrêt : le diamètre intérieur,
+    /// ou une rampe juste au-delà. Le premier accès part donc du moyeu, et
+    /// c'est ce qui en fait une course quasi complète.
+    public var parkCylinder: Int { cylinders - 1 }
+
     /// Rayon physique normalisé : 1,0 au bord (cylindre 0), 0,42 au moyeu.
     public func normalizedRadius(cylinder: Int) -> Double {
-        let f = Double(min(max(cylinder, 0), cylinders - 1)) / Double(cylinders - 1)
+        normalizedRadius(cylinder: Double(cylinder))
+    }
+
+    /// La même chose pour une position continue : pendant un seek comme pendant
+    /// un transfert séquentiel, le bras est entre deux cylindres.
+    public func normalizedRadius(cylinder: Double) -> Double {
+        let last = Double(cylinders - 1)
+        let f = min(max(cylinder, 0), last) / last
         return 1.0 - f * (1.0 - 0.42)
     }
 }

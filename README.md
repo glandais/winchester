@@ -133,6 +133,18 @@ densité du train, avec quelques transitoires espacés d'au moins 45 ms pour le
 grain. Un grondement de rotation en boucle, dont l'intensité suit la vitesse du
 plateau, est réglable séparément — il masquerait les transitoires au même niveau.
 
+**Le plateau affiché sort de la même trace que le son.** Le bras est parqué au
+moyeu tant que rien n'a été lu, descend piste après piste pendant une lecture
+séquentielle, et s'élance vers l'accès suivant au dernier moment — pas plus tôt,
+un disque ne déplace pas sa tête pour l'immobiliser ensuite le temps que le
+secteur arrive. La seule licence est l'angle : un plateau qui tourne cent vingt
+fois par seconde n'est pas affichable sur un écran à soixante images, il est donc
+**ralenti d'un facteur cent**, le même pour tout — repères de rotation et accès
+de la traînée tournent ensemble, parce que les données sont gravées sur le
+plateau. Le rapport entre disques, lui, est conservé : un 3 600 tr/min de 1993
+tourne deux fois moins vite à l'écran qu'un 7 200 de 2003. Un accès naît sous la
+tête puis dérive avec le disque ; une lecture séquentielle y dessine une spirale.
+
 ## Le scénario de défragmentation
 
 Inspiré de [defrag95](https://github.com/keithadler/defrag95), qui mesure ce
@@ -479,6 +491,8 @@ Sources/Model/
     Windows95Strategy.swift  tasser le volume contre son début (FAT16, FAT32)
     WindowsXPStrategy.swift  réparer les seuls fichiers cassés (NTFS)
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
+    Platter.swift          position du bras et rotation du plateau à l'image,
+                           interpolées depuis la trace
     Scenario.swift         construction des scénarios, séries d'affichage
     SimulationModel.swift  assemblage + interrogation pour l'UI
     GeneratedVolume.swift  passerelle disque généré → volume et matériel

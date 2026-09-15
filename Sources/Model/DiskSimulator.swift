@@ -22,11 +22,32 @@ struct DiskEvent {
     let kind: DiskEventKind
 }
 
-/// Position de la tête échantillonnée au fil du temps, pour l'affichage.
+/// Position de la tête pendant une requête, pour l'affichage.
+///
+/// Un seul échantillon par requête, mais qui porte **son début et sa fin** :
+/// pendant un transfert séquentiel le bras avance d'un cylindre tous les
+/// `heads × spt` secteurs, à cadence constante à l'intérieur d'une zone. Deux
+/// bornes suffisent donc à retrouver la position à n'importe quel instant, là
+/// où un échantillon par piste ferait exploser la trace sur une lecture de
+/// plusieurs mégaoctets. L'interpolation n'est approchée qu'au franchissement
+/// d'une frontière de zone — seize pour tout le disque, l'erreur reste sous le
+/// cylindre hors requêtes de plusieurs centaines de mégaoctets.
+///
+/// Les largeurs sont choisies pour que la structure garde son pas de vingt-quatre
+/// octets : une passe d'époque en aligne des millions.
 struct HeadSample {
+    /// Instant où la tête se pose sur le premier secteur, latence purgée.
     let time: Double
-    let cylinder: Int
+    /// Durée du transfert. `Float` : soixante nanosecondes de résolution sur
+    /// une seconde, trois ordres de grandeur sous ce que l'œil distingue.
+    let duration: Float
+    let cylinder: Int32
+    /// Cylindre atteint en fin de transfert. Égal à `cylinder` neuf fois sur dix.
+    let endCylinder: Int32
+    let head: UInt8
     let isWrite: Bool
+
+    var endTime: Double { time + Double(duration) }
 }
 
 struct TraceStats {
@@ -56,6 +77,8 @@ struct DiskTrace {
     let events: [DiskEvent]
     let headSamples: [HeadSample]
     let timings: [RequestTiming]
+    /// Montée en régime du plateau, pour l'affichage.
+    let spindle: SpindleTimeline
     let duration: Double
     let stats: TraceStats
 
@@ -68,7 +91,7 @@ struct DiskTrace {
     /// pendant toute l'écoute coûterait deux cents mégaoctets pour rien.
     func summarized() -> DiskTrace {
         DiskTrace(events: [], headSamples: headSamples, timings: [],
-                  duration: duration, stats: stats)
+                  spindle: spindle, duration: duration, stats: stats)
     }
 }
 
@@ -105,7 +128,7 @@ enum DiskSimulator {
         // Au repos le bras est parqué au diamètre intérieur (ou sur une rampe
         // hors plateau). Le premier accès est donc une course quasi complète :
         // c'est le « clac » franc qu'on entend juste après le lancement du moteur.
-        var headCylinder = geometry.cylinders - 1
+        var headCylinder = geometry.parkCylinder
         var headIndex = 0
 
         for request in requests {
@@ -138,7 +161,12 @@ enum DiskSimulator {
             if delta < 0 { delta += 1 }
             t += delta * revolution
 
-            samples.append(HeadSample(time: t, cylinder: headCylinder, isWrite: request.isWrite))
+            // L'échantillon d'affichage est refermé après le transfert, une fois
+            // connu le cylindre d'arrivée : c'est lui qui fait avancer le bras
+            // à l'écran pendant une lecture séquentielle.
+            let sampleTime = t
+            let sampleCylinder = headCylinder
+            let sampleHead = headIndex
 
             // 3. Transfert, piste par piste.
             var remaining = request.sectorCount
@@ -173,6 +201,13 @@ enum DiskSimulator {
                 }
             }
 
+            samples.append(HeadSample(time: sampleTime,
+                                      duration: Float(t - sampleTime),
+                                      cylinder: Int32(sampleCylinder),
+                                      endCylinder: Int32(headCylinder),
+                                      head: UInt8(min(sampleHead, Int(UInt8.max))),
+                                      isWrite: request.isWrite))
+
             let bytes = request.sectorCount * DriveGeometry.bytesPerSector
             if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
             stats.requestCount += 1
@@ -185,7 +220,8 @@ enum DiskSimulator {
         events.sort { $0.time < $1.time }
 
         let end = max(totalDuration, clock)
+        let spindle = SpindleTimeline(spinUpAt: spinUpAt, duration: spinUpDuration, rpm: geometry.rpm)
         return DiskTrace(events: events, headSamples: samples, timings: timings,
-                         duration: end, stats: stats)
+                         spindle: spindle, duration: end, stats: stats)
     }
 }

@@ -211,36 +211,16 @@ final class SimulationModel: ObservableObject {
         spans.last { $0.start <= time } ?? spans.first
     }
 
-    private func headSampleIndex(at time: Double) -> Int? {
-        let samples = scenario.trace.headSamples
-        guard !samples.isEmpty else { return nil }
-        var low = 0
-        var high = samples.count - 1
-        guard samples[0].time <= time else { return nil }
-        while low < high {
-            let mid = (low + high + 1) / 2
-            if samples[mid].time <= time { low = mid } else { high = mid - 1 }
-        }
-        return low
+    /// Le plateau et sa trace de position, tels que la vue les interroge.
+    var platter: PlatterTrack {
+        PlatterTrack(geometry: scenario.geometry,
+                     seekModel: scenario.seekModel,
+                     samples: scenario.trace.headSamples,
+                     spindle: scenario.trace.spindle)
     }
 
-    func cylinder(at time: Double) -> Int {
-        guard let index = headSampleIndex(at: time) else { return 0 }
-        return scenario.trace.headSamples[index].cylinder
-    }
-
-    /// Derniers accès, pour la traînée affichée sur le plateau.
-    func recentAccesses(at time: Double, window: Double = 1.6, limit: Int = 90) -> [HeadSample] {
-        guard let index = headSampleIndex(at: time) else { return [] }
-        let samples = scenario.trace.headSamples
-        var result: [HeadSample] = []
-        var i = index
-        while i >= 0 && result.count < limit && time - samples[i].time <= window {
-            result.append(samples[i])
-            i -= 1
-        }
-        return result
-    }
+    /// Tout ce que le plateau doit montrer à cet instant, en une seule passe.
+    func platterFrame(at time: Double) -> PlatterFrame { platter.frame(at: time) }
 
     func bucketValue(_ series: [Double], at time: Double) -> Double {
         guard !series.isEmpty else { return 0 }
