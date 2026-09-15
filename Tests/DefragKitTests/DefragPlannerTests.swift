@@ -421,7 +421,8 @@ struct AgedVolumeTests {
 // MARK: - La passe NTFS
 
 /// Un volume NTFS de test, dont on choisit exactement le placement.
-private func ntfsVolume(clusterCount: Int, files: [TestFile]) -> DefragVolume {
+private func ntfsVolume(clusterCount: Int, files: [TestFile],
+                        mftZone: Range<UInt32>? = nil) -> DefragVolume {
     let partition = PartitionGeometry(startLBA: 0, clusterCount: clusterCount,
                                       clusterSectors: 8, format: .ntfs)
     let records: [DefragFile] = files.enumerated().map { position, file in
@@ -429,7 +430,7 @@ private func ntfsVolume(clusterCount: Int, files: [TestFile]) -> DefragVolume {
                    category: file.category, walkOrder: position,
                    extents: file.extents, isMovable: file.movable)
     }
-    return DefragVolume(partition: partition, files: records)
+    return DefragVolume(partition: partition, files: records, mftZone: mftZone)
 }
 
 /// Ce que fait le défragmenteur de Windows XP, et surtout ce qu'il ne fait pas.
@@ -440,6 +441,97 @@ private func ntfsVolume(clusterCount: Int, files: [TestFile]) -> DefragVolume {
 /// volumes NTFS de la galerie planifiables.
 @Suite("Passe NTFS façon Windows XP")
 struct WindowsXPStrategyTests {
+
+    /// La règle `IsFragmented` de JKDefrag (`ALGO.md` §4.2) : ce qui compte
+    /// est le nombre de morceaux que la tête doit aller chercher, pas le
+    /// nombre d'extents que le système de fichiers a écrits. Deux extents qui
+    /// se touchent bout à bout se lisent sans un seul seek.
+    @Test("Deux fragments contigus ne comptent que pour un")
+    func adjacentExtentsAreOneFragment() {
+        let joined = DefragFile(id: 0, path: "\\A.dat", category: .document, walkOrder: 0,
+                                extents: [Extent(start: 10, length: 4),
+                                          Extent(start: 14, length: 6)],
+                                isMovable: true)
+        #expect(joined.fragmentCount == 1)
+        #expect(joined.isContiguous)
+
+        // Un seul cluster d'écart, et les deux morceaux redeviennent deux.
+        let split = DefragFile(id: 0, path: "\\A.dat", category: .document, walkOrder: 0,
+                               extents: [Extent(start: 10, length: 4),
+                                         Extent(start: 15, length: 6)],
+                               isMovable: true)
+        #expect(split.fragmentCount == 2)
+        #expect(!split.isContiguous)
+
+        // L'ordre de la liste ne doit rien changer : c'est la position sur le
+        // plateau qui décide, pas l'ordre des runs dans la description.
+        let reversed = DefragFile(id: 0, path: "\\A.dat", category: .document, walkOrder: 0,
+                                  extents: [Extent(start: 14, length: 6),
+                                            Extent(start: 10, length: 4)],
+                                  isMovable: true)
+        #expect(reversed.fragmentCount == 1)
+    }
+
+    /// Conséquence directe : un fichier décrit en deux extents jointifs ne
+    /// donne aucun travail au défragmenteur, et n'est pas compté comme cassé.
+    @Test("Un fichier en deux extents jointifs n'est pas défragmenté")
+    func adjacentExtentsAreNotWorthMoving() {
+        let input = ntfsVolume(clusterCount: 1_000, files: [
+            TestFile(category: .document,
+                     extents: [Extent(start: 500, length: 4), Extent(start: 504, length: 6)]),
+        ])
+        let plan = DefragPlanner.plan(volume: input)
+
+        #expect(plan.before.fragmentedFiles == 0)
+        #expect(plan.filesMoved == 0)
+        #expect(plan.filesAlreadyInPlace == 1)
+    }
+
+    /// La zone MFT est libre dans la bitmap, et c'est le piège : sur un volume
+    /// de 320 Go elle fait quarante gigaoctets d'un seul tenant, donc le plus
+    /// grand trou disponible et de très loin. Un défragmenteur qui s'y range
+    /// condamne la MFT à se fragmenter dès la création de fichier suivante.
+    @Test("Un fichier réparé n'atterrit pas dans la zone réservée à la MFT")
+    func theMftZoneIsNotAPlayground() {
+        // Tout le volume est occupé sauf la zone MFT (100..<400) et un trou
+        // juste assez grand à la fin.
+        let input = ntfsVolume(clusterCount: 1_000, files: [
+            TestFile(category: .system, extents: [Extent(start: 0, length: 100)]),
+            TestFile(category: .application, extents: [Extent(start: 400, length: 480)]),
+            TestFile(category: .document,
+                     extents: [Extent(start: 880, length: 5), Extent(start: 900, length: 5)]),
+        ], mftZone: 100..<400)
+        let plan = DefragPlanner.plan(volume: input)
+
+        #expect(plan.filesMoved == 1)
+        for mutation in plan.mutations where mutation.category != .free {
+            #expect(mutation.start >= 400 || mutation.start + mutation.count <= 100,
+                    "un fichier a été écrit dans la zone réservée à la MFT")
+        }
+    }
+
+    /// Sans zone déclarée — un volume FAT, ou un NTFS dont on ne sait rien —
+    /// rien n'est interdit : le même fichier part dans le premier trou venu.
+    @Test("Sans zone MFT déclarée, le placement reste libre")
+    func withoutAnMftZoneNothingIsReserved() {
+        let files = [
+            TestFile(category: .system, extents: [Extent(start: 0, length: 100)]),
+            TestFile(category: .application, extents: [Extent(start: 400, length: 480)]),
+            TestFile(category: .document,
+                     extents: [Extent(start: 880, length: 5), Extent(start: 900, length: 5)]),
+        ]
+        let free = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 1_000, files: files))
+        let fenced = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 1_000, files: files,
+                                                           mftZone: 100..<400))
+        // Les deux réparent le fichier, mais pas au même endroit.
+        #expect(free.filesMoved == 1)
+        #expect(fenced.filesMoved == 1)
+        let destination = { (plan: DefragPlan) in
+            plan.mutations.first { $0.category == .document }?.start
+        }
+        #expect(destination(free) == 100)
+        #expect(destination(fenced) != destination(free))
+    }
 
     @Test("Un volume NTFS est confié au défragmenteur de Windows XP")
     func ntfsPicksTheXPStrategy() {

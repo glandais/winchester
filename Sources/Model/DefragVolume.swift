@@ -18,7 +18,31 @@ struct DefragFile {
 
     var clusterCount: UInt32 { extents.reduce(0) { $0 + $1.length } }
 
-    var isContiguous: Bool { extents.count <= 1 }
+    /// Nombre de morceaux **réels** du fichier sur le plateau.
+    ///
+    /// Ce n'est pas `extents.count` : deux extents qui se touchent bout à bout
+    /// ne font qu'un seul morceau pour la tête de lecture, qui les traverse
+    /// sans un seul seek. La règle vient de `IsFragmented` dans JKDefrag
+    /// (`ALGO.md` §4.2), et le §8 la range parmi les cinq choses à transposer :
+    /// sans elle, les compteurs de fragmentation sont faux.
+    ///
+    /// Le cas n'est pas théorique. Un fichier écrit en deux fois par un
+    /// allocateur next-fit qui n'a bougé entre-temps sort en deux extents
+    /// adjacents ; et sur NTFS, un fichier dont la description déborde d'un
+    /// enregistrement de MFT est découpé pour des raisons de format, pas de
+    /// placement. Les compter comme fragmentés, c'est promettre au
+    /// défragmenteur du travail qui n'existe pas.
+    var fragmentCount: Int {
+        guard extents.count > 1 else { return extents.count }
+        let ordered = extents.sorted { $0.start < $1.start }
+        var count = 1
+        for (previous, next) in zip(ordered, ordered.dropFirst()) where previous.end != next.start {
+            count += 1
+        }
+        return count
+    }
+
+    var isContiguous: Bool { fragmentCount <= 1 }
 
     var firstCluster: UInt32? { extents.first?.start }
 }
@@ -120,9 +144,23 @@ struct DefragVolume {
     private(set) var files: [DefragFile]
     private(set) var index: ExtentIndex
 
-    init(partition: PartitionGeometry, files: [DefragFile]) {
+    /// La plage que NTFS tient à l'écart pour que la MFT puisse grandir, ou
+    /// `nil` sur un volume FAT, qui n'a rien de tel.
+    ///
+    /// Elle est **libre dans la bitmap et pourtant interdite** : aucun fichier
+    /// n'y est, mais l'allocateur n'y met personne tant que le volume n'est pas
+    /// plein à 87 %. Sans cette information, un défragmenteur y verrait le plus
+    /// grand trou du volume et s'y précipiterait — en condamnant la MFT à se
+    /// fragmenter à la première création de fichier. C'est ce que JKDefrag
+    /// appelle `MftExcludes`, et qu'il retire de toute recherche de trou tant
+    /// qu'on ne lui passe pas `IgnoreMftExcludes`.
+    let mftZone: Range<UInt32>?
+
+    init(partition: PartitionGeometry, files: [DefragFile],
+         mftZone: Range<UInt32>? = nil) {
         self.partition = partition
         self.files = files
+        self.mftZone = mftZone
         var bitmap = ClusterBitmap(clusterCount: UInt32(partition.clusterCount))
         var index = ExtentIndex(clusterCount: UInt32(partition.clusterCount))
         for (position, file) in files.enumerated() {

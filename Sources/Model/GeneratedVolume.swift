@@ -91,7 +91,11 @@ enum GeneratedVolumeBridge {
                                     extents: record.extents,
                                     isMovable: category != .swap))
         }
-        return DefragVolume(partition: partition, files: files)
+        // La zone MFT du générateur est reprise telle quelle : c'est bien la
+        // plage que l'allocateur a tenue à l'écart pendant tout le
+        // vieillissement, pas une reconstitution.
+        return DefragVolume(partition: partition, files: files,
+                            mftZone: disk.mftZone)
     }
 }
 

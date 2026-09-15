@@ -14,6 +14,10 @@ public struct GeneratedDisk: Sendable {
     /// MFT : taille et morcellement. Nul hors NTFS.
     public var mftClusters: UInt32
     public var mftExtents: Int
+    /// Plage que NTFS tient à l'écart pour la croissance de la MFT, `nil` hors
+    /// NTFS. Elle est libre dans la bitmap sans être disponible : qui la lit
+    /// doit la traiter comme occupée.
+    public var mftZone: Range<UInt32>?
 
     public var clusterCount: UInt32 { bitmap.clusterCount }
 
@@ -110,7 +114,8 @@ public enum DiskGenerator {
                                  failedWrites: outcome.failedWrites,
                                  dayCount: outcome.dayCount,
                                  mftClusters: 0,
-                                 mftExtents: 0)
+                                 mftExtents: 0,
+                                 mftZone: nil)
 
         case .ntfs:
             let profile = NTFSProfile(clusterKB: spec.fileSystem.clusterKB ?? 4)
@@ -134,7 +139,8 @@ public enum DiskGenerator {
                                  failedWrites: outcome.failedWrites,
                                  dayCount: outcome.dayCount,
                                  mftClusters: allocator.mft.clusterCount,
-                                 mftExtents: allocator.mft.extents.count)
+                                 mftExtents: allocator.mft.extents.count,
+                                 mftZone: allocator.mftZone)
         }
     }
 
