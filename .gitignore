@@ -1,0 +1,5 @@
+.build/
+DerivedData/
+*.wav
+*.xcodeproj/
+.DS_Store
