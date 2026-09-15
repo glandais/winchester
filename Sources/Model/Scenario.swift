@@ -147,8 +147,9 @@ enum ScenarioBuilder {
     // MARK: - Démarrage Windows
 
     private static func buildWindowsBoot() -> Scenario {
-        let geometry = DriveGeometry.defaultDrive
-        let seekModel = SeekModel.defaultModel
+        let drive = DriveCatalog.bootDrive
+        let geometry = drive.geometry
+        let seekModel = drive.seekModel
         let phases = WorkloadLibrary.windowsBootAndOffice
 
         let generator = WorkloadGenerator(geometry: geometry)
@@ -209,8 +210,8 @@ enum ScenarioBuilder {
         let volume = VolumeFactory.agedWindows95(partition: partition, fill: volumeFill)
 
         return assembleDefrag(volume: volume,
-                              geometry: .win95Drive,
-                              seekModel: .win95Model,
+                              geometry: DriveCatalog.defragDrive.geometry,
+                              seekModel: DriveCatalog.defragDrive.seekModel,
                               label: ScenarioKind.defrag.label)
     }
 

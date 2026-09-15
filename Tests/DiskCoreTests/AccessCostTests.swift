@@ -4,30 +4,35 @@ import Testing
 @Suite("Coût d'accès")
 struct AccessCostTests {
 
+    /// Le disque de la passe livrée, géométrie et loi de seek prises à la même
+    /// fiche : un Quantum Fireball 1080AT de 1996.
+    private static let drive = DriveCatalog.defragDrive
+
     private static let cost = AccessCost(
-        geometry: .win95Drive,
-        seekModel: .win95Model,
+        geometry: drive.geometry,
+        seekModel: drive.seekModel,
         addressing: ClusterAddressing(dataStartLBA: 600, sectorsPerCluster: 8)
     )
 
     /// L'effet ZBR n'est pas postulé, il tombe de la table des zones : la piste
-    /// extérieure porte 256 secteurs contre 172 au moyeu. C'est lui qui justifie
+    /// extérieure porte 166 secteurs contre 111 au moyeu. C'est lui qui justifie
     /// qu'un défragmenteur remonte les fichiers de démarrage en tête de volume.
     @Test("Le débit décroît du bord vers le moyeu")
     func zonedThroughput() {
         let outer = Self.cost.throughput(atCylinder: 0)
-        let inner = Self.cost.throughput(atCylinder: 1_999)
+        let inner = Self.cost.throughput(atCylinder: Self.drive.geometry.cylinders - 1)
         #expect(outer > inner)
         #expect(outer / inner > 1.4)
         #expect(outer / inner < 1.6)
-        // 256 secteurs × 512 o par tour de 13,3 ms : autour de 9,8 Mo/s.
-        #expect(outer > 9_000_000)
-        #expect(outer < 10_500_000)
+        // 166 secteurs × 512 o par tour de 11,1 ms : 7,6 Mo/s, et le manuel du
+        // Fireball annonce 10 Mo/s de débit interne brut, gaps et ECC compris.
+        #expect(outer > 7_000_000)
+        #expect(outer < 8_500_000)
     }
 
     @Test("La latence rotationnelle est un demi-tour")
     func rotationalLatency() {
-        #expect(abs(Self.cost.averageRotationalLatency - 60.0 / 4_500 / 2) < 1e-9)
+        #expect(abs(Self.cost.averageRotationalLatency - 60.0 / 5_400 / 2) < 1e-9)
     }
 
     @Test("Une lecture vide ne coûte rien")
@@ -50,9 +55,9 @@ struct AccessCostTests {
         let fast = Self.cost.readTime(extents: contiguous)
         let slow = Self.cost.readTime(extents: scattered)
         // Le transfert est le même de part et d'autre : tout l'écart vient des
-        // 32 demi-tours et des 32 seeks. Un mégaoctet contigu se lit en 0,14 s,
-        // le même en 32 morceaux en 0,45 s.
-        #expect(slow > fast * 3)
+        // 32 demi-tours et des 32 seeks. Un mégaoctet contigu se lit en 0,18 s,
+        // le même en 32 morceaux en 0,46 s.
+        #expect(slow > fast * 2.5)
     }
 
     @Test("Le temps de référence contigu sert d'étalon")
@@ -75,15 +80,15 @@ struct AccessCostTests {
         let nearTime = Self.cost.readTime(extents: near)
         let farTime = Self.cost.readTime(extents: far)
         #expect(farTime > nearTime)
-        #expect(farTime < nearTime * 3)
+        #expect(farTime < nearTime * 2)
     }
 
     @Test("Le transfert suit la taille demandée")
     func transferScales() {
         let one = Self.cost.transferTime(startLBA: 10_000, sectors: 64)
         let four = Self.cost.transferTime(startLBA: 10_000, sectors: 256)
-        // Un peu plus que le quadruple : 256 secteurs débordent de la piste, et
-        // chaque commutation de tête coûte 2 ms sur ce disque.
+        // Un peu plus que le quadruple : 256 secteurs débordent largement d'une
+        // piste de 166, et chaque commutation de tête se paie.
         #expect(four > one * 4)
         #expect(four < one * 5.5)
         #expect(Self.cost.transferTime(startLBA: 10_000, sectors: 0) == 0)
@@ -94,7 +99,7 @@ struct AccessCostTests {
         #expect(Self.cost.seekDistance(from: 100, to: 100) == 0)
         let far = Self.cost.seekDistance(from: 0, to: 40_000)
         #expect(far > 0)
-        #expect(far < DriveGeometry.win95Drive.cylinders)
+        #expect(far < Self.drive.geometry.cylinders)
     }
 
     @Test("L'adressage des clusters est celui de la partition")

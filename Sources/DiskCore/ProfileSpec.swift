@@ -92,14 +92,21 @@ public struct DiskSpec: Sendable, Codable {
     public var sizeMB: UInt64
     public var rpm: Int
     public var averageSeekMs: Double
+    /// Durée d'un seek d'une piste. Omise, elle est celle des disques de
+    /// l'année du scénario : c'est une donnée de fiche comme le seek moyen, et
+    /// elle ne s'en déduit pas — le rapport des deux a changé du tout au tout
+    /// entre 1993 et 2003.
+    public var trackToTrackMs: Double?
     /// Géométrie zonée. Toujours vraie sur un disque à plateaux ; le drapeau
     /// n'existe que pour pouvoir l'éteindre et entendre la différence.
     public var zbr: Bool
 
-    public init(sizeMB: UInt64, rpm: Int, averageSeekMs: Double, zbr: Bool = true) {
+    public init(sizeMB: UInt64, rpm: Int, averageSeekMs: Double,
+                trackToTrackMs: Double? = nil, zbr: Bool = true) {
         self.sizeMB = sizeMB
         self.rpm = rpm
         self.averageSeekMs = averageSeekMs
+        self.trackToTrackMs = trackToTrackMs
         self.zbr = zbr
     }
 

@@ -115,10 +115,13 @@ extension GeneratedVolumeBridge {
 
     /// Matériel décrit par le profil : géométrie zonée et loi de seek.
     ///
-    /// La fiche d'un scénario ne donne que trois nombres — capacité, régime,
-    /// seek moyen — et c'est assez : le zonage s'interpole entre les deux
-    /// disques modélisés à la main, et la loi de seek garde sa forme en se
-    /// recalibrant sur la course et la moyenne annoncées.
+    /// La fiche d'un scénario donne une capacité, un régime, un seek moyen —
+    /// et, par sa chronologie, une **année**. C'est ce quatrième nombre qui
+    /// fait le gros du travail : la géométrie est celle qu'avaient les disques
+    /// vendus cette année-là (`DriveCatalog`), pas une interpolation sur la
+    /// seule capacité. Un gigaoctet de 1996, c'est un disque entier de 3 835
+    /// pistes ; le même gigaoctet en 2003, c'est un coin de plateau lu cinq
+    /// fois plus vite.
     ///
     /// - Parameter atLeast: nombre de secteurs que le disque doit au minimum
     ///   porter, c'est-à-dire la taille de la partition qu'on y pose. Les
@@ -137,11 +140,15 @@ extension GeneratedVolumeBridge {
             : "\(spec.disk.sizeMB) Mo"
         let rpm = String(format: "%d\u{202F}%03d", spec.disk.rpm / 1_000, spec.disk.rpm % 1_000)
         let label = "IDE \(size) · \(rpm) tr/min"
+        let year = spec.timeline.start.year
         let geometry = DriveGeometry.era(model: label,
                                          capacityBytes: capacity,
                                          rpm: spec.disk.rpm,
+                                         year: year,
                                          zbr: spec.disk.zbr)
         let seek = SeekModel.calibrated(averageSeekMs: spec.disk.averageSeekMs,
+                                        trackToTrackMs: spec.disk.trackToTrackMs
+                                            ?? DriveCatalog.trackToTrackMs(year: year),
                                         cylinders: geometry.cylinders)
         return (geometry, seek)
     }

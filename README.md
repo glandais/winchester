@@ -4,9 +4,9 @@ Simulation d'I/O **au niveau bloc** d'un disque dur à plateaux, convertie en so
 via AVFAudio. Application iOS de démonstration, avec deux scénarios :
 
 - **Démarrage** — « démarrage Windows puis lancement d'une suite bureautique »,
-  une minute, sur un IDE de 2001 ;
+  une minute, sur un Seagate Barracuda ATA IV de 20 Go (2001) ;
 - **Défragmentation** — passe complète du défragmenteur de Windows 95 sur un
-  volume FAT16 vieilli, trois minutes, sur un disque de 1996.
+  volume FAT16 vieilli, 3 min 24, sur un Quantum Fireball 1080AT (1996).
 
 Spike : l'objectif est de valider la chaîne complète et le réglage du synthé,
 pas de livrer une bibliothèque.
@@ -33,18 +33,63 @@ AVAudioEngine
 
 ## Ce qui est modélisé
 
-**Géométrie** — deux disques. Celui de 2001 : 20 Go, 24 000 cylindres, 4 têtes,
-7 200 tr/min, 12 zones ZBR (468 → 248 secteurs par piste). Celui de 1996, pour la
-défragmentation : 876 Mo, 2 000 cylindres, 4 têtes, 4 500 tr/min, 8 zones
-(256 → 172). Le cylindre 0 est au bord : les fichiers système d'une installation
-fraîche occupent donc les cylindres extérieurs, et le bruit de boot reste confiné
-à une zone étroite. Conversion LBA→CHS par recherche dichotomique, le zonage
+**Géométrie** — deux disques qui ont existé, repris de leurs fiches.
+
+Celui du démarrage est un **Seagate Barracuda ATA IV ST320011A** de 2001 :
+20 Go, 63 800 pistes, 7 200 tr/min, 791 → 435 secteurs par piste, soit 48,6 Mo/s
+au bord et 26,7 au moyeu. **Un seul plateau, une seule face utilisée** : pas une
+commutation de tête de tout le démarrage. Son bras est léger et son
+asservissement rapide — 0,95 ms piste-à-piste, 9,0 ms en seek moyen, 16 ms en
+pleine course.
+
+Celui de la défragmentation est un **Quantum Fireball 1080AT** de 1996 : 1,08 Go,
+3 835 pistes, quatre faces, 5 400 tr/min, 166 → 111 secteurs par piste, soit
+7,6 Mo/s au bord et 5,1 au moyeu. Bras plus lourd, asservissement plus lent —
+3,0 ms piste-à-piste, 12,0 ms en seek moyen, 21,6 ms en pleine course, et un
+settle deux fois plus long, qui s'entend : chaque arrêt « traîne ».
+
+Le cylindre 0 est au bord : les fichiers système d'une installation fraîche
+occupent donc les cylindres extérieurs, et le bruit de boot reste confiné à une
+zone étroite. Conversion LBA→CHS par recherche dichotomique, le zonage
 interdisant une formule fermée.
 
-Seules la table de zones et les constantes de seek distinguent les deux — le
-disque de 1996 a un bras plus lourd et un asservissement plus lent : 3,0 ms
-piste-à-piste, ~12 ms en seek moyen, 22 ms en pleine course, et un settle deux
-fois plus long, qui s'entend (chaque arrêt « traîne »).
+**Un disque quelconque se déduit de sa fiche commerciale — et de son année.**
+C'est ce dont la galerie a besoin : elle décrit ses disques par une capacité, un
+régime et une date, jamais par une géométrie. La capacité seule ne suffit pas à
+décrire un disque, et c'est tout le problème : le même gigaoctet est un disque
+entier de 3 835 pistes en 1996 et un coin de plateau lu cinq fois plus vite en
+2003.
+
+Le modèle interpole donc dans le temps entre sept disques **réellement vendus**,
+de 1993 à 2008, dont les fiches sont recopiées dans `DriveCatalog` avec leur
+source — plus une huitième, variante à un plateau de celle de 2001, qui ne sert
+pas d'ancrage mais porte le scénario de démarrage. Ce qu'il interpole, ce ne sont pas des « densités » en général mais les
+deux seules grandeurs que ces fiches publient sans ambiguïté :
+
+- le nombre de **pistes par face**, qui fixe la course du bras, donc toute
+  l'acoustique des seeks ;
+- la **capacité d'une face**, qui, rapportée à la capacité demandée, fixe le
+  nombre de plateaux.
+
+Les secteurs par piste ne sont pas un troisième paramètre libre : ils tombent du
+quotient des deux. Une capacité sans rapport avec son époque — un 6,4 Go en
+1996 — n'étire pas la densité linéaire, qui est une propriété du canal de
+lecture : elle ajoute des plateaux, puis de la surface, et le modèle le dit.
+
+Trois contrôles tiennent l'ensemble, tous dans les tests : les huit disques du
+catalogue sont retrouvés à partir de leur seule fiche, à 2 % sur la course ; le
+**débit** de la piste externe retombe à 20 % près sur celui des manuels, alors
+qu'il n'entre dans aucun calcul ; et une fiche n'entre au catalogue qu'après
+vérification croisée par ce même débit — c'est ce contrôle qui a fait écarter la
+géométrie « native » d'un Quantum Fireball ST 6.4AT, qui donnerait 6,5 Mo/s là
+où son fabricant en annonce 16.
+
+Ce que remplace ce modèle faisait tout porter à la densité linéaire, avec un seul
+exposant calé sur les deux disques ci-dessus : il donnait 640 cylindres à un
+disque de 1993 qui en avait 1 806, et 235 000 à un 320 Go de 2007 qui en a
+160 000. Dans les deux cas la course était fausse d'un facteur trois, et le débit
+avec.
+
 
 **Seek** — loi à deux régimes de Ruemmler & Wilkes (IEEE Computer 27(3), 1994) :
 `a + b·√d` pour les seeks courts, `c + e·d` au-delà du cylindre de croisement.
@@ -94,8 +139,9 @@ Inspiré de [defrag95](https://github.com/keithadler/defrag95), qui mesure ce
 qu'aurait valu un défragmenteur ordonnant le volume par usage. Ici on ne mesure
 rien : on **écoute** la passe que Windows 95 livrait réellement.
 
-**Le volume** — partition FAT16 de 180 Mo en tête d'un disque de 876 Mo, clusters
-de 4 Ko, occupant les 21 % extérieurs du plateau. Elle est vieillie par deux ans
+**Le volume** — partition FAT16 de 180 Mo en tête du Fireball de 1,08 Go,
+clusters de 4 Ko, occupant les 14 % extérieurs du plateau — elle s'arrête au
+cylindre 537 sur 3 835. Elle est vieillie par deux ans
 d'usage simulé : installation de Windows puis des applications, création du
 fichier d'échange, et 220 « journées » de créations de temporaires, de purges de
 cache et de réenregistrements de documents. L'allocateur reproduit celui de
@@ -188,21 +234,26 @@ le volume affiché au simulateur, qui en planifie la passe et la fait sonner.
 Les fichiers gardent exactement les clusters que l'allocateur leur a donnés —
 c'est ce volume-là qui est défragmenté, pas une approximation — et le matériel
 est celui de la fiche du profil, pas le disque de 1996 du scénario livré : la
-géométrie zonée s'interpole entre les deux disques modélisés à la main, et la
-loi de seek garde sa forme en se recalibrant sur la course et le seek moyen
-annoncés. Un 210 Mo à 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à
-5 400 tr/min de 1996.
+géométrie est celle des disques vendus l'année du scénario, et la loi de seek
+passe par les **deux** durées que publie une fiche — le seek moyen et le
+piste-à-piste. C'est leur rapport qui distingue une époque d'une autre : entre
+1993 et 2003 le seek moyen n'a été divisé que par 1,5, le piste-à-piste par 3.
+Un 210 Mo à 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à 5 400 tr/min de
+1996, et n'en est pas loin de sonner comme un 40 Go de 2003.
 
 **Huit scénarios sur vingt y ont droit** : ceux de 1993 et 1996. Au-delà, le
 bouton reste visible mais éteint, avec la raison écrite dessous — le
 défragmenteur simulé est celui de Windows 95, qui ne connaît que la FAT16, et
 un volume NTFS de 320 Go n'a de toute façon pas vocation à y passer.
 
-Ces passes-là sont longues : de 17 min (`gamer-1993`) à 51 min
-(`famille-1996`), contre un peu plus de trois minutes pour le scénario livré,
+Ces passes-là sont longues : de 27 min (`dev-1993`) à 62 min
+(`secretaire-1993`), contre trois minutes et demie pour le scénario livré,
 dont le volume est délibérément réduit. C'est la vraie durée d'une passe
-d'époque sur un volume d'époque. La planification et la simulation coûtent 70 à
-190 ms en release, du même ordre que la passe livrée.
+d'époque sur un volume d'époque, et ce n'est pas la taille du volume qui la
+fixe : la plus longue des huit est celle du plus petit disque, un 170 Mo de
+1993 dont 71 % des fichiers sont en morceaux, lu à 1,8 Mo/s. La planification et
+la simulation coûtent 70 à 190 ms en release, du même ordre que la passe
+livrée.
 
 Le rendu hors-ligne accepte les mêmes identifiants :
 
@@ -225,9 +276,10 @@ SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav
   FIFO : représentatif d'un contrôleur IDE de l'époque, et c'est ce qui rend le
   crépitement si dense.
 - **La passe de défragmentation est raccourcie par la taille du volume, pas par
-  une accélération.** 180 Mo se défragmentent en trois minutes ; un volume de
-  l'époque réellement dimensionné (500 Mo à 1 Go) en prenait vingt à
-  quarante-cinq. Le modèle est le même, le volume est plus petit.
+  une accélération.** 180 Mo se défragmentent en 3 min 24 ; un
+  volume de l'époque réellement dimensionné (500 Mo à 1 Go) en prend vingt-sept
+  à soixante-deux, et la galerie le montre. Le modèle est le même, le volume est
+  plus petit.
 - Le défragmenteur modélisé ne fait pas de passe de vérification, ne relit pas
   ce qu'il vient d'écrire et ne reprend pas une passe interrompue. Les entrées
   de répertoire sont réduites à une écriture d'un secteur dans la racine.
@@ -321,10 +373,13 @@ piste-à-piste répétés.
 
 ```
 Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swift 6
-    DriveGeometry.swift    géométrie zonée, LBA→CHS ; disques 2001 et 1996,
-                           et interpolation pour une capacité quelconque
-    SeekModel.swift        loi de durée, découpage en quatre phases,
-                           recalibrage sur une course et un seek moyen donnés
+    DriveGeometry.swift    géométrie zonée, LBA→CHS ; déduction d'un disque
+                           quelconque à partir de sa fiche et de son année
+    DriveCatalog.swift     huit disques réellement vendus, 1993 → 2008, avec
+                           leurs sources ; densités interpolées dans le temps,
+                           et les deux disques des scénarios livrés
+    SeekModel.swift        loi de durée, découpage en quatre phases, calage
+                           sur le seek moyen et le piste-à-piste d'une fiche
     SeededGenerator.swift  SplitMix64, tirages stables entre plateformes
     Extent.swift           suite de clusters contigus, huit octets
     ClusterBitmap.swift    occupation des clusters, recherche de place libre

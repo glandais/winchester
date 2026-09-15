@@ -68,17 +68,6 @@ public struct SeekModel: Sendable {
         self.headSwitchDuration = headSwitchDuration
     }
 
-    public static let defaultModel = SeekModel(
-        shortIntercept: 1.00,
-        shortSqrtCoefficient: 0.140,
-        longIntercept: 4.00,
-        longLinearCoefficient: 0.000_583,
-        crossover: 600,
-        settleDuration: 0.000_6,
-        accelerationCap: 0.002_6,
-        headSwitchDuration: 0.000_9
-    )
-
     /// Durée totale du seek, en secondes.
     public func duration(distance: Int) -> Double {
         let d = abs(distance)
@@ -129,11 +118,18 @@ public struct SeekModel: Sendable {
 
 extension SeekModel {
 
-    /// Recalibrage pour le disque de 1996 : 3,0 ms piste-à-piste, ~12 ms en
-    /// seek moyen (1/3 de course), 22 ms en pleine course. Le bras est plus
-    /// lourd et l'asservissement plus lent qu'en 2001 — d'où un settle deux
-    /// fois plus long, qui s'entend : chaque arrêt « traîne ».
-    public static let win95Model = SeekModel(
+    /// La **forme** dont dérivent toutes les lois de seek du projet.
+    ///
+    /// Ses constantes ont été calées sur un disque de 1996 de deux mille
+    /// cylindres : 3,0 ms piste-à-piste, ~12 ms en seek moyen (un tiers de
+    /// course), 22 ms en pleine course. Ce qui s'en généralise, ce sont les
+    /// **rapports** entre ces trois durées et le découpage en quatre phases —
+    /// pas les valeurs, que `calibrated` recale sur la fiche du disque décrit.
+    ///
+    /// C'est donc une constante de la loi et non un disque : elle ne doit pas
+    /// suivre les disques des scénarios, sans quoi toutes les lois dérivées se
+    /// décaleraient avec eux.
+    public static let referenceShape = SeekModel(
         shortIntercept: 2.60,
         shortSqrtCoefficient: 0.400,
         longIntercept: 7.29,
@@ -146,6 +142,12 @@ extension SeekModel {
 }
 
 extension SeekModel {
+
+    /// Course sur laquelle `referenceShape` a été calée : deux mille
+    /// cylindres. C'est une constante de la **loi**, pas un disque — elle doit
+    /// rester fixe même si les disques des scénarios changent, sans quoi toutes
+    /// les lois dérivées se décaleraient avec eux.
+    static let referenceCylinders = 2_000
 
     /// Durée d'un seek moyen, en millisecondes. Par convention de fiche
     /// technique, c'est celle d'un déplacement du tiers de la course.
@@ -192,16 +194,61 @@ extension SeekModel {
 
     /// Loi de seek d'un disque dont la fiche n'annonce que le seek moyen.
     ///
-    /// La mécanique est celle du disque de 1996 — deux régimes, mêmes rapports
+    /// La mécanique est celle de `referenceShape` — deux régimes, mêmes rapports
     /// entre piste-à-piste, seek moyen et pleine course — étirée sur la course
     /// réelle puis ramenée au seek moyen annoncé. Ce qui varie d'un disque à
     /// l'autre, ce sont ces deux nombres-là ; la **forme** de la loi, elle, ne
     /// dépend pas du modèle (Ruemmler & Wilkes 1994).
     public static func calibrated(averageSeekMs target: Double, cylinders: Int) -> SeekModel {
-        let stretched = win95Model.stroked(cylinders: cylinders,
-                                           reference: DriveGeometry.win95Drive.cylinders)
+        let stretched = referenceShape.stroked(cylinders: cylinders,
+                                           reference: referenceCylinders)
         let current = stretched.averageSeekMs(cylinders: cylinders)
         guard current > 0, target > 0 else { return stretched }
         return stretched.timeScaled(by: target / current)
+    }
+}
+
+extension SeekModel {
+
+    /// Loi de seek calée sur les **deux** durées que publie une fiche : le seek
+    /// moyen et le piste-à-piste.
+    ///
+    /// Les deux réglages sont indépendants, et c'est ce qui rend l'exercice
+    /// possible. Le seek moyen — un tiers de course, par convention de fiche —
+    /// tombe toujours au-delà du cylindre de croisement, donc sur la branche
+    /// linéaire : c'est elle que règle `calibrated(averageSeekMs:cylinders:)`.
+    /// Le piste-à-piste, lui, est à l'autre bout de la branche en racine. On
+    /// résout donc ses deux constantes pour qu'elle passe par `(1, piste-à-
+    /// piste)` et rejoigne la branche longue au cylindre de croisement, sans
+    /// rien changer au reste de la courbe.
+    ///
+    /// Sans cela, le rapport entre les deux durées était figé à celui du disque
+    /// de 1996 quel que soit le disque décrit — un disque de 2003 se retrouvait
+    /// avec un piste-à-piste deux fois trop long, c'est-à-dire avec le
+    /// crépitement d'un disque d'une décennie plus tôt.
+    public static func calibrated(averageSeekMs average: Double,
+                                  trackToTrackMs trackToTrack: Double,
+                                  cylinders: Int) -> SeekModel {
+        let base = calibrated(averageSeekMs: average, cylinders: cylinders)
+        guard trackToTrack > 0 else { return base }
+
+        // Durée au cylindre de croisement, imposée par la branche longue.
+        let crossing = base.longIntercept + base.longLinearCoefficient * Double(base.crossover)
+        let root = Double(base.crossover).squareRoot()
+        guard root > 1.001, crossing > trackToTrack else { return base }
+
+        let sqrtCoefficient = (crossing - trackToTrack) / (root - 1)
+        return SeekModel(
+            shortIntercept: trackToTrack - sqrtCoefficient,
+            shortSqrtCoefficient: sqrtCoefficient,
+            longIntercept: base.longIntercept,
+            longLinearCoefficient: base.longLinearCoefficient,
+            crossover: base.crossover,
+            // Le repositionnement final ne peut pas durer plus que le seek le
+            // plus court : c'est lui qui le domine.
+            settleDuration: min(base.settleDuration, trackToTrack / 1_000 * 0.8),
+            accelerationCap: base.accelerationCap,
+            headSwitchDuration: base.headSwitchDuration
+        )
     }
 }
