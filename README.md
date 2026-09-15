@@ -355,7 +355,7 @@ rien : le planificateur travaille en extents, et un volume de 320 Go ne lui
 coûte pas plus cher qu'un de 180 Mo. Ce qui change avec le format, c'est
 l'**outil** — parce que c'est lui que le format datait.
 
-#### Deux défragmenteurs, pas un
+#### Trois défragmenteurs, dont deux d'époque
 
 Sur un volume FAT, c'est la passe livrée avec Windows 95 puis 98 : tasser tous
 les fichiers contre le début du volume, dans l'ordre du parcours de
@@ -367,22 +367,27 @@ de 4 Mo. Il n'évacue personne, et la validation d'un déplacement n'est plus
 trois écritures au bord du plateau mais un enregistrement de MFT, là où il
 vit — donc plus de « clac … clac … clac ».
 
+Le troisième n'est d'aucune époque : **UltraDefrag 7.1.1**, de 2018, et il ne
+se choisit jamais tout seul. Il est là pour répondre à un échec des deux autres,
+et on le demande explicitement (`STRATEGY=ultraDefrag`) pour comparer deux
+passes sur exactement le même volume.
+
 L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
 `famille-2007` tassait trois cents gigaoctets par tampons de 256 Ko : vingt-huit
 millions de requêtes, quatre-vingt-quatorze heures de passe simulée, pour ranger
 244 fichiers sur 12 220. La passe de XP sur le même volume tient en **78 797
-requêtes et 23 min 38**.
+requêtes et 23 min 28**.
 
-| scénario NTFS     | plein | requêtes | durée      | déplacés | fragmentés avant → après |
-|-------------------|------:|---------:|-----------:|---------:|--------------------------|
-| `gamer-2003`      |   8 % |       17 |      7,8 s |        0 | 0 → 0                    |
-| `secretaire-2003` |  94 % |    7 455 |   2 min 23 |       57 | 141 → 84                 |
-| `famille-2003`    |  93 % |    9 190 |   2 min 32 |       39 | 80 → 41                  |
-| `dev-2003`        |  94 % |   19 353 |   5 min 58 |      260 | 299 → 39                 |
-| `secretaire-2007` |  88 % |   35 408 |  15 min 27 |      186 | 186 → **0**              |
-| `famille-2007`    |  93 % |   78 797 |  23 min 38 |       89 | 244 → 155                |
-| `gamer-2007`      |  90 % |   76 425 |  27 min 31 |      131 | 192 → 61                 |
-| `dev-2007`        |  86 % |  280 595 | 1 h 12 min |      172 | 172 → **0**              |
+| scénario NTFS     | plein | requêtes | durée      | déplacés | fragmentés avant → après | morceaux avant → après |
+|-------------------|------:|---------:|-----------:|---------:|--------------------------|------------------------|
+| `gamer-2003`      |   8 % |       17 |      7,8 s |        0 | 0 → 0                    | 0 → 0                  |
+| `secretaire-2003` |  94 % |    7 455 |   2 min 22 |       57 | 141 → 84                 | 21 315 → 17 704        |
+| `famille-2003`    |  93 % |    9 190 |   2 min 28 |       39 | 80 → 41                  | 42 510 → 38 054        |
+| `dev-2003`        |  94 % |   19 353 |   5 min 58 |      260 | 299 → 39                 | 19 168 → 10 229        |
+| `secretaire-2007` |  88 % |   35 408 |  16 min 03 |      186 | 186 → **0**              | 13 922 → **0**         |
+| `famille-2007`    |  93 % |   78 797 |  23 min 28 |       89 | 244 → 155                | 165 802 → 130 288      |
+| `gamer-2007`      |  90 % |   76 425 |  27 min 31 |      131 | 192 → 61                 | 58 976 → 26 753        |
+| `dev-2007`        |  86 % |  280 595 | 1 h 18 min |      172 | 172 → **0**              | 132 445 → **0**        |
 
 La colonne qui compte est la dernière : cet outil-là ne déloge personne, donc
 il échoue quand aucun trou n'est à la taille, et il le dit dans son rapport.
@@ -398,6 +403,42 @@ Les 15 % d'espace libre que demandait Microsoft vont dans ce sens, mais la
 mesure ne suffit pas à l'établir : la taille moyenne citée ici est celle des
 fichiers que la passe a **réussi** à déplacer, pas de ceux qui sont restés en
 morceaux. Le vérifier demanderait de compter les échecs par taille.
+
+#### Recoller au lieu de déplacer
+
+UltraDefrag part du constat que ces gros fichiers n'ont **pas besoin d'être
+déplacés** pour aller mieux. Un fichier de 213 Mo en quatre morceaux devient
+rapide à lire dès qu'on recolle ses trois petits éclats ; le gros bloc, lui, ne
+gagne rien à voyager. Sa passe traite les fichiers *les plus fragmentés
+d'abord*, recopie entiers ceux qui font moins de 40 Mo, et sur les autres ne
+fusionne que les fragments de moins de 20 Mo. C'est ce que la comparaison des
+deux bases de code donne comme sans équivalent chez JKDefrag.
+
+Le résultat ne se lit pas dans la colonne « fragmentés », et c'est tout le
+sujet : un fichier ramené de quarante morceaux à deux y reste « fragmenté ».
+
+| scénario NTFS     | morceaux restants, XP | UltraDefrag |  requêtes XP → UD |    durée XP → UD |
+|-------------------|----------------------:|------------:|------------------:|-----------------:|
+| `secretaire-2003` |                17 704 |       7 622 |   7 455 → 29 069  | 2 min 22 → 7 min 48 |
+| `famille-2003`    |                38 054 |      15 186 |   9 190 → 56 406  | 2 min 28 → 14 min 25 |
+| `dev-2003`        |                10 229 |     **474** |  19 353 → 38 999  | 5 min 58 → 9 min 47 |
+| `secretaire-2007` |                     0 |           0 |  35 408 → 31 714  | 16 min 03 → 15 min 16 |
+| `famille-2007`    |               130 288 |   **1 378** | 78 797 → 334 817  | 23 min 28 → 1 h 25 |
+| `gamer-2007`      |                26 753 |     **376** | 76 425 → 121 233  | 27 min 31 → 39 min 32 |
+| `dev-2007`        |                     0 |           0 | 280 595 → 272 531 | 1 h 18 → 1 h 18 |
+
+Sur `famille-2007`, les 130 288 morceaux que XP laisse derrière lui tombent à
+**1 378** — 99 % de moins — pendant que le nombre de fichiers fragmentés, lui,
+monte de 155 à 158. Le prix est quatre fois plus de requêtes et trois fois plus
+de temps.
+
+Cela ne fait pas d'UltraDefrag le meilleur outil partout. Les deux volumes que
+XP nettoie entièrement, il les nettoie aussi, ni mieux ni plus vite. Et sur un
+volume FAT de 1996, où presque aucun fichier n'atteint 40 Mo, la défragmentation
+partielle n'a rien à mordre : la passe est quarante fois plus courte que celle
+de Windows 95 (79 s contre 36 min sur `dev-1996`) parce qu'elle n'évacue
+personne, et elle laisse trois fois plus de morceaux derrière elle pour
+exactement la même raison.
 
 Ces passes FAT-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`),
 contre 3 min 24 pour le scénario livré, dont le volume est délibérément réduit.
@@ -542,7 +583,12 @@ SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav      # isoler une couche
 TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
 
 PLAN_ONLY=1 SCENARIO=dev-1999 /tmp/rendertrace x.wav  # bilan seul, sans rendu
+STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace ud.wav  # un autre outil
 ```
+
+`STRATEGY` force le défragmenteur simulé au lieu de laisser le format le dater :
+`windows95`, `windowsXP`, `ultraDefrag`. C'est ainsi que se comparent deux
+passes sur exactement le même volume.
 
 `PLAN_ONLY` s'arrête au bilan de la passe — volume, déplacements, évacuations,
 octets déplacés — sans rendre une note. C'est ce qu'il faut pour juger d'un
@@ -597,10 +643,13 @@ Sources/Model/
     DefragVolume.swift     le volume vu par le défragmenteur : bitmap, fichiers
                            décrits par extents, index des occupants par blocs
     DefragJob.swift        types du plan, et choix de la stratégie sur le format
-    DefragStrategy.swift   ce qu'est un défragmenteur : phases, plan, et les
-                           fabriques d'opérations communes à tous
+    DefragStrategy.swift   ce qu'est un défragmenteur : phases, plan, les
+                           fabriques d'opérations communes à tous, et la
+                           recherche de trou
     Windows95Strategy.swift  tasser le volume contre son début (FAT16, FAT32)
     WindowsXPStrategy.swift  réparer les seuls fichiers cassés (NTFS)
+    UltraDefragStrategy.swift  recoller les petits morceaux des gros fichiers,
+                           sur demande et quel que soit le format
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
     Platter.swift          position du bras et rotation du plateau à l'image,
                            interpolées depuis la trace
@@ -637,7 +686,7 @@ journal dit pourquoi il est ainsi.
    déclaratif.
 4. Ajouter d'autres géométries (15 000 tr/min SCSI, disquette) : seules la table
    de zones et les constantes de seek changent.
-5. Comparer à l'oreille deux politiques de rangement sur le même volume — l'ordre
-   par répertoire de Windows 95 contre l'ordre par usage de defrag95. Le
-   planificateur est déjà isolé du reste ; il n'y a qu'une seconde politique à
-   écrire.
+5. Écouter les trois stratégies sur le même volume. `STRATEGY` les rend déjà
+   comparables au rendu hors-ligne, et tout ce qui les sépare est mesuré ; rien
+   de tout cela n'a encore été confronté à l'oreille, et l'écran de
+   l'application ne propose toujours que l'outil d'époque.

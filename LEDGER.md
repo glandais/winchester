@@ -78,7 +78,8 @@ l'interpolation y est la plus fragile.
 
 ## Chantier 2 — le défragmenteur travaille en extents
 
-**Partiellement fait** · commits `c2b8640`, `794a921`, `faa2bbd`, `47a9abc`
+**Partiellement fait** · commits `c2b8640`, `794a921`, `faa2bbd`, `47a9abc`,
+`ac71696`, `2ef7533`, `f3c8177`
 
 ### Le problème
 
@@ -207,16 +208,16 @@ d'UltraDefrag, qui dimensionne son bloc sur la capacité du volume (256 Ko sous
 | scénario | plein | requêtes | durée | déplacés | fragmentés |
 |---|---:|---:|---:|---:|---|
 | `gamer-2003` | 8 % | 17 | 7,8 s | 0 | 0 → 0 |
-| `secretaire-2003` | 94 % | 7 455 | 2 min 23 | 57 | 141 → 84 |
-| `famille-2003` | 93 % | 9 190 | 2 min 32 | 39 | 80 → 41 |
+| `secretaire-2003` | 94 % | 7 455 | 2 min 22 | 57 | 141 → 84 |
+| `famille-2003` | 93 % | 9 190 | 2 min 28 | 39 | 80 → 41 |
 | `dev-2003` | 94 % | 19 353 | 5 min 58 | 260 | 299 → 39 |
-| `secretaire-2007` | 88 % | 35 408 | 15 min 27 | 186 | 186 → 0 |
-| `famille-2007` | 93 % | 78 797 | 23 min 38 | 89 | 244 → 155 |
+| `secretaire-2007` | 88 % | 35 408 | 16 min 03 | 186 | 186 → 0 |
+| `famille-2007` | 93 % | 78 797 | 23 min 28 | 89 | 244 → 155 |
 | `gamer-2007` | 90 % | 76 425 | 27 min 31 | 131 | 192 → 61 |
-| `dev-2007` | 86 % | 280 595 | 1 h 12 | 172 | 172 → 0 |
+| `dev-2007` | 86 % | 280 595 | 1 h 18 | 172 | 172 → 0 |
 
 `famille-2007` passe de 28 millions de requêtes et 94 h à **78 797 requêtes et
-23 min 38**, et son plan se construit en 1,45 s. Aucune évacuation nulle part.
+23 min 28**, et son plan se construit en 1,45 s. Aucune évacuation nulle part.
 Les douze scénarios FAT sont inchangés à la requête près.
 
 **Une lecture séduisante, et fausse, a été écartée en route.** Les deux volumes
@@ -262,24 +263,141 @@ allocateurs ne produit d'extents adjacents. C'est une garde, pas une correction 
 elle vaut pour ce qu'elle interdit à un futur allocateur, et il faut la compter
 comme telle plutôt que lui attribuer un effet qu'elle n'a pas eu.
 
+### Recoller au lieu de déplacer — `UltraDefragStrategy`
+
+**Fait** · commits `ac71696`, `2ef7533`, `f3c8177`
+
+La passe de XP échoue toujours au même endroit, et le journal l'avait déjà
+noté : `famille-2007` garde 155 fichiers en morceaux sur 244, parce que ses gros
+fichiers — 213 Mo en moyenne — ne trouvent aucun trou à leur taille sur un volume
+plein à 93 %. L'outil ne sait faire qu'une chose, recopier un fichier **entier**
+dans un trou libre, et sur ceux-là il renonce.
+
+Le `defrag_routine` d'UltraDefrag 7.1.1 pose la question autrement. Un fichier de
+213 Mo en quatre morceaux n'a pas besoin d'être déplacé pour aller mieux ; il a
+besoin qu'on recolle ses **petits** morceaux et qu'on laisse les gros où ils
+sont. La comparaison des deux bases de code donne cette défragmentation
+partielle comme sans équivalent chez JKDefrag, et c'est ce qui l'a fait passer
+en tête du classement : c'est la seule des trois pistes restantes dont le gain
+se chiffrait d'avance.
+
+#### D'abord, un compteur qui mentait par omission
+
+Le gain ne se chiffrait pas, en réalité — il n'était pas *mesurable*.
+`VolumeStats.fragmentedFiles` est binaire : un fichier ramené de quarante
+morceaux à deux y reste « fragmenté », exactement comme avant. C'est suffisant
+pour les deux stratégies écrites jusqu'ici, qui rendent un fichier contigu ou
+renoncent, et parfaitement aveugle à un outil qui ne fait que réduire le nombre
+de sauts de la tête.
+
+Mesurée à ce compteur-là, la première passe UltraDefrag sur `famille-2007`
+ressortait **pire** que celle de XP — 158 fichiers fragmentés contre 155 — au
+prix de quatre fois plus de requêtes. Conclure à l'échec aurait été l'erreur du
+chantier. `VolumeStats.fragments` est le `pi.bad_fragments` d'UltraDefrag : le
+total des morceaux portés par les fichiers cassés. La même passe, au même
+compteur : **130 288 morceaux restants contre 1 378**.
+
+La leçon vaut au-delà de ce cas : un compteur binaire hérité d'un outil décrit
+le monde de cet outil-là, et tout outil qui travaille autrement en sort perdant
+par construction.
+
+#### Les décisions
+
+- **La transposition est littérale**, et jusqu'aux détails qui semblent
+  arbitraires, parce que ce sont eux qui décident du nombre de déplacements :
+  l'ordre décroissant par nombre de fragments (`fragmented_files_compare`), les
+  **deux séquences** de `defrag_sequence` — seuil infini d'abord, donc tout
+  fichier recopié entier, puis 20 Mo — chacune rejouée tant qu'elle déplace
+  quelque chose ; le plafond du plus grand trou du volume ; le garde-fou
+  `n < 2`, qui interdit de déplacer un morceau isolé ; et l'annexion d'un bout du
+  gros voisin pour qu'un morceau recollé naisse au-dessus du seuil.
+- **Le seuil de 20 Mo est une constante magique**, et le code d'origine le dit
+  lui-même (`PART_DEFRAG_MAGIC_CONSTANT`). Rien dans UltraDefrag ne la justifie.
+  Elle reste un réglage de la stratégie, comme la taille de tampon des deux
+  autres.
+- **Elle ne se choisit pas toute seule.** UltraDefrag est de 2018 et aucun des
+  vingt disques de la galerie n'en a vu la couleur. `DefragPlanner.strategy(for:)`
+  continue de donner l'outil que le format datait ; celle-ci s'obtient par
+  `STRATEGY=ultraDefrag` au rendu hors-ligne. C'est un point de comparaison, pas
+  un outil d'époque, et le journal préfère l'anachronisme déclaré à
+  l'anachronisme discret.
+- **Un déplacement partiel coupe une liste d'extents en son milieu** — le seul
+  endroit de la couche où cela arrive. `relocation(of:vcn:length:to:)` isole ce
+  découpage, et c'est ce que le test « un déplacement partiel conserve le
+  fichier » surveille.
+- **`firstGap` quitte `WindowsXPStrategy`** pour `DefragOperations` : elle ne
+  décide rien, elle lit un bitmap et saute la zone MFT. Refactoring vérifié à la
+  requête près sur les huit passes NTFS.
+
+#### Effets mesurés
+
+Les deux colonnes sont mesurées le même jour, sur les mêmes volumes.
+
+| scénario | morceaux, XP | UltraDefrag | requêtes XP → UD | durée XP → UD |
+|---|---:|---:|---:|---:|
+| `gamer-2003` | 0 | 0 | 17 → 17 | 7,8 s → 7,8 s |
+| `secretaire-2003` | 17 704 | 7 622 | 7 455 → 29 069 | 2 min 22 → 7 min 48 |
+| `famille-2003` | 38 054 | 15 186 | 9 190 → 56 406 | 2 min 28 → 14 min 25 |
+| `dev-2003` | 10 229 | **474** | 19 353 → 38 999 | 5 min 58 → 9 min 47 |
+| `secretaire-2007` | 0 | 0 | 35 408 → 31 714 | 16 min 03 → 15 min 16 |
+| `famille-2007` | 130 288 | **1 378** | 78 797 → 334 817 | 23 min 28 → 1 h 25 |
+| `gamer-2007` | 26 753 | **376** | 76 425 → 121 233 | 27 min 31 → 39 min 32 |
+| `dev-2007` | 0 | 0 | 280 595 → 272 531 | 1 h 18 → 1 h 18 |
+
+Sur les quatre volumes où XP laisse du travail, il en reste entre **vingt et
+cent fois moins**. Le prix est du même ordre de grandeur que le gain est grand :
+quatre fois plus de requêtes et trois fois plus de temps sur `famille-2007`. Les
+deux volumes que XP nettoie entièrement sont nettoyés de la même façon, ni mieux
+ni plus vite — l'outil ne coûte que là où il sert.
+
+#### L'ordre de passage coûte plus cher que la défragmentation partielle
+
+Le détail qui ne se voyait pas dans le tableau. Sur `famille-2007`, la
+**première** séquence — celle qui recopie les fichiers entiers, donc celle qui
+fait le même travail que XP — prend 2 421 s là où XP en prend 1 400, pour
+*moins* de données transférées (33,4 Go contre 38,0 Go).
+
+L'écart est dans le seek moyen : **35 489 cylindres pour XP, 49 187 pour
+UltraDefrag**. L'ordre de la MFT que suit XP a une localité involontaire — deux
+fichiers voisins dans la MFT ont été créés à peu près en même temps, donc
+alloués à peu près au même endroit. Le « les plus fragmentés d'abord »
+d'UltraDefrag n'en a aucune : il traverse le plateau à chaque fichier. C'est
+directement audible, et c'est un effet de l'ordre de parcours, pas de
+l'algorithme de placement.
+
+#### Ce que cela ne règle pas
+
+- **Les fichiers ne deviennent pas contigus**, et ce n'est pas un défaut : c'est
+  la promesse de l'outil. Sur `famille-2007`, 158 restent fragmentés contre 155
+  pour XP — trois de plus, parce que l'ordre de passage n'attribue pas les mêmes
+  trous aux mêmes fichiers.
+- **Sur FAT, la défragmentation partielle n'a rien à mordre.** Presque aucun
+  fichier de 1996 n'atteint les 40 Mo qui la déclenchent. Ce qui reste est une
+  passe qui n'évacue personne : sur `dev-1996`, 79 s contre 36 min 21 pour
+  Windows 95, et 862 morceaux restants contre 290. Quarante fois plus rapide et
+  trois fois moins efficace, pour exactement la même raison.
+- **Rien n'a été écouté.** Tout ce qui précède est en `PLAN_ONLY`. La signature
+  décrite — des rafales courtes autour des mêmes cylindres, là où XP fait de
+  longs transferts — est déduite des seeks et des tailles de requête, pas
+  entendue. Et l'écran de l'application ne propose toujours que l'outil
+  d'époque : la stratégie n'est atteignable que par le rendu hors-ligne.
+
+#### Quatre durées fausses dans le tableau précédent
+
+En remesurant la colonne XP, quatre durées du tableau des huit volumes NTFS se
+sont révélées mal transcrites — le cas le plus net étant `dev-2007`, donné à
+1 h 12 pour 4 655 s, c'est-à-dire 1 h 18. Vérification faite en rejouant le plan
+depuis le commit `47a9abc` lui-même : les requêtes sont identiques à l'unité et
+les durées aussi. Le modèle n'a pas bougé, c'est la transcription qui était
+fausse. Le tableau ci-dessus et le README sont corrigés.
+
 ### Ce qui reste
 
-La lecture de `COMPARAISON-DEFRAGMENTEURS.md` a refait le classement. Ce qui
-était un point unique — « JKDefrag / MyDefrag » — en fait trois, et le plus
-intéressant n'est pas celui qu'on croyait. Toutes ces stratégies sont
-**indépendantes du format** : elles s'appliquent aux volumes FAT comme aux NTFS.
+Deux des trois pistes ouvertes par la lecture de `COMPARAISON-DEFRAGMENTEURS.md`,
+la première ayant été traitée ci-dessus. Toutes deux sont **indépendantes du
+format** : elles s'appliquent aux volumes FAT comme aux NTFS.
 
-**1. La défragmentation partielle d'UltraDefrag.** C'est la seule qui réponde à
-un échec déjà mesuré. `famille-2007` laisse 155 fichiers sur 244 en morceaux
-parce que ses gros fichiers — 213 Mo en moyenne — ne trouvent aucun trou à leur
-taille. Le `defrag_routine` d'UltraDefrag traite les fichiers les plus
-fragmentés d'abord et, sur un gros fichier, **ne fusionne que les petits
-fragments** au lieu de déplacer des gigaoctets pour gagner peu. La comparaison
-note que JKDefrag n'a pas cet équivalent. C'est donc la seule des trois dont le
-gain se chiffre d'avance, et elle change le son autant que le résultat : des
-rafales courtes sur les bords d'un fichier, au lieu d'un long transfert.
-
-**2. Le comblement de trous d'`OptimizeVolume`.** La signature de placement la
+**1. Le comblement de trous d'`OptimizeVolume`.** La signature de placement la
 plus caractéristique de JKDefrag : pour chaque trou, chercher d'abord une
 **combinaison de fichiers qui le comble exactement** (`FindBestItem`), sinon le
 plus gros qui tient (`FindHighestItem`). Beaucoup moins d'évacuations que le
@@ -291,12 +409,17 @@ Inutilisable tel quel — une passe simulée doit être reproductible. Il faudra
 borne déterministe, en nombre de candidats ou d'itérations, et assumer que le
 plan diverge de l'original.
 
-**3. Les trois zones et les tris.** `CalculateZones` découpe le volume en
+**2. Les trois zones et les tris.** `CalculateZones` découpe le volume en
 répertoires / fichiers ordinaires / *space hogs*, avec une réserve d'espace
 libre après les deux premières et une itération à point fixe plafonnée à dix
 passes. S'y ajoutent les cinq tris complets du disque (nom, taille, dernier
 accès, dernière modification, création), `ForcedFill` et `OptimizeUp`. Le plus
 gros morceau, et le moins urgent.
+
+**Et une troisième, née de ce qui précède :** l'ordre de passage pèse plus lourd
+que l'algorithme de placement — 39 % de seek moyen en plus rien qu'en changeant
+de tri. Cela se mesure sans écrire une stratégie de plus, en rejouant la même
+sur plusieurs ordres, et cela dit quelque chose d'audible.
 
 ### Deux petits points, et une mise au point de vocabulaire
 
@@ -323,6 +446,9 @@ cohérent partout. Ni l'un ni l'autre ne gêne pour transposer un algorithme
 décrit en prose ; les deux gêneraient pour du code recopié.
 
 ### Écouté, à l'oreille
+
+Ce paragraphe ne vaut que pour la passe NTFS de Windows XP. La passe
+UltraDefrag, elle, n'a pas été écoutée du tout.
 
 Tout ce qui précède est mesuré en `PLAN_ONLY`. La signature sonore décrite ici —
 pas de « clac » de retour au bord, des rafales longues de 4 Mo — en était
