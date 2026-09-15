@@ -56,7 +56,10 @@ enum GeneratedVolumeBridge {
     /// bien le volume généré qu'on défragmente, pas une approximation.
     static func volume(from disk: GeneratedDisk) throws -> Volume {
         let clusterSectors = Int(disk.clusterBytes) / DriveGeometry.bytesPerSector
-        guard disk.clusterCount < 65_525, clusterSectors > 0 else {
+        // Une marge d'un cluster : la partition construite ci-dessous se
+        // redimensionne comme le ferait `FORMAT` et peut retomber un cluster
+        // au-dessus du compte, ce que `PartitionGeometry` refuserait.
+        guard disk.clusterCount < 65_524, clusterSectors > 0 else {
             throw BridgeError.unsupportedGeometry(clusterCount: disk.clusterCount)
         }
 
@@ -82,5 +85,64 @@ enum GeneratedVolumeBridge {
                          chain: chain)
         }
         return volume
+    }
+}
+
+extension GeneratedVolumeBridge {
+
+    /// Le nombre de clusters qu'un `PartitionGeometry` sait décrire, marge
+    /// comprise. Au-delà, il n'y a pas de FAT16 : il y a un autre format.
+    static let maximumClusterCount: UInt32 = 65_524
+
+    static func isSupported(_ disk: GeneratedDisk) -> Bool {
+        disk.clusterCount < maximumClusterCount
+            && Int(disk.clusterBytes) >= DriveGeometry.bytesPerSector
+    }
+
+    /// Pourquoi ce disque ne se défragmente pas, en une phrase d'écran. `nil`
+    /// s'il se défragmente.
+    static func refusal(for disk: GeneratedDisk) -> String? {
+        guard !isSupported(disk) else { return nil }
+        switch disk.spec.fileSystem.type {
+        case .fat16, .vfat:
+            return "\(disk.clusterCount) clusters : au-delà des 65 524 qu'une FAT16 adresse."
+        case .fat32, .ntfs:
+            return "Volume \(disk.spec.fileSystem.type.rawValue.uppercased()) de "
+                + "\(disk.spec.disk.sizeMB) Mo : le défragmenteur simulé est celui de "
+                + "Windows 95, qui ne connaît que la FAT16."
+        }
+    }
+
+    /// Matériel décrit par le profil : géométrie zonée et loi de seek.
+    ///
+    /// La fiche d'un scénario ne donne que trois nombres — capacité, régime,
+    /// seek moyen — et c'est assez : le zonage s'interpole entre les deux
+    /// disques modélisés à la main, et la loi de seek garde sa forme en se
+    /// recalibrant sur la course et la moyenne annoncées.
+    ///
+    /// - Parameter atLeast: nombre de secteurs que le disque doit au minimum
+    ///   porter, c'est-à-dire la taille de la partition qu'on y pose. Les
+    ///   arrondis du formatage peuvent la faire dépasser d'un cheveu la
+    ///   capacité nominale, et un LBA hors disque serait silencieusement ramené
+    ///   au dernier cylindre.
+    static func drive(for spec: ProfileSpec,
+                      atLeast sectors: Int) -> (geometry: DriveGeometry, seek: SeekModel) {
+        let capacity = max(spec.disk.sizeBytes,
+                           UInt64(sectors) * UInt64(DriveGeometry.bytesPerSector))
+        // Même typographie que les deux disques écrits à la main : espace fine
+        // insécable dans le régime, virgule décimale.
+        let size = spec.disk.sizeMB >= 1_024
+            ? String(format: "%.1f Go", Double(spec.disk.sizeMB) / 1_024)
+                .replacingOccurrences(of: ".", with: ",")
+            : "\(spec.disk.sizeMB) Mo"
+        let rpm = String(format: "%d\u{202F}%03d", spec.disk.rpm / 1_000, spec.disk.rpm % 1_000)
+        let label = "IDE \(size) · \(rpm) tr/min"
+        let geometry = DriveGeometry.era(model: label,
+                                         capacityBytes: capacity,
+                                         rpm: spec.disk.rpm,
+                                         zbr: spec.disk.zbr)
+        let seek = SeekModel.calibrated(averageSeekMs: spec.disk.averageSeekMs,
+                                        cylinders: geometry.cylinders)
+        return (geometry, seek)
     }
 }

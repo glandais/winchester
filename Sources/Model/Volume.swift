@@ -87,6 +87,10 @@ struct PartitionGeometry {
     var clusterBytes: Int { clusterSectors * DriveGeometry.bytesPerSector }
     var capacityBytes: Int { clusterCount * clusterBytes }
 
+    /// Secteurs occupés par la partition, tables comprises : le disque qui la
+    /// porte doit en compter au moins autant.
+    var totalSectors: Int { dataStartLBA - startLBA + clusterCount * clusterSectors }
+
     func lba(ofCluster cluster: Int) -> Int {
         dataStartLBA + cluster * clusterSectors
     }

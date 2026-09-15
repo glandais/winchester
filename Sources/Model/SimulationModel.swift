@@ -90,13 +90,16 @@ final class ClusterMapPlayer {
 @MainActor
 final class SimulationModel: ObservableObject {
 
-    @Published private(set) var kind: ScenarioKind
+    @Published private(set) var selection: ScenarioSelection
     @Published private(set) var scenario: Scenario
 
     let engine: DiskNoiseEngine
 
-    private var cache: [ScenarioKind: Scenario] = [:]
+    private var cache: [ScenarioSelection: Scenario] = [:]
     private let mapPlayer = ClusterMapPlayer()
+
+    var kind: ScenarioKind { scenario.kind }
+    var label: ScenarioLabel { scenario.label }
 
     static let bucketDuration = ScenarioBuilder.bucketDuration
 
@@ -112,24 +115,72 @@ final class SimulationModel: ObservableObject {
 
     init() {
         let scenario = ScenarioBuilder.build(.windowsBoot)
-        self.kind = .windowsBoot
+        self.selection = .builtin(.windowsBoot)
         self.scenario = scenario
-        self.cache = [.windowsBoot: scenario]
+        self.cache = [.builtin(.windowsBoot): scenario]
         self.engine = DiskNoiseEngine(rpm: scenario.geometry.rpm)
         mapPlayer.load(scenario.defrag)
         engine.load(cues: scenario.cues, duration: scenario.duration, rpm: scenario.geometry.rpm)
     }
 
-    /// Bascule de scénario. Les deux sont conservés une fois construits : la
-    /// construction d'une passe de défragmentation coûte quelques dizaines de
-    /// millisecondes, mais on ne la refait pas à chaque aller-retour.
-    func select(_ kind: ScenarioKind) {
-        guard kind != self.kind else { return }
-        let scenario = cache[kind] ?? ScenarioBuilder.build(kind)
-        cache[kind] = scenario
-        self.kind = kind
+    /// Ce que propose le sélecteur : les scénarios livrés, puis le disque de la
+    /// galerie qu'on lui a confié, s'il y en a un.
+    ///
+    /// Un seul à la fois : c'est un sélecteur segmenté, et vingt profils n'y
+    /// tiendraient pas. Revenir sur un disque précédent se fait depuis la
+    /// galerie, où il est de toute façon déjà affiché.
+    var selections: [ScenarioSelection] {
+        ScenarioKind.allCases.map(ScenarioSelection.builtin)
+            + cache.keys.filter(\.isGenerated).sorted { $0.sortKey < $1.sortKey }
+    }
+
+    /// Bascule de scénario. Les scénarios livrés sont conservés une fois
+    /// construits : la construction d'une passe de défragmentation coûte
+    /// quelques dizaines de millisecondes, mais on ne la refait pas à chaque
+    /// aller-retour.
+    func select(_ selection: ScenarioSelection) {
+        guard selection != self.selection else { return }
+        guard let scenario = cache[selection] ?? built(selection) else { return }
+        cache[selection] = scenario
+        adopt(scenario, as: selection)
+    }
+
+    private func built(_ selection: ScenarioSelection) -> Scenario? {
+        // Un disque généré n'est jamais reconstruit à la volée : il n'existe
+        // que dans la galerie, et n'entre ici que par `load(generated:)`.
+        guard case let .builtin(kind) = selection else { return nil }
+        return ScenarioBuilder.build(kind)
+    }
+
+    /// Adopte un disque fabriqué par la galerie et bascule dessus.
+    ///
+    /// La planification et la simulation restent du même ordre que la passe
+    /// livrée : 70 à 190 ms en release sur les huit volumes FAT16 que le pont
+    /// accepte, le plus lourd étant `famille-1996` et ses 163 000 requêtes.
+    /// C'est court pour une action explicite, et c'est pour cela que rien de
+    /// tout cela ne part en tâche de fond — la génération du disque, elle, en
+    /// vient déjà.
+    func load(generated disk: GeneratedDisk) throws {
+        let selection = ScenarioSelection.generated(disk.spec.id)
+        let scenario = try ScenarioBuilder.build(generated: disk)
+        for key in cache.keys where key.isGenerated { cache[key] = nil }
+        cache[selection] = scenario
+        adopt(scenario, as: selection)
+    }
+
+    /// Nom d'un choix dans le sélecteur. Un disque généré porte le nom de son
+    /// profil, qui n'est connu qu'une fois le scénario construit.
+    func title(of selection: ScenarioSelection) -> String {
+        if let scenario = cache[selection] { return scenario.label.title }
+        if case let .builtin(kind) = selection { return kind.title }
+        return "—"
+    }
+
+    private func adopt(_ scenario: Scenario, as selection: ScenarioSelection) {
+        self.selection = selection
         self.scenario = scenario
         mapPlayer.load(scenario.defrag)
+        engine.seekTo(0)
         engine.load(cues: scenario.cues, duration: scenario.duration, rpm: scenario.geometry.rpm)
     }
 

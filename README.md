@@ -180,6 +180,36 @@ Le second vient de NTFS lui-même, qui place encore bien à 93 % de remplissage.
 hors du fil principal, rapporte son avancement et s'annule si l'on change de
 scénario en route.
 
+### Défragmenter un disque généré
+
+Les deux écrans se rejoignent par un bouton : **Défragmenter ce disque** confie
+le volume affiché au simulateur, qui en planifie la passe et la fait sonner.
+
+Les fichiers gardent exactement les clusters que l'allocateur leur a donnés —
+c'est ce volume-là qui est défragmenté, pas une approximation — et le matériel
+est celui de la fiche du profil, pas le disque de 1996 du scénario livré : la
+géométrie zonée s'interpole entre les deux disques modélisés à la main, et la
+loi de seek garde sa forme en se recalibrant sur la course et le seek moyen
+annoncés. Un 210 Mo à 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à
+5 400 tr/min de 1996.
+
+**Huit scénarios sur vingt y ont droit** : ceux de 1993 et 1996. Au-delà, le
+bouton reste visible mais éteint, avec la raison écrite dessous — le
+défragmenteur simulé est celui de Windows 95, qui ne connaît que la FAT16, et
+un volume NTFS de 320 Go n'a de toute façon pas vocation à y passer.
+
+Ces passes-là sont longues : de 17 min (`gamer-1993`) à 51 min
+(`famille-1996`), contre un peu plus de trois minutes pour le scénario livré,
+dont le volume est délibérément réduit. C'est la vraie durée d'une passe
+d'époque sur un volume d'époque. La planification et la simulation coûtent 70 à
+190 ms en release, du même ordre que la passe livrée.
+
+Le rendu hors-ligne accepte les mêmes identifiants :
+
+```sh
+SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav
+```
+
 ## Ce qui ne l'est pas
 
 - **La couche rotation est procédurale, et c'est le maillon faible.** La
@@ -264,6 +294,7 @@ rapide en boucle d'itération :
 ./Tools/build-render.sh
 /tmp/rendertrace sortie.wav                         # scénario de démarrage
 SCENARIO=defrag /tmp/rendertrace defrag.wav         # passe de défragmentation
+SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav      # passe sur un disque généré
 
 SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav      # isoler une couche
 TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
@@ -279,8 +310,10 @@ piste-à-piste répétés.
 
 ```
 Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swift 6
-    DriveGeometry.swift    géométrie zonée, LBA→CHS ; disques 2001 et 1996
-    SeekModel.swift        loi de durée, découpage en quatre phases
+    DriveGeometry.swift    géométrie zonée, LBA→CHS ; disques 2001 et 1996,
+                           et interpolation pour une capacité quelconque
+    SeekModel.swift        loi de durée, découpage en quatre phases,
+                           recalibrage sur une course et un seek moyen donnés
     SeededGenerator.swift  SplitMix64, tirages stables entre plateformes
     Extent.swift           suite de clusters contigus, huit octets
     ClusterBitmap.swift    occupation des clusters, recherche de place libre
@@ -305,9 +338,9 @@ Sources/Model/
     Volume.swift           partition FAT16, allocateur next-fit, vieillissement
     DefragJob.swift        planificateur de la passe de défragmentation
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
-    Scenario.swift         construction des deux scénarios, séries d'affichage
+    Scenario.swift         construction des scénarios, séries d'affichage
     SimulationModel.swift  assemblage + interrogation pour l'UI
-    GeneratedVolume.swift  passerelle disque généré → volume affichable
+    GeneratedVolume.swift  passerelle disque généré → volume et matériel
 Sources/Audio/
     Biquad.swift           filtres RBJ, bruit xorshift
     SeekSynth.swift        banc de résonateurs, excitation, trains

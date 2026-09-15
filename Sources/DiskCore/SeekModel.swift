@@ -144,3 +144,64 @@ extension SeekModel {
         headSwitchDuration: 0.002_0
     )
 }
+
+extension SeekModel {
+
+    /// Durée d'un seek moyen, en millisecondes. Par convention de fiche
+    /// technique, c'est celle d'un déplacement du tiers de la course.
+    public func averageSeekMs(cylinders: Int) -> Double {
+        duration(distance: max(cylinders / 3, 1)) * 1_000
+    }
+
+    /// Même loi, étirée sur une course différente.
+    ///
+    /// Ce qui est conservé, c'est la durée à **fraction de course égale** : un
+    /// déplacement d'un tiers de course dure autant sur les deux disques, quel
+    /// que soit le nombre de cylindres que cela représente. D'où le `√ratio` sur
+    /// la branche courte, qui est en racine de la distance, et le `ratio` sur la
+    /// branche longue, qui y est linéaire.
+    public func stroked(cylinders: Int, reference: Int) -> SeekModel {
+        let ratio = Double(reference) / Double(max(cylinders, 1))
+        return SeekModel(
+            shortIntercept: shortIntercept,
+            shortSqrtCoefficient: shortSqrtCoefficient * ratio.squareRoot(),
+            longIntercept: longIntercept,
+            longLinearCoefficient: longLinearCoefficient * ratio,
+            crossover: max(Int((Double(crossover) / ratio).rounded()), 2),
+            settleDuration: settleDuration,
+            accelerationCap: accelerationCap,
+            headSwitchDuration: headSwitchDuration
+        )
+    }
+
+    /// Toutes les durées multipliées par le même facteur. `duration(distance:)`
+    /// étant affine en chacune de ses constantes, l'ensemble de la courbe est
+    /// mis à l'échelle sans changer de forme.
+    public func timeScaled(by factor: Double) -> SeekModel {
+        SeekModel(
+            shortIntercept: shortIntercept * factor,
+            shortSqrtCoefficient: shortSqrtCoefficient * factor,
+            longIntercept: longIntercept * factor,
+            longLinearCoefficient: longLinearCoefficient * factor,
+            crossover: crossover,
+            settleDuration: settleDuration * factor,
+            accelerationCap: accelerationCap * factor,
+            headSwitchDuration: headSwitchDuration * factor
+        )
+    }
+
+    /// Loi de seek d'un disque dont la fiche n'annonce que le seek moyen.
+    ///
+    /// La mécanique est celle du disque de 1996 — deux régimes, mêmes rapports
+    /// entre piste-à-piste, seek moyen et pleine course — étirée sur la course
+    /// réelle puis ramenée au seek moyen annoncé. Ce qui varie d'un disque à
+    /// l'autre, ce sont ces deux nombres-là ; la **forme** de la loi, elle, ne
+    /// dépend pas du modèle (Ruemmler & Wilkes 1994).
+    public static func calibrated(averageSeekMs target: Double, cylinders: Int) -> SeekModel {
+        let stretched = win95Model.stroked(cylinders: cylinders,
+                                           reference: DriveGeometry.win95Drive.cylinders)
+        let current = stretched.averageSeekMs(cylinders: cylinders)
+        guard current > 0, target > 0 else { return stretched }
+        return stretched.timeScaled(by: target / current)
+    }
+}

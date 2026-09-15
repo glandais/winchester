@@ -22,6 +22,66 @@ enum ScenarioKind: String, CaseIterable, Identifiable {
             return "Passe complète du défragmenteur de Windows 95 sur un volume FAT16 vieilli"
         }
     }
+
+    /// Ce que disent les notes de modélisation du volume sous la passe. Un
+    /// disque venu de la galerie n'a pas la même histoire qu'un volume vieilli
+    /// sur place, et c'est la seule ligne des notes qui change.
+    var volumeNote: String {
+        switch self {
+        case .windowsBoot:
+            return ""
+        case .defrag:
+            return "Partition FAT16 vieillie par deux ans d'usage simulé : installation, "
+                + "puis créations, suppressions et réenregistrements. L'allocateur next-fit "
+                + "de VFAT suffit à tout disperser, aucun mécanisme exotique n'intervient."
+        }
+    }
+
+    var label: ScenarioLabel {
+        ScenarioLabel(title: title, summary: summary, volumeNote: volumeNote)
+    }
+}
+
+/// Ce que le sélecteur de scénario propose.
+///
+/// Les deux scénarios livrés sont toujours là ; un disque de la galerie s'y
+/// ajoute quand on demande à le défragmenter, et y reste tant qu'on n'en
+/// défragmente pas un autre.
+enum ScenarioSelection: Hashable, Identifiable {
+    case builtin(ScenarioKind)
+    /// Identifiant du profil de la galerie.
+    case generated(String)
+
+    var isGenerated: Bool {
+        if case .generated = self { return true }
+        return false
+    }
+
+    /// Clé d'ordre stable : les scénarios livrés d'abord, dans l'ordre de leur
+    /// déclaration, puis les disques générés par identifiant de profil.
+    var sortKey: String {
+        switch self {
+        case let .builtin(kind):
+            return "0\(ScenarioKind.allCases.firstIndex(of: kind) ?? 0)"
+        case let .generated(id):
+            return "1\(id)"
+        }
+    }
+
+    var id: String { sortKey }
+}
+
+/// Ce que l'interface affiche d'un scénario : son nom dans le sélecteur, sa
+/// phrase de résumé sous le titre, et la description de son volume dans les
+/// notes de modélisation.
+///
+/// Les deux scénarios livrés tirent ces trois textes de leur `ScenarioKind` ;
+/// un disque venu de la galerie les tire de son profil. C'est la seule chose
+/// qui les distingue une fois la passe planifiée.
+struct ScenarioLabel {
+    let title: String
+    let summary: String
+    let volumeNote: String
 }
 
 /// Mutation de la carte des clusters, datée par la simulation.
@@ -55,6 +115,7 @@ struct DefragPlayback {
 /// audio et séries d'affichage.
 struct Scenario {
     let kind: ScenarioKind
+    let label: ScenarioLabel
     let geometry: DriveGeometry
     let seekModel: SeekModel
     let requests: [BlockRequest]
@@ -108,6 +169,7 @@ enum ScenarioBuilder {
 
         return Scenario(
             kind: .windowsBoot,
+            label: ScenarioKind.windowsBoot.label,
             geometry: geometry,
             seekModel: seekModel,
             requests: requests,
@@ -141,13 +203,60 @@ enum ScenarioBuilder {
     private static let tailDuration = 3.5
 
     private static func buildDefrag() -> Scenario {
-        let geometry = DriveGeometry.win95Drive
-        let seekModel = SeekModel.win95Model
-
         let partition = PartitionGeometry(startLBA: 0,
                                           sectors: partitionSectors,
                                           clusterSectors: clusterSectors)
         let volume = VolumeFactory.agedWindows95(partition: partition, fill: volumeFill)
+
+        return assembleDefrag(volume: volume,
+                              geometry: .win95Drive,
+                              seekModel: .win95Model,
+                              label: ScenarioKind.defrag.label)
+    }
+
+    // MARK: - Défragmentation d'un disque de la galerie
+
+    /// Même passe, sur un volume venu du générateur de disques d'époque.
+    ///
+    /// Le disque est converti en `Volume` par `GeneratedVolumeBridge` — qui
+    /// refuse tout ce qu'un défragmenteur de 1995 n'aurait pas su ouvrir — et le
+    /// matériel est celui que décrit la fiche du profil, pas le disque de 1996
+    /// du scénario livré : un 210 Mo à 3 600 tr/min de 1993 ne sonne pas comme
+    /// un 1 Go à 4 500 tr/min de 1996, et c'est tout l'intérêt de l'exercice.
+    static func build(generated disk: GeneratedDisk) throws -> Scenario {
+        let volume = try GeneratedVolumeBridge.volume(from: disk)
+        let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
+                                                   atLeast: volume.partition.totalSectors)
+
+        let note = "« \(disk.spec.displayName) », généré par la galerie : "
+            + "\(disk.spec.fileSystem.type.rawValue.uppercased()) de \(disk.spec.disk.sizeMB) Mo "
+            + "en clusters de \(disk.clusterBytes / 1_024) Ko, vieilli sur \(disk.dayCount) jours. "
+            + "Les fichiers gardent exactement les clusters que l'allocateur leur a donnés — "
+            + "c'est ce volume-là qui est défragmenté, pas une approximation."
+
+        return assembleDefrag(volume: volume,
+                              geometry: hardware.geometry,
+                              seekModel: hardware.seek,
+                              label: ScenarioLabel(title: disk.spec.displayName,
+                                                   summary: disk.spec.summary
+                                                       ?? "Passe de défragmentation sur un disque généré",
+                                                   volumeNote: note))
+    }
+
+    /// Planifie la passe sur un volume donné, la fait tourner sur le disque
+    /// donné, et date tout ce que l'écran doit en montrer.
+    ///
+    /// `DefragPlanner.plan` **consomme** le volume : il y rejoue chaque
+    /// déplacement pour connaître l'état d'arrivée. Le volume passé ici ne doit
+    /// donc pas être réutilisé ensuite.
+    private static func assembleDefrag(volume: Volume,
+                                       geometry: DriveGeometry,
+                                       seekModel: SeekModel,
+                                       label: ScenarioLabel) -> Scenario {
+        let partition = volume.partition
+        precondition(geometry.totalSectors >= partition.totalSectors,
+                     "la partition déborde du disque qui la porte")
+
         let plan = DefragPlanner.plan(volume: volume)
 
         let requests = plan.operations.map {
@@ -207,6 +316,7 @@ enum ScenarioBuilder {
 
         return Scenario(
             kind: .defrag,
+            label: label,
             geometry: geometry,
             seekModel: seekModel,
             requests: requests,

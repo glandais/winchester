@@ -8,6 +8,12 @@ import AVFAudio
 //   /tmp/rendertrace sortie.wav              # scénario de démarrage
 //   SCENARIO=defrag /tmp/rendertrace out.wav # passe de défragmentation
 //
+// `SCENARIO` accepte aussi l'identifiant d'un profil de la galerie : le disque
+// est alors généré, converti en volume FAT16, et sa passe rendue sur le
+// matériel que décrit sa fiche.
+//
+//   SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav
+//
 //   SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav
 //   TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
 //
@@ -16,16 +22,31 @@ import AVFAudio
 let sampleRate = 48_000.0
 let outputPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "disknoise.wav"
 
-let kind = ScenarioKind(rawValue: ProcessInfo.processInfo.environment["SCENARIO"] ?? "")
-    ?? .windowsBoot
-let scenario = ScenarioBuilder.build(kind)
+let requested = ProcessInfo.processInfo.environment["SCENARIO"] ?? ""
+
+let scenario: Scenario
+if let kind = ScenarioKind(rawValue: requested) {
+    scenario = ScenarioBuilder.build(kind)
+} else if let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == requested }) {
+    FileHandle.standardError.write("génération de \(spec.id)…\n".data(using: .utf8)!)
+    scenario = try ScenarioBuilder.build(generated: DiskGenerator.generate(spec))
+} else if requested.isEmpty {
+    scenario = ScenarioBuilder.build(.windowsBoot)
+} else {
+    let known = ScenarioKind.allCases.map(\.rawValue) + ScenarioLibrary.identifiers
+    FileHandle.standardError.write(
+        "scénario inconnu : \(requested)\nconnus : \(known.joined(separator: ", "))\n"
+            .data(using: .utf8)!)
+    exit(1)
+}
+
 let geometry = scenario.geometry
 let spans = scenario.spans
 let cues = scenario.cues
 let trace = scenario.trace
 
 FileHandle.standardError.write("""
-scénario      : \(kind.title) — \(geometry.model)
+scénario      : \(scenario.label.title) — \(geometry.model)
 requêtes      : \(scenario.requests.count)
 seeks         : \(trace.stats.seekCount) (moy. \(trace.stats.averageSeekDistance) cyl.)
 événements    : \(trace.events.count)

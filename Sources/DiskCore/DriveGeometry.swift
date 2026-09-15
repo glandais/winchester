@@ -173,3 +173,76 @@ extension DriveGeometry {
         ]
     )
 }
+
+extension DriveGeometry {
+
+    /// Rapport entre la piste la plus interne et la plus externe. 0,67 sur le
+    /// disque de 1996 modélisé ci-dessus, et l'ordre de grandeur tient pour
+    /// toute la période : c'est le rapport des rayons, pas la technologie, qui
+    /// le fixe.
+    private static let innerTrackRatio = 0.67
+    private static let zoneCount = 8
+
+    /// Densité de référence : le disque de 1996 porte 256 secteurs sur sa piste
+    /// externe pour 0,8297 Gio de capacité.
+    private static let referenceGibibytes = 0.829_7
+    private static let referenceSectorsPerTrack = 256.0
+    /// La densité linéaire ne suit pas la capacité : elle croît bien plus
+    /// lentement, le reste venant du nombre de cylindres et de plateaux.
+    /// Cet exposant place le disque de 2001 (17,6 Gio, 468 secteurs) à 2 % près.
+    private static let densityExponent = 0.20
+
+    /// Géométrie plausible pour un disque dont on ne connaît que la fiche :
+    /// capacité, régime et présence d'un enregistrement zoné.
+    ///
+    /// Les deux disques modélisés à la main ci-dessus servent de points
+    /// d'ancrage : même forme de zonage, même rapport bord/moyeu, densité
+    /// interpolée sur la capacité. La capacité obtenue est **au moins** celle
+    /// demandée — un volume ne doit jamais déborder du disque qui le porte.
+    public static func era(model: String,
+                           capacityBytes: UInt64,
+                           rpm: Int,
+                           heads: Int = 4,
+                           zbr: Bool = true) -> DriveGeometry {
+        precondition(capacityBytes > 0 && heads > 0 && rpm > 0)
+
+        let gibibytes = Double(capacityBytes) / 1_073_741_824
+        let outer = (referenceSectorsPerTrack
+                     * pow(gibibytes / referenceGibibytes, densityExponent))
+            .rounded()
+        let outerSPT = Int(min(max(outer, 63), 1_024))
+
+        // Le zonage descend linéairement du bord au moyeu : sa moyenne est la
+        // demi-somme des deux extrêmes, ce qui donne une première estimation du
+        // nombre de cylindres.
+        let meanSPT = Double(outerSPT) * (1 + innerTrackRatio) / 2
+        let sectors = Int((Double(capacityBytes) / Double(bytesPerSector)).rounded(.up))
+
+        func zones(_ cylinders: Int) -> [Zone] {
+            guard zbr else {
+                return [Zone(firstCylinder: 0, sectorsPerTrack: max(Int(meanSPT.rounded()), 1))]
+            }
+            return (0..<zoneCount).map { index in
+                let taper = (1 - innerTrackRatio) * Double(index) / Double(zoneCount - 1)
+                return Zone(firstCylinder: cylinders * index / zoneCount,
+                            sectorsPerTrack: max(Int((Double(outerSPT) * (1 - taper)).rounded()), 1))
+            }
+        }
+
+        // Les secteurs par piste sont des entiers et les bornes de zones tombent
+        // sur des cylindres entiers : la capacité réelle s'écarte de quelques
+        // pour mille de l'estimation. On la mesure et on rallonge le disque
+        // jusqu'à ce qu'elle couvre ce qui est demandé — jamais l'inverse, un
+        // volume ne doit pas déborder du disque qui le porte.
+        var cylinders = max(Int((Double(sectors) / (meanSPT * Double(heads))).rounded(.up)), 2)
+        var drive = DriveGeometry(model: model, cylinders: cylinders, heads: heads,
+                                  rpm: Double(rpm), zones: zones(cylinders))
+        for _ in 0..<4 where drive.totalSectors < sectors {
+            let deficit = sectors - drive.totalSectors
+            cylinders += max(deficit / (drive.sectorsPerCylinder(cylinders - 1)), 1)
+            drive = DriveGeometry(model: model, cylinders: cylinders, heads: heads,
+                                  rpm: Double(rpm), zones: zones(cylinders))
+        }
+        return drive
+    }
+}

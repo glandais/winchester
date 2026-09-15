@@ -12,6 +12,13 @@ struct DiskLibraryView: View {
 
     @ObservedObject var model: DiskLibraryModel
 
+    /// Confie le disque affiché au simulateur, qui en planifie la passe et
+    /// bascule dessus. Lève si le pont refuse le volume — ce que le bouton
+    /// empêche normalement d'atteindre.
+    let onDefragment: (GeneratedDisk) throws -> Void
+
+    @State private var handoverFailure: String?
+
     var body: some View {
         VStack(spacing: 14) {
             picker
@@ -22,6 +29,7 @@ struct DiskLibraryView: View {
                 progress(fraction: fraction, day: day, fileCount: fileCount, fill: fill)
             case let .ready(disk):
                 map
+                defragmentButton(for: disk)
                 metrics(of: disk)
             case let .failed(message):
                 Text(message)
@@ -109,6 +117,59 @@ struct DiskLibraryView: View {
             }
             .font(.system(size: 11, design: .monospaced))
             .foregroundStyle(Theme.dim)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel()
+    }
+
+    // MARK: - Passage au simulateur
+
+    /// Le seul pont entre les deux écrans : défragmenter à voix haute le disque
+    /// qu'on vient de fabriquer.
+    ///
+    /// Il n'a de sens que sur les volumes qu'un défragmenteur de 1995 saurait
+    /// ouvrir. Plutôt que de masquer le bouton sur les autres, on le laisse
+    /// visible et éteint avec la raison écrite dessous : c'est l'occasion de
+    /// dire pourquoi un NTFS de 320 Go ne se défragmente pas ici.
+    @ViewBuilder
+    private func defragmentButton(for disk: GeneratedDisk) -> some View {
+        let refusal = GeneratedVolumeBridge.refusal(for: disk)
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                handoverFailure = nil
+                do {
+                    try onDefragment(disk)
+                } catch {
+                    handoverFailure = "\(error)"
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "waveform")
+                    Text("Défragmenter ce disque")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(refusal == nil ? Theme.read : Color.white.opacity(0.06))
+                )
+                .foregroundStyle(refusal == nil ? Theme.background : Theme.dim)
+            }
+            .buttonStyle(.plain)
+            .disabled(refusal != nil)
+
+            if let refusal {
+                Text(refusal)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let handoverFailure {
+                Text(handoverFailure)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.read)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()

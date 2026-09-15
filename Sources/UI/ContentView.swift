@@ -1,4 +1,5 @@
 import SwiftUI
+import DiskCore
 
 /// Deux écrans : la simulation sonore, et la galerie de disques d'époque.
 ///
@@ -42,8 +43,11 @@ struct ContentView: View {
                     SimulatorScreen(model: model, engine: model.engine)
                 case .library:
                     ScrollView {
-                        DiskLibraryView(model: library)
-                            .padding(16)
+                        DiskLibraryView(model: library) { disk in
+                            try model.load(generated: disk)
+                            workspace = .simulator
+                        }
+                        .padding(16)
                     }
                 }
             }
@@ -103,7 +107,7 @@ struct SimulatorScreen: View {
                 Text("DiskNoise")
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.text)
-                Text(model.kind.summary)
+                Text(model.label.summary)
                     .font(.caption)
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
@@ -114,10 +118,10 @@ struct SimulatorScreen: View {
     }
 
     private var scenarioPicker: some View {
-        Picker("Scénario", selection: Binding(get: { model.kind },
+        Picker("Scénario", selection: Binding(get: { model.selection },
                                               set: { model.select($0) })) {
-            ForEach(ScenarioKind.allCases) { kind in
-                Text(kind.title).tag(kind)
+            ForEach(model.selections) { selection in
+                Text(model.title(of: selection)).tag(selection)
             }
         }
         .pickerStyle(.segmented)
@@ -354,11 +358,21 @@ struct SimulatorScreen: View {
         .panel()
     }
 
+    /// La géométrie change d'un scénario à l'autre — et d'un disque généré à
+    /// l'autre : la note la lit plutôt que de la réciter.
+    private var geometryNote: String {
+        let g = model.geometry
+        let rpm = String(format: "%d\u{202F}%03d", Int(g.rpm) / 1_000, Int(g.rpm) % 1_000)
+        return "\(g.cylinders) cylindres, \(g.heads) têtes, \(g.zones.count) "
+            + "zone\(g.zones.count > 1 ? "s" : "") ZBR, \(rpm) tr/min. La latence "
+            + "rotationnelle et les pas de piste sont simulés secteur par secteur."
+    }
+
     private var notes: some View {
         DisclosureGroup(isExpanded: $showsModelNotes) {
             VStack(alignment: .leading, spacing: 9) {
-                if model.kind == .defrag {
-                    NoteRow("Volume", "Partition FAT16 vieillie par deux ans d'usage simulé : installation, puis créations, suppressions et réenregistrements. L'allocateur next-fit de VFAT suffit à tout disperser, aucun mécanisme exotique n'intervient.")
+                if model.defrag != nil {
+                    NoteRow("Volume", model.label.volumeNote)
                     NoteRow("Passe", "« Défragmentation complète » de Windows 95 : chaque fichier rendu contigu et tassé contre le début du volume, dans l'ordre du parcours de l'arborescence — le seul ordre dont l'outil disposait.")
                     NoteRow("Évacuations", "La destination d'un fichier est presque toujours occupée : l'occupant part d'abord vers la fin du volume, et sera redéplacé quand viendra son tour. C'est ce va-et-vient, pas le volume de données, qui fait durer une passe.")
                     NoteRow("Retours FAT", "Chaque déplacement validé réécrit les deux copies de la FAT et l'entrée de répertoire, au tout début de la partition. D'où le retour du bras vers le bord, environ une fois par fichier.")
@@ -369,7 +383,7 @@ struct SimulatorScreen: View {
                 NoteRow("Trains", "Deux seeks rapprochés ne relancent jamais deux one-shots : un seul rendu continu, transitoire terminal en fin de train (règle issue de l'émulation de disquette de MAME).")
                 NoteRow("Rotation", "Procédurale faute d'échantillon. C'est le maillon faible : la littérature et tous les projets qui fonctionnent bouclent un enregistrement plutôt que de synthétiser le ronronnement à partir du régime.")
                 NoteRow("Haptique", "Le Taptic Engine reçoit les mêmes repères que l'audio : choc à la mise en mouvement, grondement pendant le coast, choc à la décélération, tic d'asservissement. Les trains rapprochés passent en texture continue modulée plutôt qu'en salve de transitoires.")
-                NoteRow("Géométrie", "24 000 cylindres, 4 têtes, 12 zones ZBR, 7 200 tr/min. La latence rotationnelle et les pas de piste sont simulés secteur par secteur.")
+                NoteRow("Géométrie", geometryNote)
             }
             .padding(.top, 10)
         } label: {
