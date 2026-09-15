@@ -78,7 +78,7 @@ l'interpolation y est la plus fragile.
 
 ## Chantier 2 — le défragmenteur travaille en extents
 
-**Partiellement fait** · commits `c2b8640`, `794a921`
+**Partiellement fait** · commits `c2b8640`, `794a921`, `faa2bbd`
 
 ### Le problème
 
@@ -130,7 +130,7 @@ C'est ce tableau qui a décidé de la suite : un volume de 320 Go est planifiabl
   76 % la passe livrée déplace 231 Mo pour ranger 179 Mo ; à 93 %, `dev-1999` en
   déplace 44 938 pour 6 710 — sept fois son contenu, en 23 284 évacuations.
 
-### Pourquoi NTFS est encore refusé
+### Pourquoi la stratégie de 95 n'a aucun sens sur NTFS
 
 La stratégie de Windows 95 appliquée au 320 Go de `famille-2007` tasse trois
 cents gigaoctets contre le début du disque par tampons de 256 Ko : **vingt-huit
@@ -172,15 +172,98 @@ différentes plutôt que sur la seule passe livrée :
 
 Tous les chiffres déjà publiés plus haut se retrouvent **à la requête près**.
 
+### Deux défragmenteurs — `WindowsXPStrategy`
+
+**Fait** · commit `faa2bbd`
+
+La question posée était : pour NTFS, transposer JKDefrag depuis `ALGO.md`, ou
+écrire quelque chose de plus naïf ? Ni l'un ni l'autre — la question mélangeait
+deux axes.
+
+- **`ALGO.md` documente JKDefrag, qui n'est pas un algorithme NTFS.** Son §8.1
+  est catégorique : le moteur raisonne exclusivement en LCN, `ScanFat.cpp` et
+  `ScanNtfs.cpp` ne sont que des parseurs. La même stratégie tourne sur FAT.
+  L'implémenter n'aurait donc **pas** levé le refus, qui portait sur la mécanique
+  du déplacement et non sur le placement.
+- **L'outil à écrire n'était pas JKDefrag**, freeware de niche de ~2008, mais le
+  `dfrg.msc` livré avec XP puis Vista — dérivé de Diskeeper Lite, et seul outil
+  qu'un utilisateur de 2003 ou 2007 avait réellement sous la main.
+
+Ce qui distingue cette passe, et qui s'entend : elle ne visite que les fichiers
+fragmentés, sa destination est un trou déjà libre, elle n'évacue personne, et
+valider un déplacement écrit un enregistrement de MFT là où il vit au lieu de
+ramener le bras au cluster 0.
+
+**Aucune fabrique nouvelle dans `DefragOperations`** : le cas NTFS est plus
+simple que le cas FAT, la destination étant libre, donc disjointe de la source
+par construction — la logique de recouvrement de `move` tourne à vide. Le bloc
+de déplacement est un réglage de la stratégie, à 4 Mo : `FSCTL_MOVE_FILE` confie
+la copie au système de fichiers, et la seule valeur citable est la courbe
+d'UltraDefrag, qui dimensionne son bloc sur la capacité du volume (256 Ko sous
+20 Go, 64 Mo au-delà de 2 To).
+
+### Effets mesurés — les huit volumes NTFS
+
+| scénario | plein | requêtes | durée | déplacés | fragmentés |
+|---|---:|---:|---:|---:|---|
+| `gamer-2003` | 8 % | 17 | 7,8 s | 0 | 0 → 0 |
+| `secretaire-2003` | 94 % | 7 455 | 2 min 23 | 57 | 141 → 84 |
+| `famille-2003` | 93 % | 9 190 | 2 min 32 | 39 | 80 → 41 |
+| `dev-2003` | 94 % | 27 747 | 7 min 56 | 274 | 299 → 25 |
+| `secretaire-2007` | 88 % | 35 408 | 15 min 27 | 186 | 186 → 0 |
+| `famille-2007` | 93 % | 78 797 | 23 min 38 | 89 | 244 → 155 |
+| `gamer-2007` | 90 % | 78 305 | 27 min 33 | 132 | 192 → 60 |
+| `dev-2007` | 86 % | 280 595 | 1 h 12 | 172 | 172 → 0 |
+
+`famille-2007` passe de 28 millions de requêtes et 94 h à **78 797 requêtes et
+23 min 38**, et son plan se construit en 1,45 s. Aucune évacuation nulle part.
+Les douze scénarios FAT sont inchangés à la requête près.
+
+**Une lecture séduisante, et fausse, a été écartée en route.** Les deux volumes
+à 86 et 88 % ressortent sans un fichier fragmenté, ceux à 93 et 94 % en gardent
+la moitié : de quoi conclure à la règle des 15 % d'espace libre. Mais `dev-2003`
+est plein à 94 % et répare 274 fichiers sur 299. La comparaison est même
+contrôlée — `dev-2003` et `secretaire-2003` sont deux volumes de 40 Go remplis à
+94 %, l'un répare 92 % de ses fichiers cassés, l'autre 40 %. Ce qui les sépare
+est la **taille** de ce qu'il y a à réparer : 13 Mo par fichier déplacé contre
+21, et 213 Mo sur `famille-2007`, qui n'en répare qu'un tiers. Un volume plein
+garde des trous, mais pas de *grands* trous.
+
+Réserve, et elle compte : ces moyennes portent sur les fichiers que la passe a
+**réussi** à déplacer, pas sur ceux qui sont restés en morceaux. La corrélation
+est nette, le mécanisme reste une hypothèse tant que les échecs ne sont pas
+comptés par taille.
+
 ### Ce qui reste
 
-1. **JKDefrag / MyDefrag** : analyse, découpage en trois zones (répertoires,
+1. **La zone réservée à la MFT est ignorée du placement.** La bitmap de
+   `DefragVolume` ne connaît que les clusters de fichiers ; la réserve que
+   l'allocateur NTFS tient à l'écart y apparaît libre, et un fichier réparé peut
+   y atterrir. Un vrai défragmenteur ne le ferait pas (`IgnoreMftExcludes` dans
+   `FindGap`).
+2. **La règle « deux fragments contigus comptent pour un »** (`ALGO.md` §4.2)
+   n'est pas appliquée : `VolumeStats` compte les extents. Sans elle, les
+   compteurs de fragmentation sont faux — c'est `IsFragmented` que cite le §8 de
+   `ALGO.md` parmi les cinq choses à transposer.
+3. **JKDefrag / MyDefrag** : analyse, découpage en trois zones (répertoires,
    fichiers ordinaires, gros fichiers rares), et surtout *fast optimize*, qui ne
    comble que les trous au lieu de tout tasser — donc beaucoup moins
-   d'évacuations, et une signature sonore radicalement différente ;
-2. une passe **NTFS** façon `FSCTL_MOVE_FILE` : pas de relecture dans un tampon,
-   pas de retour au cluster 0, et seulement les fichiers réellement fragmentés.
-   C'est elle qui lèvera le refus, et les huit scénarios NTFS avec.
+   d'évacuations, et une signature sonore radicalement différente. Chantier
+   distinct, et **sans rapport avec NTFS** : la stratégie s'applique aussi bien
+   aux volumes FAT.
+
+Deux pièges déjà repérés pour ce troisième point. `FindBestItem` n'a pour seul
+garde-fou contre l'explosion combinatoire qu'un **budget de 0,5 s de temps
+réel** (`ALGO.md` §5.2) : inutilisable tel quel, une passe simulée doit être
+reproductible, il faudra une borne déterministe et assumer que le plan diverge
+de l'original. Et la licence du dépôt amont est **incohérente** — `LICENSE` dit
+Apache 2.0, tous les en-têtes source disent GPL v2 / LGPL.
+
+### Pas encore écouté
+
+Tout ce qui précède est mesuré en `PLAN_ONLY`. Aucune passe NTFS n'a été rendue
+en audio : la signature sonore décrite ici — pas de « clac » de retour au bord,
+des rafales longues de 4 Mo — est déduite du plan, pas entendue.
 
 ---
 
