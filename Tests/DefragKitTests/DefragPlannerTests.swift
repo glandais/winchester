@@ -533,6 +533,42 @@ struct WindowsXPStrategyTests {
         #expect(destination(fenced) != destination(free))
     }
 
+    /// L'écran affichait une phrase codée en dur pour la stratégie de 1995 :
+    /// sur une passe XP, elle annonçait que « la destination d'un fichier est
+    /// presque toujours occupée » juste au-dessus d'un compteur à zéro. C'est
+    /// désormais la stratégie qui commente ses propres chiffres.
+    @Test("Chaque stratégie commente ses compteurs sans contredire l'écran")
+    func eachStrategyNarratesItsOwnCounters() {
+        let input = ntfsVolume(clusterCount: 2_000, files: [
+            TestFile(category: .application, extents: [Extent(start: 900, length: 40)]),
+            TestFile(category: .document,
+                     extents: [Extent(start: 100, length: 5), Extent(start: 600, length: 5)]),
+        ])
+        let plan = DefragPlanner.plan(volume: input)
+        let text = plan.strategy.summary(of: plan)
+
+        #expect(plan.strategy.label == "Défragmenteur de Windows XP")
+        #expect(plan.evacuations == 0)
+        #expect(text.contains("n'évacue personne"))
+        #expect(!text.contains("presque toujours occupée"),
+                "la phrase de 1995 a resurgi sur une passe qui n'évacue rien")
+        // Tout est réparé : l'écran n'a pas à parler de ce qui resterait.
+        #expect(plan.after.fragmentedFiles == 0)
+        #expect(!text.contains("restent en morceaux"))
+    }
+
+    /// Et le plan porte bien la stratégie qui l'a produit, y compris une fois
+    /// allégé de ses opérations pour l'affichage.
+    @Test("Un plan résumé garde l'outil qui l'a produit")
+    func summarizedPlansKeepTheirStrategy() {
+        let ntfs = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 1_000, files: [
+            TestFile(category: .document,
+                     extents: [Extent(start: 100, length: 5), Extent(start: 600, length: 5)]),
+        ]))
+        #expect(ntfs.summarized().strategy.id == "windowsXP")
+        #expect(ntfs.summarized().operations.isEmpty)
+    }
+
     @Test("Un volume NTFS est confié au défragmenteur de Windows XP")
     func ntfsPicksTheXPStrategy() {
         #expect(DefragPlanner.strategy(for: .ntfs).id == "windowsXP")

@@ -12,13 +12,13 @@ import DiskCore
 /// - le défragmenteur de Windows 95 tasse tout contre le début du volume dans
 ///   l'ordre du parcours de l'arborescence, donc évacue sans arrêt et revient
 ///   au bord du plateau une fois par fichier ;
-/// - *fast optimize* de MyDefrag ne comble que les trous : presque pas
+/// - `OptimizeVolume` de JKDefrag ne comble que les trous : presque pas
 ///   d'évacuations, des rafales courtes et dispersées ;
 /// - une passe NTFS façon `FSCTL_MOVE_FILE` ne touche que les fichiers
 ///   réellement fragmentés — sur un volume de 2007, deux cents sur douze mille.
 ///
 /// Une stratégie est une valeur et non un espace de noms : les variantes d'un
-/// même outil (analyse seule, optimisation complète, *fast optimize*) sont des
+/// même outil (analyse seule, optimisation complète, comblement seul) sont des
 /// réglages, pas des algorithmes différents.
 protocol DefragStrategy {
 
@@ -36,6 +36,16 @@ protocol DefragStrategy {
     /// propre copie, où elle rejoue chaque déplacement pour connaître l'état
     /// d'arrivée.
     func plan(volume: DefragVolume) -> DefragPlan
+
+    /// Ce que les compteurs de la passe veulent dire, en une phrase d'écran.
+    ///
+    /// Les mêmes nombres ne racontent pas la même histoire selon l'outil.
+    /// « 921 évacuations » est la mécanique normale d'un tassage ; « 0
+    /// évacuation » n'est pas un tassage qui aurait échoué, c'est le principe
+    /// d'un outil qui ne déloge personne. Laisser l'écran commenter lui-même
+    /// revenait à lui faire dire, sur une passe XP, que la destination est
+    /// « presque toujours occupée » juste au-dessus d'un zéro.
+    func summary(of plan: DefragPlan) -> String
 }
 
 // MARK: - Fabriques d'opérations

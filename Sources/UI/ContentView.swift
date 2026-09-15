@@ -143,6 +143,13 @@ struct SimulatorScreen: View {
                         .foregroundStyle(Theme.dim)
                 }
 
+                // L'outil qu'on écoute. Sans lui, deux passes aux signatures
+                // sonores opposées s'annoncent de la même façon, et le seul
+                // indice de ce qui a changé est un compteur.
+                Text(plan.strategy.label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.text)
+
                 ClusterMapView(cells: model.clusterCells(at: time),
                                clustersPerCell: model.clustersPerCell,
                                activeCell: active?.cell,
@@ -162,8 +169,10 @@ struct SimulatorScreen: View {
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(String(format: "La passe déplace %d fichiers et en laisse %d en place, mais force %d évacuations : la destination d'un fichier est presque toujours occupée par un autre, qu'il faut d'abord pousser vers la fin du volume.",
-                            plan.filesMoved, plan.filesAlreadyInPlace, plan.evacuations))
+                // C'est la stratégie qui commente ses propres compteurs : les
+                // mêmes nombres ne disent pas la même chose d'un outil à
+                // l'autre.
+                Text(plan.strategy.summary(of: plan))
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)

@@ -163,6 +163,7 @@ struct WindowsXPStrategy: DefragStrategy {
         operations.append(contentsOf: DefragOperations.final(partition: partition, phase: 2))
 
         return DefragPlan(
+            strategy: self,
             partition: partition,
             initialMap: initialMap,
             operations: operations,
@@ -178,6 +179,24 @@ struct WindowsXPStrategy: DefragStrategy {
             // de fichiers déplacés.
             evacuations: 0
         )
+    }
+
+    /// Les deux chiffres qui comptent ici sont ceux que l'outil affichait
+    /// lui-même : ce qu'il a réparé, et ce qu'il a dû laisser en morceaux faute
+    /// de trou à la taille. Le nombre d'évacuations, lui, ne vaut d'être dit
+    /// que parce qu'il est nul.
+    func summary(of plan: DefragPlan) -> String {
+        let repaired = plan.before.fragmentedFiles - plan.after.fragmentedFiles
+        var text = String(format: "La passe répare %d fichiers sur %d et n'évacue personne : "
+                          + "chacun est recopié dans un trou déjà libre, jamais aux dépens "
+                          + "d'un voisin.",
+                          repaired, plan.before.fragmentedFiles)
+        if plan.after.fragmentedFiles > 0 {
+            text += String(format: " %d restent en morceaux, faute d'un trou assez grand — "
+                           + "c'est ce que l'outil listait en fin de passe.",
+                           plan.after.fragmentedFiles)
+        }
+        return text
     }
 
     // MARK: - Ce à quoi l'outil a le droit de toucher

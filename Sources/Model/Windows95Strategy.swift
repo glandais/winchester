@@ -156,6 +156,7 @@ struct Windows95Strategy: DefragStrategy {
         operations.append(contentsOf: DefragOperations.final(partition: partition, phase: 5))
 
         return DefragPlan(
+            strategy: self,
             partition: partition,
             initialMap: initialMap,
             operations: operations,
@@ -168,6 +169,15 @@ struct Windows95Strategy: DefragStrategy {
             filesAlreadyInPlace: alreadyInPlace,
             evacuations: evacuations
         )
+    }
+
+    /// Ce qui fait durer une passe de 1995 n'est pas le volume de données, mais
+    /// le va-et-vient : la destination d'un fichier est presque toujours prise.
+    func summary(of plan: DefragPlan) -> String {
+        String(format: "La passe déplace %d fichiers et en laisse %d en place, mais force "
+               + "%d évacuations : la destination d'un fichier est presque toujours occupée "
+               + "par un autre, qu'il faut d'abord pousser vers la fin du volume.",
+               plan.filesMoved, plan.filesAlreadyInPlace, plan.evacuations)
     }
 
     // MARK: - Placement

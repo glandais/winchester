@@ -74,6 +74,13 @@ struct VolumeStats {
 }
 
 struct DefragPlan {
+    /// L'outil qui a produit ce plan.
+    ///
+    /// Le plan le porte plutôt que de recopier son nom : les compteurs qui
+    /// suivent ne veulent pas dire la même chose d'une stratégie à l'autre —
+    /// zéro évacuation est un aveu d'échec pour l'une et le principe même de
+    /// l'autre — et c'est la stratégie, et elle seule, qui sait les commenter.
+    let strategy: any DefragStrategy
     let partition: PartitionGeometry
     let initialMap: [UInt8]
     let operations: [DiskOperation]
@@ -94,7 +101,7 @@ struct DefragPlan {
     /// carte de départ et des compteurs. Les opérations, elles, se comptent en
     /// millions sur un volume d'époque réellement dimensionné.
     func summarized() -> DefragPlan {
-        DefragPlan(partition: partition, initialMap: initialMap,
+        DefragPlan(strategy: strategy, partition: partition, initialMap: initialMap,
                    operations: [], mutations: [], phases: phases,
                    before: before, after: after, movedBytes: movedBytes,
                    filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,
