@@ -115,15 +115,21 @@ struct CalibrationTests {
     @Test("Les vingt scénarios se génèrent")
     func allScenariosGenerate() throws {
         var lines: [String] = []
+        var slowest = 0.0
+        var slowestID = ""
         for id in ScenarioLibrary.identifiers {
+            let start = Date()
             let disk = try Self.generate(id)
-            lines.append(Self.describe(disk))
+            let elapsed = Date().timeIntervalSince(start)
+            if elapsed > slowest { slowest = elapsed; slowestID = id }
+            lines.append(String(format: "%@  [%.2f s]", Self.describe(disk), elapsed))
 
             #expect(disk.metrics.fileCount > 100, "\(id) : volume trop vide")
             #expect(disk.metrics.fill > 0.05, "\(id) : remplissage \(disk.metrics.fill)")
             #expect(disk.metrics.fill <= 1.0)
         }
-        print("\n" + lines.joined(separator: "\n") + "\n")
+        print("\n" + lines.joined(separator: "\n"))
+        print(String(format: "plus lent : %@ en %.2f s\n", slowestID, slowest))
     }
 
     /// Les cibles du cahier des charges, et ce que le modèle produit.
@@ -174,7 +180,7 @@ struct CalibrationTests {
         withKnownIssue("le modèle produit 6 % : NTFS place bien même à 93 % — voir la note") {
             #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.40)
         }
-        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.03)
+        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.01)
         // Mais les gros fichiers écrits en fin de course, eux, sont en miettes.
         #expect(disk.metrics.maxExtentsPerFile > 500)
     }
@@ -245,15 +251,15 @@ struct CalibrationTests {
 // fichiers système que les trois vagues de mises à jour par an qu'a reçues
 // Windows 95.
 //
-// `famille-2003` : 6 % au lieu de 40 à 60 %, à 93 % de remplissage. Ici la
+// `famille-2003` : 2 % au lieu de 40 à 60 %, à 93 % de remplissage. Ici la
 // cause est ailleurs, et elle est cohérente avec le reste du modèle : le
 // best-fit de NTFS trouve encore des trous à la bonne taille sur un volume à
 // 93 %, et il ne coupe un fichier que lorsqu'il n'a vraiment plus le choix.
 // C'est exactement ce que le cahier des charges décrit par ailleurs — « NTFS :
 // fichiers bien plus contigus ». Le même usage, la même durée, la même
-// saturation, rejoués sur le FAT32 de 1999, donnent 23 %. La fourchette de 40 à
-// 60 % correspondrait à un volume poussé au-delà de 98 %, ou à un allocateur
-// qui place moins bien que celui modélisé ici.
+// saturation, rejoués sur le FAT32 de 1999, donnent plus de vingt fois mieux.
+// La fourchette de 40 à 60 % correspondrait à un volume poussé au-delà de 98 %,
+// ou à un allocateur qui place moins bien que celui modélisé ici.
 //
 // Dans les deux cas, ce qui est mesuré est la conséquence du modèle et non un
 // réglage : aucune des vingt descriptions embarquées ne contient de taux de

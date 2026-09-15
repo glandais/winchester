@@ -128,6 +128,58 @@ phases affichées sur la chronologie ne sont donc datées qu'*après* la simulat
 change de couleur exactement quand son écriture s'entend. Comme sur l'original,
 un bloc affiché vaut plusieurs clusters — 35 ici, soit 140 Ko.
 
+## Les disques d'époque
+
+Second écran de l'application : une galerie de volumes vieillis, cinq époques
+et quatre profils chacune, générés à la demande sur l'appareil.
+
+**La fragmentation n'est pas un paramètre, c'est un résidu.** On ne demande
+jamais « un disque à 23 % de fragmentation ». On écrit une histoire — une
+installation, des compilations, des enregistrements, des téléchargements, des
+mises à jour, ce qu'on entasse et le moment où l'on fait enfin le ménage — et
+on la rejoue à travers l'allocateur du système de fichiers visé. Ce qui sort
+tombe tout seul, avec la bonne texture.
+
+L'histoire est écrite **avant** toute allocation et ne connaît rien du format :
+la même journée de développeur, rejouée sur les trois allocateurs, donne trois
+volumes qui n'ont rien à voir, et toute la différence vient du placement.
+
+|                | FAT16 32 Ko | FAT32 4 Ko | NTFS 4 Ko |
+|---|---|---|---|
+| fichiers fragmentés | 14,5 % | 3,1 % | 1,4 % |
+| pire fichier | 7 extents | 98 extents | 4 extents |
+| trous dans l'espace libre | 3 | 502 | 107 |
+| slack | 13,8 % | 1,5 % | 1,4 % |
+
+**Les trois stratégies.** MS-DOS sert le premier cluster libre à partir du
+début du volume, à chaque écriture : les trous se rebouchent aussitôt, le début
+du disque devient un gruyère dense et les fichiers récents sont hachés. VFAT
+puis FAT32 reprennent au dernier cluster alloué : l'écriture est propre tant
+que le curseur avance, puis il revient au début et repasse par-dessus des trous
+laissés des mois plus tôt — la fragmentation arrive par vagues. NTFS choisit le
+trou qui convient plutôt que le premier venu, réserve 12,5 % du volume à sa MFT
+et n'y touche qu'au-delà de 87 % de remplissage : les fichiers restent
+contigus bien plus longtemps, et le jour où ça lâche, ça lâche d'un coup.
+
+**Ce qui se mesure.** Le slack de 1996 est là où on l'attend : sur une
+population de documents Word, des clusters de 32 Ko perdent 31 % du volume
+contre 2 % en FAT32 — un tiers de disque en plus pour le même contenu. Un
+`gamer-2003` fraîchement installé n'a pas un seul fichier en deux morceaux. Un
+poste DOS de 1993 après deux ans en a 71 %.
+
+**Deux cibles ne sont pas atteintes**, et les tests le disent plutôt que de
+l'arrondir : `dev-1996` donne 11 % de fichiers fragmentés au lieu des 35 à 50 %
+visés, et `famille-2003` 2 % au lieu de 40 à 60 %. Le premier écart vient de la
+population : trois mille des cinq mille fichiers du volume viennent d'une
+installation écrite d'affilée sur un disque vierge, si bien que le taux global
+plafonne — alors que les fichiers de sortie sont bel et bien en 290 morceaux.
+Le second vient de NTFS lui-même, qui place encore bien à 93 % de remplissage.
+
+**Coût.** Le volume le plus lourd — un Vista de 250 Go, trois ans d'historique,
+2,7 millions d'événements — se génère en 2,0 s en release. La génération tourne
+hors du fil principal, rapporte son avancement et s'annule si l'on change de
+scénario en route.
+
 ## Ce qui ne l'est pas
 
 - **La couche rotation est procédurale, et c'est le maillon faible.** La

@@ -185,6 +185,9 @@ public struct NTFSAllocator: Allocator {
                 systemCursor = run.end
                 return commit([run])
             }
+            // Le curseur système avance même quand il ne trouve rien : sinon
+            // chaque mise à jour rebalaie la même zone pleine depuis le début.
+            systemCursor = min(systemCursor &+ searchHorizon, range.upperBound)
             // La tête du volume est pleine : le fichier système suivant est
             // traité comme les autres.
             systemCursor = range.lowerBound
@@ -208,16 +211,21 @@ public struct NTFSAllocator: Allocator {
         // au-delà du `highWater` il n'y a qu'un seul trou, celui qui reste, et
         // le confronter aux autres n'a aucun sens.
         let used = range.lowerBound..<min(max(highWater, range.lowerBound), range.upperBound)
+        // Un trou plus grand que le double du besoin n'intéresse pas cette
+        // recherche : l'allocateur préférera l'espace vierge plutôt que de
+        // couper un grand bloc en deux. Le dire à la bitmap lui évite de mesurer
+        // ces trous-là jusqu'au bout.
+        let (doubled, overflow) = count.multipliedReportingOverflow(by: reuseTolerance)
+        let tolerable = overflow ? UInt32.max : doubled
+
         if used.lowerBound < used.upperBound,
            let fit = bitmap.bestFitRun(minLength: count, in: used,
                                        from: searchCursor,
                                        maxRunsExamined: searchWindow,
-                                       maxClustersScanned: searchHorizon) {
-            let (doubled, overflow) = count.multipliedReportingOverflow(by: reuseTolerance)
-            let tolerable = overflow ? UInt32.max : doubled
-            if fit.length <= tolerable {
-                return Extent(start: fit.start, length: count)
-            }
+                                       maxClustersScanned: searchHorizon,
+                                       measureLimit: tolerable),
+           fit.length <= tolerable {
+            return Extent(start: fit.start, length: count)
         }
 
         // Espace vierge : on y cherche de quoi loger le fichier **et** sa marge
@@ -233,12 +241,22 @@ public struct NTFSAllocator: Allocator {
             }
         }
 
-        // Plus de vierge : le curseur repart du début de la zone de données et
-        // reprend tout ce qui a été libéré entre-temps.
-        if let fit = bitmap.bestFitRun(minLength: count, in: range,
-                                       maxRunsExamined: searchWindow * 4,
-                                       maxClustersScanned: searchHorizon * 4) {
-            return Extent(start: fit.start, length: count)
+        // Plus de vierge : on reprend le volume par fenêtres successives, en
+        // repartant de là où le curseur en est. Rescanner tout le volume à
+        // chaque écriture coûterait, sur un disque de 2007, plus d'une minute
+        // pour une seule génération — et surtout, aucun pilote ne fait cela.
+        var probe = range.lowerBound
+        var windows = 0
+        while probe < range.upperBound, windows < 16 {
+            if let fit = bitmap.bestFitRun(minLength: count, in: range,
+                                           from: probe,
+                                           maxRunsExamined: searchWindow,
+                                           maxClustersScanned: searchHorizon,
+                                           measureLimit: tolerable) {
+                return Extent(start: fit.start, length: count)
+            }
+            probe = probe &+ searchHorizon
+            windows += 1
         }
         return nil
     }
@@ -268,7 +286,9 @@ public struct NTFSAllocator: Allocator {
         for extent in extents {
             bitmap.allocate(extent)
             highWater = max(highWater, extent.end)
-            searchCursor = extent.start
+            // Le curseur suit l'écriture : la place suivante est cherchée à
+            // partir d'ici, pas depuis le début du volume.
+            searchCursor = extent.end < bitmap.clusterCount ? extent.end : 0
             if extent.start < mftZone.upperBound && extent.end > mftZone.lowerBound {
                 mftZoneBreached = true
             }

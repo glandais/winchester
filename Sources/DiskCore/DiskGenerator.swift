@@ -17,10 +17,57 @@ public struct GeneratedDisk: Sendable {
 
     public var clusterCount: UInt32 { bitmap.clusterCount }
 
-    /// Carte des catégories, une valeur par cluster — ce que la vue agrège pour
-    /// colorier sa grille.
+    /// Carte des catégories, une valeur par cluster.
+    ///
+    /// À n'appeler que sur les petits volumes : un disque de 320 Go en clusters
+    /// de 4 Ko compte quatre-vingt-quatre millions de clusters, et cette carte
+    /// ferait quatre-vingt-quatre mégaoctets. Pour l'affichage, `cells` agrège
+    /// sans jamais la matérialiser.
     public func categoryMap() -> [UInt8] {
         catalog.categoryMap(clusterCount: bitmap.clusterCount)
+    }
+
+    /// Carte agrégée en `cellCount` blocs, prête pour la grille de l'interface.
+    ///
+    /// Chaque bloc prend la catégorie la plus représentée parmi ses clusters
+    /// **occupés** : un bloc qui contient ne serait-ce qu'un fichier n'a pas
+    /// l'air vide, comme sur la carte du défragmenteur d'origine. L'agrégation
+    /// se fait en parcourant les extents du catalogue, jamais en construisant
+    /// la carte complète — c'est ce qui permet d'afficher un volume de 320 Go
+    /// sans allouer quatre-vingt-quatre mégaoctets.
+    public func cells(count cellCount: Int, free: UInt8 = .max) -> [UInt8] {
+        precondition(cellCount > 0)
+        let categoryCount = FileCategory.allCases.count
+        var tally = [UInt32](repeating: 0, count: cellCount * categoryCount)
+        let clustersPerCell = max(Double(bitmap.clusterCount) / Double(cellCount), 1)
+
+        for record in catalog.files where !record.isResident {
+            let category = Int(record.category.rawValue)
+            for extent in record.extents {
+                let first = Int(Double(extent.start) / clustersPerCell)
+                let last = Int(Double(extent.end - 1) / clustersPerCell)
+                guard first < cellCount else { continue }
+                for cell in first...min(last, cellCount - 1) {
+                    // Part de l'extent qui tombe dans cette cellule.
+                    let cellStart = Double(cell) * clustersPerCell
+                    let overlap = min(Double(extent.end), cellStart + clustersPerCell)
+                        - max(Double(extent.start), cellStart)
+                    tally[cell * categoryCount + category] += UInt32(max(overlap, 1))
+                }
+            }
+        }
+
+        var result = [UInt8](repeating: free, count: cellCount)
+        for cell in 0..<cellCount {
+            var best = -1
+            var bestCount: UInt32 = 0
+            for category in 0..<categoryCount {
+                let value = tally[cell * categoryCount + category]
+                if value > bestCount { bestCount = value; best = category }
+            }
+            if best >= 0 { result[cell] = UInt8(best) }
+        }
+        return result
     }
 }
 

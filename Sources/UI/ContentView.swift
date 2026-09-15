@@ -1,10 +1,54 @@
 import SwiftUI
 
+/// Deux écrans : la simulation sonore, et la galerie de disques d'époque.
+///
+/// Ils ne partagent rien d'autre que le thème — le premier fait du bruit à
+/// partir d'un scénario figé, le second fabrique des volumes et les montre. La
+/// jonction entre les deux (défragmenter à voix haute un disque qu'on vient de
+/// générer) passe par `GeneratedVolumeBridge`, et n'a de sens que sur les
+/// volumes qu'un défragmenteur de 1995 pourrait ouvrir.
+enum Workspace: String, CaseIterable, Identifiable {
+    case simulator
+    case library
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .simulator: return "Simulation"
+        case .library:   return "Disques d'époque"
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject private var model = SimulationModel()
+    @StateObject private var library = DiskLibraryModel()
+    @State private var workspace: Workspace = .simulator
 
     var body: some View {
-        SimulatorScreen(model: model, engine: model.engine)
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Picker("Espace", selection: $workspace) {
+                    ForEach(Workspace.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+
+                switch workspace {
+                case .simulator:
+                    SimulatorScreen(model: model, engine: model.engine)
+                case .library:
+                    ScrollView {
+                        DiskLibraryView(model: library)
+                            .padding(16)
+                    }
+                }
+            }
+        }
+        .tint(Theme.read)
     }
 }
 
@@ -339,7 +383,7 @@ struct SimulatorScreen: View {
 
 // MARK: - Petits composants
 
-private struct StatTile: View {
+struct StatTile: View {
     let label: String
     let value: String
     let unit: String

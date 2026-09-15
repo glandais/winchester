@@ -306,11 +306,19 @@ public struct ClusterBitmap: Sendable {
     ///   clusters dont plusieurs millions sont occupés d'un seul tenant, ce
     ///   n'est pas le nombre de trous examinés qui coûte, c'est la traversée
     ///   des zones pleines qui les sépare.
+    /// - Parameter measureLimit: mesure chaque trou au plus jusque-là. Un trou
+    ///   rendu à cette longueur signifie « au moins autant », pas « exactement
+    ///   autant » — l'appelant l'utilise pour dire « au-delà de cette taille,
+    ///   les trous ne m'intéressent plus, je préfère écrire ailleurs ». Sans ce
+    ///   plafond, chaque recherche mesure entièrement l'espace libre qu'elle
+    ///   croise : sur un volume de 250 Go rempli aux trois quarts, c'est la
+    ///   différence entre deux secondes et une minute de génération.
     public func bestFitRun(minLength: UInt32,
                            in range: Range<UInt32>? = nil,
                            from: UInt32? = nil,
                            maxRunsExamined: Int = .max,
-                           maxClustersScanned: UInt32 = .max) -> Extent? {
+                           maxClustersScanned: UInt32 = .max,
+                           measureLimit: UInt32 = .max) -> Extent? {
         guard minLength > 0 else { return nil }
         let lower = range?.lowerBound ?? 0
         let upper = min(range?.upperBound ?? clusterCount, clusterCount)
@@ -324,7 +332,7 @@ public struct ClusterBitmap: Sendable {
             ? upper
             : min(upper, origin &+ maxClustersScanned)
 
-        while let run = nextFreeRun(from: position, before: horizon) {
+        while let run = nextFreeRun(from: position, limit: measureLimit, before: horizon) {
             // Un run qui dépasse la plage n'y est utilisable que pour sa part
             // interne : c'est ce qui permet de s'arrêter net au bord de la MFT.
             let usable = min(run.end, upper) - run.start

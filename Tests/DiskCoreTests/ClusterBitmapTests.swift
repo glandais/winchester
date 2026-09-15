@@ -101,6 +101,13 @@ struct ClusterBitmapTests {
         #expect(bitmap.bestFitRun(minLength: 13) == Extent(start: 200, length: 30))
         #expect(bitmap.bestFitRun(minLength: 31) == Extent(start: 10, length: 50))
         #expect(bitmap.bestFitRun(minLength: 51) == nil)
+
+        // Avec un plafond de mesure, un trou plus grand que le plafond est rendu
+        // à cette taille-là : l'appelant a dit qu'au-delà ils ne l'intéressaient
+        // plus.
+        #expect(bitmap.bestFitRun(minLength: 12, measureLimit: 20)?.length == 12)
+        #expect(bitmap.bestFitRun(minLength: 31, measureLimit: 35)?.length == 35)
+
         // À égalité de taille, le trou le plus proche du début gagne.
         bitmap.free(start: 350, length: 12)
         #expect(bitmap.bestFitRun(minLength: 12) == Extent(start: 100, length: 12))
