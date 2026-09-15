@@ -19,6 +19,7 @@ swiftc -O -swift-version 6 -o "${1:-/tmp/rendertrace}" \
     Sources/Model/DefragJob.swift \
     Sources/Model/DefragStrategy.swift \
     Sources/Model/Windows95Strategy.swift \
+    Sources/Model/WindowsXPStrategy.swift \
     Sources/Model/GeneratedVolume.swift \
     Sources/Model/Scenario.swift \
     Sources/Audio/Biquad.swift \

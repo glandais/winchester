@@ -109,13 +109,20 @@ struct DefragPlan {
 /// format — c'est lui qui datait l'outil qu'on avait sous la main.
 enum DefragPlanner {
 
-    /// Pour l'instant, une seule stratégie est écrite, et les volumes NTFS sont
-    /// refusés en amont par `GeneratedVolumeBridge.isSupported`. Ce choix n'a
-    /// donc pas encore d'alternative à offrir — il existe pour que l'ajout
-    /// d'une passe NTFS ou d'un *fast optimize* soit un cas de plus ici, et
-    /// rien d'autre.
+    /// Le format date l'outil. Un volume FAT16 ou FAT32, c'est une machine de
+    /// 1993 à 1999 : le défragmenteur livré avec Windows 95, puis 98. Un volume
+    /// NTFS, c'est 2003 ou 2007, et l'outil qu'on avait sous la main est le
+    /// `dfrg.msc` de Windows XP — qui ne range pas le volume, il répare les
+    /// fichiers cassés.
+    ///
+    /// Rien n'interdirait de passer la stratégie de 95 sur un NTFS : cela
+    /// marcherait, et ce serait un contresens de vingt-huit millions de
+    /// requêtes.
     static func strategy(for format: VolumeFormat) -> any DefragStrategy {
-        Windows95Strategy()
+        switch format {
+        case .fat16, .fat32: return Windows95Strategy()
+        case .ntfs:          return WindowsXPStrategy()
+        }
     }
 
     static func plan(volume: DefragVolume) -> DefragPlan {

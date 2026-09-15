@@ -127,10 +127,11 @@ struct DiskLibraryView: View {
     /// Le seul pont entre les deux écrans : défragmenter à voix haute le disque
     /// qu'on vient de fabriquer.
     ///
-    /// Il n'a de sens que sur les volumes qu'un défragmenteur de 1995 saurait
-    /// ouvrir. Plutôt que de masquer le bouton sur les autres, on le laisse
-    /// visible et éteint avec la raison écrite dessous : c'est l'occasion de
-    /// dire pourquoi un NTFS de 320 Go ne se défragmente pas ici.
+    /// Les vingt disques de la galerie s'y prêtent désormais, chacun avec
+    /// l'outil de son époque : le défragmenteur de Windows 95 sur les volumes
+    /// FAT, celui de Windows XP sur les NTFS. Le bouton reste malgré tout
+    /// capable de s'éteindre, avec la raison écrite dessous — un disque décrit
+    /// n'importe comment n'a pas à faire planter l'écran suivant.
     @ViewBuilder
     private func defragmentButton(for disk: GeneratedDisk) -> some View {
         let refusal = GeneratedVolumeBridge.refusal(for: disk)

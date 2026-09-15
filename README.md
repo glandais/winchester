@@ -241,20 +241,56 @@ piste-à-piste. C'est leur rapport qui distingue une époque d'une autre : entre
 Un 210 Mo à 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à 5 400 tr/min de
 1996, et n'en est pas loin de sonner comme un 40 Go de 2003.
 
-**Douze scénarios sur vingt y ont droit** : ceux de 1993, 1996 et 1999. La
-limite n'est plus une taille — le planificateur travaille en extents, et un
-volume de 320 Go ne lui coûte pas plus cher qu'un de 180 Mo — mais un
-**format** : au-delà, le bouton reste visible et éteint, avec la raison écrite
-dessous.
+**Les vingt scénarios y ont droit.** Ni la taille ni le format ne limitent plus
+rien : le planificateur travaille en extents, et un volume de 320 Go ne lui
+coûte pas plus cher qu'un de 180 Mo. Ce qui change avec le format, c'est
+l'**outil** — parce que c'est lui que le format datait.
 
-Ce qui bloque NTFS n'est pas l'impossibilité de le décrire, c'est que la passe
-de Windows 95 n'y a **aucun sens**. Sur le volume de 320 Go de `famille-2007`,
-elle tasse trois cents gigaoctets contre le début du disque par tampons de
-256 Ko : vingt-huit millions de requêtes, et quatre-vingt-quatorze heures de
-passe simulée — alors que 244 fichiers seulement, sur 12 220, sont fragmentés.
-C'est une stratégie qu'il faut là, pas une taille de volume.
+#### Deux défragmenteurs, pas un
 
-Ces passes-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`),
+Sur un volume FAT, c'est la passe livrée avec Windows 95 puis 98 : tasser tous
+les fichiers contre le début du volume, dans l'ordre du parcours de
+l'arborescence. Sur un volume NTFS, c'est le `dfrg.msc` de Windows XP, dérivé
+de Diskeeper Lite — l'outil qu'un utilisateur de 2003 ou 2007 avait réellement
+sous la main, et qui fait un autre métier : il ne range pas le volume, il
+répare les fichiers cassés, en les recopiant dans un trou déjà libre par blocs
+de 4 Mo. Il n'évacue personne, et la validation d'un déplacement n'est plus
+trois écritures au bord du plateau mais un enregistrement de MFT, là où il
+vit — donc plus de « clac … clac … clac ».
+
+L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
+`famille-2007` tassait trois cents gigaoctets par tampons de 256 Ko : vingt-huit
+millions de requêtes, quatre-vingt-quatorze heures de passe simulée, pour ranger
+244 fichiers sur 12 220. La passe de XP sur le même volume tient en **78 797
+requêtes et 23 min 38**.
+
+| scénario NTFS     | plein | requêtes | durée      | déplacés | fragmentés avant → après |
+|-------------------|------:|---------:|-----------:|---------:|--------------------------|
+| `gamer-2003`      |   8 % |       17 |      7,8 s |        0 | 0 → 0                    |
+| `secretaire-2003` |  94 % |    7 455 |   2 min 23 |       57 | 141 → 84                 |
+| `famille-2003`    |  93 % |    9 190 |   2 min 32 |       39 | 80 → 41                  |
+| `dev-2003`        |  94 % |   27 747 |   7 min 56 |      274 | 299 → 25                 |
+| `secretaire-2007` |  88 % |   35 408 |  15 min 27 |      186 | 186 → **0**              |
+| `famille-2007`    |  93 % |   78 797 |  23 min 38 |       89 | 244 → 155                |
+| `gamer-2007`      |  90 % |   78 305 |  27 min 33 |      132 | 192 → 60                 |
+| `dev-2007`        |  86 % |  280 595 | 1 h 12 min |      172 | 172 → **0**              |
+
+La colonne qui compte est la dernière : cet outil-là ne déloge personne, donc
+il échoue quand aucun trou n'est à la taille, et il le dit dans son rapport.
+Mais **ce n'est pas le remplissage qui décide**. `dev-2003` et
+`secretaire-2003` sont deux volumes de 40 Go remplis à 94 % : le premier répare
+274 fichiers sur 299, le second 57 sur 141. Ce qui les sépare est la taille de
+ce qu'il y a à réparer — 13 Mo par fichier déplacé chez le développeur, 21 Mo
+chez la secrétaire, et 213 Mo sur le 320 Go de `famille-2007`, qui n'en répare
+qu'un tiers. Un volume plein garde des trous ; il ne garde pas de *grands*
+trous, et c'est un gros fichier fragmenté qui n'a nulle part où aller.
+
+Les 15 % d'espace libre que demandait Microsoft vont dans ce sens, mais la
+mesure ne suffit pas à l'établir : la taille moyenne citée ici est celle des
+fichiers que la passe a **réussi** à déplacer, pas de ceux qui sont restés en
+morceaux. Le vérifier demanderait de compter les échecs par taille.
+
+Ces passes FAT-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`),
 contre 3 min 24 pour le scénario livré, dont le volume est délibérément réduit.
 C'est la vraie durée d'une passe d'époque sur un volume d'époque, et ce n'est
 pas la taille du volume qui la fixe : `secretaire-1993`, le plus petit disque de
@@ -437,7 +473,11 @@ Sources/Model/
     Volume.swift           volume vieilli sur place, allocateur next-fit
     DefragVolume.swift     le volume vu par le défragmenteur : bitmap, fichiers
                            décrits par extents, index des occupants par blocs
-    DefragJob.swift        planificateur de la passe de défragmentation
+    DefragJob.swift        types du plan, et choix de la stratégie sur le format
+    DefragStrategy.swift   ce qu'est un défragmenteur : phases, plan, et les
+                           fabriques d'opérations communes à tous
+    Windows95Strategy.swift  tasser le volume contre son début (FAT16, FAT32)
+    WindowsXPStrategy.swift  réparer les seuls fichiers cassés (NTFS)
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
     Scenario.swift         construction des scénarios, séries d'affichage
     SimulationModel.swift  assemblage + interrogation pour l'UI

@@ -39,13 +39,14 @@ extension ClusterCategory {
 enum GeneratedVolumeBridge {
 
     enum BridgeError: Error, CustomStringConvertible {
-        case unsupportedFormat(FileSystemKind)
+        /// Un cluster plus petit qu'un secteur : le disque décrit n'existe pas,
+        /// et rien de ce qui suit n'aurait de sens.
+        case unusableClusterSize(UInt32)
 
         var description: String {
             switch self {
-            case let .unsupportedFormat(kind):
-                return "le défragmenteur simulé ne range pas un volume "
-                    + "\(kind.rawValue.uppercased())"
+            case let .unusableClusterSize(bytes):
+                return "cluster de \(bytes) octets : plus petit qu'un secteur"
             }
         }
     }
@@ -70,7 +71,7 @@ enum GeneratedVolumeBridge {
         // appelant qui passerait outre — le rendu hors-ligne, par exemple — doit
         // obtenir la même réponse.
         guard isSupported(disk), clusterSectors > 0 else {
-            throw BridgeError.unsupportedFormat(disk.spec.fileSystem.type)
+            throw BridgeError.unusableClusterSize(disk.clusterBytes)
         }
 
         let partition = PartitionGeometry(startLBA: 0,
@@ -100,21 +101,23 @@ extension GeneratedVolumeBridge {
     ///
     /// Ce n'est plus une question de taille — le planificateur travaille en
     /// extents et un volume de 320 Go ne lui coûte pas plus qu'un de 180 Mo —
-    /// mais de **format** : le défragmenteur simulé est celui de Windows 95,
-    /// puis de Windows 98 pour FAT32. NTFS demande une autre stratégie, qui ne
-    /// déplace pas les fichiers de la même façon et ne valide pas au même
-    /// endroit.
+    /// ni de format : chacun des trois a désormais l'outil de son époque, le
+    /// défragmenteur de Windows 95 pour les deux FAT, celui de Windows XP pour
+    /// NTFS (`DefragPlanner.strategy(for:)`).
+    ///
+    /// Ne reste que la vérification qui protège d'un disque impossible : un
+    /// cluster doit valoir au moins un secteur, sans quoi toute la conversion
+    /// en LBA s'effondre.
     static func isSupported(_ disk: GeneratedDisk) -> Bool {
-        format(of: disk) != .ntfs
-            && Int(disk.clusterBytes) >= DriveGeometry.bytesPerSector
+        Int(disk.clusterBytes) >= DriveGeometry.bytesPerSector
     }
 
     /// Pourquoi ce disque ne se défragmente pas, en une phrase d'écran. `nil`
-    /// s'il se défragmente.
+    /// s'il se défragmente — c'est le cas des vingt scénarios de la galerie.
     static func refusal(for disk: GeneratedDisk) -> String? {
         guard !isSupported(disk) else { return nil }
-        return "Volume NTFS de \(disk.spec.disk.sizeMB) Mo : le défragmenteur simulé est "
-            + "celui de Windows 95, qui range les fichiers par la table d'allocation."
+        return "Cluster de \(disk.clusterBytes) octets : plus petit qu'un secteur, "
+            + "ce volume n'est pas adressable."
     }
 
     /// Matériel décrit par le profil : géométrie zonée et loi de seek.

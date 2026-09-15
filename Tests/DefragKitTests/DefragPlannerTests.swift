@@ -417,3 +417,281 @@ struct AgedVolumeTests {
         }
     }
 }
+
+// MARK: - La passe NTFS
+
+/// Un volume NTFS de test, dont on choisit exactement le placement.
+private func ntfsVolume(clusterCount: Int, files: [TestFile]) -> DefragVolume {
+    let partition = PartitionGeometry(startLBA: 0, clusterCount: clusterCount,
+                                      clusterSectors: 8, format: .ntfs)
+    let records: [DefragFile] = files.enumerated().map { position, file in
+        DefragFile(id: UInt32(position), path: "\\Documents\\F\(position).dat",
+                   category: file.category, walkOrder: position,
+                   extents: file.extents, isMovable: file.movable)
+    }
+    return DefragVolume(partition: partition, files: records)
+}
+
+/// Ce que fait le défragmenteur de Windows XP, et surtout ce qu'il ne fait pas.
+///
+/// Les trois quarts de ces tests vérifient une **absence** : pas de tassage,
+/// pas d'évacuation, pas de retour au bord du plateau. C'est bien là que se
+/// joue la différence avec la passe de 1995, et c'est ce qui rend les huit
+/// volumes NTFS de la galerie planifiables.
+@Suite("Passe NTFS façon Windows XP")
+struct WindowsXPStrategyTests {
+
+    @Test("Un volume NTFS est confié au défragmenteur de Windows XP")
+    func ntfsPicksTheXPStrategy() {
+        #expect(DefragPlanner.strategy(for: .ntfs).id == "windowsXP")
+        #expect(DefragPlanner.strategy(for: .fat16).id == "windows95")
+        #expect(DefragPlanner.strategy(for: .fat32).id == "windows95")
+    }
+
+    /// Le point de départ : un fichier contigu n'est pas touché, même s'il est
+    /// loin du début du volume. Sur `famille-2007` cela fait 11 976 fichiers
+    /// qui ne coûtent pas une requête.
+    @Test("Seuls les fichiers fragmentés sont touchés")
+    func onlyFragmentedFilesMove() {
+        let input = ntfsVolume(clusterCount: 2_000, files: [
+            TestFile(category: .application, extents: [Extent(start: 900, length: 40)]),
+            TestFile(category: .document,
+                     extents: [Extent(start: 100, length: 5), Extent(start: 600, length: 5)]),
+            TestFile(category: .system, extents: [Extent(start: 1_500, length: 10)]),
+        ])
+        let plan = DefragPlanner.plan(volume: input)
+
+        #expect(plan.filesMoved == 1)
+        #expect(plan.filesAlreadyInPlace == 2)
+        #expect(plan.before.fragmentedFiles == 1)
+        #expect(plan.after.fragmentedFiles == 0)
+    }
+
+    /// Ce qui distinguait l'outil de 2003 de celui de 1995, en un compteur :
+    /// il n'a jamais délogé personne pour se faire de la place.
+    @Test("La passe n'évacue personne")
+    func noEvacuation() {
+        let files: [TestFile] = (0..<30).map { (index: Int) -> TestFile in
+            TestFile(category: .document,
+                     extents: [Extent(start: UInt32(index) * 20 + 3, length: 4),
+                               Extent(start: 1_000 + UInt32(index) * 20, length: 3)])
+        }
+        let plan = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 3_000, files: files))
+        #expect(plan.evacuations == 0)
+        #expect(plan.after.fragmentedFiles == 0)
+    }
+
+    /// Le contre-exemple de la stratégie de 1995 : ce qui était déjà contigu
+    /// reste exactement où il était, y compris à l'autre bout du volume. C'est
+    /// pour cela qu'il n'y a pas trois cents gigaoctets à recopier.
+    @Test("Un fichier contigu en fin de volume n'est pas ramené vers le début")
+    func nothingIsPacked() {
+        let far = Extent(start: 1_800, length: 50)
+        let input = ntfsVolume(clusterCount: 2_000, files: [
+            TestFile(category: .application, extents: [far]),
+            TestFile(category: .document,
+                     extents: [Extent(start: 10, length: 4), Extent(start: 500, length: 4)]),
+        ])
+        let plan = DefragPlanner.plan(volume: input)
+        let partition = plan.partition
+        let start = partition.lba(ofCluster: Int(far.start))
+        let end = partition.lba(ofCluster: Int(far.end))
+
+        for operation in plan.operations where operation.kind != .scan {
+            #expect(!(operation.lba < end && operation.lba + operation.sectors > start),
+                    "la passe a touché un fichier déjà contigu")
+        }
+    }
+
+    /// La signature sonore, vérifiée là où elle se décide : une validation NTFS
+    /// écrit l'enregistrement de MFT du fichier et un secteur de bitmap, pas
+    /// trois fois au tout début de la partition.
+    @Test("Valider un déplacement ne ramène pas le bras au cluster 0")
+    func commitStaysAwayFromTheEdge() {
+        let input = ntfsVolume(clusterCount: 200_000, files: [
+            TestFile(category: .document,
+                     extents: [Extent(start: 150_000, length: 8),
+                               Extent(start: 180_000, length: 8)]),
+        ])
+        let plan = DefragPlanner.plan(volume: input)
+        let commits = plan.operations.filter { $0.kind == .metadata && $0.phase == 1 }
+
+        // Deux écritures par déplacement, et aucune dans le boot.
+        #expect(commits.count == 2 * plan.filesMoved)
+        for commit in commits {
+            #expect(commit.lba >= plan.partition.dataStartLBA)
+        }
+        // Et la bitmap suit le cluster de destination : elle n'est pas au bord.
+        #expect(commits.contains { $0.lba > plan.partition.dataStartLBA + 1_000 })
+    }
+
+    /// Déplacer des clusters reste une lecture suivie d'une écriture : le
+    /// système de fichiers travaille par gros blocs, il ne fabrique pas la
+    /// donnée.
+    @Test("Chaque bloc déplacé est lu avant d'être écrit")
+    func everyWriteHasItsRead() {
+        let input = ntfsVolume(clusterCount: 200_000, files: [
+            TestFile(category: .application,
+                     extents: (0..<8).map { Extent(start: UInt32($0) * 10_000 + 50_000,
+                                                   length: 2_000) }),
+        ])
+        let plan = DefragPlanner.plan(volume: input)
+        let reads = plan.operations.filter { $0.kind == .readExtent }
+        let writes = plan.operations.filter { $0.kind == .writeExtent }
+
+        #expect(reads.count == writes.count)
+        #expect(!reads.isEmpty)
+        let readClusters = reads.reduce(0) { $0 + $1.sectors } / plan.partition.clusterSectors
+        #expect(readClusters == 16_000, "tout le fichier est relu, et une seule fois")
+    }
+
+    /// Le bloc de déplacement est un réglage de l'outil, comme le tampon de
+    /// 256 Ko l'est pour Windows 95 : c'est lui qui fixe le grain de la passe.
+    @Test("La taille du bloc de déplacement fixe le nombre de requêtes")
+    func moveBlockSizeDrivesTheRequestCount() {
+        let input = ntfsVolume(clusterCount: 100_000, files: [
+            TestFile(category: .application,
+                     extents: [Extent(start: 50_000, length: 4_000),
+                               Extent(start: 60_000, length: 4_000)]),
+        ])
+        // 8 000 clusters de 4 Ko, soit 32 Mo, en deux extents de 4 000 : huit
+        // blocs de 4 Mo (1 024 clusters), cent vingt-six de 256 Ko (64
+        // clusters) — un bloc ne chevauche jamais deux extents de la source.
+        var big = WindowsXPStrategy()
+        big.bufferBytes = 4 * 1024 * 1024
+        var small = WindowsXPStrategy()
+        small.bufferBytes = 256 * 1024
+
+        let writes = { (plan: DefragPlan) in
+            plan.operations.filter { $0.kind == .writeExtent }.count
+        }
+        #expect(writes(big.plan(volume: input)) == 8)
+        #expect(writes(small.plan(volume: input)) == 126)
+    }
+
+    /// Le comportement qui a fait écrire « prévoyez 15 % d'espace libre » dans
+    /// la documentation de l'époque : sans trou à la taille, le fichier reste
+    /// en morceaux et finit dans le rapport de fin de passe.
+    @Test("Faute de trou assez grand, le fichier reste en morceaux")
+    func aFileWithNowhereToGoStaysPut() {
+        // Deux fichiers remplissent le volume en damier : il ne reste que des
+        // trous de deux clusters, et le fichier cassé en demande six.
+        var occupied: [Extent] = []
+        for index in stride(from: 0, to: 100, by: 4) {
+            occupied.append(Extent(start: UInt32(index), length: 2))
+        }
+        let input = ntfsVolume(clusterCount: 100, files: [
+            TestFile(category: .system, extents: occupied),
+            TestFile(category: .document,
+                     extents: [Extent(start: 2, length: 1), Extent(start: 6, length: 1)]),
+        ])
+        // Le fichier système est lui aussi fragmenté, mais bien trop gros pour
+        // le moindre trou : personne ne bouge pour lui faire de la place.
+        let plan = DefragPlanner.plan(volume: input)
+        #expect(plan.evacuations == 0)
+        #expect(plan.after.fragmentedFiles >= 1)
+        #expect(plan.filesMoved < plan.before.fragmentedFiles)
+    }
+
+    /// Le fichier d'échange est ouvert par Windows, et la MFT ne se réorganise
+    /// pas à chaud : le défragmenteur de XP les signalait et passait son
+    /// chemin.
+    @Test("Ni le fichier d'échange ni les métadonnées ne bougent")
+    func swapAndMetadataAreLeftAlone() {
+        let swap = [Extent(start: 100, length: 20), Extent(start: 300, length: 20)]
+        let mft = [Extent(start: 4, length: 10), Extent(start: 500, length: 10)]
+        let input = ntfsVolume(clusterCount: 2_000, files: [
+            TestFile(category: .swap, extents: swap, movable: false),
+            TestFile(category: .reserved, extents: mft),
+            TestFile(category: .document,
+                     extents: [Extent(start: 700, length: 4), Extent(start: 900, length: 4)]),
+        ])
+        let plan = DefragPlanner.plan(volume: input)
+
+        #expect(plan.filesMoved == 1, "seul le document se défragmente")
+        let partition = plan.partition
+        for extent in swap + mft {
+            let start = partition.lba(ofCluster: Int(extent.start))
+            let end = partition.lba(ofCluster: Int(extent.end))
+            for operation in plan.operations where operation.kind == .writeExtent {
+                #expect(!(operation.lba < end && operation.lba + operation.sectors > start),
+                        "une écriture passe sur un fichier intouchable")
+            }
+        }
+    }
+
+    /// Le même invariant que pour la passe FAT, et pour la même raison : si
+    /// deux fichiers se recouvraient, le compte ne tomberait pas juste.
+    @Test("Le volume d'arrivée porte autant de clusters qu'il en avait")
+    func nothingIsLostOrOverlapped() {
+        let files: [TestFile] = (0..<50).map { (index: Int) -> TestFile in
+            TestFile(category: .document,
+                     extents: [Extent(start: UInt32(index) * 30 + 9, length: 5),
+                               Extent(start: 5_000 + UInt32(index) * 17, length: 6)])
+        }
+        let input = ntfsVolume(clusterCount: 20_000, files: files)
+        let occupied = 50 * 11
+
+        let plan = DefragPlanner.plan(volume: input)
+        var map = plan.initialMap
+        #expect(map.filter { $0 != ClusterCategory.free.rawValue }.count == occupied)
+
+        for operation in plan.operations {
+            for index in Int(operation.mutationStart)
+                ..< Int(operation.mutationStart + operation.mutationCount) {
+                let mutation = plan.mutations[index]
+                let end = min(mutation.start + mutation.count, map.count)
+                guard mutation.start < end else { continue }
+                for cluster in mutation.start..<end { map[cluster] = mutation.category.rawValue }
+            }
+        }
+        #expect(map.filter { $0 != ClusterCategory.free.rawValue }.count == occupied)
+        #expect(plan.after.fragmentedFiles == 0)
+    }
+
+    @Test("Toutes les opérations restent dans la partition")
+    func operationsStayInBounds() {
+        let files: [TestFile] = (0..<200).map { (index: Int) -> TestFile in
+            TestFile(category: .churn,
+                     extents: [Extent(start: UInt32(index) * 100 + 7, length: 3),
+                               Extent(start: 40_000 + UInt32(index) * 50, length: 2)])
+        }
+        let plan = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 100_000, files: files))
+        let end = plan.partition.startLBA + plan.partition.totalSectors
+
+        for operation in plan.operations {
+            #expect(operation.lba >= plan.partition.startLBA)
+            #expect(operation.lba + operation.sectors <= end, "opération hors partition")
+            #expect(operation.sectors > 0)
+        }
+    }
+
+    /// L'ordre de grandeur réel : un volume de 320 Go, quatre-vingts millions
+    /// de clusters, douze mille fichiers dont deux cents en morceaux. C'est le
+    /// cas que la stratégie de 1995 ne savait pas planifier.
+    @Test("Un volume de quatre-vingts millions de clusters se planifie en quelques secondes")
+    func hugeVolumeStaysTractable() {
+        var files: [TestFile] = (0..<12_000).map { (index: Int) -> TestFile in
+            TestFile(category: .document,
+                     extents: [Extent(start: UInt32(index) * 6_000 + 11, length: 200)])
+        }
+        files += (0..<250).map { (index: Int) -> TestFile in
+            TestFile(category: .application,
+                     extents: [Extent(start: 72_000_000 + UInt32(index) * 3_000, length: 500),
+                               Extent(start: 76_000_000 + UInt32(index) * 3_000, length: 700)])
+        }
+        let input = ntfsVolume(clusterCount: 80_000_000, files: files)
+
+        let start = Date()
+        let plan = DefragPlanner.plan(volume: input)
+        let elapsed = Date().timeIntervalSince(start)
+
+        #expect(plan.filesMoved == 250)
+        #expect(plan.filesAlreadyInPlace == 12_000)
+        #expect(plan.after.fragmentedFiles == 0)
+        // Deux cent cinquante fichiers de 4,8 Mo par blocs de 4 Mo : quelques
+        // milliers de requêtes, contre vingt-huit millions pour un tassage.
+        #expect(plan.operations.count < 20_000, "\(plan.operations.count) opérations")
+        #expect(elapsed < 60, "\(elapsed) s")
+    }
+}
