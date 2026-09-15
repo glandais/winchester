@@ -277,6 +277,11 @@ swift build
 swift test
 ```
 
+`swift test` ne couvre que `Sources/DiskCore`, le seul paquet SPM. La couche
+`Sources/Model` — volume FAT16, planificateur de défragmentation, construction
+des scénarios — se vérifie par le rendu hors-ligne ci-dessous, qui la compile
+et la fait tourner en entier.
+
 Ou directement :
 
 ```sh
@@ -284,6 +289,12 @@ xcodebuild -project DiskNoise.xcodeproj -scheme DiskNoise \
     -destination "platform=iOS Simulator,id=<UDID>" \
     -derivedDataPath .build/DerivedData build
 ```
+
+Le schéma construit en **Debug** : le produit est dans
+`.build/DerivedData/Build/Products/Debug-iphonesimulator/`. Un
+`Release-iphonesimulator/` laissé par un archivage précédent y traîne
+volontiers — installer celui-là donne l'impression que la compilation n'a rien
+changé.
 
 ## Rendu hors-ligne
 
