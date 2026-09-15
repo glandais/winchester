@@ -99,14 +99,23 @@ struct WorkloadPhase: Identifiable {
     /// 0 = requêtes régulières, 1 = fortement groupées en rafales.
     let burstiness: Double
     let spin: SpinCommand
+
+    var descriptor: PhaseDescriptor {
+        PhaseDescriptor(id: id, label: label, detail: detail)
+    }
 }
 
+/// Tranche de chronologie occupée par une phase, quel que soit le scénario :
+/// une phase de scénario déclaratif a une durée imposée, une phase de
+/// défragmentation ne se connaît qu'une fois la simulation faite.
 struct PhaseSpan: Identifiable {
-    let phase: WorkloadPhase
+    let descriptor: PhaseDescriptor
     let index: Int
     let start: Double
     let end: Double
-    var id: String { phase.id }
+    var id: String { descriptor.id }
+    var label: String { descriptor.label }
+    var detail: String { descriptor.detail }
     var duration: Double { end - start }
 }
 
@@ -308,7 +317,8 @@ struct WorkloadGenerator {
         for (index, phase) in phases.enumerated() {
             let start = clock
             let end = clock + phase.duration
-            spans.append(PhaseSpan(phase: phase, index: index, start: start, end: end))
+            spans.append(PhaseSpan(descriptor: phase.descriptor, index: index,
+                                   start: start, end: end))
             clock = end
 
             guard case .idle = phase.access else {

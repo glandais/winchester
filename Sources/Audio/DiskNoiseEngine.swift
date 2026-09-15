@@ -120,8 +120,12 @@ final class DiskNoiseEngine: ObservableObject {
         }
     }
 
-    func load(cues: [AudioCue], duration: Double) {
+    /// Charge un scénario. `rpm` suit le disque simulé : la couche de rotation
+    /// est la seule à en dépendre, et elle se reconfigure sans qu'on ait à
+    /// reconstruire le graphe.
+    func load(cues: [AudioCue], duration: Double, rpm: Double) {
         stop()
+        spindle.rpm = rpm
         var transientCues: [AudioCue] = []
         var spins: [(Double, Bool, Double)] = []
         for cue in cues {

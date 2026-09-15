@@ -137,3 +137,28 @@ struct DriveGeometry {
         ]
     )
 }
+
+extension DriveGeometry {
+
+    /// Disque IDE de milieu des années 90, celui sur lequel tournait un
+    /// défragmenteur Windows 95 : 876 Mo, 4 500 tr/min, 2 000 cylindres,
+    /// 8 zones. Le débit va de 9,8 Mo/s au bord à 6,6 Mo/s au moyeu — haut de
+    /// la fourchette pour l'époque, mais c'est ce qui donne à la passe une
+    /// durée auditionnable.
+    static let win95Drive = DriveGeometry(
+        model: "IDE 876 Mo · 4 500 tr/min",
+        cylinders: 2_000,
+        heads: 4,
+        rpm: 4_500,
+        zones: [
+            Zone(firstCylinder: 0,     sectorsPerTrack: 256),
+            Zone(firstCylinder: 250,   sectorsPerTrack: 244),
+            Zone(firstCylinder: 500,   sectorsPerTrack: 232),
+            Zone(firstCylinder: 750,   sectorsPerTrack: 220),
+            Zone(firstCylinder: 1_000, sectorsPerTrack: 208),
+            Zone(firstCylinder: 1_250, sectorsPerTrack: 196),
+            Zone(firstCylinder: 1_500, sectorsPerTrack: 184),
+            Zone(firstCylinder: 1_750, sectorsPerTrack: 172),
+        ]
+    )
+}

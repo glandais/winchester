@@ -18,7 +18,10 @@ import AVFAudio
 final class SpindleVoice {
 
     private let sampleRate: Double
-    private let rpm: Double
+    /// Régime nominal. Modifiable pour passer d'un disque à l'autre sans
+    /// reconstruire le graphe audio — même réserve que pour les consignes
+    /// ci-dessous : un `Double` lu par le thread audio sans synchronisation.
+    var rpm: Double
 
     // État du rendu — écrit par le thread audio.
     private var speed: Double = 0

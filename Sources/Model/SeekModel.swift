@@ -100,3 +100,21 @@ struct SeekModel {
         return min(max(f, 0), 1)
     }
 }
+
+extension SeekModel {
+
+    /// Recalibrage pour le disque de 1996 : 3,0 ms piste-à-piste, ~12 ms en
+    /// seek moyen (1/3 de course), 22 ms en pleine course. Le bras est plus
+    /// lourd et l'asservissement plus lent qu'en 2001 — d'où un settle deux
+    /// fois plus long, qui s'entend : chaque arrêt « traîne ».
+    static let win95Model = SeekModel(
+        shortIntercept: 2.60,
+        shortSqrtCoefficient: 0.400,
+        longIntercept: 7.29,
+        longLinearCoefficient: 0.007_35,
+        crossover: 300,
+        settleDuration: 0.001_2,
+        accelerationCap: 0.004_0,
+        headSwitchDuration: 0.002_0
+    )
+}

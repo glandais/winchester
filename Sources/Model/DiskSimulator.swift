@@ -42,9 +42,19 @@ struct TraceStats {
     }
 }
 
+/// Instant de prise en charge et instant de fin d'une requête, dans l'ordre de
+/// la liste passée au simulateur. C'est ce qui permet de dater après coup les
+/// étapes d'un scénario en boucle fermée — une défragmentation n'a pas de débit
+/// imposé : chaque opération part quand le disque se libère.
+struct RequestTiming {
+    let start: Double
+    let end: Double
+}
+
 struct DiskTrace {
     let events: [DiskEvent]
     let headSamples: [HeadSample]
+    let timings: [RequestTiming]
     let duration: Double
     let stats: TraceStats
 }
@@ -66,6 +76,8 @@ enum DiskSimulator {
 
         var events: [DiskEvent] = []
         var samples: [HeadSample] = []
+        var timings: [RequestTiming] = []
+        timings.reserveCapacity(requests.count)
         var stats = TraceStats()
 
         events.append(DiskEvent(time: spinUpAt, kind: .spinUp(duration: spinUpDuration)))
@@ -79,7 +91,8 @@ enum DiskSimulator {
         var headIndex = 0
 
         for request in requests {
-            var t = max(clock, request.issueTime)
+            let issued = max(clock, request.issueTime)
+            var t = issued
             let target = geometry.position(ofLBA: request.lba)
 
             // 1. Déplacement du bras.
@@ -146,6 +159,7 @@ enum DiskSimulator {
             if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
             stats.requestCount += 1
             stats.busySeconds += transferSeconds
+            timings.append(RequestTiming(start: issued, end: t))
 
             clock = t
         }
@@ -153,6 +167,7 @@ enum DiskSimulator {
         events.sort { $0.time < $1.time }
 
         let end = max(totalDuration, clock)
-        return DiskTrace(events: events, headSamples: samples, duration: end, stats: stats)
+        return DiskTrace(events: events, headSamples: samples, timings: timings,
+                         duration: end, stats: stats)
     }
 }

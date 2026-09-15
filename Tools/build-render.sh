@@ -7,6 +7,9 @@ swiftc -O -o "${1:-/tmp/rendertrace}" \
     Sources/Model/SeekModel.swift \
     Sources/Model/Workload.swift \
     Sources/Model/DiskSimulator.swift \
+    Sources/Model/Volume.swift \
+    Sources/Model/DefragJob.swift \
+    Sources/Model/Scenario.swift \
     Sources/Audio/Biquad.swift \
     Sources/Audio/SeekSynth.swift \
     Sources/Audio/SpindleVoice.swift \

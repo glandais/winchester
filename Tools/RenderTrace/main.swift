@@ -3,43 +3,37 @@ import AVFAudio
 
 // Rendu hors-ligne de la trace complète dans un WAV.
 //
-//   swiftc -O -o /tmp/rendertrace \
-//       Sources/Model/DriveGeometry.swift Sources/Model/SeekModel.swift \
-//       Sources/Model/Workload.swift Sources/Model/DiskSimulator.swift \
-//       Sources/Audio/Biquad.swift Sources/Audio/SeekSynth.swift \
-//       Sources/Audio/SpindleVoice.swift Sources/Audio/AudioCue.swift \
-//       Tools/RenderTrace.swift
-//   /tmp/rendertrace sortie.wav
+//   ./Tools/build-render.sh
+//   /tmp/rendertrace sortie.wav              # scénario de démarrage
+//   SCENARIO=defrag /tmp/rendertrace out.wav # passe de défragmentation
+//
+//   SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav
+//   TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
 //
 // Permet d'auditionner et de régler le synthé sans passer par le simulateur.
 
 let sampleRate = 48_000.0
 let outputPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "disknoise.wav"
 
-let geometry = DriveGeometry.defaultDrive
-let seekModel = SeekModel.defaultModel
-let phases = WorkloadLibrary.windowsBootAndOffice
-
-let generator = WorkloadGenerator(geometry: geometry)
-let (requests, spans) = generator.generate(phases: phases)
-let total = spans.last?.end ?? 0
-let spinUpDuration = (phases.first?.duration ?? 6) - 0.6
-
-let trace = DiskSimulator.run(geometry: geometry, seekModel: seekModel,
-                              requests: requests, totalDuration: total,
-                              spinUpAt: 0.35, spinUpDuration: spinUpDuration)
-let cues = AudioCueBuilder.build(from: trace, cylinders: geometry.cylinders)
+let kind = ScenarioKind(rawValue: ProcessInfo.processInfo.environment["SCENARIO"] ?? "")
+    ?? .windowsBoot
+let scenario = ScenarioBuilder.build(kind)
+let geometry = scenario.geometry
+let spans = scenario.spans
+let cues = scenario.cues
+let trace = scenario.trace
 
 FileHandle.standardError.write("""
-requêtes      : \(requests.count)
+scénario      : \(kind.title) — \(geometry.model)
+requêtes      : \(scenario.requests.count)
 seeks         : \(trace.stats.seekCount) (moy. \(trace.stats.averageSeekDistance) cyl.)
 événements    : \(trace.events.count)
 repères audio : \(cues.count)
-durée         : \(String(format: "%.1f", trace.duration)) s
+durée         : \(String(format: "%.1f", scenario.duration)) s
 
 """.data(using: .utf8)!)
 
-let frameCount = Int(trace.duration * sampleRate) + 48_000
+let frameCount = Int(scenario.duration * sampleRate) + 48_000
 var left = [Float](repeating: 0, count: frameCount)
 var right = [Float](repeating: 0, count: frameCount)
 
@@ -143,7 +137,7 @@ func report(_ label: String, _ range: Range<Int>) {
 }
 
 for span in spans {
-    report(span.phase.label, Int(span.start * sampleRate)..<Int(span.end * sampleRate))
+    report(span.label, Int(span.start * sampleRate)..<Int(span.end * sampleRate))
 }
 
 var peak: Float = 0

@@ -12,7 +12,7 @@ struct ContentView: View {
 /// sinon l'écran ne se rafraîchit pas pendant la lecture.
 struct SimulatorScreen: View {
 
-    let model: SimulationModel
+    @ObservedObject var model: SimulationModel
     @ObservedObject var engine: DiskNoiseEngine
     @State private var showsModelNotes = false
 
@@ -26,6 +26,8 @@ struct SimulatorScreen: View {
             ScrollView {
                 VStack(spacing: 14) {
                     header
+                    scenarioPicker
+                    if model.defrag != nil { defragPanel }
                     PlatterView(
                         geometry: model.geometry,
                         cylinder: model.cylinder(at: time),
@@ -57,13 +59,104 @@ struct SimulatorScreen: View {
                 Text("DiskNoise")
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.text)
-                Text("Simulation I/O niveau bloc → synthèse acoustique")
+                Text(model.kind.summary)
                     .font(.caption)
                     .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             activityLED
         }
+    }
+
+    private var scenarioPicker: some View {
+        Picker("Scénario", selection: Binding(get: { model.kind },
+                                              set: { model.select($0) })) {
+            ForEach(ScenarioKind.allCases) { kind in
+                Text(kind.title).tag(kind)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    /// Carte du volume, rejouée sur l'horloge du moteur audio : ce sont les
+    /// mêmes dates que celles des repères sonores, donc l'écriture d'un bloc se
+    /// voit exactement quand elle s'entend.
+    @ViewBuilder
+    private var defragPanel: some View {
+        if let playback = model.defrag {
+            let active = model.activeCell(at: time)
+            let plan = playback.plan
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Volume C:")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                    Spacer()
+                    Text("\(playback.partition.capacityDescription) · FAT16 · clusters de \(playback.partition.clusterBytes / 1024) Ko")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.dim)
+                }
+
+                ClusterMapView(cells: model.clusterCells(at: time),
+                               clustersPerCell: model.clustersPerCell,
+                               activeCell: active?.cell,
+                               activeIsWrite: active?.isWrite ?? false)
+
+                progressBar(playback: playback)
+
+                ClusterLegend(categories: presentCategories(in: plan),
+                              clustersPerCell: model.clustersPerCell,
+                              clusterBytes: playback.partition.clusterBytes)
+
+                Text(String(format: "Au départ : %d fichiers, %d fragmentés (%.0f %%), %.2f extents par fichier, %d trous dans l'espace libre. À l'arrivée : %d fragmentés, %d trous.",
+                            plan.before.fileCount, plan.before.fragmentedFiles,
+                            plan.before.fragmentedRatio * 100, plan.before.extentsPerFile,
+                            plan.before.freeHoles, plan.after.fragmentedFiles, plan.after.freeHoles))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(String(format: "La passe déplace %d fichiers et en laisse %d en place, mais force %d évacuations : la destination d'un fichier est presque toujours occupée par un autre, qu'il faut d'abord pousser vers la fin du volume.",
+                            plan.filesMoved, plan.filesAlreadyInPlace, plan.evacuations))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .panel()
+        }
+    }
+
+    private func progressBar(playback: DefragPlayback) -> some View {
+        let progress = model.defragProgress(at: time)
+        let moved = model.movedBytes(at: time) / 1_000_000
+        let total = Double(playback.plan.movedBytes) / 1_000_000
+        return VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule().fill(Theme.read)
+                        .frame(width: max(proxy.size.width * CGFloat(progress), 2))
+                }
+            }
+            .frame(height: 5)
+            HStack {
+                Text(String(format: "%.0f %%", progress * 100))
+                Spacer()
+                Text(String(format: "%.0f Mo déplacés sur %.0f", moved, total))
+            }
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(Theme.dim)
+        }
+    }
+
+    /// Le fichier d'échange et les répertoires ne pèsent que quelques blocs :
+    /// inutile de leur réserver une entrée de légende s'ils sont absents.
+    private func presentCategories(in plan: DefragPlan) -> [ClusterCategory] {
+        var seen = Set<UInt8>(plan.initialMap)
+        seen.insert(ClusterCategory.free.rawValue)
+        return ClusterCategory.allCases.filter { seen.contains($0.rawValue) }
     }
 
     private var activityLED: some View {
@@ -85,7 +178,7 @@ struct SimulatorScreen: View {
                 Circle()
                     .fill(Theme.phaseColor(span?.index ?? 0))
                     .frame(width: 9, height: 9)
-                Text(span?.phase.label ?? "—")
+                Text(span?.label ?? "—")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Spacer()
@@ -93,7 +186,7 @@ struct SimulatorScreen: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.dim)
             }
-            Text(span?.phase.detail ?? "")
+            Text(span?.detail ?? "")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -220,6 +313,13 @@ struct SimulatorScreen: View {
     private var notes: some View {
         DisclosureGroup(isExpanded: $showsModelNotes) {
             VStack(alignment: .leading, spacing: 9) {
+                if model.kind == .defrag {
+                    NoteRow("Volume", "Partition FAT16 vieillie par deux ans d'usage simulé : installation, puis créations, suppressions et réenregistrements. L'allocateur next-fit de VFAT suffit à tout disperser, aucun mécanisme exotique n'intervient.")
+                    NoteRow("Passe", "« Défragmentation complète » de Windows 95 : chaque fichier rendu contigu et tassé contre le début du volume, dans l'ordre du parcours de l'arborescence — le seul ordre dont l'outil disposait.")
+                    NoteRow("Évacuations", "La destination d'un fichier est presque toujours occupée : l'occupant part d'abord vers la fin du volume, et sera redéplacé quand viendra son tour. C'est ce va-et-vient, pas le volume de données, qui fait durer une passe.")
+                    NoteRow("Retours FAT", "Chaque déplacement validé réécrit les deux copies de la FAT et l'entrée de répertoire, au tout début de la partition. D'où le retour du bras vers le bord, environ une fois par fichier.")
+                    NoteRow("Fichier d'échange", "Windows l'a ouvert : le défragmenteur ne peut pas le déplacer et tasse tout autour. C'est le bloc rouge qui ne bouge jamais.")
+                }
                 NoteRow("Seek", "Durée en deux régimes, a + b·√d puis c + e·d (Ruemmler & Wilkes 1994), découpée en speedup / coast / slowdown / settle.")
                 NoteRow("Timbre", "Banc de résonateurs à fréquences fixes (modes ~4,5 et ~5,5 kHz). Seule l'excitation varie avec la distance : les résonances de l'actionneur ne se transposent pas avec la vitesse de seek.")
                 NoteRow("Trains", "Deux seeks rapprochés ne relancent jamais deux one-shots : un seul rendu continu, transitoire terminal en fin de train (règle issue de l'émulation de disquette de MAME).")
