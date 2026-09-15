@@ -218,6 +218,13 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, concurrence stric
     EventTimeline.swift    suite datée d'événements, indépendante du format
     Simulator.swift        rejeu de la timeline, progression, annulation
     AllocationMetrics.swift  mesures de sortie
+    SizeModel.swift        distributions de tailles, par catégorie
+    AppManifest.swift      manifestes d'installation, par règles
+    ProfileSpec.swift      format déclaratif d'un scénario, calendrier
+    ScenarioCompiler.swift  description d'un usage → suite d'événements
+    ScenarioLibrary.swift  chargement des scénarios embarqués
+    DiskGenerator.swift    point d'entrée : une description, un disque
+    Resources/scenarios/   vingt scénarios : cinq époques, quatre profils
 Sources/Model/
     Workload.swift         phases du scénario, générateur de requêtes déterministe
     Volume.swift           partition FAT16, allocateur next-fit, vieillissement
@@ -225,6 +232,7 @@ Sources/Model/
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
     Scenario.swift         construction des deux scénarios, séries d'affichage
     SimulationModel.swift  assemblage + interrogation pour l'UI
+    GeneratedVolume.swift  passerelle disque généré → volume affichable
 Sources/Audio/
     Biquad.swift           filtres RBJ, bruit xorshift
     SeekSynth.swift        banc de résonateurs, excitation, trains

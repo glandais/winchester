@@ -41,7 +41,12 @@ public struct NTFSAllocator: Allocator {
     /// fragmenter.
     public private(set) var mft: FileEntry
     public private(set) var mftMirror: Extent
+    /// Enregistrements en service — ceux des fichiers vivants.
     public private(set) var mftRecordCount: UInt64
+    /// Plus grand nombre d'enregistrements simultanés jamais atteint. La MFT ne
+    /// rétrécit pas : une fois qu'elle a dû grandir, elle reste grande, même si
+    /// les fichiers qui l'ont fait gonfler ont disparu depuis longtemps.
+    public private(set) var mftPeakRecords: UInt64
 
     /// Plage réservée à la croissance de la MFT, juste derrière celle-ci.
     public private(set) var mftZone: Range<UInt32>
@@ -99,6 +104,7 @@ public struct NTFSAllocator: Allocator {
         self.ntfs = profile
         self.bitmap = ClusterBitmap(clusterCount: clusterCount)
         self.mftRecordCount = initialMFTRecords
+        self.mftPeakRecords = initialMFTRecords
 
         // $Boot occupe le tout début du volume, la MFT le suit immédiatement.
         let bootClusters: UInt32 = 1
@@ -316,6 +322,11 @@ public struct NTFSAllocator: Allocator {
         bitmap.free(extents)
     }
 
+    /// L'enregistrement du fichier disparu retourne au pot commun.
+    public mutating func noteFileDeleted() {
+        if mftRecordCount > 0 { mftRecordCount -= 1 }
+    }
+
     /// Prise d'une plage imposée, pour un défragmenteur.
     @discardableResult
     public mutating func claim(_ extent: Extent) -> Bool {
@@ -336,15 +347,15 @@ public struct NTFSAllocator: Allocator {
     /// développeur.
     public mutating func noteFileCreated(logicalSize: UInt64) {
         mftRecordCount += 1
-        let needed = ntfs.clusters(forBytes: mftRecordCount * ntfs.directoryEntryBytes)
+        guard mftRecordCount > mftPeakRecords else { return }
+        mftPeakRecords = mftRecordCount
+
+        let needed = ntfs.clusters(forBytes: mftPeakRecords * ntfs.directoryEntryBytes)
         let owned = mft.clusterCount
-        guard needed > owned else {
-            mft.logicalSize = mftRecordCount * ntfs.directoryEntryBytes
-            return
-        }
+        mft.logicalSize = mftPeakRecords * ntfs.directoryEntryBytes
+        guard needed > owned else { return }
 
         var remaining = needed - owned
-        mft.logicalSize = mftRecordCount * ntfs.directoryEntryBytes
 
         // La MFT grandit d'abord dans sa zone réservée, donc d'un seul tenant.
         if let last = mft.extents.last, last.end < bitmap.clusterCount {

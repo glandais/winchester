@@ -1,0 +1,48 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 30,
+      "perDay": 2
+    },
+    "build": {
+      "objectFiles": 400,
+      "pchMB": 22,
+      "perDay": 12
+    },
+    "hoarding": {
+      "gigabytesPerYear": 0.55
+    },
+    "maintenance": {
+      "filesPerUpdate": 60,
+      "updatesPerYear": 3
+    }
+  },
+  "defragRuns": [
+    "1996-11-20",
+    "1997-06-02"
+  ],
+  "disk": {
+    "averageSeekMs": 12.0,
+    "rpm": 5400,
+    "sizeMB": 1080,
+    "zbr": true
+  },
+  "displayName": "Développeur, 1996",
+  "fileSystem": {
+    "type": "vfat"
+  },
+  "id": "dev-1996",
+  "installs": [
+    "win95",
+    "vc42",
+    "office95",
+    "doom2"
+  ],
+  "os": "win95-osr1",
+  "seed": 42,
+  "summary": "Visual C++ 4.2, douze compilations par jour et un fichier précompilé de 22 Mo",
+  "timeline": {
+    "end": "1997-09-01",
+    "start": "1996-03-01"
+  }
+}

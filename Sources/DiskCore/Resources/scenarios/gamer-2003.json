@@ -1,0 +1,32 @@
+{
+  "activity": {
+    "gaming": {
+      "installsPerYear": 2,
+      "savesPerDay": 1.0,
+      "uninstallsPerYear": 0
+    }
+  },
+  "disk": {
+    "averageSeekMs": 8.5,
+    "rpm": 7200,
+    "sizeMB": 80000,
+    "zbr": true
+  },
+  "displayName": "Joueur, 2003",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "ntfs"
+  },
+  "id": "gamer-2003",
+  "installs": [
+    "winxp",
+    "ut2003"
+  ],
+  "os": "winxp-sp1",
+  "seed": 2003003,
+  "summary": "Fraîchement installé : Unreal Tournament recopié depuis le DVD, rien d'autre",
+  "timeline": {
+    "end": "2003-02-08",
+    "start": "2003-02-01"
+  }
+}

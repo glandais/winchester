@@ -1,0 +1,47 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 60,
+      "perDay": 8
+    },
+    "build": {
+      "objectFiles": 600,
+      "pchMB": 60,
+      "perDay": 16
+    },
+    "hoarding": {
+      "gigabytesPerYear": 95.0
+    },
+    "maintenance": {
+      "filesPerUpdate": 420,
+      "updatesPerYear": 18
+    }
+  },
+  "defragRuns": [
+    "2008-01-06",
+    "2009-01-04"
+  ],
+  "disk": {
+    "averageSeekMs": 8.5,
+    "rpm": 7200,
+    "sizeMB": 250000,
+    "zbr": true
+  },
+  "displayName": "Développeur, 2007",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "ntfs"
+  },
+  "id": "dev-2007",
+  "installs": [
+    "vista",
+    "office2007"
+  ],
+  "os": "vista",
+  "seed": 2007001,
+  "summary": "Vista, WinSxS, et des compilations qui ne fragmentent presque plus rien",
+  "timeline": {
+    "end": "2010-04-01",
+    "start": "2007-04-01"
+  }
+}

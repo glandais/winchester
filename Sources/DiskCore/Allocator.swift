@@ -113,11 +113,18 @@ public protocol Allocator {
     /// entrées de répertoire vivent dans des fichiers ordinaires ; sur NTFS,
     /// c'est ce qui fait enfler la MFT d'un profil développeur.
     mutating func noteFileCreated(logicalSize: UInt64)
+
+    /// Signale la disparition d'un fichier. NTFS **réutilise** l'enregistrement
+    /// MFT qu'il libère : sans cela, un développeur qui crée et détruit des
+    /// centaines de milliers de fichiers objets se retrouverait avec une table
+    /// de métadonnées de plusieurs gigaoctets.
+    mutating func noteFileDeleted()
 }
 
 extension Allocator {
 
     public mutating func noteFileCreated(logicalSize: UInt64) {}
+    public mutating func noteFileDeleted() {}
 
     /// Place un fichier entier et renseigne son entrée. La résidence est
     /// décidée ici : un fichier résident ne passe jamais par l'allocateur.

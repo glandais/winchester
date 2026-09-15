@@ -1,0 +1,48 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 50,
+      "perDay": 6
+    },
+    "build": {
+      "objectFiles": 500,
+      "pchMB": 40,
+      "perDay": 14
+    },
+    "hoarding": {
+      "gigabytesPerYear": 11.0
+    },
+    "maintenance": {
+      "filesPerUpdate": 260,
+      "updatesPerYear": 12
+    }
+  },
+  "defragRuns": [
+    "2004-03-20",
+    "2005-07-11"
+  ],
+  "disk": {
+    "averageSeekMs": 8.5,
+    "rpm": 7200,
+    "sizeMB": 40000,
+    "zbr": true
+  },
+  "displayName": "Développeur, 2003",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "ntfs"
+  },
+  "id": "dev-2003",
+  "installs": [
+    "winxp",
+    "vsnet",
+    "officexp"
+  ],
+  "os": "winxp-sp1",
+  "seed": 2003001,
+  "summary": "Visual Studio .NET : vingt mille fichiers source, une MFT énorme",
+  "timeline": {
+    "end": "2006-02-01",
+    "start": "2003-02-01"
+  }
+}

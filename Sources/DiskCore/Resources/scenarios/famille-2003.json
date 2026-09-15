@@ -1,0 +1,51 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 45,
+      "perDay": 5
+    },
+    "download": {
+      "partMB": 5,
+      "perWeek": 2
+    },
+    "hoarding": {
+      "gigabytesPerYear": 6.0,
+      "tidiesUpAt": 0.99
+    },
+    "maintenance": {
+      "filesPerUpdate": 260,
+      "updatesPerYear": 12
+    },
+    "media": {
+      "filesPerWeek": 90
+    },
+    "office": {
+      "newDocumentsPerWeek": 4,
+      "savesPerDocumentPerWeek": 1.0
+    }
+  },
+  "disk": {
+    "averageSeekMs": 8.5,
+    "rpm": 7200,
+    "sizeMB": 40000,
+    "zbr": true
+  },
+  "displayName": "Famille, 2003",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "ntfs"
+  },
+  "id": "famille-2003",
+  "installs": [
+    "winxp",
+    "officexp",
+    "nero"
+  ],
+  "os": "winxp-sp1",
+  "seed": 2003004,
+  "summary": "Photos et DivX jusqu'à saturation : tout ce qui s'écrit ensuite est haché",
+  "timeline": {
+    "end": "2006-02-01",
+    "start": "2003-02-01"
+  }
+}

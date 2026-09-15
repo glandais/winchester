@@ -49,6 +49,16 @@ struct ProfilingAllocator<Wrapped: Allocator>: Allocator {
         wrapped.noteFileCreated(logicalSize: logicalSize)
     }
 
+    /// Indispensable : sans cette délégation, l'enveloppe hérite de
+    /// l'implémentation vide du protocole et la table de métadonnées de
+    /// l'allocateur enveloppé ne voit jamais les suppressions. C'est le test de
+    /// transparence qui l'a dit.
+    mutating func noteFileDeleted() {
+        let start = Date()
+        defer { noteTime += Date().timeIntervalSince(start) }
+        wrapped.noteFileDeleted()
+    }
+
     var report: String {
         String(format: "allocate %.2f s (%d appels) · extend %.2f s · free %.2f s · MFT %.2f s (%d appels)",
                allocateTime, allocateCalls, extendTime, freeTime, noteTime, noteCalls)

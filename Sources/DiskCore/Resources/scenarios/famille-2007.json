@@ -1,0 +1,51 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 50,
+      "perDay": 6
+    },
+    "download": {
+      "partMB": 15,
+      "perWeek": 3
+    },
+    "hoarding": {
+      "gigabytesPerYear": 55.0,
+      "tidiesUpAt": 0.985
+    },
+    "maintenance": {
+      "filesPerUpdate": 420,
+      "updatesPerYear": 18
+    },
+    "media": {
+      "filesPerWeek": 40
+    },
+    "office": {
+      "newDocumentsPerWeek": 5,
+      "savesPerDocumentPerWeek": 1.2
+    }
+  },
+  "disk": {
+    "averageSeekMs": 8.5,
+    "rpm": 7200,
+    "sizeMB": 320000,
+    "zbr": true
+  },
+  "displayName": "Famille, 2007",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "ntfs"
+  },
+  "id": "famille-2007",
+  "installs": [
+    "vista",
+    "office2007",
+    "itunes7"
+  ],
+  "os": "vista",
+  "seed": 2007004,
+  "summary": "Vidéo de caméscope et iTunes : le disque se remplit par gigaoctets",
+  "timeline": {
+    "end": "2010-04-01",
+    "start": "2007-04-01"
+  }
+}

@@ -111,8 +111,11 @@ struct SimulatorTests {
         let outcome = try simulator.run(timeline)
         let document = try #require(outcome.catalog[1])
 
-        // Le *fast save* ajoute à la fin : le document a grossi tout seul.
-        #expect(document.logicalSize > 30_000 * 5)
+        // Le *fast save* ajoute à la fin : le document a grossi tout seul, mais
+        // raisonnablement — les enregistrements complets périodiques le
+        // ramènent régulièrement à sa taille utile.
+        #expect(document.logicalSize > 30_000 * 3)
+        #expect(document.logicalSize < 30_000 * 20)
         // Et il a été déplacé : il n'est plus là où il a été créé.
         #expect(document.extents.first!.start > 0)
     }

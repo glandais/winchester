@@ -15,6 +15,7 @@ let package = Package(
         .target(
             name: "DiskCore",
             path: "Sources/DiskCore",
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

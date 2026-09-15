@@ -1,0 +1,48 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 35,
+      "perDay": 3
+    },
+    "hoarding": {
+      "gigabytesPerYear": 1.2,
+      "tidiesUpAt": 0.985
+    },
+    "maintenance": {
+      "filesPerUpdate": 120,
+      "updatesPerYear": 6
+    },
+    "media": {
+      "filesPerWeek": 70
+    },
+    "office": {
+      "newDocumentsPerWeek": 3,
+      "savesPerDocumentPerWeek": 0.8
+    }
+  },
+  "disk": {
+    "averageSeekMs": 9.0,
+    "rpm": 5400,
+    "sizeMB": 6400,
+    "zbr": true
+  },
+  "displayName": "Famille, 1999",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "fat32"
+  },
+  "id": "famille-1999",
+  "installs": [
+    "win98se",
+    "office97",
+    "ie5",
+    "winamp"
+  ],
+  "os": "win98se",
+  "seed": 1999004,
+  "summary": "Le disque se remplit de MP3 rippés — propres, contigus, et encombrants",
+  "timeline": {
+    "end": "2001-06-01",
+    "start": "1999-06-01"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 40,
+      "perDay": 4
+    },
+    "gaming": {
+      "installsPerYear": 5,
+      "savesPerDay": 2.0,
+      "uninstallsPerYear": 4
+    },
+    "hoarding": {
+      "gigabytesPerYear": 90.0,
+      "tidiesUpAt": 0.97
+    },
+    "maintenance": {
+      "filesPerUpdate": 420,
+      "updatesPerYear": 18
+    }
+  },
+  "disk": {
+    "averageSeekMs": 8.5,
+    "rpm": 7200,
+    "sizeMB": 320000,
+    "zbr": true
+  },
+  "displayName": "Joueur, 2007",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "ntfs"
+  },
+  "id": "gamer-2007",
+  "installs": [
+    "vista",
+    "crysis"
+  ],
+  "os": "vista",
+  "seed": 2007003,
+  "summary": "Crysis et ses paquets de 400 Mo, installés et désinstallés",
+  "timeline": {
+    "end": "2010-04-01",
+    "start": "2007-04-01"
+  },
+  "uninstalls": [
+    {
+      "app": "crysis",
+      "date": "2009-05-02"
+    }
+  ]
+}

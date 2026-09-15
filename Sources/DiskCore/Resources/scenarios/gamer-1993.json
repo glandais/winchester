@@ -1,0 +1,39 @@
+{
+  "activity": {
+    "gaming": {
+      "installsPerYear": 9,
+      "savesPerDay": 1.5,
+      "uninstallsPerYear": 6
+    },
+    "hoarding": {
+      "gigabytesPerYear": 0.12
+    },
+    "maintenance": {
+      "filesPerUpdate": 25,
+      "updatesPerYear": 2
+    }
+  },
+  "disk": {
+    "averageSeekMs": 16.0,
+    "rpm": 3600,
+    "sizeMB": 210,
+    "zbr": true
+  },
+  "displayName": "Joueur, 1993",
+  "fileSystem": {
+    "clusterKB": 8,
+    "type": "fat16"
+  },
+  "id": "gamer-1993",
+  "installs": [
+    "msdos-6",
+    "win31"
+  ],
+  "os": "msdos-6.22+win31",
+  "seed": 1993003,
+  "summary": "Des jeux DOS installés depuis disquettes, et autant désinstallés",
+  "timeline": {
+    "end": "1995-04-01",
+    "start": "1993-04-01"
+  }
+}

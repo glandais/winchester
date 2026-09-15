@@ -1,0 +1,46 @@
+{
+  "activity": {
+    "gaming": {
+      "installsPerYear": 6,
+      "savesPerDay": 2.0,
+      "uninstallsPerYear": 4
+    },
+    "hoarding": {
+      "gigabytesPerYear": 0.5,
+      "tidiesUpAt": 0.97
+    },
+    "maintenance": {
+      "filesPerUpdate": 60,
+      "updatesPerYear": 3
+    }
+  },
+  "disk": {
+    "averageSeekMs": 12.0,
+    "rpm": 5400,
+    "sizeMB": 1080,
+    "zbr": true
+  },
+  "displayName": "Joueur, 1996",
+  "fileSystem": {
+    "type": "vfat"
+  },
+  "id": "gamer-1996",
+  "installs": [
+    "win95",
+    "doom2",
+    "quake"
+  ],
+  "os": "win95-osr1",
+  "seed": 1996003,
+  "summary": "Quake et Doom II, peu de fichiers mais énormes, et le swap qui respire",
+  "timeline": {
+    "end": "1997-09-01",
+    "start": "1996-03-01"
+  },
+  "uninstalls": [
+    {
+      "app": "doom2",
+      "date": "1997-02-10"
+    }
+  ]
+}

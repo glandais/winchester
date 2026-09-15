@@ -1,0 +1,45 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 25,
+      "perDay": 2
+    },
+    "gaming": {
+      "installsPerYear": 8,
+      "savesPerDay": 3.0,
+      "uninstallsPerYear": 6
+    },
+    "hoarding": {
+      "gigabytesPerYear": 2.0,
+      "tidiesUpAt": 0.97
+    },
+    "maintenance": {
+      "filesPerUpdate": 120,
+      "updatesPerYear": 6
+    }
+  },
+  "disk": {
+    "averageSeekMs": 9.0,
+    "rpm": 5400,
+    "sizeMB": 8400,
+    "zbr": true
+  },
+  "displayName": "Joueur, 1999",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "fat32"
+  },
+  "id": "gamer-1999",
+  "installs": [
+    "win98se",
+    "halflife",
+    "ie5"
+  ],
+  "os": "win98se",
+  "seed": 1999003,
+  "summary": "Half-Life, des démos installées puis effacées, et beaucoup de sauvegardes",
+  "timeline": {
+    "end": "2001-06-01",
+    "start": "1999-06-01"
+  }
+}

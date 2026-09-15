@@ -1,0 +1,48 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 40,
+      "perDay": 4
+    },
+    "build": {
+      "objectFiles": 300,
+      "pchMB": 18,
+      "perDay": 10
+    },
+    "hoarding": {
+      "gigabytesPerYear": 2.6
+    },
+    "maintenance": {
+      "filesPerUpdate": 120,
+      "updatesPerYear": 6
+    }
+  },
+  "defragRuns": [
+    "2000-05-14"
+  ],
+  "disk": {
+    "averageSeekMs": 9.0,
+    "rpm": 5400,
+    "sizeMB": 6400,
+    "zbr": true
+  },
+  "displayName": "Développeur, 1999",
+  "fileSystem": {
+    "clusterKB": 4,
+    "type": "fat32"
+  },
+  "id": "dev-1999",
+  "installs": [
+    "win98se",
+    "vc42",
+    "ie5",
+    "office97"
+  ],
+  "os": "win98se",
+  "seed": 1999001,
+  "summary": "Compilations quotidiennes et navigation permanente sur un FAT32 de 8 Go",
+  "timeline": {
+    "end": "2001-06-01",
+    "start": "1999-06-01"
+  }
+}

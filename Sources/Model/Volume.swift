@@ -280,6 +280,27 @@ final class Volume {
         }
     }
 
+    /// Ajoute un fichier dont le placement est **déjà décidé**.
+    ///
+    /// C'est par là qu'entre un volume construit ailleurs — par le générateur
+    /// de disques d'époque — sans repasser par l'allocateur : les clusters sont
+    /// ceux qu'il a choisis, et le volume les enregistre tels quels.
+    @discardableResult
+    func adopt(path: String, kind: ClusterCategory, chain: [Int]) -> Int? {
+        guard !chain.isEmpty else { return nil }
+        let id = nextID
+        nextID += 1
+        for cluster in chain {
+            guard cluster >= 0, cluster < partition.clusterCount else { return nil }
+            if owner[cluster] < 0 { freeCount -= 1 }
+            owner[cluster] = Int32(id)
+        }
+        files[id] = VolumeFile(id: id, path: path, kind: kind, created: sequence, chain: chain)
+        sequence += 1
+        cursor = (chain[chain.count - 1] + 1) % partition.clusterCount
+        return id
+    }
+
     func file(id: Int) -> VolumeFile? { files[id] }
 
     func fileID(atPath path: String) -> Int? {

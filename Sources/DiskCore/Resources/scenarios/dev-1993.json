@@ -1,0 +1,43 @@
+{
+  "activity": {
+    "build": {
+      "objectFiles": 90,
+      "pchMB": 0,
+      "perDay": 9
+    },
+    "hoarding": {
+      "gigabytesPerYear": 0.1
+    },
+    "maintenance": {
+      "filesPerUpdate": 25,
+      "updatesPerYear": 2
+    }
+  },
+  "defragRuns": [
+    "1994-02-12"
+  ],
+  "disk": {
+    "averageSeekMs": 16.0,
+    "rpm": 3600,
+    "sizeMB": 210,
+    "zbr": true
+  },
+  "displayName": "Développeur, 1993",
+  "fileSystem": {
+    "clusterKB": 8,
+    "type": "fat16"
+  },
+  "id": "dev-1993",
+  "installs": [
+    "msdos-6",
+    "win31",
+    "bc31"
+  ],
+  "os": "msdos-6.22+win31",
+  "seed": 1993001,
+  "summary": "Borland C++ sur un 486, compilations en boucle sur un disque de 340 Mo",
+  "timeline": {
+    "end": "1995-04-01",
+    "start": "1993-04-01"
+  }
+}

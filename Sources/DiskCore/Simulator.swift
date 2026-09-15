@@ -138,6 +138,7 @@ public struct Simulator<A: Allocator> {
         case let .delete(id):
             guard var record = catalog.remove(id) else { return }
             allocator.release(file: &record.entry)
+            allocator.noteFileDeleted()
 
         case .defragment:
             defragment()
@@ -181,6 +182,11 @@ public struct Simulator<A: Allocator> {
 
         var previous = old
         allocator.release(file: &previous)
+        // Le temporaire a consommé un enregistrement de métadonnées en
+        // naissant ; l'original rend le sien en disparaissant. Sans ce
+        // décompte, un document enregistré deux cents fois gonflerait la MFT de
+        // deux cents entrées fantômes.
+        allocator.noteFileDeleted()
 
         record.entry = replacement
         record.modifiedDay = day

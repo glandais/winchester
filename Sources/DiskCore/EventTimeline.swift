@@ -109,15 +109,35 @@ public struct EventTimeline: Sendable {
 
     /// Trie par jour en **conservant l'ordre d'insertion** à l'intérieur d'une
     /// même journée. Le tri de la bibliothèque standard n'étant pas stable, il
-    /// faut passer par le rang : sans cela, deux exécutions pourraient ordonner
-    /// différemment deux événements du même jour, et les volumes divergeraient.
+    /// faudrait sinon passer par le rang : sans cela, deux exécutions
+    /// pourraient ordonner différemment deux événements du même jour, et les
+    /// volumes divergeraient.
+    ///
+    /// Tri par comptage plutôt que comparaison : les jours sont des entiers
+    /// bornés et connus d'avance, donc un seul passage suffit. Sur les millions
+    /// d'événements d'un scénario de 2007, la différence n'est pas seulement de
+    /// vitesse — un tri par comparaison sur des paires (rang, événement)
+    /// allouerait des centaines de mégaoctets de tuples.
     public mutating func sortByDay() {
-        let indexed = events.enumerated().sorted { lhs, rhs in
-            lhs.element.day != rhs.element.day
-                ? lhs.element.day < rhs.element.day
-                : lhs.offset < rhs.offset
+        guard events.count > 1 else { return }
+        let days = Int(dayCount)
+        var counts = [Int](repeating: 0, count: days + 1)
+        for event in events { counts[Int(event.day)] += 1 }
+
+        var offsets = [Int](repeating: 0, count: days + 1)
+        var running = 0
+        for day in 0...days {
+            offsets[day] = running
+            running += counts[day]
         }
-        events = indexed.map(\.element)
+
+        var sorted = events
+        for event in events {
+            let day = Int(event.day)
+            sorted[offsets[day]] = event
+            offsets[day] += 1
+        }
+        events = sorted
     }
 }
 
@@ -191,13 +211,31 @@ public struct PatternWriter {
             }
 
         case .writeTempThenRename:
-            var size = spec.bytes
+            // Le *fast save* de Word n'écrit que les modifications, à la fin du
+            // fichier : le document gonfle d'un peu à chaque enregistrement,
+            // **en valeur absolue** et non en proportion. Composer un
+            // pourcentage ferait d'un rapport de 30 Ko un fichier de plus d'un
+            // gigaoctet au bout de cent enregistrements.
+            //
+            // Et de loin en loin, Word procède à un enregistrement complet, qui
+            // réécrit le document proprement et le ramène à sa taille utile.
+            // C'est ce va-et-vient — gonflement lent, compactage brutal — qui
+            // fait qu'un document travaillé change de place sans arrêt.
+            var content = spec.bytes
+            var saved = spec.bytes
+            let increment = max(spec.bytes / 12, 1_500)
+            var untilFullSave = 12 + Int(rng.below(16))
+
             for day in days {
-                // Le *fast save* de Word ajoute les modifications à la fin du
-                // fichier au lieu de le réécrire : un document travaillé grossit
-                // sans raison apparente.
-                size += ByteCount(Double(size) * rng.uniform(0.02...0.12))
-                timeline.append(.replaceViaTemporary(id: spec.id, newBytes: size), on: day)
+                content += ByteCount(Double(increment) * rng.uniform(0.2...0.8))
+                untilFullSave -= 1
+                if untilFullSave <= 0 {
+                    saved = content
+                    untilFullSave = 12 + Int(rng.below(16))
+                } else {
+                    saved += ByteCount(Double(increment) * rng.uniform(0.5...1.5))
+                }
+                timeline.append(.replaceViaTemporary(id: spec.id, newBytes: saved), on: day)
             }
 
         case let .growShrinkDynamic(minBytes, maxBytes):

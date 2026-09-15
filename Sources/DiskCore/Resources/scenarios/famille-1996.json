@@ -1,0 +1,49 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 25,
+      "perDay": 1.5
+    },
+    "gaming": {
+      "installsPerYear": 3,
+      "savesPerDay": 1.0,
+      "uninstallsPerYear": 2
+    },
+    "hoarding": {
+      "gigabytesPerYear": 0.45,
+      "tidiesUpAt": 0.985
+    },
+    "maintenance": {
+      "filesPerUpdate": 60,
+      "updatesPerYear": 3
+    },
+    "office": {
+      "newDocumentsPerWeek": 4,
+      "savesPerDocumentPerWeek": 1.0
+    }
+  },
+  "disk": {
+    "averageSeekMs": 12.0,
+    "rpm": 5400,
+    "sizeMB": 850,
+    "zbr": true
+  },
+  "displayName": "Famille, 1996",
+  "fileSystem": {
+    "type": "vfat"
+  },
+  "id": "famille-1996",
+  "installs": [
+    "win95",
+    "office95",
+    "netscape3",
+    "doom2"
+  ],
+  "os": "win95-osr1",
+  "seed": 1996004,
+  "summary": "Un peu de tout : courrier, navigation, quelques jeux",
+  "timeline": {
+    "end": "1997-09-01",
+    "start": "1996-03-01"
+  }
+}
