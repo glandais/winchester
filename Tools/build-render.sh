@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 swift build -c release --target DiskCore
 CORE=".build/release"
 
-swiftc -O -o "${1:-/tmp/rendertrace}" \
+swiftc -O -swift-version 6 -o "${1:-/tmp/rendertrace}" \
     -I "$CORE/Modules" "$CORE"/DiskCore.build/*.o \
     Sources/Model/Workload.swift \
     Sources/Model/DiskSimulator.swift \

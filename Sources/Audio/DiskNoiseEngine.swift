@@ -76,7 +76,6 @@ final class DiskNoiseEngine: ObservableObject {
     private var pump: Timer?
     private var seekCache: [Int: AVAudioPCMBuffer] = [:]
     private var tickCache: [Int: AVAudioPCMBuffer] = [:]
-    private let renderQueue = DispatchQueue(label: "fr.glandais.disknoise.render", qos: .userInitiated)
 
     private let lookahead = 0.70
 
@@ -309,10 +308,11 @@ final class DiskNoiseEngine: ObservableObject {
             // 48 000 échantillons à travers huit filtres.
             let token = generation
             let synth = self.synth!
-            renderQueue.async {
-                let buffer = synth.renderChatter(run: run, variation: UInt32(truncatingIfNeeded: run.count &* 7919))
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let buffer = synth.renderChatter(run: run,
+                                                 variation: UInt32(truncatingIfNeeded: run.count &* 7919))
                 guard let buffer else { return }
-                Task { @MainActor [weak self] in
+                await MainActor.run {
                     guard let self, self.generation == token, self.isPlaying else { return }
                     self.player.scheduleBuffer(buffer, at: at, options: [])
                 }

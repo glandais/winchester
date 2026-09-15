@@ -76,20 +76,25 @@ final class DiskLibraryModel: ObservableObject {
         state = .running(fraction: 0, day: 0, fileCount: 0, fill: 0)
         cells = []
 
+        // Le rapport arrive depuis le fil de génération : il est renvoyé sur le
+        // fil principal, et seulement lui. La fermeture est construite ici,
+        // hors de la tâche, pour capturer `self` faiblement une seule fois —
+        // une capture faible imbriquée relirait la capture de la tâche depuis
+        // le fil de génération.
+        let report: @Sendable (GenerationProgress) -> Void = { [weak self] progress in
+            Task { @MainActor in
+                guard let self, self.selectedID == id else { return }
+                self.state = .running(fraction: progress.fraction,
+                                      day: progress.day,
+                                      fileCount: progress.fileCount,
+                                      fill: progress.fill)
+            }
+        }
+
         task = Task { [weak self] in
             let cellCount = ClusterMapPlayer.cellCount
             do {
-                let disk = try await DiskGenerator.generate(spec) { progress in
-                    // Le rapport arrive depuis le fil de génération : il est
-                    // renvoyé sur le fil principal, et seulement lui.
-                    Task { @MainActor [weak self] in
-                        guard let self, self.selectedID == id else { return }
-                        self.state = .running(fraction: progress.fraction,
-                                              day: progress.day,
-                                              fileCount: progress.fileCount,
-                                              fill: progress.fill)
-                    }
-                }
+                let disk = try await DiskGenerator.generate(spec, progress: report)
                 // L'agrégation de la grille est faite hors du fil principal,
                 // elle aussi : elle parcourt tous les extents du catalogue.
                 let cells = await Task.detached(priority: .userInitiated) {

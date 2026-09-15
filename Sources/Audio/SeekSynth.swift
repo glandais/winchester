@@ -21,7 +21,11 @@ struct ActuatorMode {
 
 /// Synthèse des transitoires de tête par banc de résonateurs excité par un
 /// profil de courant.
-final class SeekSynth {
+///
+/// `nonisolated` et `Sendable` : tout l'état est immuable, le rendu n'écrit que
+/// dans des tampons locaux. C'est ce qui permet d'appeler `renderChatter` depuis
+/// la file de rendu sans repasser par l'acteur principal.
+nonisolated final class SeekSynth: Sendable {
 
     let sampleRate: Double
     let format: AVAudioFormat

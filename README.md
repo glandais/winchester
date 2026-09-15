@@ -208,7 +208,30 @@ scénario en route.
   celle du player node. Les deux dérivent du même compte à rebours, mais rien ne
   garantit un alignement à la milliseconde entre les deux moteurs.
 - `SpindleVoice` échange ses consignes entre thread principal et thread audio par
-  des `Double` non synchronisés. Acceptable ici, à reprendre avant production.
+  des `Double` non synchronisés. Acceptable ici, à reprendre avant production —
+  c'est la seule entorse restante au modèle de concurrence, et le compilateur ne
+  la voit pas : la voix est confinée à l'acteur principal, seul le callback de
+  rendu d'`AVAudioSourceNode` la lit depuis le thread audio.
+
+## Concurrence
+
+Tout le projet compile en **mode langage Swift 6**, vérification stricte des
+données partagées comprise : le paquet `DiskCore` (`swiftLanguageMode(.v6)`),
+la cible application (`SWIFT_VERSION = 6.0`, plus
+`SWIFT_APPROACHABLE_CONCURRENCY`) et l'outil de rendu hors-ligne
+(`swiftc -swift-version 6`).
+
+Le découpage qui rend cela tenable :
+
+- `DiskCore`, `Sources/Model` et la couche DSP de `Sources/Audio` n'ont aucune
+  isolation : ce sont des calculs purs, appelables depuis n'importe quel fil.
+  `SeekSynth` est `Sendable` — tout son état est immuable — d'où la possibilité
+  de rendre un train de crépitements sur une tâche détachée.
+- `DiskNoiseEngine`, `DiskHaptics`, `SimulationModel` et `DiskLibraryModel` sont
+  `@MainActor` : ils pilotent des objets AVFoundation, Core Haptics et l'état
+  publié de l'interface.
+- Les allers-retours entre les deux se font par valeurs `Sendable` et retours
+  explicites sur l'acteur principal, jamais par `@unchecked Sendable`.
 
 ## Lancer
 
@@ -255,7 +278,7 @@ piste-à-piste répétés.
 ## Structure
 
 ```
-Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, concurrence stricte
+Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swift 6
     DriveGeometry.swift    géométrie zonée, LBA→CHS ; disques 2001 et 1996
     SeekModel.swift        loi de durée, découpage en quatre phases
     SeededGenerator.swift  SplitMix64, tirages stables entre plateformes

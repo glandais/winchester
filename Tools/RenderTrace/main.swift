@@ -81,6 +81,7 @@ let transientGain = Float(ProcessInfo.processInfo.environment["TRANSIENT_GAIN"] 
 var seekCache: [Int: AVAudioPCMBuffer] = [:]
 var tickCache: [Int: AVAudioPCMBuffer] = [:]
 
+@MainActor
 func mix(_ buffer: AVAudioPCMBuffer, at time: Double) {
     guard let channels = buffer.floatChannelData else { return }
     let start = Int(time * sampleRate)
@@ -122,7 +123,10 @@ for cue in cues {
     }
 }
 
-// 3. Mesures et écriture.
+// 3. Mesures et écriture. Le code de premier niveau d'un `main.swift` est
+// isolé sur l'acteur principal en Swift 6 : les fonctions qui lisent `left`,
+// `right` et `frameCount` le sont donc aussi.
+@MainActor
 func report(_ label: String, _ range: Range<Int>) {
     var sum = 0.0
     var peak: Float = 0
@@ -150,6 +154,7 @@ if normalize < 1 {
 
 // `AVAudioFile` ne finalise l'en-tête du WAV qu'à sa libération : l'écriture est
 // donc confinée à une fonction, faute de quoi le fichier annonce zéro image.
+@MainActor
 func writeWAV(to path: String, gain: Float) throws {
     let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate,
                                channels: 2, interleaved: false)!
