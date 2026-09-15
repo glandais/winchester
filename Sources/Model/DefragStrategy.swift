@@ -20,7 +20,7 @@ import DiskCore
 /// Une stratégie est une valeur et non un espace de noms : les variantes d'un
 /// même outil (analyse seule, optimisation complète, comblement seul) sont des
 /// réglages, pas des algorithmes différents.
-protocol DefragStrategy {
+protocol DefragStrategy: Sendable {
 
     /// Identifiant stable, pour les réglages et les traces.
     var id: String { get }
@@ -217,5 +217,96 @@ enum DefragOperations {
             directories.insert(String(file.path[file.path.startIndex..<slash]))
         }
         return max(directories.count, 1)
+    }
+}
+
+// MARK: - Recherche de trous
+
+extension DefragOperations {
+
+    /// Le premier trou d'au moins `need` clusters, depuis le début du volume,
+    /// en dehors de la zone réservée à la MFT.
+    ///
+    /// La recherche repart de zéro à chaque appel, et ce n'est pas une
+    /// négligence : c'est ce que font `FindGap` de JKDefrag comme
+    /// `find_first_free_region` d'UltraDefrag, qui relisent le bitmap du volume
+    /// à chaque fois plutôt que de le mettre en cache. La conséquence est
+    /// visible sur la carte — les fichiers réparés se regroupent vers l'avant,
+    /// dans les trous que la passe vient elle-même d'ouvrir — et le coût reste
+    /// modeste tant qu'on ne traite que les fichiers cassés.
+    ///
+    /// `limit: need` est ce qui évite le piège quadratique : on ne mesure
+    /// jamais un trou au-delà de la taille cherchée. Sur un volume presque
+    /// vide, le premier trou fait la taille du disque.
+    ///
+    /// La zone MFT est libre dans la bitmap, et c'est précisément le piège :
+    /// sur un volume de 320 Go elle fait quarante gigaoctets d'un seul tenant,
+    /// donc le plus grand trou du volume et de très loin. Un défragmenteur qui
+    /// l'ignore y range le premier gros fichier cassé venu et condamne la MFT
+    /// à se fragmenter dès la prochaine création de fichier. On la saute, comme
+    /// le fait `FindGap` avec ses `MftExcludes`.
+    static func firstGap(in volume: DefragVolume, need: UInt32) -> Extent? {
+        let total = UInt32(volume.partition.clusterCount)
+        let mftZone = volume.mftZone
+        var cursor: UInt32 = 0
+        while cursor < total {
+            guard let run = volume.bitmap.nextFreeRun(from: cursor, limit: need) else { return nil }
+
+            // Un trou qui mord sur la zone MFT est tronqué à ce qui la précède,
+            // et la recherche reprend derrière elle.
+            if let zone = mftZone, run.start < zone.upperBound, run.start + run.length > zone.lowerBound {
+                if run.start < zone.lowerBound, zone.lowerBound - run.start >= need {
+                    return Extent(start: run.start, length: need)
+                }
+                cursor = max(zone.upperBound, run.start + run.length)
+                continue
+            }
+
+            if run.length >= need { return Extent(start: run.start, length: need) }
+            // Le trou est plus court que demandé : `limit` n'a pas tronqué la
+            // mesure, il est bien maximal, on peut sauter par-dessus.
+            cursor = run.start + run.length
+        }
+        return nil
+    }
+
+    /// Le plus grand trou du volume, zone MFT exclue —
+    /// `find_largest_free_region` d'UltraDefrag.
+    ///
+    /// Il ne sert pas à placer quoi que ce soit mais à **borner une ambition** :
+    /// la défragmentation partielle ne fusionne jamais plus de clusters qu'il
+    /// n'en tient dans le plus grand trou disponible, faute de quoi elle
+    /// planifierait un déplacement qui n'a nulle part où aller.
+    ///
+    /// Contrairement à `firstGap`, cette mesure balaie tout le volume : c'est
+    /// le seul endroit de la couche où un appel coûte proportionnellement à la
+    /// taille du disque, et c'est pour cela qu'il n'est fait qu'une fois par
+    /// tour de boucle et jamais par fichier.
+    static func largestGap(in volume: DefragVolume) -> Extent? {
+        let total = UInt32(volume.partition.clusterCount)
+        var best: Extent?
+        var cursor: UInt32 = 0
+        while cursor < total {
+            guard var run = volume.bitmap.nextFreeRun(from: cursor) else { break }
+
+            if let zone = volume.mftZone, run.start < zone.upperBound, run.end > zone.lowerBound {
+                // Ce qui précède la zone compte, ce qu'elle couvre est interdit,
+                // et la mesure reprend derrière elle.
+                if run.start < zone.lowerBound {
+                    let head = Extent(start: run.start, length: zone.lowerBound - run.start)
+                    if best == nil || head.length > best!.length { best = head }
+                }
+                cursor = max(zone.upperBound, run.end)
+                if run.end > zone.upperBound {
+                    run = Extent(start: zone.upperBound, length: run.end - zone.upperBound)
+                    if best == nil || run.length > best!.length { best = run }
+                }
+                continue
+            }
+
+            if best == nil || run.length > best!.length { best = run }
+            cursor = run.end
+        }
+        return best
     }
 }

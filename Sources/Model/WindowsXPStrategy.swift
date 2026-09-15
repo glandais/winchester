@@ -96,7 +96,6 @@ struct WindowsXPStrategy: DefragStrategy {
 
         var volume = input
         let partition = volume.partition
-        let total = UInt32(partition.clusterCount)
         let before = volume.stats
         let initialMap = volume.categoryMap()
 
@@ -139,8 +138,8 @@ struct WindowsXPStrategy: DefragStrategy {
             // volume — `FindGap(MinimumLcn: 0, FindHighestGap: NO)`. Il est par
             // construction disjoint des extents du fichier, puisqu'il est
             // libre : aucun recouvrement à gérer, et aucun occupant à évacuer.
-            guard let target = firstGap(in: volume, need: file.clusterCount,
-                                        total: total, avoiding: volume.mftZone) else {
+            guard let target = DefragOperations.firstGap(in: volume,
+                                                         need: file.clusterCount) else {
                 // Aucun trou à la taille : le fichier reste en morceaux. C'est
                 // exactement ce que faisait l'outil — il n'a jamais déplacé
                 // personne pour se faire de la place.
@@ -207,51 +206,5 @@ struct WindowsXPStrategy: DefragStrategy {
     /// chemin.
     private func canTouch(_ file: DefragFile) -> Bool {
         file.isMovable && file.category != .reserved && file.clusterCount > 0
-    }
-
-    // MARK: - Placement
-
-    /// Le premier trou d'au moins `need` clusters, depuis le début du volume,
-    /// en dehors de la zone réservée à la MFT.
-    ///
-    /// La recherche repart de zéro à chaque fichier, et ce n'est pas une
-    /// négligence : c'est ce que fait `FindGap`, qui relit le bitmap du volume
-    /// à chaque appel plutôt que de le mettre en cache. La conséquence est
-    /// visible sur la carte — les fichiers réparés se regroupent vers l'avant,
-    /// dans les trous que la passe vient elle-même d'ouvrir — et le coût reste
-    /// modeste : quelques centaines de fichiers, pas quelques milliers.
-    ///
-    /// `limit: need` est ce qui évite le piège quadratique : on ne mesure
-    /// jamais un trou au-delà de la taille cherchée. Sur un volume presque
-    /// vide, le premier trou fait la taille du disque.
-    ///
-    /// La zone MFT est libre dans la bitmap, et c'est précisément le piège :
-    /// sur un volume de 320 Go elle fait quarante gigaoctets d'un seul tenant,
-    /// donc le plus grand trou du volume et de très loin. Un défragmenteur qui
-    /// l'ignore y range le premier gros fichier cassé venu et condamne la MFT
-    /// à se fragmenter dès la prochaine création de fichier. On la saute, comme
-    /// le fait `FindGap` avec ses `MftExcludes`.
-    private func firstGap(in volume: DefragVolume, need: UInt32,
-                          total: UInt32, avoiding mftZone: Range<UInt32>?) -> Extent? {
-        var cursor: UInt32 = 0
-        while cursor < total {
-            guard let run = volume.bitmap.nextFreeRun(from: cursor, limit: need) else { return nil }
-
-            // Un trou qui mord sur la zone MFT est tronqué à ce qui la précède,
-            // et la recherche reprend derrière elle.
-            if let zone = mftZone, run.start < zone.upperBound, run.start + run.length > zone.lowerBound {
-                if run.start < zone.lowerBound, zone.lowerBound - run.start >= need {
-                    return Extent(start: run.start, length: need)
-                }
-                cursor = max(zone.upperBound, run.start + run.length)
-                continue
-            }
-
-            if run.length >= need { return Extent(start: run.start, length: need) }
-            // Le trou est plus court que demandé : `limit` n'a pas tronqué la
-            // mesure, il est bien maximal, on peut sauter par-dessus.
-            cursor = run.start + run.length
-        }
-        return nil
     }
 }
