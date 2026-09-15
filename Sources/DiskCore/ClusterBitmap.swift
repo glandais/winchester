@@ -159,9 +159,19 @@ public struct ClusterBitmap: Sendable {
 
     /// Premier cluster libre à partir de `cluster` inclus, sans repasser par le
     /// début du volume.
-    public func nextFreeCluster(from cluster: UInt32) -> UInt32? {
+    ///
+    /// - Parameter before: abandonne la recherche au-delà de ce cluster. La
+    ///   borne doit être **dans** la boucle de scan et non appliquée au
+    ///   résultat : c'est toute la différence entre renoncer après huit mots et
+    ///   traverser les trois cent mille mots d'un volume de 80 Go avant de
+    ///   constater qu'on est allé trop loin.
+    public func nextFreeCluster(from cluster: UInt32, before limit: UInt32? = nil) -> UInt32? {
         guard cluster < clusterCount else { return nil }
+        let stop = min(limit ?? clusterCount, clusterCount)
+        guard cluster < stop else { return nil }
+
         var word = Int(cluster >> 6)
+        let lastWord = Int((stop - 1) >> 6)
         // Les bits déjà dépassés dans le premier mot sont vus comme occupés.
         var value = words[word] | ((1 << UInt64(cluster & 63)) - 1)
 
@@ -169,10 +179,10 @@ public struct ClusterBitmap: Sendable {
             let free = ~value
             if free != 0 {
                 let candidate = UInt32(word << 6) &+ UInt32(free.trailingZeroBitCount)
-                return candidate < clusterCount ? candidate : nil
+                return candidate < stop ? candidate : nil
             }
             word += 1
-            guard word < words.count else { return nil }
+            guard word <= lastWord, word < words.count else { return nil }
             value = words[word]
         }
     }
@@ -187,8 +197,8 @@ public struct ClusterBitmap: Sendable {
     ///   reste : sur un volume neuf, le premier trou fait la taille du disque
     ///   entier, et le mesurer à chaque allocation rend le remplissage
     ///   quadratique.
-    public func nextFreeRun(from cluster: UInt32, limit: UInt32 = .max) -> Extent? {
-        guard let start = nextFreeCluster(from: cluster) else { return nil }
+    public func nextFreeRun(from cluster: UInt32, limit: UInt32 = .max, before: UInt32? = nil) -> Extent? {
+        guard let start = nextFreeCluster(from: cluster, before: before) else { return nil }
         return Extent(start: start, length: freeRunLength(at: start, limit: limit))
     }
 
@@ -270,23 +280,51 @@ public struct ClusterBitmap: Sendable {
     /// beaucoup plus longtemps — et qui, une fois le volume plein, n'a plus que
     /// des miettes à distribuer.
     ///
-    /// Contrairement au first-fit, le best-fit doit examiner **tous** les trous
-    /// du volume avant de se décider : son coût est celui d'un parcours de la
-    /// bitmap à chaque allocation. C'est le prix des fichiers contigus de NTFS,
-    /// et c'est aussi pour cela qu'un vrai NTFS ne fait pas du best-fit pur.
+    /// Contrairement au first-fit, le best-fit doit connaître la taille exacte
+    /// de chaque trou qu'il examine : il ne peut donc pas plafonner ses mesures,
+    /// et un trou de plusieurs millions de clusters lui coûte le parcours
+    /// complet. **L'appelant doit restreindre la plage** à la partie du volume
+    /// déjà servie, faute de quoi chaque allocation re-mesure tout l'espace
+    /// vierge restant. C'est aussi pour cette raison qu'un vrai NTFS ne fait pas
+    /// du best-fit pur : il choisit dans ce que son cache de zones libres lui
+    /// montre.
     ///
     /// - Parameter range: restreint la recherche à une plage. Sert à tenir
     ///   l'allocateur NTFS hors de la zone MFT tant qu'il reste de la place
     ///   ailleurs.
-    public func bestFitRun(minLength: UInt32, in range: Range<UInt32>? = nil) -> Extent? {
+    /// - Parameter from: cluster où commencer le parcours. Par défaut le début
+    ///   de la plage.
+    /// - Parameter maxRunsExamined: nombre maximal de trous examinés avant de se
+    ///   décider. Un best-fit exact coûte un parcours complet de la bitmap à
+    ///   **chaque** allocation, ce qui rend la génération d'un volume de 80 Go
+    ///   quadratique. Un vrai NTFS ne fait pas mieux : il travaille sur un cache
+    ///   partiel de sa table d'occupation et choisit le meilleur trou qu'il y
+    ///   trouve, pas le meilleur du volume. Borner la recherche est donc à la
+    ///   fois plus rapide et plus fidèle.
+    /// - Parameter maxClustersScanned: distance maximale parcourue. C'est la
+    ///   borne qui compte vraiment : sur un volume de vingt millions de
+    ///   clusters dont plusieurs millions sont occupés d'un seul tenant, ce
+    ///   n'est pas le nombre de trous examinés qui coûte, c'est la traversée
+    ///   des zones pleines qui les sépare.
+    public func bestFitRun(minLength: UInt32,
+                           in range: Range<UInt32>? = nil,
+                           from: UInt32? = nil,
+                           maxRunsExamined: Int = .max,
+                           maxClustersScanned: UInt32 = .max) -> Extent? {
         guard minLength > 0 else { return nil }
         let lower = range?.lowerBound ?? 0
         let upper = min(range?.upperBound ?? clusterCount, clusterCount)
         guard lower < upper else { return nil }
 
         var best: Extent?
-        var position = lower
-        while let run = nextFreeRun(from: position), run.start < upper {
+        var examined = 0
+        let origin = max(from ?? lower, lower)
+        var position = origin
+        let horizon = maxClustersScanned == .max
+            ? upper
+            : min(upper, origin &+ maxClustersScanned)
+
+        while let run = nextFreeRun(from: position, before: horizon) {
             // Un run qui dépasse la plage n'y est utilisable que pour sa part
             // interne : c'est ce qui permet de s'arrêter net au bord de la MFT.
             let usable = min(run.end, upper) - run.start
@@ -294,6 +332,12 @@ public struct ClusterBitmap: Sendable {
                 best = Extent(start: run.start, length: usable)
                 if usable == minLength { break }   // impossible de faire mieux
             }
+            // Tous les trous traversés comptent, pas seulement ceux qui
+            // conviennent : sur un volume mité, ce sont les miettes qu'on
+            // enjambe qui coûtent cher, et un vrai allocateur ne les voit pas
+            // non plus.
+            examined += 1
+            if examined >= maxRunsExamined { break }
             position = run.end
             if position >= clusterCount { break }
         }

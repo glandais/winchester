@@ -210,6 +210,14 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, concurrence stric
     Extent.swift           suite de clusters contigus, huit octets
     ClusterBitmap.swift    occupation des clusters, recherche de place libre
     AccessCost.swift       temps de lecture d'une liste d'extents
+    FileSystemProfile.swift  contraintes d'un format : cluster, résidence, slack
+    Allocator.swift        protocole de placement, indices, entrée de fichier
+    Allocators/            FAT (scan depuis le début ou next-free) et NTFS
+    FileCatalog.swift      arborescence, extents, métadonnées
+    WritePattern.swift     motifs d'écriture
+    EventTimeline.swift    suite datée d'événements, indépendante du format
+    Simulator.swift        rejeu de la timeline, progression, annulation
+    AllocationMetrics.swift  mesures de sortie
 Sources/Model/
     Workload.swift         phases du scénario, générateur de requêtes déterministe
     Volume.swift           partition FAT16, allocateur next-fit, vieillissement

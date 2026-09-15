@@ -158,6 +158,15 @@ public struct FATAllocator: Allocator {
         return true
     }
 
+
+    /// Prise d'une plage imposée, pour un défragmenteur.
+    @discardableResult
+    public mutating func claim(_ extent: Extent) -> Bool {
+        guard bitmap.isFree(extent) else { return false }
+        bitmap.allocate(extent)
+        return true
+    }
+
     /// Libération immédiate. En scan depuis le début, le trou ainsi ouvert sera
     /// servi à la toute prochaine allocation, fût-elle sans rapport : c'est le
     /// mécanisme qui a mité les volumes DOS.

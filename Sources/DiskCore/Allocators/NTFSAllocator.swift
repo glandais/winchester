@@ -62,6 +62,35 @@ public struct NTFSAllocator: Allocator {
     /// choisir le trou.
     private let growthMarginClusters: UInt32 = 16
 
+    /// Trous examinés avant de se décider. NTFS ne connaît pas l'état complet de
+    /// son volume à chaque écriture : il tient un cache partiel de sa table
+    /// d'occupation et prend le meilleur trou qu'il y voit. C'est ce que fait
+    /// cette fenêtre — et sans elle, chaque allocation parcourrait les dizaines
+    /// de milliers de trous d'un volume de 80 Go.
+    private let searchWindow = 64
+
+    /// Distance maximale parcourue dans la bitmap à la recherche d'un trou :
+    /// 65 536 clusters, soit 8 Ko de table d'occupation — l'ordre de grandeur
+    /// de ce qu'un pilote garde réellement en cache. Au-delà, l'allocateur
+    /// renonce et va prendre de l'espace vierge.
+    ///
+    /// C'est la borne qui décide du coût de la génération : sans elle, chaque
+    /// écriture traverse les zones pleines qui séparent les trous, et un volume
+    /// de 80 Go devient quadratique.
+    private let searchHorizon: UInt32 = 1 << 16
+
+    /// Point de départ du prochain parcours. Il avance avec les allocations, ce
+    /// qui évite que toutes les écritures se disputent les mêmes trous en tête
+    /// de volume.
+    private var searchCursor: UInt32 = 0
+
+    /// Où en est l'écriture des fichiers système. Une installation de Windows
+    /// pose quarante-cinq mille fichiers à la suite : elle ne redémarre pas du
+    /// début du volume à chaque fichier. Le regroupement des fichiers de
+    /// démarrage en tête de volume n'est pas le fait de l'allocateur, c'est
+    /// celui du défragmenteur, qui repasse plus tard avec `Layout.ini` en main.
+    private var systemCursor: UInt32 = 0
+
     public init(profile: NTFSProfile = NTFSProfile(),
                 clusterCount: UInt32,
                 initialMFTRecords: UInt64 = 32,
@@ -130,14 +159,29 @@ public struct NTFSAllocator: Allocator {
                 return commit([run])
             }
 
-        case .boot, .system:
-            // Les fichiers de démarrage vont en tête de la zone de données,
-            // là où les pistes sont les plus rapides. C'est ce que le
-            // défragmenteur de XP refait à chaque passe, `Layout.ini` en main.
+        case .boot:
+            // Le chargeur d'amorçage veut ses fichiers au plus près du début du
+            // volume, et ils sont assez peu nombreux pour qu'un scan complet
+            // n'ait aucune importance.
             if let run = bitmap.firstFitRun(minLength: count, maxLength: count,
-                                            from: range.lowerBound) {
-                if run.end <= range.upperBound { return commit([run]) }
+                                            from: range.lowerBound),
+               run.end <= range.upperBound {
+                return commit([run])
             }
+
+        case .system:
+            // Les fichiers système s'écrivent à la suite les uns des autres, en
+            // tête de la zone de données, là où les pistes sont les plus
+            // rapides.
+            let from = max(systemCursor, range.lowerBound)
+            if let run = bitmap.firstFitRun(minLength: count, maxLength: count, from: from),
+               run.end <= range.upperBound {
+                systemCursor = run.end
+                return commit([run])
+            }
+            // La tête du volume est pleine : le fichier système suivant est
+            // traité comme les autres.
+            systemCursor = range.lowerBound
 
         case .normal, .temporary:
             break
@@ -154,7 +198,15 @@ public struct NTFSAllocator: Allocator {
     private func preferredRun(for count: UInt32, in range: Range<UInt32>) -> Extent? {
         let wanted = count &+ growthMarginClusters
 
-        if let fit = bitmap.bestFitRun(minLength: count, in: range) {
+        // Le best-fit ne travaille que sur la partie du volume déjà servie :
+        // au-delà du `highWater` il n'y a qu'un seul trou, celui qui reste, et
+        // le confronter aux autres n'a aucun sens.
+        let used = range.lowerBound..<min(max(highWater, range.lowerBound), range.upperBound)
+        if used.lowerBound < used.upperBound,
+           let fit = bitmap.bestFitRun(minLength: count, in: used,
+                                       from: searchCursor,
+                                       maxRunsExamined: searchWindow,
+                                       maxClustersScanned: searchHorizon) {
             let (doubled, overflow) = count.multipliedReportingOverflow(by: reuseTolerance)
             let tolerable = overflow ? UInt32.max : doubled
             if fit.length <= tolerable {
@@ -166,14 +218,20 @@ public struct NTFSAllocator: Allocator {
         // de croissance, pour que ses extensions futures tombent à sa suite.
         let virgin = max(highWater, range.lowerBound)..<range.upperBound
         if virgin.lowerBound < virgin.upperBound {
-            if let run = bitmap.bestFitRun(minLength: wanted, in: virgin)
-                ?? bitmap.bestFitRun(minLength: count, in: virgin) {
+            if let run = bitmap.firstFitRun(minLength: wanted, maxLength: wanted,
+                                            from: virgin.lowerBound)
+                ?? bitmap.firstFitRun(minLength: count, maxLength: count,
+                                      from: virgin.lowerBound),
+               run.start < virgin.upperBound {
                 return Extent(start: run.start, length: count)
             }
         }
 
-        // Plus de vierge : on revient au best-fit pur, quitte à couper.
-        if let fit = bitmap.bestFitRun(minLength: count, in: range) {
+        // Plus de vierge : le curseur repart du début de la zone de données et
+        // reprend tout ce qui a été libéré entre-temps.
+        if let fit = bitmap.bestFitRun(minLength: count, in: range,
+                                       maxRunsExamined: searchWindow * 4,
+                                       maxClustersScanned: searchHorizon * 4) {
             return Extent(start: fit.start, length: count)
         }
         return nil
@@ -204,6 +262,7 @@ public struct NTFSAllocator: Allocator {
         for extent in extents {
             bitmap.allocate(extent)
             highWater = max(highWater, extent.end)
+            searchCursor = extent.start
             if extent.start < mftZone.upperBound && extent.end > mftZone.lowerBound {
                 mftZoneBreached = true
             }
@@ -247,8 +306,26 @@ public struct NTFSAllocator: Allocator {
         return true
     }
 
+    /// La libération est immédiate — l'espace est rendu, le compte est juste —
+    /// mais le curseur de recherche ne recule pas pour autant. C'est la
+    /// « réutilisation paresseuse » de NTFS : un trou qui vient de s'ouvrir
+    /// n'est pas repris à l'écriture suivante, il attend que le parcours
+    /// repasse devant. D'où ces trous qui persistent au milieu d'un volume par
+    /// ailleurs contigu, et qu'aucun FAT ne produit jamais.
     public mutating func free(_ extents: [Extent]) {
         bitmap.free(extents)
+    }
+
+    /// Prise d'une plage imposée, pour un défragmenteur.
+    @discardableResult
+    public mutating func claim(_ extent: Extent) -> Bool {
+        guard bitmap.isFree(extent) else { return false }
+        bitmap.allocate(extent)
+        highWater = max(highWater, extent.end)
+        if extent.start < mftZone.upperBound && extent.end > mftZone.lowerBound {
+            mftZoneBreached = true
+        }
+        return true
     }
 
     // MARK: - Croissance de la MFT

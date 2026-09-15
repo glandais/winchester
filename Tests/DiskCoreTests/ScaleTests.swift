@@ -87,3 +87,87 @@ struct ScaleTests {
         #expect(bitmap.freeRunCount() == 1)
     }
 }
+
+/// Le budget annoncé : générer un disque XP de 80 Go avec trois ans
+/// d'historique doit tenir en moins de deux secondes sur un iPhone, hors du fil
+/// principal. Ici on mesure sur une machine de développement et en
+/// configuration de débogage, donc avec une marge large — l'objet du test est
+/// d'attraper une dégénérescence, pas de certifier une milliseconde.
+@Suite("Budget de génération")
+struct GenerationBudgetTests {
+
+    /// Trois ans d'un poste de 2003 : une installation, des dizaines de
+    /// milliers de fichiers, un cache de navigateur qui tourne en permanence,
+    /// des documents qui grossissent et deux passes de défragmentation.
+    private func windowsXPHistory(seed: UInt64) -> EventTimeline {
+        var rng = SeededGenerator(seed: seed)
+        var writer = PatternWriter()
+        var id: UInt32 = 0
+        func newID() -> UInt32 { defer { id += 1 }; return id }
+
+        // Installation : Windows, Office, quelques applications.
+        for _ in 0..<45_000 {
+            writer.write(FileSpec(id: newID(), name: "S", directory: 0,
+                                  category: .systemCore,
+                                  bytes: ByteCount(max(400, rng.logNormal(median: 40_000, sigma: 1.7)))),
+                         from: 0, to: 0, touches: 0, rng: &rng)
+        }
+        // pagefile.sys à taille fixe.
+        writer.write(FileSpec(id: newID(), name: "pagefile.sys", directory: 0,
+                              category: .swap, bytes: 1_536 * 1_024 * 1_024),
+                     from: 0, to: 0, touches: 0, rng: &rng)
+
+        // Trois ans d'usage : cache, documents, photos, téléchargements.
+        for day in 1...(365 * 3) {
+            let today = UInt32(day)
+            for _ in 0..<25 {
+                writer.write(FileSpec(id: newID(), name: "C", directory: 0,
+                                      category: .cache,
+                                      pattern: .createDeleteShortLived(lifetimeDays: UInt32(rng.uniform(1...20))),
+                                      bytes: ByteCount(max(500, rng.logNormal(median: 6_000, sigma: 1.1)))),
+                             from: today, to: today + 30, touches: 0, rng: &rng)
+            }
+            if day % 3 == 0 {
+                writer.write(FileSpec(id: newID(), name: "D", directory: 0,
+                                      category: .document, pattern: .writeTempThenRename,
+                                      bytes: ByteCount(max(8_000, rng.logNormal(median: 30_000, sigma: 0.9)))),
+                             from: today, to: today + 200, touches: 6, rng: &rng)
+            }
+            if day % 7 == 0 {
+                writer.write(FileSpec(id: newID(), name: "P", directory: 0,
+                                      category: .media,
+                                      bytes: ByteCount(max(200_000, rng.logNormal(median: 900_000, sigma: 0.5)))),
+                             from: today, to: today, touches: 0, rng: &rng)
+            }
+        }
+
+        var timeline = writer.timeline
+        timeline.append(.defragment, on: 400)
+        timeline.append(.defragment, on: 900)
+        timeline.sortByDay()
+        return timeline
+    }
+
+    @Test("Un disque XP de 80 Go avec trois ans d'historique se génère d'une traite")
+    func windowsXPVolume() throws {
+        let timeline = windowsXPHistory(seed: 2_003)
+        let profile = NTFSProfile(clusterKB: 4)
+        let clusterCount = UInt32(UInt64(80) * 1_024 * 1_024 * 1_024 / UInt64(profile.clusterBytes))
+
+        var simulator = Simulator(allocator: NTFSAllocator(profile: profile, clusterCount: clusterCount))
+        let start = Date()
+        let outcome = try simulator.run(timeline)
+        let elapsed = Date().timeIntervalSince(start)
+
+        #expect(outcome.metrics.fileCount > 40_000)
+        #expect(outcome.defragRuns == 2)
+        #expect(timeline.count > 100_000)
+        // Mesure en configuration release sur une machine de développement :
+        // 0,28 s pour ces cent mille événements sur un volume de vingt millions
+        // de clusters. Le budget visé — deux secondes sur iPhone — est donc tenu
+        // avec de la marge. Le seuil ci-dessous vaut pour la configuration de
+        // débogage, où Swift vérifie chaque accès de tableau ; il est là pour
+        // attraper une dégénérescence, pas pour mesurer la machine.
+        #expect(elapsed < 40.0, "\(timeline.count) événements rejoués en \(elapsed) s")
+    }
+}

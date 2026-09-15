@@ -100,6 +100,14 @@ public protocol Allocator {
 
     mutating func free(_ extents: [Extent])
 
+    /// Prend une plage précise, si elle est entièrement libre.
+    ///
+    /// Réservé aux outils qui décident eux-mêmes du placement — un
+    /// défragmenteur ne demande pas de la place à l'allocateur, il lui dicte où
+    /// poser chaque fichier. Aucun chemin d'écriture ordinaire ne passe par là.
+    @discardableResult
+    mutating func claim(_ extent: Extent) -> Bool
+
     /// Signale la création d'un fichier, pour que les systèmes qui tiennent une
     /// table de métadonnées la fassent grandir. Sans effet sur FAT, dont les
     /// entrées de répertoire vivent dans des fichiers ordinaires ; sur NTFS,
@@ -154,6 +162,33 @@ extension Allocator {
             guard extend(file: &file, byClusters: after - before) else { return }
         }
         file.logicalSize = bytes
+    }
+
+    /// Réduit un fichier : les clusters en trop sont rendus **par la fin**,
+    /// comme le ferait une troncature. C'est le mouvement du fichier d'échange
+    /// qui se dégonfle.
+    public mutating func shrink(file: inout FileEntry, toLogicalSize bytes: UInt64) {
+        guard bytes < file.logicalSize, !file.isResident else {
+            if file.isResident { file.logicalSize = bytes }
+            return
+        }
+        let wanted = profile.clusters(forBytes: bytes)
+        var current = file.clusterCount
+        file.logicalSize = bytes
+
+        while current > wanted, var last = file.extents.last {
+            let excess = current - wanted
+            if last.length <= excess {
+                free([last])
+                file.extents.removeLast()
+                current -= last.length
+            } else {
+                free([Extent(start: last.end - excess, length: excess)])
+                last.length -= excess
+                file.extents[file.extents.count - 1] = last
+                current -= excess
+            }
+        }
     }
 
     public mutating func release(file: inout FileEntry) {
