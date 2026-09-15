@@ -56,6 +56,7 @@ func describe(_ playback: DefragPlayback) -> String {
     let plan = playback.plan
     let moved = Double(plan.movedBytes) / 1_000_000
     return """
+    outil         : \(plan.strategy.label)
     volume        : \(plan.partition.clusterCount) clusters de \(plan.partition.clusterBytes / 1_024) Ko, \
     \(plan.before.fileCount) fichiers, \(Int(plan.before.fill * 100)) % plein
     déplacements  : \(plan.filesMoved) fichiers, \(plan.evacuations) évacuations, \
@@ -63,6 +64,7 @@ func describe(_ playback: DefragPlayback) -> String {
     déplacé       : \(String(format: "%.0f", moved)) Mo pour un volume de \
     \(plan.partition.capacityBytes / 1_000_000) Mo
     fragmentés    : \(plan.before.fragmentedFiles) avant, \(plan.after.fragmentedFiles) après
+    morceaux      : \(plan.before.fragments) avant, \(plan.after.fragments) après
     """
 }
 

@@ -194,13 +194,15 @@ struct DefragVolume {
     // MARK: - Mesures
 
     var stats: VolumeStats {
-        VolumeStats(fill: fill,
-                    fragmentedFiles: files.filter { !$0.isContiguous }.count,
-                    fileCount: files.count,
-                    extentsPerFile: files.isEmpty
-                        ? 0
-                        : Double(files.reduce(0) { $0 + $1.extents.count }) / Double(files.count),
-                    freeHoles: bitmap.freeRunCount())
+        let broken = files.filter { !$0.isContiguous }
+        return VolumeStats(fill: fill,
+                           fragmentedFiles: broken.count,
+                           fragments: broken.reduce(0) { $0 + $1.fragmentCount },
+                           fileCount: files.count,
+                           extentsPerFile: files.isEmpty
+                               ? 0
+                               : Double(files.reduce(0) { $0 + $1.extents.count }) / Double(files.count),
+                           freeHoles: bitmap.freeRunCount())
     }
 
     /// Carte des catégories, une valeur par cluster.

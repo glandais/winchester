@@ -64,6 +64,16 @@ struct PhaseDescriptor: Identifiable {
 struct VolumeStats {
     let fill: Double
     let fragmentedFiles: Int
+    /// Nombre total de morceaux à aller chercher, sur les seuls fichiers
+    /// cassés — le `pi.bad_fragments` d'UltraDefrag.
+    ///
+    /// C'est la mesure que `fragmentedFiles` ne sait pas rendre. Un fichier
+    /// ramené de quarante morceaux à deux reste « fragmenté » et ne bouge pas
+    /// d'un compteur binaire, alors que la tête a trente-huit seeks de moins à
+    /// faire pour le lire. Une défragmentation partielle ne travaille que
+    /// là-dessus : elle ne prétend pas rendre un fichier contigu, elle réduit
+    /// le nombre de fois où le bras doit sauter.
+    let fragments: Int
     let fileCount: Int
     let extentsPerFile: Double
     let freeHoles: Int
