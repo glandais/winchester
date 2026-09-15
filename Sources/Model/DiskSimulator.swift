@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 
 /// Événement mécanique audible produit par le disque.
 enum DiskEventKind {

@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 import AVFAudio
 
 /// Mode structurel de l'ensemble bras + bobine mobile.

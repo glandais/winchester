@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 
 /// Nature du contenu d'un cluster, telle que la carte du défragmenteur la
 /// coloriait. C'est aussi la catégorie du fichier qui l'occupe.

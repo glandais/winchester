@@ -13,12 +13,23 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
 
+packages:
+  DiskCore:
+    path: .
+
 targets:
   DiskNoise:
     type: application
     platform: iOS
+    dependencies:
+      - package: DiskCore
+        product: DiskCore
     sources:
+      # Le noyau est compilé comme paquet, pas comme fichiers de l'application :
+      # il se teste en ligne de commande et compile en concurrence stricte.
       - path: Sources
+        excludes:
+          - DiskCore/**
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.glandais.disknoise

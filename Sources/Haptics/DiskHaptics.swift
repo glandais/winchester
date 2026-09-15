@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 import CoreHaptics
 import QuartzCore
 

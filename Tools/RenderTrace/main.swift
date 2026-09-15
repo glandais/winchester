@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 import AVFAudio
 
 // Rendu hors-ligne de la trace complète dans un WAV.

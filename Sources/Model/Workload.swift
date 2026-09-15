@@ -1,41 +1,5 @@
 import Foundation
-
-/// Générateur pseudo-aléatoire déterministe (SplitMix64) : la même graine
-/// produit toujours la même trace, indispensable pour comparer deux réglages
-/// audio sur exactement la même séquence d'I/O.
-struct SeededGenerator: RandomNumberGenerator {
-    private var state: UInt64
-
-    init(seed: UInt64) { state = seed &+ 0x9E37_79B9_7F4A_7C15 }
-
-    mutating func next() -> UInt64 {
-        state = state &+ 0x9E37_79B9_7F4A_7C15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-        return z ^ (z >> 31)
-    }
-
-    mutating func uniform(_ range: ClosedRange<Double>) -> Double {
-        Double.random(in: range, using: &self)
-    }
-
-    mutating func uniform(_ range: ClosedRange<Int>) -> Int {
-        Int.random(in: range, using: &self)
-    }
-
-    mutating func chance(_ p: Double) -> Bool {
-        Double.random(in: 0..<1, using: &self) < p
-    }
-
-    /// Box-Muller, tronqué à ±3 σ pour éviter les valeurs aberrantes.
-    mutating func gaussian() -> Double {
-        let u1 = max(Double.random(in: 0..<1, using: &self), 1e-12)
-        let u2 = Double.random(in: 0..<1, using: &self)
-        let g = (-2 * Foundation.log(u1)).squareRoot() * Foundation.cos(2 * .pi * u2)
-        return min(max(g, -3), 3)
-    }
-}
+import DiskCore
 
 // MARK: - Requête bloc
 

@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 
 /// Modification de la carte des clusters, datée après coup par la simulation.
 struct MapMutation {

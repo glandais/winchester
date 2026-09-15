@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 import Combine
 
 /// Rejoue la carte des clusters à un instant donné.

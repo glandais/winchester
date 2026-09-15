@@ -165,6 +165,13 @@ xcodegen generate
 open DiskNoise.xcodeproj
 ```
 
+Le noyau se construit et se teste sans passer par Xcode :
+
+```sh
+swift build
+swift test
+```
+
 Ou directement :
 
 ```sh
@@ -196,9 +203,14 @@ piste-à-piste répétés.
 ## Structure
 
 ```
-Sources/Model/
+Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, concurrence stricte
     DriveGeometry.swift    géométrie zonée, LBA→CHS ; disques 2001 et 1996
     SeekModel.swift        loi de durée, découpage en quatre phases
+    SeededGenerator.swift  SplitMix64, tirages stables entre plateformes
+    Extent.swift           suite de clusters contigus, huit octets
+    ClusterBitmap.swift    occupation des clusters, recherche de place libre
+    AccessCost.swift       temps de lecture d'une liste d'extents
+Sources/Model/
     Workload.swift         phases du scénario, générateur de requêtes déterministe
     Volume.swift           partition FAT16, allocateur next-fit, vieillissement
     DefragJob.swift        planificateur de la passe de défragmentation

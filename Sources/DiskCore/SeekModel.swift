@@ -8,15 +8,23 @@ import Foundation
 /// dominés par le settle et n'ont pas de phase de coast du tout — c'est ce qui
 /// justifie de faire varier la **forme** de l'enveloppe avec la distance, et pas
 /// seulement son amplitude.
-struct SeekProfile {
-    let distance: Int
-    let speedup: Double
-    let coast: Double
-    let slowdown: Double
-    let settle: Double
+public struct SeekProfile: Sendable {
+    public let distance: Int
+    public let speedup: Double
+    public let coast: Double
+    public let slowdown: Double
+    public let settle: Double
 
-    var total: Double { speedup + coast + slowdown + settle }
-    var hasCoast: Bool { coast > 1e-6 }
+    public init(distance: Int, speedup: Double, coast: Double, slowdown: Double, settle: Double) {
+        self.distance = distance
+        self.speedup = speedup
+        self.coast = coast
+        self.slowdown = slowdown
+        self.settle = settle
+    }
+
+    public var total: Double { speedup + coast + slowdown + settle }
+    public var hasCoast: Bool { coast > 1e-6 }
 }
 
 /// Loi de durée de seek à deux régimes.
@@ -27,22 +35,40 @@ struct SeekProfile {
 /// des années 90 ; **la forme fonctionnelle se généralise, pas les constantes**.
 /// Celles-ci sont recalibrées pour un disque de 2001 : ~1,1 ms piste-à-piste,
 /// ~8,7 ms en seek moyen (1/3 de course), ~18 ms en pleine course.
-struct SeekModel {
+public struct SeekModel: Sendable {
 
-    let shortIntercept: Double     // ms
-    let shortSqrtCoefficient: Double
-    let longIntercept: Double      // ms
-    let longLinearCoefficient: Double
-    let crossover: Int             // cylindres
+    public let shortIntercept: Double     // ms
+    public let shortSqrtCoefficient: Double
+    public let longIntercept: Double      // ms
+    public let longLinearCoefficient: Double
+    public let crossover: Int             // cylindres
 
     /// Durée du repositionnement fin sous asservissement, en fin de seek.
-    let settleDuration: Double     // s
+    public let settleDuration: Double     // s
     /// Durée max d'une phase d'accélération ou de décélération.
-    let accelerationCap: Double    // s
+    public let accelerationCap: Double    // s
     /// Commutation de tête sans déplacement de bras.
-    let headSwitchDuration: Double // s
+    public let headSwitchDuration: Double // s
 
-    static let defaultModel = SeekModel(
+    public init(shortIntercept: Double,
+                shortSqrtCoefficient: Double,
+                longIntercept: Double,
+                longLinearCoefficient: Double,
+                crossover: Int,
+                settleDuration: Double,
+                accelerationCap: Double,
+                headSwitchDuration: Double) {
+        self.shortIntercept = shortIntercept
+        self.shortSqrtCoefficient = shortSqrtCoefficient
+        self.longIntercept = longIntercept
+        self.longLinearCoefficient = longLinearCoefficient
+        self.crossover = crossover
+        self.settleDuration = settleDuration
+        self.accelerationCap = accelerationCap
+        self.headSwitchDuration = headSwitchDuration
+    }
+
+    public static let defaultModel = SeekModel(
         shortIntercept: 1.00,
         shortSqrtCoefficient: 0.140,
         longIntercept: 4.00,
@@ -54,7 +80,7 @@ struct SeekModel {
     )
 
     /// Durée totale du seek, en secondes.
-    func duration(distance: Int) -> Double {
+    public func duration(distance: Int) -> Double {
         let d = abs(distance)
         guard d > 0 else { return 0 }
         let ms: Double
@@ -66,7 +92,7 @@ struct SeekModel {
         return ms / 1000.0
     }
 
-    func profile(distance: Int) -> SeekProfile {
+    public func profile(distance: Int) -> SeekProfile {
         let d = abs(distance)
         let total = duration(distance: d)
         guard total > 0 else {
@@ -95,7 +121,7 @@ struct SeekModel {
 
     /// Position normalisée de la distance dans la course du disque, utilisée
     /// pour doser l'excitation des modes de l'actionneur.
-    func travelMix(distance: Int, cylinders: Int) -> Double {
+    public func travelMix(distance: Int, cylinders: Int) -> Double {
         let f = Double(abs(distance)) / Double(max(cylinders - 1, 1))
         return min(max(f, 0), 1)
     }
@@ -107,7 +133,7 @@ extension SeekModel {
     /// seek moyen (1/3 de course), 22 ms en pleine course. Le bras est plus
     /// lourd et l'asservissement plus lent qu'en 2001 — d'où un settle deux
     /// fois plus long, qui s'entend : chaque arrêt « traîne ».
-    static let win95Model = SeekModel(
+    public static let win95Model = SeekModel(
         shortIntercept: 2.60,
         shortSqrtCoefficient: 0.400,
         longIntercept: 7.29,

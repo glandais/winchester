@@ -7,32 +7,43 @@ import Foundation
 /// fichiers système d'un Windows fraîchement installé se retrouvent sur les
 /// cylindres extérieurs, et que le bruit de démarrage reste confiné à une zone
 /// étroite du disque.
-struct DriveGeometry {
+public struct DriveGeometry: Sendable {
 
-    struct Zone {
-        let firstCylinder: Int
-        let sectorsPerTrack: Int
+    public struct Zone: Sendable {
+        public let firstCylinder: Int
+        public let sectorsPerTrack: Int
+
+        public init(firstCylinder: Int, sectorsPerTrack: Int) {
+            self.firstCylinder = firstCylinder
+            self.sectorsPerTrack = sectorsPerTrack
+        }
     }
 
-    struct Position {
-        let cylinder: Int
-        let head: Int
-        let sector: Int
+    public struct Position: Sendable {
+        public let cylinder: Int
+        public let head: Int
+        public let sector: Int
+
+        public init(cylinder: Int, head: Int, sector: Int) {
+            self.cylinder = cylinder
+            self.head = head
+            self.sector = sector
+        }
     }
 
-    static let bytesPerSector = 512
+    public static let bytesPerSector = 512
 
-    let model: String
-    let cylinders: Int
-    let heads: Int
-    let rpm: Double
-    let zones: [Zone]
+    public let model: String
+    public let cylinders: Int
+    public let heads: Int
+    public let rpm: Double
+    public let zones: [Zone]
 
     private let sectorsPerTrackByCylinder: [Int]
     /// LBA du premier secteur de chaque cylindre, `cylinders + 1` entrées.
     private let cylinderStartLBA: [Int]
 
-    init(model: String, cylinders: Int, heads: Int, rpm: Double, zones: [Zone]) {
+    public init(model: String, cylinders: Int, heads: Int, rpm: Double, zones: [Zone]) {
         precondition(cylinders > 1 && heads > 0)
         precondition(!zones.isEmpty && zones[0].firstCylinder == 0)
 
@@ -65,28 +76,28 @@ struct DriveGeometry {
     // MARK: - Dérivés
 
     /// Durée d'un tour de plateau. 8,33 ms à 7 200 tr/min.
-    var revolutionDuration: Double { 60.0 / rpm }
+    public var revolutionDuration: Double { 60.0 / rpm }
 
-    var totalSectors: Int { cylinderStartLBA[cylinders] }
+    public var totalSectors: Int { cylinderStartLBA[cylinders] }
 
-    var capacityBytes: Int { totalSectors * Self.bytesPerSector }
+    public var capacityBytes: Int { totalSectors * Self.bytesPerSector }
 
-    var capacityDescription: String {
+    public var capacityDescription: String {
         let gb = Double(capacityBytes) / 1_000_000_000
         return String(format: "%.1f Go", gb)
     }
 
-    func sectorsPerTrack(cylinder: Int) -> Int {
+    public func sectorsPerTrack(cylinder: Int) -> Int {
         sectorsPerTrackByCylinder[min(max(cylinder, 0), cylinders - 1)]
     }
 
-    func sectorsPerCylinder(_ cylinder: Int) -> Int {
+    public func sectorsPerCylinder(_ cylinder: Int) -> Int {
         sectorsPerTrack(cylinder: cylinder) * heads
     }
 
     /// Conversion LBA → (cylindre, tête, secteur) par recherche dichotomique
     /// dans la table des cylindres — le zonage interdit une formule fermée.
-    func position(ofLBA lba: Int) -> Position {
+    public func position(ofLBA lba: Int) -> Position {
         let clamped = min(max(lba, 0), totalSectors - 1)
 
         var low = 0
@@ -102,13 +113,13 @@ struct DriveGeometry {
         return Position(cylinder: cylinder, head: offset / spt, sector: offset % spt)
     }
 
-    func lba(ofFraction fraction: Double) -> Int {
+    public func lba(ofFraction fraction: Double) -> Int {
         let f = min(max(fraction, 0), 0.999_999)
         return Int(f * Double(totalSectors))
     }
 
     /// Rayon physique normalisé : 1,0 au bord (cylindre 0), 0,42 au moyeu.
-    func normalizedRadius(cylinder: Int) -> Double {
+    public func normalizedRadius(cylinder: Int) -> Double {
         let f = Double(min(max(cylinder, 0), cylinders - 1)) / Double(cylinders - 1)
         return 1.0 - f * (1.0 - 0.42)
     }
@@ -116,7 +127,7 @@ struct DriveGeometry {
     // MARK: - Modèle par défaut
 
     /// Disque IDE générique de 2001 : 7 200 tr/min, 4 têtes, 12 zones.
-    static let defaultDrive = DriveGeometry(
+    public static let defaultDrive = DriveGeometry(
         model: "IDE 20 Go · 7 200 tr/min",
         cylinders: 24_000,
         heads: 4,
@@ -145,7 +156,7 @@ extension DriveGeometry {
     /// 8 zones. Le débit va de 9,8 Mo/s au bord à 6,6 Mo/s au moyeu — haut de
     /// la fourchette pour l'époque, mais c'est ce qui donne à la passe une
     /// durée auditionnable.
-    static let win95Drive = DriveGeometry(
+    public static let win95Drive = DriveGeometry(
         model: "IDE 876 Mo · 4 500 tr/min",
         cylinders: 2_000,
         heads: 4,

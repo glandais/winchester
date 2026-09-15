@@ -1,4 +1,5 @@
 import SwiftUI
+import DiskCore
 
 /// Vue de dessus du plateau.
 ///

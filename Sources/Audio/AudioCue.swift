@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 
 struct ChatterSeek {
     let offset: Double

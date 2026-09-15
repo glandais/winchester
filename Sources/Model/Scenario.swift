@@ -1,4 +1,5 @@
 import Foundation
+import DiskCore
 
 enum ScenarioKind: String, CaseIterable, Identifiable {
     case windowsBoot
