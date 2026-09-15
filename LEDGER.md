@@ -322,11 +322,18 @@ tous les en-têtes source disent GPL v2 / LGPL), UltraDefrag est en GPL v2
 cohérent partout. Ni l'un ni l'autre ne gêne pour transposer un algorithme
 décrit en prose ; les deux gêneraient pour du code recopié.
 
-### Pas encore écouté
+### Écouté, à l'oreille
 
-Tout ce qui précède est mesuré en `PLAN_ONLY`. Aucune passe NTFS n'a été rendue
-en audio : la signature sonore décrite ici — pas de « clac » de retour au bord,
-des rafales longues de 4 Mo — est déduite du plan, pas entendue.
+Tout ce qui précède est mesuré en `PLAN_ONLY`. La signature sonore décrite ici —
+pas de « clac » de retour au bord, des rafales longues de 4 Mo — en était
+**déduite**, et a depuis été **confirmée à l'écoute** : une passe NTFS sonne
+continue, sans le battement périodique qu'impose à FAT une validation au tout
+début de la partition.
+
+C'est une écoute, pas une mesure : personne n'a compté les retours au cylindre 0
+dans la trace. Ce qui est acquis, c'est que le motif FAT est absent là où le
+modèle dit qu'il doit l'être — assez pour ne plus tenir la signature NTFS pour
+une hypothèse, pas assez pour en faire un chiffre.
 
 ---
 
@@ -591,3 +598,104 @@ et c'est ce qui est modélisé.
   pour une passe de défragmentation de cinq heures.
 - Une **session sans fin** — laisser le disque travailler en fond — demanderait
   le mode live, et c'est le seul usage qui l'exige vraiment.
+
+## Chantier 7 — ce que le disque fait quand il ne fait rien
+
+**Fait** · branche `disque-au-repos`
+
+### Le problème
+
+Trois points laissés ouverts par le chantier 5, qui ont en commun de décrire un
+disque dont **le modèle savait déjà tout, mais qu'il ne produisait jamais**.
+
+| | ce que le modèle sait | ce qu'il faisait |
+|---|---|---|
+| `WorkloadPhase.spin` | chaque phase dit ce que fait le moteur | renseigné par la bibliothèque, lu par personne ; la mise en rotation était recopiée à la main dans `Scenario` |
+| arrêt du moteur | `SpindleVoice.spinDown`, `AudioCue.spinDown`, le cas haptique : tout existe | `DiskSimulator` n'émettait **jamais** l'événement |
+| fin d'une passe | 3,5 s de queue | silence complet, bras abandonné là où le dernier transfert l'a laissé |
+| transfert au-delà du dernier cylindre | `min(headCylinder + 1, cylinders - 1)` | relit la même piste jusqu'à épuisement du compte |
+
+Le dernier est mesurable : une requête de cinquante pistes posée à une piste de
+la fin du disque annonçait **2 841 600 octets lus là où il en restait 227 328**.
+Un facteur 12,5 de données inventées, des pas de piste qui ne menaient nulle
+part, et — depuis que le bras suit vraiment le transfert — un bras visiblement
+collé au moyeu.
+
+### Les décisions
+
+- **Un disque au repos a deux gestes, et ils appartiennent au disque, pas au
+  scénario.** Ils sont décrits par un `IdleBehavior` passé au simulateur, et non
+  par des requêtes : personne ne demande à un bras de se parquer.
+- **Le bras se parque une seconde après la dernière requête.** Ce n'est pas la
+  temporisation de veille d'un vrai disque, qui se compte en minutes — c'est la
+  durée qui tient dans la queue d'un scénario. Ce qu'on veut entendre, c'est
+  qu'une passe se referme sur un dernier mouvement plutôt que sur un blanc. Et
+  c'est la symétrie exacte du « clac » d'ouverture : la même course, dans
+  l'autre sens.
+- **Le parcage n'entre pas dans les compteurs.** `stats` décrit ce qu'on a
+  demandé au disque ; l'y compter décalerait le seek moyen d'une passe sans
+  qu'aucun accès ait bougé, et rendrait incomparables les chiffres publiés au
+  chantier 6.
+- **Les têtes sont parquées avant que le moteur soit coupé**, même si le délai
+  d'inactivité n'est pas écoulé : sans couple, plus de coussin d'air. C'est la
+  coupure qui déclenche alors le voyage.
+- **La descente du plateau est la même loi que la montée**, sous forme fermée
+  comme elle : un plateau lancé accomplit encore `v·τ` tours après la coupure.
+  La traîne est donc **bornée et calculable**, et `revolutions(at:)` reste une
+  fonction pure du temps — un saut dans la chronologie retombe sur la même image.
+- **`WorkloadPhase.spin` redevient la source de la chronologie du moteur.** Un
+  `SpinSchedule` la tire des phases ; les constantes qui vivaient dans
+  `Scenario` (`spinUpAt: 0.35`, `duration - 0.6`) deviennent un délai de
+  commande et une marge d'établissement, et redonnent **exactement** les mêmes
+  valeurs.
+- **Le scénario livré gagne une phase d'extinction.** C'est le seul endroit où
+  couper le moteur est vrai : une passe de défragmentation et un démarrage
+  laissent tous deux la machine allumée. Ces deux-là ne reçoivent donc qu'un
+  parcage.
+- **Une requête qui déborde du disque est tronquée**, parce que c'est ce qu'un
+  disque répond. Les octets comptés sont ceux réellement transférés.
+
+### Ce qui valide
+
+Sept tests dans `IdleTests`, dont les trois qui comptent : le parcage laisse
+`stats` strictement identique à une passe sans lui ; les tours accomplis restent
+monotones sur quarante secondes de descente et la traîne tombe sur `v·τ` à
+0,5 tour près ; et la troncature est discriminante — remise à `min(…)`, le test
+échoue sur les 2,84 Mo inventés.
+
+Non-régression, au rendu hors-ligne :
+
+| | avant | après |
+|---|---|---|
+| passe livrée | 204,7 s · 12 036 requêtes · 9 125 seeks (moy. 130) · 2 718 repères | **identique**, 2 719 repères |
+| `boot:dev-1996` | 57,5 s · 439 seeks (moy. 262) | **identique** |
+| `boot:famille-2007` | 38,9 s · 684 seeks (moy. 32 693) | **identique** |
+| démarrage livré | 60,0 s · 143 repères | 65,0 s · 145 repères |
+
+Les repères ajoutés sont exactement ceux attendus : un parcage partout, plus un
+arrêt moteur pour le seul scénario qui s'éteint. Les cinq secondes du démarrage
+livré sont la phase d'extinction, et rien d'autre : requêtes, seeks et seek
+moyen sont inchangés.
+
+**L'extinction s'entend** : −40,6 dBFS RMS, crête 0,078. Soit 4,7 dB sous le
+POST BIOS (−35,9), pour une crête équivalente (0,074) — la crête est le seek de
+parcage, le fond est un plateau qui s'éteint là où l'autre monte.
+
+### Laissé ouvert
+
+- **Le re-parcage ne joue qu'en fin de trace.** Un trou d'inactivité *au milieu*
+  d'un scénario ne le déclenche pas. Aucune passe n'en a — une défragmentation
+  est en boucle fermée, et les `thinkTime` d'un démarrage sont courts — mais
+  c'est bien une limite du modèle et non une propriété du disque.
+- **L'extinction ne modélise que la mécanique.** Une vraie fermeture de session
+  écrit : ruches du registre, cache, fichier d'échange. Ici la phase est
+  `.idle`, donc silencieuse hormis le parcage et le moteur. Y poser des
+  écritures demanderait de savoir lesquelles, et c'est le même manque que les
+  accès courts du chantier 6.
+- **La troncature n'a rien changé aux vingt profils**, et c'est normal : aucune
+  partition ne déborde du disque qui la porte. C'est une garde, à compter comme
+  telle — elle vaut pour ce qu'elle interdit, pas pour un effet mesuré.
+- **La constante de temps de la descente est celle de la montée.** Un vrai
+  plateau s'arrête plus lentement qu'il ne démarre — il n'y a que les frottements
+  pour le freiner, là où le moteur pousse. Le modèle ne le distingue pas, faute
+  d'un chiffre à citer.

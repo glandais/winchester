@@ -105,9 +105,18 @@ n'a pas de phase de coast, ce qui fait varier la **forme** de l'enveloppe avec l
 distance et pas seulement son amplitude.
 
 **Latence rotationnelle et transfert** — simulés secteur par secteur, avec pas de
-piste et commutation de tête en fin de cylindre. Le bras est parqué au diamètre
-intérieur au repos : le premier accès après la mise en rotation est une course
-quasi complète, d'où le « clac » franc du boot.
+piste et commutation de tête en fin de cylindre. Une requête qui déborde du
+dernier cylindre est tronquée, comme le ferait le disque. Le bras est parqué au
+diamètre intérieur au repos : le premier accès après la mise en rotation est une
+course quasi complète, d'où le « clac » franc du boot.
+
+**Le disque au repos fait encore deux choses.** Une seconde après la dernière
+requête, le bras **retourne se parquer** — la même course que le « clac »
+d'ouverture, dans l'autre sens, et c'est elle qui referme une passe au lieu d'un
+blanc. Et quand la chronologie coupe le moteur, le plateau **redescend par la
+même loi du premier ordre** qu'il est monté : sans couple, il continue de tourner
+encore `v·τ` tours. Les têtes sont toujours parquées avant la coupure, faute de
+quoi il n'y aurait plus de coussin d'air pour les porter.
 
 **Timbre de la tête** — banc de résonateurs à **fréquences fixes** (modes ~4,5 kHz
 sway et ~5,5 kHz, plus cinq autres), excité par un profil de courant dérivé des
@@ -139,7 +148,8 @@ plateau, est réglable séparément — il masquerait les transitoires au même 
 
 **Le plateau affiché sort de la même trace que le son.** Le bras est parqué au
 moyeu tant que rien n'a été lu, descend piste après piste pendant une lecture
-séquentielle, et s'élance vers l'accès suivant au dernier moment — pas plus tôt,
+séquentielle, s'en retourne se parquer une fois le travail fini, et s'élance vers
+l'accès suivant au dernier moment — pas plus tôt,
 un disque ne déplace pas sa tête pour l'immobiliser ensuite le temps que le
 secteur arrive. La seule licence est l'angle : un plateau qui tourne cent vingt
 fois par seconde n'est pas affichable sur un écran à soixante images, il est donc

@@ -73,12 +73,39 @@ struct RequestTiming {
     let end: Double
 }
 
+/// Ce que fait le disque quand plus personne ne lui demande rien.
+///
+/// Les deux gestes d'un disque au repos sont mécaniques et audibles, et aucun
+/// n'appartient à une requête : le bras s'en va se parquer, et le moteur
+/// finit par être coupé. Les décrire ici plutôt que dans chaque scénario
+/// évite que « le disque ne fait rien » se traduise par un silence.
+struct IdleBehavior {
+
+    /// Délai d'inactivité, compté depuis la dernière requête, au bout duquel le
+    /// bras retourne au cylindre de parcage. `nil` pour un disque qu'on laisse
+    /// là où il s'est arrêté.
+    ///
+    /// C'est bien un délai et non un instant : une passe en boucle fermée ne
+    /// connaît pas sa propre durée avant d'être simulée.
+    var parkAfter: Double?
+
+    /// Instant de coupure du moteur, celui-là absolu : il vient de la
+    /// chronologie d'un scénario, pas de la fin du travail.
+    var stopAt: Double?
+    var stopDuration: Double = 0
+
+    /// Un disque qu'on laisse tourner, bras là où il est.
+    static let none = IdleBehavior()
+}
+
 struct DiskTrace {
     let events: [DiskEvent]
     let headSamples: [HeadSample]
     let timings: [RequestTiming]
     /// Montée en régime du plateau, pour l'affichage.
     let spindle: SpindleTimeline
+    /// Instant où le bras repart se parquer, s'il le fait.
+    let parkAt: Double?
     let duration: Double
     let stats: TraceStats
 
@@ -91,7 +118,7 @@ struct DiskTrace {
     /// pendant toute l'écoute coûterait deux cents mégaoctets pour rien.
     func summarized() -> DiskTrace {
         DiskTrace(events: [], headSamples: headSamples, timings: [],
-                  spindle: spindle, duration: duration, stats: stats)
+                  spindle: spindle, parkAt: parkAt, duration: duration, stats: stats)
     }
 }
 
@@ -108,7 +135,8 @@ enum DiskSimulator {
                     requests: [BlockRequest],
                     totalDuration: Double,
                     spinUpAt: Double,
-                    spinUpDuration: Double) -> DiskTrace {
+                    spinUpDuration: Double,
+                    idle: IdleBehavior = .none) -> DiskTrace {
 
         var events: [DiskEvent] = []
         var samples: [HeadSample] = []
@@ -196,11 +224,18 @@ enum DiskSimulator {
                     headIndex += 1
                     events.append(DiskEvent(time: t, kind: .headSwitch))
                     t += seekModel.headSwitchDuration
-                } else {
+                } else if headCylinder + 1 < geometry.cylinders {
                     headIndex = 0
-                    headCylinder = min(headCylinder + 1, geometry.cylinders - 1)
+                    headCylinder += 1
                     events.append(DiskEvent(time: t, kind: .trackStep))
                     t += seekModel.duration(distance: 1)
+                } else {
+                    // Plus de piste suivante : la requête déborde du disque. La
+                    // tronquer, parce que c'est ce qu'un disque répond. Bloquer
+                    // le cylindre au dernier faisait relire la même piste
+                    // jusqu'à épuisement du compte — des pas de piste qui ne
+                    // menaient nulle part, et un bras collé au moyeu.
+                    break
                 }
             }
 
@@ -211,7 +246,7 @@ enum DiskSimulator {
                                       head: UInt8(min(sampleHead, Int(UInt8.max))),
                                       isWrite: request.isWrite))
 
-            let bytes = request.sectorCount * DriveGeometry.bytesPerSector
+            let bytes = (request.sectorCount - remaining) * DriveGeometry.bytesPerSector
             if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
             stats.requestCount += 1
             stats.busySeconds += transferSeconds
@@ -220,11 +255,41 @@ enum DiskSimulator {
             clock = t
         }
 
+        // Le travail est fini ; le disque, lui, ne l'est pas.
+        //
+        // Le parcage n'entre pas dans `stats` : ces compteurs décrivent ce qu'on
+        // a demandé au disque, et personne n'a demandé celui-ci. L'y inclure
+        // décalerait le seek moyen d'une passe sans qu'aucune requête ait bougé.
+        var parkAt: Double?
+        if let delay = idle.parkAfter, !samples.isEmpty {
+            let distance = abs(geometry.parkCylinder - headCylinder)
+            let travel = seekModel.duration(distance: distance)
+            // Un disque parque toujours ses têtes **avant** de couper le
+            // moteur : sans couple, plus de coussin d'air. Si la coupure vient
+            // avant le délai d'inactivité, c'est elle qui déclenche le voyage.
+            var moment = clock + delay
+            if let stopAt = idle.stopAt { moment = min(moment, stopAt - travel) }
+            moment = max(moment, clock)
+            if distance > 0 {
+                events.append(DiskEvent(
+                    time: moment, kind: .seek(seekModel.profile(distance: distance))))
+                parkAt = moment
+                headCylinder = geometry.parkCylinder
+            }
+        }
+
+        if let stopAt = idle.stopAt {
+            events.append(DiskEvent(time: stopAt, kind: .spinDown(duration: idle.stopDuration)))
+        }
+
         events.sort { $0.time < $1.time }
 
-        let end = max(totalDuration, clock)
-        let spindle = SpindleTimeline(spinUpAt: spinUpAt, duration: spinUpDuration, rpm: geometry.rpm)
+        let end = max(max(totalDuration, clock), parkAt ?? 0)
+        let spindle = SpindleTimeline(spinUpAt: spinUpAt, duration: spinUpDuration,
+                                      rpm: geometry.rpm,
+                                      spinDownAt: idle.stopAt,
+                                      spinDownDuration: idle.stopDuration)
         return DiskTrace(events: events, headSamples: samples, timings: timings,
-                         spindle: spindle, duration: end, stats: stats)
+                         spindle: spindle, parkAt: parkAt, duration: end, stats: stats)
     }
 }

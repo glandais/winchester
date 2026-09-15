@@ -225,7 +225,8 @@ final class SimulationModel: ObservableObject {
         PlatterTrack(geometry: scenario.geometry,
                      seekModel: scenario.seekModel,
                      samples: scenario.trace.headSamples,
-                     spindle: scenario.trace.spindle)
+                     spindle: scenario.trace.spindle,
+                     parkAt: scenario.trace.parkAt)
     }
 
     /// Tout ce que le plateau doit montrer à cet instant, en une seule passe.

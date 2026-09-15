@@ -20,26 +20,49 @@ struct SpindleTimeline: Sendable {
 
     private let start: Double
     private let tau: Double
+    /// Instant où le moteur est coupé, s'il l'est. Un disque qui s'arrête
+    /// redescend par la même loi qu'il est monté : c'est le même moteur, privé
+    /// de couple au lieu d'en recevoir.
+    private let stop: Double?
+    private let tauDown: Double
     private let revolutionsPerSecond: Double
 
-    init(spinUpAt: Double, duration: Double, rpm: Double) {
+    init(spinUpAt: Double, duration: Double, rpm: Double,
+         spinDownAt: Double? = nil, spinDownDuration: Double = 0) {
         self.start = spinUpAt
         self.tau = Self.timeConstant(forRamp: duration)
+        self.stop = spinDownAt
+        self.tauDown = Self.timeConstant(forRamp: spinDownDuration)
         self.revolutionsPerSecond = rpm / 60
     }
 
     /// Vitesse du plateau : 0 à l'arrêt, 1 au régime nominal.
     func speed(at time: Double) -> Double {
-        let delta = time - start
-        guard delta > 0 else { return 0 }
-        return 1 - exp(-delta / tau)
+        if let stop, time > stop {
+            return speedRising(at: stop) * exp(-(time - stop) / tauDown)
+        }
+        return speedRising(at: time)
     }
 
     /// Tours accomplis depuis la mise en rotation — l'**intégrale** de la
     /// vitesse, et non `ω·t`. Pendant la montée en régime le plateau accomplit
     /// exactement `τ` tours de moins qu'à plein régime, et c'est précisément ce
-    /// décalage qui doit se voir.
+    /// décalage qui doit se voir. Après la coupure il en accomplit encore
+    /// `v·τ` : un plateau lancé ne s'arrête pas net, et c'est ce qui donne au
+    /// spin-down sa longue traîne.
     func revolutions(at time: Double) -> Double {
+        guard let stop, time > stop else { return revolutionsRising(at: time) }
+        let coasting = speedRising(at: stop) * tauDown * (1 - exp(-(time - stop) / tauDown))
+        return revolutionsRising(at: stop) + revolutionsPerSecond * coasting
+    }
+
+    private func speedRising(at time: Double) -> Double {
+        let delta = time - start
+        guard delta > 0 else { return 0 }
+        return 1 - exp(-delta / tau)
+    }
+
+    private func revolutionsRising(at time: Double) -> Double {
         let delta = time - start
         guard delta > 0 else { return 0 }
         return revolutionsPerSecond * (delta - tau * (1 - exp(-delta / tau)))
@@ -113,6 +136,9 @@ struct PlatterTrack {
     let seekModel: SeekModel
     let samples: [HeadSample]
     let spindle: SpindleTimeline
+    /// Instant où le bras repart se parquer, une fois le travail fini. `nil`
+    /// pour un disque qu'on laisse là où il s'est arrêté.
+    var parkAt: Double? = nil
 
     /// Durée de la traînée : **un tour apparent**.
     ///
@@ -187,7 +213,7 @@ struct PlatterTrack {
         }
 
         let resting = Double(sample.endCylinder)
-        guard index + 1 < samples.count else { return (resting, .idle) }
+        guard index + 1 < samples.count else { return parking(at: time, from: resting) }
 
         let next = samples[index + 1]
         let distance = abs(Int(next.cylinder) - Int(sample.endCylinder))
@@ -211,6 +237,26 @@ struct PlatterTrack {
         let u = (time - departure) / (next.time - departure)
         let eased = u * u * (3 - 2 * u)
         return (lerp(resting, Double(next.cylinder), eased), .seeking)
+    }
+
+    /// Le bras après le dernier accès : il attend là où le transfert l'a laissé,
+    /// puis s'en va se parquer. Un disque ne laisse pas ses têtes au-dessus des
+    /// données une fois le travail fini, et ce dernier voyage est la symétrie du
+    /// « clac » d'ouverture : la même course, dans l'autre sens.
+    private func parking(at time: Double, from resting: Double) -> (Double, HeadActivity) {
+        guard let parkAt, time >= parkAt else { return (resting, .idle) }
+
+        let destination = Double(geometry.parkCylinder)
+        let distance = abs(geometry.parkCylinder - Int(resting))
+        guard distance > 0 else { return (destination, .parked) }
+
+        let travel = seekModel.duration(distance: distance)
+        guard time < parkAt + travel else { return (destination, .parked) }
+
+        // Même cubique que pour un seek ordinaire : vitesse nulle aux deux bouts.
+        let u = (time - parkAt) / travel
+        let eased = u * u * (3 - 2 * u)
+        return (lerp(resting, destination, eased), .seeking)
     }
 
     /// Étendue balayée pendant l'image écoulée.

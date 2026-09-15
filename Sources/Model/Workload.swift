@@ -283,7 +283,58 @@ enum WorkloadLibrary {
             burstiness: 0.9,
             spin: .unchanged
         ),
+
+        WorkloadPhase(
+            id: "shutdown",
+            label: "Extinction",
+            detail: "Têtes parquées, moteur coupé",
+            duration: 5.0,
+            rate: Ramp(0, 0),
+            sizeSectors: 1...1,
+            writeRatio: 0,
+            access: .idle,
+            burstiness: 0,
+            spin: .spinDown
+        ),
     ]
+}
+
+/// Ce que les phases disent du moteur : quand il part, quand il s'arrête.
+///
+/// `WorkloadPhase.spin` était renseigné depuis le premier jour et lu par
+/// personne : la mise en rotation était recopiée à la main dans la
+/// construction du scénario, et l'arrêt n'existait nulle part. La phase
+/// redevient la source, et c'est elle qui date les deux.
+struct SpinSchedule {
+
+    /// Délai entre le début d'une phase et la commande envoyée au moteur, le
+    /// temps que l'alimentation s'établisse.
+    static let commandDelay = 0.35
+    /// Marge gardée en fin de phase : la rampe doit être finie quand la phase
+    /// suivante commence, sinon le premier accès tombe sur un plateau qui
+    /// n'est pas encore à son régime.
+    static let settle = 0.25
+
+    var spinUpAt: Double = 0
+    var spinUpDuration: Double = 0
+    var idle = IdleBehavior()
+
+    init(phases: [WorkloadPhase], spans: [PhaseSpan]) {
+        for (phase, span) in zip(phases, spans) {
+            let at = span.start + Self.commandDelay
+            let ramp = max(span.duration - Self.commandDelay - Self.settle, 0.5)
+            switch phase.spin {
+            case .unchanged:
+                continue
+            case .spinUp:
+                spinUpAt = at
+                spinUpDuration = ramp
+            case .spinDown:
+                idle.stopAt = at
+                idle.stopDuration = ramp
+            }
+        }
+    }
 }
 
 // MARK: - Génération de la trace bloc

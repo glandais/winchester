@@ -199,15 +199,22 @@ enum ScenarioBuilder {
         let generator = WorkloadGenerator(geometry: geometry)
         let (requests, spans) = generator.generate(phases: phases)
         let total = spans.last?.end ?? 0
-        let spinUpDuration = (phases.first?.duration ?? 6) - 0.6
+
+        // La chronologie du moteur vient des phases, plus d'ici : la première
+        // le lance, la dernière le coupe. Le bras va se parquer avant la
+        // coupure, ce que le scénario n'avait pas à dire.
+        let spin = SpinSchedule(phases: phases, spans: spans)
 
         let trace = DiskSimulator.run(
             geometry: geometry,
             seekModel: seekModel,
             requests: requests,
             totalDuration: total,
-            spinUpAt: 0.35,
-            spinUpDuration: spinUpDuration
+            spinUpAt: spin.spinUpAt,
+            spinUpDuration: spin.spinUpDuration,
+            idle: IdleBehavior(parkAfter: parkDelay,
+                               stopAt: spin.idle.stopAt,
+                               stopDuration: spin.idle.stopDuration)
         )
 
         let series = buildSeries(requests: requests, trace: trace, duration: trace.duration)
@@ -255,7 +262,10 @@ enum ScenarioBuilder {
             requests: plan.requests,
             totalDuration: 0,
             spinUpAt: 0.35,
-            spinUpDuration: max(plan.post - 0.6, 0.5)
+            spinUpDuration: max(plan.post - 0.6, 0.5),
+            // Pas d'arrêt moteur : la machine vient de démarrer. Mais le bras
+            // n'a plus rien à faire, et la queue du scénario est faite pour ça.
+            idle: IdleBehavior(parkAfter: parkDelay)
         )
 
         let duration = (trace.timings.last?.end ?? 0) + plan.tail
@@ -337,8 +347,17 @@ enum ScenarioBuilder {
     static let clusterSectors = 8
     static let volumeFill = 0.78
 
-    /// Silence final, une fois la passe terminée.
+    /// Silence final, une fois la passe terminée. Il n'est plus tout à fait
+    /// silencieux : le bras s'y parque.
     private static let tailDuration = 3.5
+
+    /// Délai d'inactivité avant que le bras retourne se parquer.
+    ///
+    /// Une seconde, pas les minutes d'une vraie temporisation de veille : ce
+    /// qu'on veut entendre, c'est que la passe se referme sur un dernier
+    /// mouvement plutôt que sur un blanc. La queue d'un scénario le porte
+    /// largement, seek de course complète compris.
+    private static let parkDelay = 1.0
 
     private static func buildDefrag() -> Scenario {
         let partition = PartitionGeometry(startLBA: 0,
@@ -414,7 +433,8 @@ enum ScenarioBuilder {
             requests: requests,
             totalDuration: 0,
             spinUpAt: 0,
-            spinUpDuration: 0.9
+            spinUpDuration: 0.9,
+            idle: IdleBehavior(parkAfter: parkDelay)
         )
 
         let workEnd = trace.timings.last?.end ?? 0
