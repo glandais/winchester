@@ -40,8 +40,8 @@ import DiskCore
 /// laisse alors le fichier en morceaux. Attention à la conclusion trop facile —
 /// **ce n'est pas le taux de remplissage qui décide**. `dev-2003` et
 /// `secretaire-2003` sont deux volumes de 40 Go remplis à 94 % : le premier
-/// répare 274 fichiers sur 299, le second 57 sur 141. Ce qui les sépare est la
-/// taille de ce qu'il y a à réparer — 13 Mo par fichier déplacé contre 21, et
+/// répare 260 fichiers sur 299, le second 57 sur 141. Ce qui les sépare est la
+/// taille de ce qu'il y a à réparer — 11 Mo par fichier déplacé contre 21, et
 /// 213 Mo sur le 320 Go de `famille-2007`, qui n'en répare qu'un tiers. Un
 /// volume plein garde des trous, mais pas de *grands* trous.
 ///

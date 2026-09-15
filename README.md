@@ -269,18 +269,18 @@ requêtes et 23 min 38**.
 | `gamer-2003`      |   8 % |       17 |      7,8 s |        0 | 0 → 0                    |
 | `secretaire-2003` |  94 % |    7 455 |   2 min 23 |       57 | 141 → 84                 |
 | `famille-2003`    |  93 % |    9 190 |   2 min 32 |       39 | 80 → 41                  |
-| `dev-2003`        |  94 % |   27 747 |   7 min 56 |      274 | 299 → 25                 |
+| `dev-2003`        |  94 % |   19 353 |   5 min 58 |      260 | 299 → 39                 |
 | `secretaire-2007` |  88 % |   35 408 |  15 min 27 |      186 | 186 → **0**              |
 | `famille-2007`    |  93 % |   78 797 |  23 min 38 |       89 | 244 → 155                |
-| `gamer-2007`      |  90 % |   78 305 |  27 min 33 |      132 | 192 → 60                 |
+| `gamer-2007`      |  90 % |   76 425 |  27 min 31 |      131 | 192 → 61                 |
 | `dev-2007`        |  86 % |  280 595 | 1 h 12 min |      172 | 172 → **0**              |
 
 La colonne qui compte est la dernière : cet outil-là ne déloge personne, donc
 il échoue quand aucun trou n'est à la taille, et il le dit dans son rapport.
 Mais **ce n'est pas le remplissage qui décide**. `dev-2003` et
 `secretaire-2003` sont deux volumes de 40 Go remplis à 94 % : le premier répare
-274 fichiers sur 299, le second 57 sur 141. Ce qui les sépare est la taille de
-ce qu'il y a à réparer — 13 Mo par fichier déplacé chez le développeur, 21 Mo
+260 fichiers sur 299, le second 57 sur 141. Ce qui les sépare est la taille de
+ce qu'il y a à réparer — 11 Mo par fichier déplacé chez le développeur, 21 Mo
 chez la secrétaire, et 213 Mo sur le 320 Go de `famille-2007`, qui n'en répare
 qu'un tiers. Un volume plein garde des trous ; il ne garde pas de *grands*
 trous, et c'est un gros fichier fragmenté qui n'a nulle part où aller.

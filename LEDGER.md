@@ -78,7 +78,7 @@ l'interpolation y est la plus fragile.
 
 ## Chantier 2 — le défragmenteur travaille en extents
 
-**Partiellement fait** · commits `c2b8640`, `794a921`, `faa2bbd`
+**Partiellement fait** · commits `c2b8640`, `794a921`, `faa2bbd`, `47a9abc`
 
 ### Le problème
 
@@ -209,10 +209,10 @@ d'UltraDefrag, qui dimensionne son bloc sur la capacité du volume (256 Ko sous
 | `gamer-2003` | 8 % | 17 | 7,8 s | 0 | 0 → 0 |
 | `secretaire-2003` | 94 % | 7 455 | 2 min 23 | 57 | 141 → 84 |
 | `famille-2003` | 93 % | 9 190 | 2 min 32 | 39 | 80 → 41 |
-| `dev-2003` | 94 % | 27 747 | 7 min 56 | 274 | 299 → 25 |
+| `dev-2003` | 94 % | 19 353 | 5 min 58 | 260 | 299 → 39 |
 | `secretaire-2007` | 88 % | 35 408 | 15 min 27 | 186 | 186 → 0 |
 | `famille-2007` | 93 % | 78 797 | 23 min 38 | 89 | 244 → 155 |
-| `gamer-2007` | 90 % | 78 305 | 27 min 33 | 132 | 192 → 60 |
+| `gamer-2007` | 90 % | 76 425 | 27 min 31 | 131 | 192 → 61 |
 | `dev-2007` | 86 % | 280 595 | 1 h 12 | 172 | 172 → 0 |
 
 `famille-2007` passe de 28 millions de requêtes et 94 h à **78 797 requêtes et
@@ -222,10 +222,10 @@ Les douze scénarios FAT sont inchangés à la requête près.
 **Une lecture séduisante, et fausse, a été écartée en route.** Les deux volumes
 à 86 et 88 % ressortent sans un fichier fragmenté, ceux à 93 et 94 % en gardent
 la moitié : de quoi conclure à la règle des 15 % d'espace libre. Mais `dev-2003`
-est plein à 94 % et répare 274 fichiers sur 299. La comparaison est même
+est plein à 94 % et répare 260 fichiers sur 299. La comparaison est même
 contrôlée — `dev-2003` et `secretaire-2003` sont deux volumes de 40 Go remplis à
-94 %, l'un répare 92 % de ses fichiers cassés, l'autre 40 %. Ce qui les sépare
-est la **taille** de ce qu'il y a à réparer : 13 Mo par fichier déplacé contre
+94 %, l'un répare 87 % de ses fichiers cassés, l'autre 40 %. Ce qui les sépare
+est la **taille** de ce qu'il y a à réparer : 11 Mo par fichier déplacé contre
 21, et 213 Mo sur `famille-2007`, qui n'en répare qu'un tiers. Un volume plein
 garde des trous, mais pas de *grands* trous.
 
@@ -234,25 +234,44 @@ Réserve, et elle compte : ces moyennes portent sur les fichiers que la passe a
 est nette, le mécanisme reste une hypothèse tant que les échecs ne sont pas
 comptés par taille.
 
+### Deux corrections, et ce qu'elles valent
+
+**Fait** · commit `47a9abc`
+
+**La zone réservée à la MFT est désormais visible du planificateur.** Elle est
+libre dans la bitmap et pourtant interdite : aucun fichier n'y est, mais
+l'allocateur n'y met personne tant que le volume n'est pas plein à 87 %. Sur un
+320 Go, cela fait quarante gigaoctets d'un seul tenant — le plus grand trou du
+volume, et de très loin. Le défragmenteur s'y précipitait et condamnait la MFT à
+se fragmenter dès la création de fichier suivante. `GeneratedDisk` publie
+`mftZone`, `DefragVolume` la porte, la recherche de trou la saute ; c'est ce que
+fait `FindGap` avec ses `MftExcludes`.
+
+Elle se voit dans les chiffres : `dev-2003` passe de 27 747 à 19 353 requêtes et
+répare 260 fichiers au lieu de 274, les trous qu'il prenait dans la réserve lui
+étant retirés. Le tableau ci-dessus est à jour.
+
+**La règle « deux fragments contigus comptent pour un »** (`IsFragmented`,
+`ALGO.md` §4.2) est appliquée par `DefragFile.fragmentCount` : ce qui compte est
+le nombre de morceaux que la tête doit aller chercher, pas le nombre d'extents
+que le système de fichiers a écrits.
+
+Et le résultat mesuré est qu'elle **ne change rien** — pas un compteur de
+fragmentation ne bouge sur les vingt scénarios, parce qu'aucun des deux
+allocateurs ne produit d'extents adjacents. C'est une garde, pas une correction :
+elle vaut pour ce qu'elle interdit à un futur allocateur, et il faut la compter
+comme telle plutôt que lui attribuer un effet qu'elle n'a pas eu.
+
 ### Ce qui reste
 
-1. **La zone réservée à la MFT est ignorée du placement.** La bitmap de
-   `DefragVolume` ne connaît que les clusters de fichiers ; la réserve que
-   l'allocateur NTFS tient à l'écart y apparaît libre, et un fichier réparé peut
-   y atterrir. Un vrai défragmenteur ne le ferait pas (`IgnoreMftExcludes` dans
-   `FindGap`).
-2. **La règle « deux fragments contigus comptent pour un »** (`ALGO.md` §4.2)
-   n'est pas appliquée : `VolumeStats` compte les extents. Sans elle, les
-   compteurs de fragmentation sont faux — c'est `IsFragmented` que cite le §8 de
-   `ALGO.md` parmi les cinq choses à transposer.
-3. **JKDefrag / MyDefrag** : analyse, découpage en trois zones (répertoires,
+1. **JKDefrag / MyDefrag** : analyse, découpage en trois zones (répertoires,
    fichiers ordinaires, gros fichiers rares), et surtout *fast optimize*, qui ne
    comble que les trous au lieu de tout tasser — donc beaucoup moins
    d'évacuations, et une signature sonore radicalement différente. Chantier
    distinct, et **sans rapport avec NTFS** : la stratégie s'applique aussi bien
    aux volumes FAT.
 
-Deux pièges déjà repérés pour ce troisième point. `FindBestItem` n'a pour seul
+Deux pièges déjà repérés. `FindBestItem` n'a pour seul
 garde-fou contre l'explosion combinatoire qu'un **budget de 0,5 s de temps
 réel** (`ALGO.md` §5.2) : inutilisable tel quel, une passe simulée doit être
 reproductible, il faudra une borne déterministe et assumer que le plan diverge
