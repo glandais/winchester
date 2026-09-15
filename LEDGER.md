@@ -78,7 +78,7 @@ l'interpolation y est la plus fragile.
 
 ## Chantier 2 — le défragmenteur travaille en extents
 
-**Partiellement fait** · commit `c2b8640`
+**Partiellement fait** · commits `c2b8640`, `794a921`
 
 ### Le problème
 
@@ -130,7 +130,7 @@ C'est ce tableau qui a décidé de la suite : un volume de 320 Go est planifiabl
   76 % la passe livrée déplace 231 Mo pour ranger 179 Mo ; à 93 %, `dev-1999` en
   déplace 44 938 pour 6 710 — sept fois son contenu, en 23 284 évacuations.
 
-### Ce qui reste, et pourquoi NTFS est encore refusé
+### Pourquoi NTFS est encore refusé
 
 La stratégie de Windows 95 appliquée au 320 Go de `famille-2007` tasse trois
 cents gigaoctets contre le début du disque par tampons de 256 Ko : **vingt-huit
@@ -138,16 +138,49 @@ millions de requêtes, 1,5 Go de mémoire, quatre-vingt-quatorze heures de passe
 simulée** — pour ranger 244 fichiers fragmentés sur 12 220. Ce n'est pas une
 limite technique, c'est un contresens historique.
 
-Il manque donc :
+### Le point d'accroche — `DefragStrategy`
 
-1. un protocole `DefragStrategy`, le planificateur actuel devenant la stratégie
-   « Windows 95 » ;
-2. **JKDefrag / MyDefrag** : analyse, découpage en trois zones (répertoires,
+**Fait** · commit `794a921`
+
+Le planificateur mélangeait deux choses : émettre des requêtes bloc — lire,
+écrire, valider — et décider quels fichiers déplacer, et où. Seule la seconde
+change d'un outil à l'autre, et c'est elle qui fait la signature sonore d'une
+passe. Le partage retenu :
+
+- **`DefragStrategy`** porte la décision, et c'est une **valeur, pas un espace de
+  noms** : les variantes d'un même outil (analyse seule, optimisation complète,
+  *fast optimize*) sont des réglages, pas des algorithmes différents ;
+- **`DefragOperations`** garde les fabriques communes. Rien n'y décide de quoi
+  déplacer ni où : elles ne savent que traduire une décision déjà prise en
+  requêtes bloc et en mutations de la carte ;
+- **`Windows95Strategy`** est l'algorithme d'époque, inchangé ;
+- **la taille du tampon devient un réglage de la stratégie**, plus une constante
+  du module : 256 Ko est ce que faisait l'outil de 1995, pas une propriété des
+  disques ;
+- `DefragPlanner` se réduit au choix d'une stratégie **sur le format**. Ce choix
+  n'a aujourd'hui aucune alternative à offrir, et c'est assumé : il existe pour
+  que la passe NTFS soit un cas de plus, et rien d'autre.
+
+Refactoring à comportement constant, vérifié sur trois volumes de tailles très
+différentes plutôt que sur la seule passe livrée :
+
+| | requêtes | durée | déplacés | évacuations |
+|---|---|---|---|---|
+| passe livrée | 12 036 | 204,7 s | 390 | 921 |
+| `dev-1996` | 88 513 | 2 181 s | 5 522 | 3 811 |
+| `dev-1999` | 1 092 121 | 18 256 s | 7 254 | 23 284 |
+
+Tous les chiffres déjà publiés plus haut se retrouvent **à la requête près**.
+
+### Ce qui reste
+
+1. **JKDefrag / MyDefrag** : analyse, découpage en trois zones (répertoires,
    fichiers ordinaires, gros fichiers rares), et surtout *fast optimize*, qui ne
    comble que les trous au lieu de tout tasser — donc beaucoup moins
    d'évacuations, et une signature sonore radicalement différente ;
-3. une passe **NTFS** façon `FSCTL_MOVE_FILE` : pas de relecture dans un tampon,
+2. une passe **NTFS** façon `FSCTL_MOVE_FILE` : pas de relecture dans un tampon,
    pas de retour au cluster 0, et seulement les fichiers réellement fragmentés.
+   C'est elle qui lèvera le refus, et les huit scénarios NTFS avec.
 
 ---
 
