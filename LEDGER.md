@@ -1803,7 +1803,7 @@ suit, et en sortant, l'écran normal reprend la lecture là où elle en est.
 
 ## Chantier 9 — ce qu'`UltraDefragStrategy` ne reproduit pas
 
-**Relevé, non corrigé** · aucune modification de code
+**Relevé**, puis **corrigé** · branche `ultradefrag-fidele` (voir « La correction »)
 
 ### Le problème
 
@@ -1867,7 +1867,7 @@ croissant. L'écart dépasse la stratégie : `fragmentCount` sert aussi au tri d
 `VolumeStats.fragments` (`DefragVolume.swift:299`), donc à tous les tableaux de
 morceaux restants du journal.
 
-### Laissé ouvert
+### Laissé ouvert au relevé
 
 - **Rien n'est mesuré.** Ni la fréquence, dans la galerie, des fichiers aux
   extents adjacents mais inversés, ni l'effet du report de l'espace libéré sur
@@ -1884,3 +1884,122 @@ morceaux restants du journal.
   séquence toujours jouée même quand le seuil est personnalisé, et doc de
   `eliminateLittleFragments` trop stricte sur `n < 2` (un fragment isolé plus
   l'annexe du voisin donne `n = 2` et se déplace).
+
+### La correction
+
+Les deux écarts ont été chiffrés **avant** d'être corrigés, puis corrigés l'un
+après l'autre, chacun mesuré seul : trois binaires de rendu (`develop`, point 1,
+points 1 et 2), les vingt volumes, `PLAN_ONLY`, le même jour. XP et
+Windows 95 sur les volumes de leur format, UltraDefrag sur les vingt, JkDefrag
+dans ses modes 2, 5, 6 et le tri par nom.
+
+#### Le point 2 pèse peu au départ, et plus à l'arrivée
+
+Sur les volumes **livrés**, les deux règles de comptage ne divergent presque
+jamais. Un outil d'audit jetable a comparé, fichier par fichier, le compte par
+LCN trié et le compte dans l'ordre du fichier :
+
+| | fichiers aux extents non croissants | comptes différents | morceaux en plus |
+|---|---:|---:|---:|
+| FAT, douze volumes | 92 | 1 | 1 (`famille-1996`) |
+| NTFS, huit volumes | 11 | 5 | 44, dont 23 sur `famille-2007` |
+
+Aucun fichier ne change de statut : aucun contigu ne devient fragmenté. Les
+allocateurs du générateur ne posent presque jamais B juste avant A.
+
+Les **passes**, elles, le font. Ce qu'elles recopient par tranches atterrit
+dans le premier trou venu, parfois juste avant la tranche suivante du même
+fichier. L'ancien compteur y voyait un seul morceau. Les requêtes émises ne
+changent pour ainsi dire pas, mais les morceaux restants, si :
+
+| passe | morceaux restants, LCN trié → ordre du fichier |
+|---|---:|
+| JkDefrag, `famille-2003` | 1 786 → 2 128 (+19 %) |
+| JkDefrag, `famille-2007` | 1 911 → 2 191 (+15 %) |
+| JkDefrag tri par nom, `famille-2007` | 15 235 → 17 165 (+13 %) |
+| JkDefrag, `secretaire-2003` | 5 118 → 5 307 |
+| JkDefrag, `dev-1999` | 658 → 707 |
+| UltraDefrag, `famille-2007` | 1 357 → 1 503 (+11 %) |
+| UltraDefrag, `gamer-2007` | 524 → 561 |
+| XP et Windows 95, partout | au plus un morceau d'écart |
+
+Les tableaux du journal antérieurs à ce chapitre **sous-estimaient donc les
+morceaux restants** des passes qui recopient par tranches, de 10 à 20 % sur les
+volumes NTFS pleins. Ils ne sont pas réécrits : ils restent justes pour le
+compteur de leur époque. Le README, lui, donne les chiffres d'aujourd'hui.
+
+Côté comportement, un seul plan change en dehors d'UltraDefrag :
+JkDefrag mode 2 sur `famille-1996`, qui déplace un fichier de plus (12 921
+requêtes au lieu de 12 924). Un fichier qui passait pour contigu y est reconnu
+cassé.
+
+#### Le point 1 change le son d'UltraDefrag sur NTFS
+
+| scénario | seek moyen, cyl. | durée | requêtes | morceaux restants |
+|---|---:|---:|---:|---:|
+| `secretaire-2003` | 31 865 → 38 713 | 370 s → 384 s | 25 975 → 25 153 | 13 821 → 14 333 |
+| `famille-2003` | 35 547 → 39 044 | 969 s → 1 084 s | 61 912 → 66 598 | 17 131 → 14 942 |
+| `dev-2003` | 36 542 → 42 266 | 387 s → 408 s | 24 989 → 24 987 | 13 → 11 |
+| `secretaire-2007` | 39 497 → 40 842 | 579 s → 593 s | 21 684 → 21 684 | 0 → 0 |
+| `famille-2007` | 46 815 → 52 535 | 4 944 s → 5 204 s | 329 977 → 331 355 | 1 350 → 1 357 |
+| `gamer-2007` | 37 426 → 37 497 | 2 287 s → 2 300 s | 123 331 → 123 361 | 511 → 524 |
+| `dev-2007` | 47 430 → **64 868** | 4 394 s → 4 582 s | 248 719 → 247 803 | 3 → 18 |
+
+L'effet prévu au relevé se vérifie en partie. Les destinations sont **plus
+lointaines**, et c'est le résultat net : le seek moyen monte partout, de 37 %
+sur `dev-2007`. La passe dure 1 à 12 % de plus. Le reste ne suit pas de règle.
+Le relevé attendait des morceaux restants en baisse (plafond du plus grand trou
+plus bas), et il en reste moins sur `famille-2003` mais plus sur
+`secretaire-2003` et `dev-2007`. Le nombre de requêtes bouge dans les deux sens.
+C'est un effet d'attribution des trous, pas un effet de seuil.
+
+Les douze volumes FAT et toutes les passes XP ressortent **identiques au bit
+près** : la retenue ne s'applique qu'à NTFS, et seulement dans UltraDefrag.
+
+#### Les décisions
+
+- **La retenue reste locale à `UltraDefragStrategy`.** Ce qu'elle reproduit
+  n'est pas NTFS, c'est la comptabilité de l'outil : sa propre liste
+  `jp->free_regions`, qu'il ne relit qu'en tête de `defrag_routine`. JkDefrag
+  fait autrement : son `FindGap` relit `FSCTL_GET_VOLUME_BITMAP` à chaque
+  appel, voit ces clusters comme libres, et gère l'échec de `FSCTL_MOVE_FILE`
+  a posteriori (`MoveItem4`, `JkDefragLib.cpp:2350`). Le code de l'outil de XP
+  n'est pas public. Imposer la contrainte à ces deux-là serait modéliser le
+  point de contrôle de NTFS, dont le rythme n'est écrit nulle part.
+- **La retenue vit dans la bitmap.** `DefragVolume.relocateHoldingReleased`
+  laisse occupés les clusters que le fichier quitte et les note dans
+  `heldClusters`. `releaseHeldClusters` les rend en tête de chaque tour, puis
+  une dernière fois avant le bilan. `firstGap` et `largestGap` n'ont pas bougé :
+  ils voient des clusters occupés, comme `find_first_free_region` voit une
+  région absente. La retenue ne prend que les clusters réellement libérés, pas
+  ce qui reste en place d'un déplacement partiel.
+- **`fragmentCount` suit l'ordre de la liste d'extents**, sans tri. Le test qui
+  affirmait l'inverse (« l'ordre de la liste ne doit rien changer ») a été
+  retourné : deux extents jointifs sur le plateau mais inversés dans le fichier
+  font deux morceaux. Le commentaire de `fragments(of:)` dit désormais vrai :
+  son compte égale `fragmentCount` pour toute liste.
+
+#### Ce qui valide
+
+- Un test, « Sur NTFS, l'espace libéré n'est réutilisé qu'au tour suivant ».
+  La même disposition est passée sur une partition NTFS et sur une FAT, et le
+  second fichier n'atterrit pas au même endroit (cluster 90 contre 18). La
+  variante FAT sert de témoin : le test distingue bien les deux comportements.
+  Il vérifie aussi que le bilan est pris une fois tout rendu.
+- Le test des extents inversés attend deux morceaux.
+- Les 230 tests passent.
+- Hors du champ corrigé, les WAV ne sont pas comparés, mais les bilans le sont.
+  XP et Windows 95 ressortent à la requête et à la seconde près, JkDefrag aussi
+  sauf sur `famille-1996`.
+
+#### Laissé ouvert
+
+- **Rien n'a été écouté**, comme au chantier 2 : les effets sonores sont déduits
+  des seeks.
+- **Les tableaux antérieurs du journal** gardent leurs anciens morceaux
+  restants (voir plus haut). Seul le README est à jour.
+- **Les écarts mineurs du relevé** restent tels quels : départage des chemins
+  sensible à la casse, zone MFT exclue au-delà de XP, seconde séquence toujours
+  jouée, et la doc de `n < 2`.
+- **Le nombre de tours** de chaque séquence n'est pas compté. La retenue en
+  ajoute probablement, et le bilan ne le dit pas.
