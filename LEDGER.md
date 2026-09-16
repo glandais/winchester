@@ -1708,3 +1708,93 @@ parcage, le fond est un plateau qui s'éteint là où l'autre monte.
   plateau s'arrête plus lentement qu'il ne démarre — il n'y a que les frottements
   pour le freiner, là où le moteur pousse. Le modèle ne le distingue pas, faute
   d'un chiffre à citer.
+
+---
+
+## Chantier 8 — la carte dessinée une fois
+
+**Fait** · branche `carte-dessinee-une-fois`
+
+### Le problème
+
+Le chantier 3 laissait ouvert un plein écran qui coûtait **plus cher** que
+l'écran qu'il recouvre, et rendait `axe describe-ui` inutilisable pendant la
+lecture. Mesuré sur la passe livrée, en build Debug, temps CPU cumulé sur 20 s
+de lecture, deux essais :
+
+| | écran normal | plein écran | `axe describe-ui` en plein écran |
+|---|---:|---:|---:|
+| `develop` | 65–70 % | 105–110 % | **64 s** |
+
+Un échantillonnage du fil principal (`sample`, 5 s) donne deux causes, de poids
+comparable :
+
+- **l'écran du dessous suivait toujours l'horloge.** `SimulatorScreen` observait
+  le moteur, et `@ObservedObject` ne se désabonne pas quand une vue est
+  recouverte : son corps était recalculé à chaque image, avec sa carte, son
+  plateau et son bandeau, que personne ne voyait. Sa carte avait en plus la
+  grille fine du plein écran, que le modèle partage. 469 ms de corps sur 5 s,
+  dont 443 dans `clusterShades(at:)` ;
+- **la carte refaisait tout son calcul à chaque image.** `shades(at:)`
+  reparcourait tous les blocs et rendait un tableau neuf, que SwiftUI ne pouvait
+  pas reconnaître comme identique : le `CGImage` était refabriqué soixante fois
+  par seconde, deux fois, pour une carte qui ne change qu'aux mutations.
+
+### Les décisions
+
+- **Un relais qu'on peut couper, plutôt qu'une réorganisation de l'écran.**
+  `ClockRelay` retransmet à l'écran les changements du moteur, et se tait tant
+  que le plein écran est ouvert. En se rouvrant, il envoie un seul changement,
+  et l'écran rattrape d'un coup ce qu'il a manqué. L'autre solution, sortir
+  chaque morceau lié à l'horloge dans sa propre vue, laissait ces morceaux
+  abonnés sous le plein écran : elle aurait déplacé le coût, pas supprimé. Le
+  prix : les réglages du mixage ne sont plus des `$engine.…` mais des `Binding`
+  fabriqués, puisque le relais n'expose pas l'objet observé.
+- **La réduction ne refait que les blocs touchés.** Le rejeu note, dans `add`,
+  chaque bloc dont le décompte bouge, et `shades(at:)` ne recalcule que ceux-là.
+  C'est une liste et non un intervalle : un déplacement écrit au début du
+  volume et évacue vers la fin, et l'intervalle qui couvrirait les deux serait
+  la carte entière. Un simple cache invalidé à chaque mutation ne suffisait pas.
+  Mesuré après cette première étape, il ramenait le plein écran à 48 %, mais le
+  profil montrait encore la réduction complète en tête : sur la passe livrée,
+  une mutation tombe presque à chaque image.
+- **Rien n'a changé, même tableau.** Quand aucune mutation n'est tombée,
+  `shades(at:)` rend le tableau précédent, qui partage son stockage : la
+  comparaison de SwiftUI s'arrête à l'identité du stockage, et `ClusterMapImage`
+  n'est pas recalculée.
+
+### Ce qui valide
+
+| | écran normal | plein écran | `axe describe-ui` en plein écran |
+|---|---:|---:|---:|
+| `develop` | 65–70 % | 105–110 % | 64 s |
+| branche | **60 %** | **35–40 %** | **1 s** |
+
+Le plein écran coûte désormais moins que l'écran normal, ce qu'on attend d'une
+vue qui ne montre qu'une carte et une barre. La mesure lit le temps CPU de `ps`
+à la seconde près : ±5 %.
+
+Un test, `unchangedFramesReuseTheReduction`, avance la passe image par image.
+Une image sur deux, il compare la carte à celle d'un player neuf, qui ne peut
+rien avoir retenu. Il vérifie aussi que le même stockage revient quand rien n'a
+bougé, et que le cache a servi. **Il a été éprouvé par une mutation
+volontaire** : oublier un seul bloc touché par image le fait échouer, ainsi que
+des tests existants de la carte (un seul au premier essai, quatre au second). À une comparaison toutes les trente
+images, il ne la voyait pas : le bloc oublié était souvent retouché avant d'être
+comparé.
+
+Les 229 tests passent. À l'écran, la carte en plein écran avance, la rémanence
+suit, et en sortant, l'écran normal reprend la lecture là où elle en est.
+
+### Laissé ouvert
+
+- **Mesuré en Debug, sur le simulateur de l'iPhone SE (3ᵉ génération)** démarré
+  par une autre session, comme au chantier 3. Pas en Release, pas sur l'appareil,
+  pas en paysage. En Debug, la boucle de réduction est très pénalisée par les
+  itérateurs génériques non spécialisés : l'écart réel sur l'appareil est
+  probablement plus faible.
+- **L'écran normal reste à 60 %.** La carte n'y est plus la cause principale :
+  plateau, bandeau et compteurs sont recalculés en entier à chaque image. Ce
+  chantier ne l'a pas profilé plus loin.
+- **La galerie** (`LibraryFullScreenMap`) n'était pas concernée : son volume ne
+  bouge pas et ne suit aucune horloge. Elle n'a pas été mesurée.

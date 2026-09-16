@@ -225,6 +225,11 @@ rémanence de 0,34 s, fondue sur l'âge comme la traînée du plateau.
 Rien de tout cela n'est tenu cluster par cluster : la carte est une suite de
 plages, et un volume de 320 Go coûte 2,6 Mo au lieu de 78.
 
+Une image ne recalcule que les blocs qu'une mutation a touchés depuis la
+précédente, et rend le même tableau quand aucune n'est tombée : la vue ne refait
+alors pas son image. L'écran recouvert par le plein écran cesse de suivre
+l'horloge, et se remet à l'heure quand on en sort.
+
 Sur NTFS, `$Boot`, la MFT et `$MFTMirr` n'appartiennent à aucun fichier du
 catalogue, mais occupent le volume : la carte les peint de la couleur des tables
 FAT, celle de ce que le système de fichiers se réserve pour lui-même. Une zone
