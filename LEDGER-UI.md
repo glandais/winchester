@@ -670,19 +670,77 @@ plan final.
 
 ## Chantier U7 — le démarrage et son témoin
 
-**À faire** · prompt §6
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-Le récit (« Windows 98 SE, puis Office 97 »), les étapes, les tuiles, et une
-carte de conclusion sur le témoin : sur FAT la fragmentation ne coûte presque
-rien au démarrage, sur NTFS le témoin ne gagne pas toujours. Mention du
-préchargeur XP/Vista quand il joue.
+Le démarrage d'un disque généré n'avait qu'un panneau de quatre tuiles
+(« Jamais fragmenté 55 s », « −9 % » écrit en unité) et un paragraphe fixe qui
+expliquait le témoin dans l'absolu, quel que soit le format et le résultat. Le
+préchargeur de XP et de Vista — la différence d'époque la plus audible — n'était
+dit nulle part, et le témoin ne donnait que sa durée, pas ses seeks.
 
-### Ce que le code offre
+### Les décisions
 
-`BootSession` et le panneau `bootPanel` actuel : c'est surtout un chantier de
-mise en forme.
+- **Vue Plateau d'un démarrage** : le plateau, les **étapes** (les actes du
+  script, avec le temps passé dans chacun), quatre tuiles, puis la carte du
+  témoin. Plus d'« en cours » une fois le démarrage entendu.
+- **Les tuiles se remplissent à l'écoute** : fichiers à lire (et combien dans la
+  MFT), octets lus, **calcul** de la machine et **disque** — seek, rotation,
+  transfert —, pris aux instruments d'U6. Leur somme tend vers la durée, le
+  reste étant la mise sous tension et l'attente.
+- **La carte du témoin** (maquette 14) : « DÉMARRAGE TERMINÉ · 51 S », l'écart
+  en grand — ambre quand le volume coûte, turquoise quand le témoin perd —, puis
+  deux lignes, ce disque et le témoin, chacune avec sa durée, ses seeks et son
+  seek moyen.
+- **La phrase suit le format et le signe**, pas une conclusion écrite
+  d'avance :
+  - FAT et écart sous 5 % : ces fichiers ont été écrits d'un seul tenant par
+    l'installeur, sur un disque vide ; c'est l'ordre des demandes qui fait le
+    bruit ;
+  - FAT au-delà : la place des fichiers coûte, plus qu'un démarrage FAT
+    d'ordinaire ;
+  - NTFS et témoin plus lent : NTFS choisit le trou qui convient, et sa
+    disposition bat un empilement dans l'ordre du répertoire ;
+  - NTFS et témoin plus rapide : le témoin ne mesure pas la fragmentation
+    seule, mais la place réelle face à un rangement naïf.
+  Avant la fin, la carte dit que le témoin est déjà simulé et que l'écart se lit
+  au bout.
+- **Le préchargeur** en ⓘ : « Préchargeur de Windows XP : la liste de lecture
+  est rangée par position… » ou « Pas de préchargeur sur MS-DOS 6.22 et
+  Windows 3.1 : le bras suit l'ordre dans lequel le système demande ses
+  fichiers ». La phrase de la maquette disait « l'ordre du registre », qui
+  n'existe pas sous MS-DOS.
+- **`BootPlayback` porte ce qu'il faut** : octets à lire, format, préchargeur de
+  l'époque (`BootScript.Era.prefetch`), seeks et seek moyen du témoin, pris sur
+  la trace qui le simulait déjà.
+- Les durées affichées sont **arrondies** et non plus tronquées : l'en-tête
+  disait « 50 s » pour 51,0 s.
+
+### Ce qui valide
+
+- Construit en Debug pour le simulateur iPhone 17 Pro, sans erreur ;
+  `Tools/build-render.sh` compile, et deux démarrages (`boot:dev-2003`,
+  `boot:gamer-1993`) rendent des WAV identiques à ceux de `develop` :
+  `Scenario.swift` ne change que ce qu'il décrit.
+- Sur le simulateur, joués jusqu'au bout :
+  - `gamer-1993` (FAT16) : **29,5 s contre 29,2 s, +0,9 %** — le README donne
+    29,5 s et +1 % ; 112 seeks à 180 cylindres contre 101 à 100 ; phrase FAT,
+    pas de préchargeur ;
+  - `dev-2003` (NTFS) : **51,0 s contre 55,9 s, −8,7 %** — le README donne
+    51,0 s et −9 % ; phrase « Le témoin perd », préchargeur de Windows XP ;
+    calcul 25 s, disque 16 s.
+
+### Laissé ouvert
+
+- **« Comparer avec un disque 2003 et XP »** n'est pas là : il faudrait ouvrir
+  la galerie sur un filtre choisi depuis un autre onglet.
+- **Le démarrage livré** (Barracuda 2001) n'a pas de témoin : il est décrit en
+  fractions du plateau, sans catalogue de fichiers à remettre d'un seul tenant.
+- Les octets lus par la mécanique dépassent un peu ceux que compte le plan
+  (7,7 Mo contre 7,4 sur `gamer-1993`) : la tuile ne compare donc pas les deux.
+- Les seuils des phrases (5 % sur FAT) sont posés à la main d'après les vingt
+  démarrages de la galerie.
 
 ---
 

@@ -130,6 +130,17 @@ struct BootPlayback {
     /// différence avec la durée réelle est le prix de la fragmentation, et il
     /// n'y a aucun autre écart entre les deux mesures.
     let freshSeconds: Double
+    /// Ce que le démarrage lira, en octets.
+    let bytesRead: Int
+    /// Le format du volume : c'est lui qui dit si le témoin a une chance de
+    /// perdre — NTFS place mieux qu'un empilement, FAT non.
+    let fileSystem: FileSystemKind
+    /// Le système relit sa liste dans l'ordre du disque — le préchargeur de
+    /// Windows XP, puis SuperFetch — plutôt que dans l'ordre du registre.
+    let readsByPosition: Bool
+    /// Seeks du témoin, pour les mettre en regard de ceux qu'on écoute.
+    let freshSeeks: Int
+    let freshAverageSeek: Int
 
     /// Ce que le disque a ajouté par-dessus le calcul, une fois la passe finie.
     func diskSeconds(duration: Double) -> Double {
@@ -333,7 +344,12 @@ enum ScenarioBuilder {
                                residentFiles: plan.residentFiles,
                                thinkSeconds: plan.thinkSeconds,
                                tail: plan.tail,
-                               freshSeconds: freshSeconds),
+                               freshSeconds: freshSeconds,
+                               bytesRead: plan.bytesRead,
+                               fileSystem: disk.spec.fileSystem.type,
+                               readsByPosition: BootScript.Era.matching(disk.spec).prefetch == .byPosition,
+                               freshSeeks: freshTrace.stats.seekCount,
+                               freshAverageSeek: freshTrace.stats.averageSeekDistance),
             feed: { pipeline, isCancelled in
                 for request in requests {
                     guard !isCancelled() else { break }

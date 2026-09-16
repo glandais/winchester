@@ -56,8 +56,11 @@ struct SimulatorScreen: View {
                         }
                     case .platter:
                         platterPanel
-                        if let boot = model.boot { bootPanel(boot) }
                         phasesPanel
+                        if let boot = model.boot {
+                            bootTiles(boot)
+                            witnessPanel(boot)
+                        }
                         timeline
                     }
                 }
@@ -281,9 +284,10 @@ struct SimulatorScreen: View {
     /// comprises. Aucune phase à venir : on ne sait pas combien de temps elles
     /// prendront.
     private var phasesPanel: some View {
-        let current = model.phaseIndex
+        // Une passe entendue jusqu'au bout n'a plus de phase en cours.
+        let current = engine.isFinished ? -1 : model.phaseIndex
         return VStack(alignment: .leading, spacing: 8) {
-            Text("PHASES ÉCOUTÉES")
+            Text(model.boot == nil ? "PHASES ÉCOUTÉES" : "ÉTAPES")
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             if model.phaseTimes.isEmpty {
@@ -331,36 +335,132 @@ struct SimulatorScreen: View {
         .panel()
     }
 
-    /// Le bilan d'un démarrage. Il n'y a pas de carte à montrer — un démarrage
-    /// ne déplace rien — mais il y a une chose à dire : ce que ce volume-là
-    /// coûte par rapport au même contenu jamais fragmenté.
-    private func bootPanel(_ boot: BootPlayback) -> some View {
-        // Ce que le disque a coûté ne se sait qu'à la fin du démarrage.
+    // MARK: - Démarrage
+
+    /// Ce que le démarrage coûte, à mesure qu'on l'écoute : le calcul de la
+    /// machine d'un côté, le disque de l'autre. Leur somme tend vers la durée.
+    private func bootTiles(_ boot: BootPlayback) -> some View {
+        let detail = model.totals.detail
+        let disk = detail.seekSeconds + detail.rotationSeconds + detail.transferSeconds
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+            StatTile(label: "Fichiers à lire", value: FrenchFormat.integer(boot.filesRead),
+                     unit: boot.residentFiles > 0 ? "dont \(FrenchFormat.integer(boot.residentFiles)) dans la MFT" : "")
+            StatTile(label: "Lu",
+                     value: FrenchFormat.megabytes(UInt64(detail.readBytes)),
+                     unit: "jusqu'ici")
+            StatTile(label: "Calcul", value: FrenchFormat.duration(detail.thinkSeconds),
+                     unit: "la machine")
+            StatTile(label: "Disque", value: FrenchFormat.duration(disk),
+                     unit: "le bras et le plateau")
+        }
+    }
+
+    /// Le témoin — maquette 14. Le même contenu, chacun d'un seul tenant et
+    /// tassé contre le début du volume, a été simulé avant l'écoute ; l'écart
+    /// ne se lit qu'une fois ce démarrage-ci entendu jusqu'au bout.
+    private func witnessPanel(_ boot: BootPlayback) -> some View {
         let duration = model.end?.duration
-        let disk = duration.map { FrenchFormat.decimal(boot.diskSeconds(duration: $0), digits: 0) } ?? "…"
-        let penalty = duration.map { boot.freshSeconds > 0
-            ? String(format: "%+.0f %%", ($0 / boot.freshSeconds - 1) * 100)
-            : "" } ?? "à venir"
-        return VStack(alignment: .leading, spacing: 10) {
-            FlowRow(spacing: 10) {
-                StatTile(label: "Fichiers lus", value: FrenchFormat.integer(boot.filesRead),
-                         unit: boot.residentFiles > 0 ? "\(boot.residentFiles) résidents" : "ouverts")
-                StatTile(label: "Calcul", value: FrenchFormat.decimal(boot.thinkSeconds, digits: 0), unit: "s")
-                StatTile(label: "Disque", value: disk, unit: "s d'attente")
-                StatTile(label: "Jamais fragmenté",
-                         value: FrenchFormat.decimal(boot.freshSeconds, digits: 0),
-                         unit: penalty)
+        let gap = duration.flatMap { boot.freshSeconds > 0 ? $0 / boot.freshSeconds - 1 : nil }
+        let totals = model.totals
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(duration.map { "DÉMARRAGE TERMINÉ · \(FrenchFormat.duration($0).uppercased())" }
+                         ?? "DÉMARRAGE EN COURS · \(FrenchFormat.duration(time).uppercased())")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Theme.dim)
+                    Text("Le témoin")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                }
+                Spacer()
+                Text(gap.map(signedPercent) ?? "…")
+                    .font(.system(size: 26, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(gap.map { $0 < 0 ? Theme.write : Theme.read } ?? Theme.dim)
+                    .monospacedDigit()
             }
-            Text("Le témoin lit exactement les mêmes fichiers, d'un seul tenant chacun et "
-                 + "rangés dans l'ordre du répertoire. L'écart dit ce que ce volume-ci fait "
-                 + "payer à son démarrage — ou ce qu'il lui fait gagner, quand son "
-                 + "allocateur place mieux qu'un empilement.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.dim)
+
+            VStack(spacing: 6) {
+                witnessRow("ce disque",
+                           duration.map { FrenchFormat.decimal($0, digits: 1) + "\u{00A0}s" } ?? "en cours",
+                           seeks: totals.seeks, average: totals.averageSeekDistance,
+                           final: duration != nil)
+                witnessRow("jamais fragmenté",
+                           FrenchFormat.decimal(boot.freshSeconds, digits: 1) + "\u{00A0}s",
+                           seeks: boot.freshSeeks, average: boot.freshAverageSeek,
+                           final: true)
+            }
+
+            Text(witnessExplanation(boot, gap: gap))
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.text.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.write)
+                Text(boot.readsByPosition
+                     ? "Préchargeur de \(boot.osName) : la liste de lecture est rangée par position sur le disque, et relue d'une seule course du bras."
+                     : "Pas de préchargeur sur \(boot.osName) : le bras suit l'ordre dans lequel le système demande ses fichiers, pas leur position.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
+    }
+
+    private func witnessRow(_ label: String, _ duration: String,
+                            seeks: Int, average: Int, final: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.text)
+            Spacer()
+            Text("\(FrenchFormat.integer(seeks)) seeks · \(FrenchFormat.integer(average)) cyl.")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Theme.dim)
+            Text(duration)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(final ? Theme.text : Theme.dim)
+                .frame(minWidth: 64, alignment: .trailing)
+        }
+        .monospacedDigit()
+    }
+
+    private func signedPercent(_ ratio: Double) -> String {
+        (ratio >= 0 ? "+" : "−") + FrenchFormat.decimal(abs(ratio) * 100, digits: 1) + "\u{00A0}%"
+    }
+
+    /// Ce que dit l'écart. Sur les vingt démarrages de la galerie, FAT coûte
+    /// de 0 à 4 %, et le témoin NTFS perd parfois : la phrase suit le format et
+    /// le signe, pas un chiffre attendu.
+    private func witnessExplanation(_ boot: BootPlayback, gap: Double?) -> String {
+        guard let gap else {
+            return "Le témoin lit exactement les mêmes fichiers, chacun d'un seul tenant et tassé contre "
+                + "le début du volume. Il a été simulé avant l'écoute ; l'écart se lit à la fin."
+        }
+        switch boot.fileSystem {
+        case .fat16, .vfat, .fat32:
+            if gap < 0.05 {
+                return "Sur FAT, la fragmentation ne coûte presque rien au démarrage : ces fichiers ont été "
+                    + "écrits d'un seul tenant par l'installeur, sur un disque vide. Ce qui fait le bruit, "
+                    + "c'est l'ordre dans lequel on les demande."
+            }
+            return "Ici, la place des fichiers coûte \(signedPercent(gap)) : plus que ce qu'un démarrage FAT "
+                + "paie d'ordinaire. Les fichiers lus n'ont pas tous gardé la place que l'installeur "
+                + "leur avait donnée."
+        case .ntfs:
+            if gap < 0 {
+                return "Le témoin perd : NTFS choisit le trou qui convient plutôt que le premier venu, et sa "
+                    + "disposition bat ici un rangement qui empile tout dans l'ordre du répertoire."
+            }
+            return "Sur NTFS, le témoin ne gagne pas toujours ; ici il gagne \(FrenchFormat.decimal(gap * 100, digits: 1)) %. "
+                + "Il ne mesure pas la fragmentation seule, mais ce que coûte la place réelle des fichiers "
+                + "face à un rangement naïf."
+        }
     }
 
     // MARK: - Transport

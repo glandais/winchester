@@ -153,7 +153,7 @@ enum FrenchFormat {
 
     /// Un temps écouté : « 42 s », « 12 min 41 », « 1 h 07 ».
     static func duration(_ seconds: Double) -> String {
-        let total = max(Int(seconds), 0)
+        let total = max(Int(seconds.rounded()), 0)
         let h = total / 3_600, m = (total % 3_600) / 60, s = total % 60
         if h > 0 { return "\(h)\u{00A0}h\u{00A0}" + String(format: "%02d", m) }
         if m > 0 { return "\(m)\u{00A0}min\u{00A0}" + String(format: "%02d", s) }
