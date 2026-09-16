@@ -2,44 +2,42 @@ import Foundation
 import DiskCore
 import Combine
 
-/// Assemble la chaîne complète : scénario → requêtes bloc → chronologie
-/// mécanique → repères audio, et expose au rendu ce qu'il faut pour afficher
-/// l'état du disque à un instant donné.
+/// Branche un scénario sur le moteur audio, et expose au rendu ce que la passe
+/// montre à l'instant écouté.
+///
+/// Rien n'est plus calculé d'avance : choisir un scénario lance sa passe sur un
+/// fil à part, qui avance quelques secondes devant l'écoute. L'écran ne
+/// connaît de la passe que son présent — ni sa durée, ni son passé au-delà de
+/// ce qu'une image peut encore montrer.
 @MainActor
 final class SimulationModel: ObservableObject {
 
     @Published private(set) var selection: ScenarioSelection
     @Published private(set) var scenario: Scenario
+    /// La passe en cours d'écoute.
+    @Published private(set) var live: LivePass
 
     let engine: DiskNoiseEngine
 
+    /// Les scénarios décrits, pas leurs passes : un disque de la galerie coûte
+    /// sa conversion en volume, qu'on ne refait pas à chaque aller-retour.
     private var cache: [ScenarioSelection: Scenario] = [:]
-    private let mapPlayer = ClusterMapPlayer()
 
     var kind: ScenarioKind { scenario.kind }
     var label: ScenarioLabel { scenario.label }
-
-    static let bucketDuration = ScenarioBuilder.bucketDuration
-
     var geometry: DriveGeometry { scenario.geometry }
-    var spans: [PhaseSpan] { scenario.spans }
-    var requestCount: Int { scenario.requestCount }
-    var iops: [Double] { scenario.iops }
-    var throughputMBs: [Double] { scenario.throughputMBs }
-    var peakIOPS: Double { scenario.peakIOPS }
-    var duration: Double { scenario.duration }
-    var stats: TraceStats { scenario.trace.stats }
     var defrag: DefragPlayback? { scenario.defrag }
     var boot: BootPlayback? { scenario.boot }
 
     init() {
         let scenario = ScenarioBuilder.build(.windowsBoot)
+        let live = scenario.startLivePass()
         self.selection = .builtin(.windowsBoot)
         self.scenario = scenario
+        self.live = live
         self.cache = [.builtin(.windowsBoot): scenario]
         self.engine = DiskNoiseEngine(rpm: scenario.geometry.rpm)
-        mapPlayer.load(scenario.defrag?.clusterTimeline)
-        engine.load(cues: scenario.cues, duration: scenario.duration, rpm: scenario.geometry.rpm)
+        engine.load(feed: live, rpm: scenario.geometry.rpm)
     }
 
     /// Ce que propose le sélecteur : les scénarios livrés, puis le disque de la
@@ -53,10 +51,7 @@ final class SimulationModel: ObservableObject {
             + cache.keys.filter(\.isGenerated).sorted { $0.sortKey < $1.sortKey }
     }
 
-    /// Bascule de scénario. Les scénarios livrés sont conservés une fois
-    /// construits : la construction d'une passe de défragmentation coûte
-    /// quelques dizaines de millisecondes, mais on ne la refait pas à chaque
-    /// aller-retour.
+    /// Bascule de scénario. La passe repart de son début.
     func select(_ selection: ScenarioSelection) {
         guard selection != self.selection else { return }
         guard let scenario = cache[selection] ?? built(selection) else { return }
@@ -73,12 +68,9 @@ final class SimulationModel: ObservableObject {
 
     /// Adopte un disque fabriqué par la galerie et bascule dessus.
     ///
-    /// La planification et la simulation restent du même ordre que la passe
-    /// livrée : 70 à 190 ms en release sur les huit volumes FAT16 que le pont
-    /// accepte, le plus lourd étant `famille-1996` et ses 163 000 requêtes.
-    /// C'est court pour une action explicite, et c'est pour cela que rien de
-    /// tout cela ne part en tâche de fond — la génération du disque, elle, en
-    /// vient déjà.
+    /// Plus rien n'est planifié ici : la conversion du disque en volume est le
+    /// seul coût payé sur le fil principal, la passe elle-même se calcule
+    /// pendant qu'on l'écoute.
     ///
     /// Un seul disque de la galerie est gardé à la fois, quelle que soit
     /// l'activité : le sélecteur est segmenté, et une quatrième entrée n'y
@@ -106,104 +98,78 @@ final class SimulationModel: ObservableObject {
     private func adopt(_ scenario: Scenario, as selection: ScenarioSelection) {
         self.selection = selection
         self.scenario = scenario
-        mapPlayer.load(scenario.defrag?.clusterTimeline)
-        engine.seekTo(0)
-        engine.load(cues: scenario.cues, duration: scenario.duration, rpm: scenario.geometry.rpm)
+        startPass()
     }
 
-    // MARK: - Interrogation à un instant donné
-
-    func span(at time: Double) -> PhaseSpan? {
-        spans.last { $0.start <= time } ?? spans.first
+    /// Relance la passe depuis son début — le seul retour en arrière qui
+    /// reste. La lecture reprend si elle était en cours.
+    func restart() {
+        let wasPlaying = engine.isPlaying || engine.isBuffering
+        startPass()
+        if wasPlaying { engine.play() }
     }
+
+    private func startPass() {
+        // La passe abandonnée libère son producteur en partant.
+        let grid = live.map?.grid ?? .standard
+        live = scenario.startLivePass()
+        live.map?.setGrid(grid)
+        engine.load(feed: live, rpm: scenario.geometry.rpm)
+    }
+
+    // MARK: - L'instant écouté
+
+    /// La phase en cours et son rang, pour la couleur.
+    var phase: PhaseDescriptor? { live.phase }
+    var phaseIndex: Int { live.phaseIndex }
 
     /// Le plateau et sa trace de position, tels que la vue les interroge.
-    var platter: PlatterTrack {
-        PlatterTrack(geometry: scenario.geometry,
-                     seekModel: scenario.seekModel,
-                     samples: scenario.trace.headSamples,
-                     spindle: scenario.trace.spindle,
-                     parkAt: scenario.trace.parkAt)
-    }
+    var platter: PlatterTrack { live.platter }
 
     /// Tout ce que le plateau doit montrer à cet instant, en une seule passe.
-    func platterFrame(at time: Double) -> PlatterFrame { platter.frame(at: time) }
-
-    func bucketValue(_ series: [Double], at time: Double) -> Double {
-        guard !series.isEmpty else { return 0 }
-        let index = min(max(Int(time / Self.bucketDuration), 0), series.count - 1)
-        return series[index]
-    }
+    func platterFrame(at time: Double) -> PlatterFrame { live.platter.frame(at: time) }
 
     /// Le voyant d'activité, comme sur la façade : c'est exactement le signal
     /// dont se contente HDDSynth pour déclencher ses sons.
-    func activityLED(at time: Double) -> Bool {
-        bucketValue(iops, at: time) > 0.5
+    var activityLED: Bool { live.requestRate > 0.5 }
+
+    var requestRate: Double { live.requestRate }
+    var throughputMBs: Double { live.throughputMBs }
+    var totals: ActivityTotals { live.totals }
+
+    /// Le bilan, une fois la passe entendue jusqu'au bout de son travail.
+    var end: PassEnd? {
+        guard let end = live.end, live.now >= end.workEnd else { return nil }
+        return end
     }
 
     // MARK: - Défragmentation
 
-    func clusterCells(at time: Double) -> [UInt8] { mapPlayer.cells(at: time) }
-
-    /// La carte avec le taux d'occupation de chaque bloc, dont le plein écran
-    /// fait sa teinte proportionnelle.
-    func clusterShades(at time: Double) -> [ClusterShade] { mapPlayer.shades(at: time) }
+    func clusterShades(at time: Double) -> [ClusterShade] { live.map?.shades(at: time) ?? [] }
 
     /// Les accès encore visibles sur la carte, en plein écran.
-    ///
-    /// La projection d'un cluster sur la grille passe par le rejeu, seul à
-    /// savoir combien de clusters vaut un bloc à cet instant — la grille change
-    /// quand on ouvre le plein écran.
-    func mapTrail(at time: Double) -> [MapTrailPoint] {
-        guard let playback = defrag else { return [] }
-        return MapTrail.points(in: playback.activity, at: time) { [mapPlayer] cluster in
-            mapPlayer.cell(ofCluster: cluster)
-        }
-    }
+    func mapTrail() -> [MapTrailPoint] { live.mapTrail() }
 
-    var clustersPerCell: Int { mapPlayer.clustersPerCell }
+    /// Cellule en cours d'accès, s'il y en a une à cet instant.
+    func activeCell() -> (cell: Int, isWrite: Bool)? { live.activeCell() }
+
+    var clustersPerCell: Int { live.map?.clustersPerCell ?? 1 }
 
     /// Grille sur laquelle la carte est agrégée. La vue la lit ici plutôt que
     /// de la deviner : c'est le modèle qui décide combien de blocs il produit,
     /// et la vue n'en dessine jamais d'autres.
-    var mapGrid: MapGrid { mapPlayer.grid }
+    var mapGrid: MapGrid { live.map?.grid ?? .standard }
 
     /// Change la grille d'affichage — le plein écran la dérive de la surface
     /// disponible. Le rejeu garde sa position ; seule l'agrégation est refaite.
     func setMapGrid(_ grid: MapGrid) {
-        guard grid != mapPlayer.grid else { return }
-        mapPlayer.setGrid(grid)
+        guard let map = live.map, grid != map.grid else { return }
+        map.setGrid(grid)
         objectWillChange.send()
     }
 
-    /// Cellule en cours d'accès, s'il y en a une à cet instant.
-    func activeCell(at time: Double) -> (cell: Int, isWrite: Bool)? {
-        guard let playback = defrag, !playback.activity.isEmpty else { return nil }
-        let activity = playback.activity
+    var movedBytes: Double { Double(live.totals.movedBytes) }
 
-        var low = 0
-        var high = activity.count - 1
-        guard activity[0].start <= time else { return nil }
-        while low < high {
-            let mid = (low + high + 1) / 2
-            if activity[mid].start <= time { low = mid } else { high = mid - 1 }
-        }
-        let current = activity[low]
-        // Au-delà de la fin de l'opération on garde le surlignage un court
-        // instant : à 60 images par seconde, la plupart des transferts durent
-        // moins d'une image et clignoteraient.
-        guard time - current.end < 0.12 else { return nil }
-        return (mapPlayer.cell(ofCluster: current.cluster), current.isWrite)
-    }
-
-    func movedBytes(at time: Double) -> Double {
-        guard let playback = defrag else { return 0 }
-        return bucketValue(playback.movedBytes, at: time)
-    }
-
-    /// Avancement de la passe, du début de l'analyse à la dernière opération.
-    func defragProgress(at time: Double) -> Double {
-        guard let playback = defrag, playback.workEndTime > 0 else { return 0 }
-        return min(max(time / playback.workEndTime, 0), 1)
-    }
+    /// Avancement annoncé par le défragmenteur, s'il en annonce un.
+    var defragProgress: Double? { live.progress }
 }

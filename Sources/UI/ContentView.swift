@@ -67,7 +67,6 @@ struct SimulatorScreen: View {
     @State private var showsFullScreenMap = false
 
     private var time: Double { engine.currentTime }
-    private var span: PhaseSpan? { model.span(at: time) }
     /// Une seule interrogation de la trace par image, partagée par le plateau et
     /// par l'afficheur de cylindre.
     private var platter: PlatterFrame { model.platterFrame(at: time) }
@@ -133,8 +132,8 @@ struct SimulatorScreen: View {
     @ViewBuilder
     private var defragPanel: some View {
         if let playback = model.defrag {
-            let active = model.activeCell(at: time)
-            let plan = playback.plan
+            let active = model.activeCell()
+            let before = playback.before
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Volume C:")
@@ -153,7 +152,7 @@ struct SimulatorScreen: View {
                 // L'outil qu'on écoute. Sans lui, deux passes aux signatures
                 // sonores opposées s'annoncent de la même façon, et le seul
                 // indice de ce qui a changé est un compteur.
-                Text(plan.strategy.label)
+                Text(playback.strategy.label)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.text)
 
@@ -166,16 +165,21 @@ struct SimulatorScreen: View {
                     .contentShape(Rectangle())
                     .onTapGesture { showsFullScreenMap = true }
 
-                progressBar(playback: playback)
+                progressBar()
 
-                ClusterLegend(categories: presentCategories(in: plan),
+                ClusterLegend(categories: presentCategories(in: playback),
                               clustersPerCell: model.clustersPerCell,
                               clusterBytes: playback.partition.clusterBytes)
 
-                Text(String(format: "Au départ : %d fichiers, %d fragmentés (%.0f %%), %.2f extents par fichier, %d trous dans l'espace libre. À l'arrivée : %d fragmentés, %d trous.",
-                            plan.before.fileCount, plan.before.fragmentedFiles,
-                            plan.before.fragmentedRatio * 100, plan.before.extentsPerFile,
-                            plan.before.freeHoles, plan.after.fragmentedFiles, plan.after.freeHoles))
+                // L'arrivée n'est connue qu'une fois la passe entendue jusqu'au
+                // bout : elle se calcule pendant qu'on l'écoute.
+                let plan = model.end?.plan
+                Text(String(format: "Au départ : %d fichiers, %d fragmentés (%.0f %%), %.2f extents par fichier, %d trous dans l'espace libre.",
+                            before.fileCount, before.fragmentedFiles,
+                            before.fragmentedRatio * 100, before.extentsPerFile,
+                            before.freeHoles)
+                     + (plan.map { String(format: " À l'arrivée : %d fragmentés, %d trous.",
+                                          $0.after.fragmentedFiles, $0.after.freeHoles) } ?? ""))
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
@@ -183,10 +187,12 @@ struct SimulatorScreen: View {
                 // C'est la stratégie qui commente ses propres compteurs : les
                 // mêmes nombres ne disent pas la même chose d'un outil à
                 // l'autre.
-                Text(plan.strategy.summary(of: plan))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.dim)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let plan {
+                    Text(plan.strategy.summary(of: plan))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.dim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
@@ -196,10 +202,11 @@ struct SimulatorScreen: View {
         }
     }
 
-    private func progressBar(playback: DefragPlayback) -> some View {
-        let progress = model.defragProgress(at: time)
-        let moved = model.movedBytes(at: time) / 1_000_000
-        let total = Double(playback.plan.movedBytes) / 1_000_000
+    /// L'avancement tel que l'outil l'annonçait. Il n'y a plus de total à
+    /// afficher : on ne sait ce qu'une passe déplacera qu'une fois déplacé.
+    private func progressBar() -> some View {
+        let progress = model.defragProgress ?? 0
+        let moved = model.movedBytes / 1_000_000
         return VStack(alignment: .leading, spacing: 4) {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -212,7 +219,7 @@ struct SimulatorScreen: View {
             HStack {
                 Text(String(format: "%.0f %%", progress * 100))
                 Spacer()
-                Text(String(format: "%.0f Mo déplacés sur %.0f", moved, total))
+                Text(String(format: "%.0f Mo déplacés", moved))
             }
             .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(Theme.dim)
@@ -221,14 +228,14 @@ struct SimulatorScreen: View {
 
     /// Le fichier d'échange et les répertoires ne pèsent que quelques blocs :
     /// inutile de leur réserver une entrée de légende s'ils sont absents.
-    private func presentCategories(in plan: DefragPlan) -> [ClusterCategory] {
-        var seen = Set<UInt8>(plan.initialRuns.lazy.map(\.category))
+    private func presentCategories(in playback: DefragPlayback) -> [ClusterCategory] {
+        var seen = Set<UInt8>(playback.initialRuns.lazy.map(\.category))
         seen.insert(ClusterCategory.free.rawValue)
         return ClusterCategory.allCases.filter { seen.contains($0.rawValue) }
     }
 
     private var activityLED: some View {
-        let on = model.activityLED(at: time)
+        let on = model.activityLED
         return VStack(spacing: 4) {
             Circle()
                 .fill(on ? Theme.read : Color.white.opacity(0.10))
@@ -244,9 +251,9 @@ struct SimulatorScreen: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(Theme.phaseColor(span?.index ?? 0))
+                    .fill(Theme.phaseColor(model.phaseIndex))
                     .frame(width: 9, height: 9)
-                Text(span?.label ?? "—")
+                Text(model.phase?.label ?? "—")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Spacer()
@@ -254,7 +261,7 @@ struct SimulatorScreen: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.dim)
             }
-            Text(span?.detail ?? "")
+            Text(model.phase?.detail ?? "")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -267,9 +274,12 @@ struct SimulatorScreen: View {
     /// ne déplace rien — mais il y a une chose à dire : ce que ce volume-là
     /// coûte par rapport au même contenu jamais fragmenté.
     private func bootPanel(_ boot: BootPlayback) -> some View {
-        let penalty = boot.freshSeconds > 0
-            ? (model.duration / boot.freshSeconds - 1) * 100
-            : 0
+        // Ce que le disque a coûté ne se sait qu'à la fin du démarrage.
+        let duration = model.end?.duration
+        let disk = duration.map { String(format: "%.0f", boot.diskSeconds(duration: $0)) } ?? "…"
+        let penalty = duration.map { boot.freshSeconds > 0
+            ? String(format: "%+.0f %%", ($0 / boot.freshSeconds - 1) * 100)
+            : "" } ?? "à venir"
         return VStack(alignment: .leading, spacing: 10) {
             Text(boot.appName.map { "\(boot.osName), puis \($0)" } ?? boot.osName)
                 .font(.system(size: 13, weight: .semibold))
@@ -279,10 +289,10 @@ struct SimulatorScreen: View {
                 StatTile(label: "Fichiers lus", value: "\(boot.filesRead)",
                          unit: boot.residentFiles > 0 ? "\(boot.residentFiles) résidents" : "ouverts")
                 StatTile(label: "Calcul", value: String(format: "%.0f", boot.thinkSeconds), unit: "s")
-                StatTile(label: "Disque", value: String(format: "%.0f", boot.diskSeconds), unit: "s d'attente")
+                StatTile(label: "Disque", value: disk, unit: "s d'attente")
                 StatTile(label: "Jamais fragmenté",
                          value: String(format: "%.0f", boot.freshSeconds),
-                         unit: String(format: "%+.0f %%", penalty))
+                         unit: penalty)
             }
 
             Text("Le témoin lit exactement les mêmes fichiers, d'un seul tenant chacun et "
@@ -300,19 +310,17 @@ struct SimulatorScreen: View {
     private var timeline: some View {
         VStack(spacing: 8) {
             ActivityTimeline(
-                spans: model.spans,
-                iops: model.iops,
-                peak: model.peakIOPS,
-                duration: model.duration,
-                currentTime: time,
-                onSeek: { engine.seekTo($0) }
+                marks: model.live.phaseMarks,
+                buckets: model.live.buckets,
+                now: time,
+                window: LivePass.activityWindow
             )
             HStack {
+                Text("−1 min")
+                Spacer()
+                Text(model.totals.requests > 0 ? "\(model.totals.requests) requêtes" : "")
+                Spacer()
                 Text(time.clockString)
-                Spacer()
-                Text("crête \(Int(model.peakIOPS)) req/s")
-                Spacer()
-                Text(model.duration.clockString)
             }
             .font(.system(size: 11, design: .monospaced))
             .foregroundStyle(Theme.dim)
@@ -322,24 +330,28 @@ struct SimulatorScreen: View {
 
     private var transport: some View {
         HStack(spacing: 22) {
+            // Revenir au début, c'est relancer la passe : il n'y a plus de
+            // chronologie où sauter.
             Button {
-                engine.seekTo(0)
+                model.restart()
             } label: {
                 Image(systemName: "backward.end.fill").font(.system(size: 19))
             }
+            .accessibilityLabel("Relancer la passe")
 
             Button {
+                if engine.isFinished { model.restart() }
                 engine.toggle()
             } label: {
-                Image(systemName: engine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                Image(systemName: engine.isPlaying || engine.isBuffering
+                      ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 50))
                     .symbolRenderingMode(.hierarchical)
             }
 
-            Button {
-                engine.seekTo(min(time + 5, model.duration))
-            } label: {
-                Image(systemName: "goforward.5").font(.system(size: 19))
+            if engine.isBuffering {
+                ProgressView()
+                    .tint(Theme.dim)
             }
 
             Spacer()
@@ -359,13 +371,13 @@ struct SimulatorScreen: View {
     }
 
     private var stats: some View {
-        let requestRate = model.bucketValue(model.iops, at: time)
-        let throughput = model.bucketValue(model.throughputMBs, at: time)
+        let requestRate = model.requestRate
+        let throughput = model.throughputMBs
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
             StatTile(label: "Requêtes / s", value: String(format: "%.0f", requestRate), unit: "IOPS")
             StatTile(label: "Débit", value: String(format: "%.1f", throughput), unit: "Mo/s")
-            StatTile(label: "Seek moyen", value: "\(model.stats.averageSeekDistance)", unit: "cyl.")
-            StatTile(label: "Seeks simulés", value: "\(model.stats.seekCount)", unit: "total")
+            StatTile(label: "Seek moyen", value: "\(model.totals.averageSeekDistance)", unit: "cyl.")
+            StatTile(label: "Seeks simulés", value: "\(model.totals.seeks)", unit: "jusqu'ici")
         }
     }
 

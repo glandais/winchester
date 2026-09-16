@@ -57,7 +57,7 @@ struct Windows95Strategy: DefragStrategy {
                         detail: "Le volume ne tourne plus que pour lui-même"),
     ]
 
-    func plan(volume input: DefragVolume) -> DefragPlan {
+    func plan(volume input: DefragVolume, into sink: OperationSink) -> DefragPlan {
 
         var volume = input
         let partition = volume.partition
@@ -67,10 +67,7 @@ struct Windows95Strategy: DefragStrategy {
 
         // Trois opérations par fichier au minimum — une lecture, une écriture,
         // une validation — et bien plus dès que les fichiers sont éclatés.
-        var operations: [DiskOperation] = []
-        operations.reserveCapacity(volume.files.count * 8)
-        var mutations: [MapMutation] = []
-        mutations.reserveCapacity(volume.files.count * 8)
+        sink.reserveCapacity(volume.files.count * 8)
         var movedClusters = 0
         var filesMoved = 0
         var alreadyInPlace = 0
@@ -78,9 +75,9 @@ struct Windows95Strategy: DefragStrategy {
 
         // MARK: Phase 0 — analyse
 
-        operations.append(contentsOf: DefragOperations.analysis(
-            partition: partition,
-            directoryCount: DefragOperations.directoryCount(of: volume)))
+        DefragOperations.analysis(partition: partition,
+                                  directoryCount: DefragOperations.directoryCount(of: volume),
+                                  into: sink)
 
         // MARK: Clusters intouchables
 
@@ -99,6 +96,8 @@ struct Windows95Strategy: DefragStrategy {
 
         for position in volume.files.indices {
             let file = volume.files[position]
+            // L'outil comptait les fichiers du parcours : c'est son avancement.
+            sink.progress = Double(position) / Double(volume.files.count)
             guard file.isMovable, file.clusterCount > 0 else { continue }
             phase = max(phase, file.category.packingGroup + 1)
 
@@ -130,9 +129,9 @@ struct Windows95Strategy: DefragStrategy {
                 DefragOperations.move(source: occupant.extents, destination: refuge,
                                       category: occupant.category, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
-                                      into: &operations, mutations: &mutations)
+                                      into: sink)
                 DefragOperations.commit(cluster: Int(refuge[0].start), fileIndex: occupantPosition,
-                                        phase: phase, partition: partition, into: &operations)
+                                        phase: phase, partition: partition, into: sink)
                 volume.relocate(occupantPosition, to: refuge)
                 movedClusters += Int(occupant.clusterCount)
                 evacuations += 1
@@ -142,9 +141,9 @@ struct Windows95Strategy: DefragStrategy {
             DefragOperations.move(source: volume.files[position].extents, destination: [target],
                                   category: file.category, phase: phase,
                                   partition: partition, bufferBytes: bufferBytes,
-                                  into: &operations, mutations: &mutations)
+                                  into: sink)
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
-                                    phase: phase, partition: partition, into: &operations)
+                                    phase: phase, partition: partition, into: sink)
             volume.relocate(position, to: [target])
             movedClusters += Int(need)
             filesMoved += 1
@@ -154,14 +153,15 @@ struct Windows95Strategy: DefragStrategy {
 
         // MARK: Phase finale — réécriture complète des tables
 
-        operations.append(contentsOf: DefragOperations.final(partition: partition, phase: 5))
+        sink.progress = 1
+        DefragOperations.final(partition: partition, phase: 5, into: sink)
 
         return DefragPlan(
             strategy: self,
             partition: partition,
             initialRuns: initialRuns,
-            operations: operations,
-            mutations: mutations,
+            operations: [],
+            mutations: [],
             phases: phases,
             before: before,
             after: volume.stats,

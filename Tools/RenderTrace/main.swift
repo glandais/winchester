@@ -20,6 +20,11 @@ import AVFAudio
 //   TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
 //
 // Permet d'auditionner et de régler le synthé sans passer par le simulateur.
+//
+// La passe est rendue **au fil de l'eau**, comme l'application l'écoute : le
+// son est mixé à mesure qu'elle se planifie, écrit sur disque dès qu'il est
+// définitif, et rien d'autre qu'une fenêtre de quelques secondes ne reste en
+// mémoire. C'est ce qui permet de rendre une passe de plusieurs heures.
 
 let sampleRate = 48_000.0
 let outputPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "disknoise.wav"
@@ -68,11 +73,240 @@ if let kind = ScenarioKind(rawValue: requested) {
     exit(1)
 }
 
+// Une passe sur un volume d'époque réellement dimensionné dure des heures, et
+// son rendu pèse des gigaoctets. `PLAN_ONLY` s'arrête au bilan : c'est tout ce
+// qu'il faut pour vérifier un planificateur.
+let planOnly = ProcessInfo.processInfo.environment["PLAN_ONLY"] != nil
+let spindleGain = Float(ProcessInfo.processInfo.environment["SPINDLE_GAIN"] ?? "") ?? 0.32
+let transientGain = Float(ProcessInfo.processInfo.environment["TRANSIENT_GAIN"] ?? "") ?? 1.0
+
+// MARK: - Mixage au fil de l'eau
+
+/// Le mixage du rendu d'un bloc, rejoué dans le même ordre d'opérations pour
+/// que le WAV soit identique à l'échantillon près : la couche de rotation
+/// d'abord, bloc de 512 par bloc de 512, puis chaque transitoire ajouté par
+/// dessus dans l'ordre des repères.
+///
+/// Ce qui permet de le faire en flux, c'est la garde des repères : avant
+/// `cueWatermark`, plus aucun repère n'apparaîtra. La rotation peut donc être
+/// rendue jusque-là — les consignes de moteur qui la gouvernent sont toutes
+/// connues — et un transitoire peut être posé dès que la rotation couvre toute
+/// sa durée. Ce qui précède le premier transitoire en attente est définitif, et
+/// part dans un fichier brut.
+final class StreamingMixer {
+
+    private static let block = 512
+
+    private let spindle: SpindleVoice
+    private let synth = SeekSynth(sampleRate: sampleRate)
+    private var seekCache: [Int: AVAudioPCMBuffer] = [:]
+    private var tickCache: [Int: AVAudioPCMBuffer] = [:]
+
+    private var spinCues: [(time: Double, up: Bool, duration: Double)] = []
+    private var spinIndex = 0
+    /// Prochain échantillon de rotation à rendre.
+    private var spindlePosition = 0
+    private var transients: [(buffer: AVAudioPCMBuffer, start: Int)] = []
+    private var transientHead = 0
+
+    /// Fenêtre de travail : échantillons `base ..< base + left.count`.
+    private var base = 0
+    private var left: [Float] = []
+    private var right: [Float] = []
+    private var scratchL = [Float](repeating: 0, count: 512)
+    private var scratchR = [Float](repeating: 0, count: 512)
+
+    private var frameCount: Int?
+    private let raw: FileHandle
+    let rawPath: String
+    private(set) var peak: Float = 0
+
+    init(rpm: Double, rawPath: String) {
+        spindle = SpindleVoice(sampleRate: sampleRate, rpm: rpm)
+        self.rawPath = rawPath
+        FileManager.default.createFile(atPath: rawPath, contents: nil)
+        raw = FileHandle(forWritingAtPath: rawPath)!
+    }
+
+    func consume(_ batch: PassBatch) {
+        for cue in batch.cues {
+            switch cue.kind {
+            case .spinUp(let d): spinCues.append((cue.time, true, d))
+            case .spinDown(let d): spinCues.append((cue.time, false, d))
+            case .seek(let profile, let travelMix):
+                let bucket = min(Int(travelMix * 40), 39)
+                let key = bucket * 4 + profile.distance % 4
+                if seekCache[key] == nil {
+                    seekCache[key] = synth.renderSeek(profile: profile, travelMix: travelMix,
+                                                      variation: UInt32(key + 1))
+                }
+                if let buffer = seekCache[key] { schedule(buffer, at: cue.time) }
+            case .chatter(let run, _):
+                if let buffer = synth.renderChatter(
+                    run: run, variation: UInt32(truncatingIfNeeded: run.count &* 7919)) {
+                    schedule(buffer, at: cue.time)
+                }
+            case .tick(let kind):
+                let key = kind == .headSwitch ? 0 : 1
+                if tickCache[key] == nil {
+                    tickCache[key] = synth.renderTick(kind, variation: UInt32(key + 1))
+                }
+                if let buffer = tickCache[key] { schedule(buffer, at: cue.time) }
+            }
+        }
+        // Le rendu d'un bloc triait les consignes de moteur ; elles arrivent
+        // ici déjà dans l'ordre, sauf une coupure qui tomberait avant la fin
+        // du travail.
+        if spinIndex < spinCues.count {
+            spinCues[spinIndex...].sort { $0.time < $1.time }
+        }
+
+        if let end = batch.end {
+            frameCount = Int(end.duration * sampleRate) + 48_000
+        }
+        renderSpindle(through: batch.cueWatermark)
+        mixReadyTransients()
+        flush(before: batch.cueWatermark)
+    }
+
+    private func schedule(_ buffer: AVAudioPCMBuffer, at time: Double) {
+        transients.append((buffer, Int(time * sampleRate)))
+    }
+
+    private func ensure(upTo end: Int) {
+        let needed = end - base
+        if needed > left.count {
+            left.append(contentsOf: repeatElement(0, count: needed - left.count))
+            right.append(contentsOf: repeatElement(0, count: needed - right.count))
+        }
+    }
+
+    private func renderSpindle(through watermark: Double) {
+        let limit = frameCount ?? .max
+        while spindlePosition < limit {
+            let time = Double(spindlePosition) / sampleRate
+            guard time < watermark else { break }
+            while spinIndex < spinCues.count && spinCues[spinIndex].time <= time {
+                let cue = spinCues[spinIndex]
+                if cue.up { spindle.spinUp(duration: cue.duration) }
+                else { spindle.spinDown(duration: cue.duration) }
+                spinIndex += 1
+            }
+            let n = min(Self.block, limit - spindlePosition)
+            ensure(upTo: spindlePosition + n)
+            scratchL.withUnsafeMutableBufferPointer { l in
+                scratchR.withUnsafeMutableBufferPointer { r in
+                    spindle.render(left: l.baseAddress!, right: r.baseAddress!, count: n)
+                }
+            }
+            let offset = spindlePosition - base
+            for i in 0..<n {
+                left[offset + i] += scratchL[i] * spindleGain
+                right[offset + i] += scratchR[i] * spindleGain
+            }
+            spindlePosition += n
+        }
+    }
+
+    private func mixReadyTransients() {
+        while transientHead < transients.count {
+            let (buffer, start) = transients[transientHead]
+            let n = Int(buffer.frameLength)
+            let complete = frameCount.map { spindlePosition >= $0 } ?? false
+            guard complete || start + n <= spindlePosition else { break }
+            guard let channels = buffer.floatChannelData else { transientHead += 1; continue }
+            let limit = frameCount ?? .max
+            ensure(upTo: min(start + n, limit))
+            for i in 0..<n {
+                let index = start + i
+                guard index >= 0 && index < limit else { continue }
+                left[index - base] += channels[0][i] * transientGain
+                right[index - base] += channels[1][i] * transientGain
+            }
+            transientHead += 1
+        }
+        // Un train mixé libère son tampon tout de suite : chacun est rendu à
+        // part, et peut peser quelques centaines de kilo-octets.
+        if transientHead > 0 {
+            transients.removeFirst(transientHead)
+            transientHead = 0
+        }
+    }
+
+    /// Écrit ce qui ne bougera plus : ce qui précède la garde — un repère à
+    /// venir peut tomber dans le dernier bloc de rotation rendu — et le premier
+    /// transitoire en attente.
+    private func flush(before watermark: Double) {
+        var safe = spindlePosition
+        if watermark.isFinite { safe = min(safe, Int(watermark * sampleRate)) }
+        if transientHead < transients.count { safe = min(safe, transients[transientHead].start) }
+        if let frameCount, spindlePosition >= frameCount, transientHead == transients.count {
+            safe = frameCount
+        }
+        let count = min(max(safe - base, 0), left.count)
+        guard count > 0 else { return }
+
+        var data = Data(count: count * 8)
+        data.withUnsafeMutableBytes { bytes in
+            let floats = bytes.bindMemory(to: Float.self)
+            for i in 0..<count {
+                floats[2 * i] = left[i]
+                floats[2 * i + 1] = right[i]
+                peak = max(peak, max(abs(left[i]), abs(right[i])))
+            }
+        }
+        autoreleasepool { raw.write(data) }
+        left.removeFirst(count)
+        right.removeFirst(count)
+        base += count
+    }
+
+    func close() {
+        try? raw.close()
+    }
+}
+
+// MARK: - La passe
+
+/// Ce que le bilan retient d'une passe : le compte des repères, et les octets
+/// par tranche pour dire ce que chaque phase a lu ou écrit.
+final class Tally {
+    var cues = 0
+    var bytes: [Int] = []
+
+    func consume(_ batch: PassBatch) {
+        cues += batch.cues.count
+        for bucket in batch.buckets {
+            if bucket.index >= bytes.count {
+                bytes.append(contentsOf: repeatElement(0, count: bucket.index + 1 - bytes.count))
+            }
+            bytes[bucket.index] += bucket.bytes
+        }
+    }
+}
+
+let tally = Tally()
+let rawPath = outputPath + ".raw"
+let mixer = planOnly ? nil : StreamingMixer(rpm: scenario.geometry.rpm, rawPath: rawPath)
+
+guard let end = scenario.produce(batchRequests: 4_096, batchSeconds: 5, deliver: { batch in
+    tally.consume(batch)
+    mixer?.consume(batch)
+}) else { exit(1) }
+mixer?.close()
+
+let geometry = scenario.geometry
+let spans = scenario.spans(of: end)
+let bucketCount = max(Int(ceil(end.duration / ScenarioBuilder.bucketDuration)), 1)
+var throughput = [Double](repeating: 0, count: bucketCount)
+for (index, bytes) in tally.bytes.enumerated() {
+    throughput[min(index, bucketCount - 1)] += Double(bytes)
+}
+throughput = throughput.map { $0 / ScenarioBuilder.bucketDuration / 1_000_000 }
 
 /// Ce que la passe a réellement fait : c'est le rapport entre déplacements et
 /// évacuations qui explique la durée, bien plus que le volume de données.
-func describe(_ playback: DefragPlayback) -> String {
-    let plan = playback.plan
+func describe(_ plan: DefragPlan) -> String {
     let moved = Double(plan.movedBytes) / 1_000_000
     return """
     outil         : \(plan.strategy.label)
@@ -89,13 +323,14 @@ func describe(_ playback: DefragPlayback) -> String {
 
 /// Ce qu'un démarrage a lu, et qui du processeur ou du disque l'a fait durer.
 func describe(_ playback: BootPlayback, duration: Double) -> String {
-    let total = playback.thinkSeconds + playback.diskSeconds
-    let share = total > 0 ? playback.diskSeconds / total * 100 : 0
+    let disk = playback.diskSeconds(duration: duration)
+    let total = playback.thinkSeconds + disk
+    let share = total > 0 ? disk / total * 100 : 0
     return """
     système       : \(playback.osName)\(playback.appName.map { " puis \($0)" } ?? "")
     fichiers      : \(playback.filesRead) ouverts, \(playback.residentFiles) résidents
     calcul        : \(String(format: "%.1f", playback.thinkSeconds)) s
-    disque        : \(String(format: "%.1f", playback.diskSeconds)) s \
+    disque        : \(String(format: "%.1f", disk)) s \
     (\(String(format: "%.0f", share)) % de l'attente)
     témoin        : \(String(format: "%.1f", playback.freshSeconds)) s jamais fragmenté, \
     soit \(String(format: "%+.0f", (duration / max(playback.freshSeconds, 0.001) - 1) * 100)) %
@@ -118,129 +353,52 @@ func describePhases(_ spans: [PhaseSpan], throughput: [Double]) -> String {
     }.joined(separator: "\n")
 }
 
-let geometry = scenario.geometry
-let spans = scenario.spans
-let cues = scenario.cues
-let trace = scenario.trace
-
 FileHandle.standardError.write("""
 scénario      : \(scenario.label.title) — \(geometry.model)
-requêtes      : \(scenario.requestCount)
-seeks         : \(trace.stats.seekCount) (moy. \(trace.stats.averageSeekDistance) cyl.)
-lu / écrit    : \(trace.stats.bytesRead / 1_000_000) / \(trace.stats.bytesWritten / 1_000_000) Mo
-événements    : \(trace.events.count)
-repères audio : \(cues.count)
-durée         : \(String(format: "%.1f", scenario.duration)) s
-\(scenario.defrag.map(describe) ?? "")
-\(scenario.boot.map { describe($0, duration: scenario.duration) } ?? "")
-\(describePhases(spans, throughput: scenario.throughputMBs))
+requêtes      : \(end.requestCount)
+seeks         : \(end.stats.seekCount) (moy. \(end.stats.averageSeekDistance) cyl.)
+lu / écrit    : \(end.stats.bytesRead / 1_000_000) / \(end.stats.bytesWritten / 1_000_000) Mo
+événements    : \(end.eventCount)
+repères audio : \(tally.cues)
+durée         : \(String(format: "%.1f", end.duration)) s
+\(end.plan.map(describe) ?? "")
+\(scenario.boot.map { describe($0, duration: end.duration) } ?? "")
+\(describePhases(spans, throughput: throughput))
 
 """.data(using: .utf8)!)
 
-// Une passe sur un volume d'époque réellement dimensionné dure des heures, et
-// son rendu pèse des gigaoctets. `PLAN_ONLY` s'arrête au bilan : c'est tout ce
-// qu'il faut pour vérifier un planificateur.
-if ProcessInfo.processInfo.environment["PLAN_ONLY"] != nil { exit(0) }
+guard let mixer else { exit(0) }
 
-let frameCount = Int(scenario.duration * sampleRate) + 48_000
-var left = [Float](repeating: 0, count: frameCount)
-var right = [Float](repeating: 0, count: frameCount)
+let frameCount = Int(end.duration * sampleRate) + 48_000
 
-// 1. Couche continue, bloc par bloc, en appliquant les consignes de rotation.
-let spindle = SpindleVoice(sampleRate: sampleRate, rpm: geometry.rpm)
-let spindleGain = Float(ProcessInfo.processInfo.environment["SPINDLE_GAIN"] ?? "") ?? 0.32
-var spinCues = cues.compactMap { cue -> (Double, Bool, Double)? in
-    switch cue.kind {
-    case .spinUp(let d): return (cue.time, true, d)
-    case .spinDown(let d): return (cue.time, false, d)
-    default: return nil
-    }
-}
-spinCues.sort { $0.0 < $1.0 }
+// MARK: - Mesures et écriture
 
-var spinIndex = 0
-let block = 512
-var scratchL = [Float](repeating: 0, count: block)
-var scratchR = [Float](repeating: 0, count: block)
-var position = 0
-while position < frameCount {
-    let time = Double(position) / sampleRate
-    while spinIndex < spinCues.count && spinCues[spinIndex].0 <= time {
-        let cue = spinCues[spinIndex]
-        if cue.1 { spindle.spinUp(duration: cue.2) } else { spindle.spinDown(duration: cue.2) }
-        spinIndex += 1
-    }
-    let n = min(block, frameCount - position)
-    scratchL.withUnsafeMutableBufferPointer { l in
-        scratchR.withUnsafeMutableBufferPointer { r in
-            spindle.render(left: l.baseAddress!, right: r.baseAddress!, count: n)
-        }
-    }
-    for i in 0..<n {
-        left[position + i] += scratchL[i] * spindleGain
-        right[position + i] += scratchR[i] * spindleGain
-    }
-    position += n
-}
-
-// 2. Transitoires, mixés à leur date exacte.
-let synth = SeekSynth(sampleRate: sampleRate)
-let transientGain = Float(ProcessInfo.processInfo.environment["TRANSIENT_GAIN"] ?? "") ?? 1.0
-var seekCache: [Int: AVAudioPCMBuffer] = [:]
-var tickCache: [Int: AVAudioPCMBuffer] = [:]
-
-@MainActor
-func mix(_ buffer: AVAudioPCMBuffer, at time: Double) {
-    guard let channels = buffer.floatChannelData else { return }
-    let start = Int(time * sampleRate)
-    let n = Int(buffer.frameLength)
-    for i in 0..<n {
-        let index = start + i
-        guard index >= 0 && index < frameCount else { continue }
-        left[index] += channels[0][i] * transientGain
-        right[index] += channels[1][i] * transientGain
-    }
-}
-
-for cue in cues {
-    switch cue.kind {
-    case .seek(let profile, let travelMix):
-        let bucket = min(Int(travelMix * 40), 39)
-        let key = bucket * 4 + profile.distance % 4
-        if seekCache[key] == nil {
-            seekCache[key] = synth.renderSeek(profile: profile, travelMix: travelMix,
-                                              variation: UInt32(key + 1))
-        }
-        if let buffer = seekCache[key] { mix(buffer, at: cue.time) }
-
-    case .chatter(let run, _):
-        if let buffer = synth.renderChatter(
-            run: run, variation: UInt32(truncatingIfNeeded: run.count &* 7919)) {
-            mix(buffer, at: cue.time)
-        }
-
-    case .tick(let kind):
-        let key = kind == .headSwitch ? 0 : 1
-        if tickCache[key] == nil {
-            tickCache[key] = synth.renderTick(kind, variation: UInt32(key + 1))
-        }
-        if let buffer = tickCache[key] { mix(buffer, at: cue.time) }
-
-    case .spinUp, .spinDown:
-        break
-    }
-}
-
-// 3. Mesures et écriture. Le code de premier niveau d'un `main.swift` est
-// isolé sur l'acteur principal en Swift 6 : les fonctions qui lisent `left`,
-// `right` et `frameCount` le sont donc aussi.
-@MainActor
-func report(_ label: String, _ range: Range<Int>) {
+/// Niveau de chaque phase, relu dans le fichier brut : les phases d'une passe
+/// en boucle fermée ne sont datées qu'à la fin.
+func report(_ label: String, _ range: Range<Int>, from file: FileHandle) {
     var sum = 0.0
     var peak: Float = 0
-    for i in range where i < frameCount {
-        sum += Double(left[i] * left[i])
-        peak = max(peak, abs(left[i]))
+    let upper = min(range.upperBound, frameCount)
+    var index = range.lowerBound
+    if index < upper {
+        try? file.seek(toOffset: UInt64(index * 8))
+    }
+    while index < upper {
+        let n = min(1 << 16, upper - index)
+        // `readData` rend un objet libéré en différé : sans bassin, tout le
+        // fichier resterait en mémoire jusqu'à la fin du programme.
+        autoreleasepool {
+            let data = file.readData(ofLength: n * 8)
+            data.withUnsafeBytes { bytes in
+                let floats = bytes.bindMemory(to: Float.self)
+                for i in 0..<(data.count / 8) {
+                    let sample = floats[2 * i]
+                    sum += Double(sample * sample)
+                    peak = max(peak, abs(sample))
+                }
+            }
+        }
+        index += n
     }
     let rms = (sum / Double(range.count)).squareRoot()
     let db = rms > 0 ? 20 * log10(rms) : -Double.infinity
@@ -249,21 +407,19 @@ func report(_ label: String, _ range: Range<Int>) {
     FileHandle.standardError.write(line.data(using: .utf8)!)
 }
 
+let rawFile = FileHandle(forReadingAtPath: rawPath)!
 for span in spans {
-    report(span.label, Int(span.start * sampleRate)..<Int(span.end * sampleRate))
+    report(span.label, Int(span.start * sampleRate)..<Int(span.end * sampleRate), from: rawFile)
 }
 
-var peak: Float = 0
-for i in 0..<frameCount { peak = max(peak, max(abs(left[i]), abs(right[i]))) }
-let normalize: Float = peak > 0.99 ? 0.99 / peak : 1
+let normalize: Float = mixer.peak > 0.99 ? 0.99 / mixer.peak : 1
 if normalize < 1 {
     FileHandle.standardError.write("écrêtage évité, gain \(normalize)\n".data(using: .utf8)!)
 }
 
 // `AVAudioFile` ne finalise l'en-tête du WAV qu'à sa libération : l'écriture est
 // donc confinée à une fonction, faute de quoi le fichier annonce zéro image.
-@MainActor
-func writeWAV(to path: String, gain: Float) throws {
+func writeWAV(to path: String, from raw: FileHandle, gain: Float) throws {
     let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate,
                                channels: 2, interleaved: false)!
     let file = try AVAudioFile(forWriting: URL(fileURLWithPath: path),
@@ -273,21 +429,30 @@ func writeWAV(to path: String, gain: Float) throws {
                                           AVLinearPCMBitDepthKey: 16,
                                           AVLinearPCMIsFloatKey: false])
 
+    try raw.seek(toOffset: 0)
     let chunk = 48_000
     var written = 0
     while written < frameCount {
         let n = min(chunk, frameCount - written)
-        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n))!
-        buffer.frameLength = AVAudioFrameCount(n)
-        for i in 0..<n {
-            buffer.floatChannelData![0][i] = left[written + i] * gain
-            buffer.floatChannelData![1][i] = right[written + i] * gain
+        try autoreleasepool {
+            let data = raw.readData(ofLength: n * 8)
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n))!
+            buffer.frameLength = AVAudioFrameCount(n)
+            data.withUnsafeBytes { bytes in
+                let floats = bytes.bindMemory(to: Float.self)
+                for i in 0..<n {
+                    buffer.floatChannelData![0][i] = floats[2 * i] * gain
+                    buffer.floatChannelData![1][i] = floats[2 * i + 1] * gain
+                }
+            }
+            try file.write(from: buffer)
         }
-        try file.write(from: buffer)
         written += n
     }
 }
 
-try writeWAV(to: outputPath, gain: normalize)
+try writeWAV(to: outputPath, from: rawFile, gain: normalize)
+try? rawFile.close()
+try? FileManager.default.removeItem(atPath: rawPath)
 
 FileHandle.standardError.write("\nécrit : \(outputPath)\n".data(using: .utf8)!)

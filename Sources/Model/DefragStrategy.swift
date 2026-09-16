@@ -35,7 +35,13 @@ protocol DefragStrategy: Sendable {
     /// Le volume passé n'est pas modifié — une stratégie travaille sur sa
     /// propre copie, où elle rejoue chaque déplacement pour connaître l'état
     /// d'arrivée.
-    func plan(volume: DefragVolume) -> DefragPlan
+    ///
+    /// Les opérations ne sont pas rendues mais **émises**, une à une, dans
+    /// `sink` : c'est ce qui permet d'écouter une passe à mesure qu'elle se
+    /// planifie. Le plan rendu porte les compteurs et l'état d'arrivée, sans
+    /// opérations ni mutations — celles-là, c'est le récepteur qui décide s'il
+    /// les garde.
+    func plan(volume: DefragVolume, into sink: OperationSink) -> DefragPlan
 
     /// Ce que les compteurs de la passe veulent dire, en une phrase d'écran.
     ///
@@ -46,6 +52,17 @@ protocol DefragStrategy: Sendable {
     /// revenait à lui faire dire, sur une passe XP, que la destination est
     /// « presque toujours occupée » juste au-dessus d'un zéro.
     func summary(of plan: DefragPlan) -> String
+}
+
+extension DefragStrategy {
+
+    /// Toute la passe d'un coup, opérations comprises : ce dont les tests ont
+    /// besoin pour relire un plan.
+    func plan(volume: DefragVolume) -> DefragPlan {
+        let sink = OperationSink()
+        let plan = plan(volume: volume, into: sink)
+        return plan.with(operations: sink.operations, mutations: sink.mutations)
+    }
 }
 
 // MARK: - Fabriques d'opérations
@@ -62,6 +79,12 @@ enum DefragOperations {
     /// L'analyse lit les tables d'allocation, la racine, puis chaque
     /// répertoire. Elle est étalée sur quelques secondes : à l'époque le coût
     /// dominant n'était pas le disque mais le parcours des chaînes en mémoire.
+    static func analysis(partition: PartitionGeometry,
+                         directoryCount: Int,
+                         into sink: OperationSink) {
+        sink.emit(contentsOf: analysis(partition: partition, directoryCount: directoryCount))
+    }
+
     static func analysis(partition: PartitionGeometry,
                          directoryCount: Int) -> [DiskOperation] {
         var ops: [DiskOperation] = []
@@ -106,8 +129,7 @@ enum DefragOperations {
                      phase: Int,
                      partition: PartitionGeometry,
                      bufferBytes: Int,
-                     into ops: inout [DiskOperation],
-                     mutations store: inout [MapMutation]) {
+                     into sink: OperationSink) {
         let buffer = UInt32(max(bufferBytes / partition.clusterBytes, 1))
 
         var sourceIndex = 0
@@ -128,23 +150,23 @@ enum DefragOperations {
             let readStart = from.start + sourceOffset
             let writeStart = to.start + destinationOffset
 
-            ops.append(DiskOperation(
+            sink.emit(DiskOperation(
                 kind: .readExtent, phase: phase,
                 lba: partition.lba(ofCluster: Int(readStart)),
                 sectors: Int(length) * partition.clusterSectors,
                 isWrite: false, issueTime: 0, cluster: Int(readStart)))
 
-            let first = Int32(store.count)
-            store.append(MapMutation(start: Int(writeStart), count: Int(length),
-                                     category: category))
-            store.append(contentsOf: freed(start: readStart, length: length, kept: kept))
+            let first = sink.mutationMark
+            sink.record(MapMutation(start: Int(writeStart), count: Int(length),
+                                    category: category))
+            sink.record(contentsOf: freed(start: readStart, length: length, kept: kept))
 
-            ops.append(DiskOperation(
+            sink.emit(DiskOperation(
                 kind: .writeExtent, phase: phase,
                 lba: partition.lba(ofCluster: Int(writeStart)),
                 sectors: Int(length) * partition.clusterSectors,
                 isWrite: true, issueTime: 0, cluster: Int(writeStart),
-                mutationStart: first, mutationCount: Int32(store.count) - first))
+                mutationStart: first, mutationCount: sink.mutationMark - first))
 
             sourceOffset += length
             destinationOffset += length
@@ -225,15 +247,19 @@ enum DefragOperations {
                        fileIndex: Int,
                        phase: Int,
                        partition: PartitionGeometry,
-                       into ops: inout [DiskOperation]) {
+                       into sink: OperationSink) {
         for access in partition.commitAccesses(forCluster: cluster, fileIndex: fileIndex) {
-            ops.append(DiskOperation(kind: .metadata, phase: phase, lba: access.lba,
+            sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: access.lba,
                                      sectors: access.sectors, isWrite: true,
                                      issueTime: 0, cluster: nil))
         }
     }
 
     /// Réécriture complète des tables, en fin de passe.
+    static func final(partition: PartitionGeometry, phase: Int, into sink: OperationSink) {
+        sink.emit(contentsOf: final(partition: partition, phase: phase))
+    }
+
     static func final(partition: PartitionGeometry, phase: Int) -> [DiskOperation] {
         var ops = partition.finalAccesses.map {
             DiskOperation(kind: .metadata, phase: phase, lba: $0.lba, sectors: $0.sectors,

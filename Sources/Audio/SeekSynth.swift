@@ -220,10 +220,7 @@ nonisolated final class SeekSynth: Sendable {
         return makeBuffer(resonate(excitation, travelMix: mix))
     }
 
-    enum Tick {
-        case headSwitch
-        case trackStep
-    }
+    typealias Tick = HeadTick
 
     /// Micro-transitoires : commutation de tête et pas de piste. Ce sont eux qui
     /// donnent son grain à une longue lecture séquentielle, autrement muette.

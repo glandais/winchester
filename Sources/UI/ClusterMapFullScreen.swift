@@ -114,7 +114,7 @@ struct DefragFullScreenMap: View {
                 ClusterMapView(grid: model.mapGrid,
                                shades: model.clusterShades(at: time),
                                shading: true,
-                               trail: model.mapTrail(at: time))
+                               trail: model.mapTrail())
             },
             transport: { transport })
         .onDisappear {
@@ -130,10 +130,14 @@ struct DefragFullScreenMap: View {
     }
 
     private var transport: some View {
-        let progress = model.defragProgress(at: time)
+        let progress = model.defragProgress ?? 0
         return HStack(spacing: 14) {
-            Button { engine.toggle() } label: {
-                Image(systemName: engine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+            Button {
+                if engine.isFinished { model.restart() }
+                engine.toggle()
+            } label: {
+                Image(systemName: engine.isPlaying || engine.isBuffering
+                      ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 34))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.text)

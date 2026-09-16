@@ -6,6 +6,9 @@ import Combine
 
 /// Graphe audio du spike.
 ///
+/// Il ne connaît pas la passe qu'il joue : il lui demande, soixante fois par
+/// seconde, les repères des prochaines 700 ms, et elle les calcule à mesure.
+///
 ///     SpindleVoice (AVAudioSourceNode, procédural) ──┐
 ///                                                    ├─► mainMixer ─► sortie
 ///     transitoires (AVAudioPlayerNode, buffers) ─────┘
@@ -20,6 +23,10 @@ final class DiskNoiseEngine: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var currentTime: Double = 0
     @Published private(set) var isLoaded = false
+    /// La lecture attend que la passe ait pris assez d'avance.
+    @Published private(set) var isBuffering = false
+    /// La passe est allée au bout : il n'y a plus qu'à la relancer.
+    @Published private(set) var isFinished = false
 
     @Published var spindleLevel: Float = 0.32 { didSet { spindleMixer.outputVolume = spindleLevel } }
     @Published var transientLevel: Float = 1.0 { didSet { transientMixer.outputVolume = transientLevel } }
@@ -61,19 +68,23 @@ final class DiskNoiseEngine: ObservableObject {
     private var spindle: SpindleVoice!
     private var sourceNode: AVAudioSourceNode!
 
-    private var cues: [AudioCue] = []
+    /// La passe qu'on écoute. Faible : c'est le modèle qui la tient, et une
+    /// passe abandonnée doit pouvoir partir sans attendre le moteur.
+    private weak var feed: PassFeed?
     private var spinCues: [(time: Double, up: Bool, duration: Double)] = []
-    private var nextCue = 0
-    private var nextSpinCue = 0
-    private var nextHapticCue = 0
-    private var traceDuration: Double = 0
+    private var hapticCues: [AudioCue] = []
+    /// Transitoires déjà retirés de la passe et confiés au player, pas encore
+    /// joués. Une pause les efface du player ; ils sont reprogrammés à la
+    /// reprise, puisque la passe ne les rendra pas une seconde fois.
+    private var scheduled: [AudioCue] = []
 
-    /// Temps de trace correspondant à l'instant 0 de l'horloge du player.
+    /// Temps de passe correspondant à l'instant 0 de l'horloge du player.
     private var timelineOffset: Double = 0
     private var hostStart: Double = 0
     private var generation = 0
 
     private var pump: Timer?
+    private var waiting: Timer?
     private var seekCache: [Int: AVAudioPCMBuffer] = [:]
     private var tickCache: [Int: AVAudioPCMBuffer] = [:]
 
@@ -120,49 +131,53 @@ final class DiskNoiseEngine: ObservableObject {
         }
     }
 
-    /// Charge un scénario. `rpm` suit le disque simulé : la couche de rotation
+    /// Branche une passe. `rpm` suit le disque simulé : la couche de rotation
     /// est la seule à en dépendre, et elle se reconfigure sans qu'on ait à
     /// reconstruire le graphe.
-    func load(cues: [AudioCue], duration: Double, rpm: Double) {
+    ///
+    /// La passe repart toujours de son début : il n'y a plus de chronologie
+    /// où sauter, seulement une passe qui se calcule à mesure qu'on l'écoute.
+    func load(feed: PassFeed, rpm: Double) {
         stop()
         spindle.rpm = rpm
-        var transientCues: [AudioCue] = []
-        var spins: [(Double, Bool, Double)] = []
-        for cue in cues {
-            switch cue.kind {
-            case .spinUp(let d): spins.append((cue.time, true, d))
-            case .spinDown(let d): spins.append((cue.time, false, d))
-            default: transientCues.append(cue)
-            }
-        }
-        self.cues = transientCues
-        self.spinCues = spins
-        self.traceDuration = duration
-        self.isLoaded = true
-        seekTo(0)
+        self.feed = feed
+        isLoaded = true
+        isFinished = false
     }
 
     // MARK: - Transport
 
     func play() {
-        guard isLoaded, !isPlaying else { return }
+        guard isLoaded, !isPlaying, !isFinished else { return }
         do {
             if !engine.isRunning { try engine.start() }
         } catch {
             print("Démarrage du moteur impossible : \(error)")
             return
         }
+        // La passe n'a pas encore assez d'avance : on attend qu'elle en ait,
+        // plutôt que de jouer un début troué.
+        guard isReady(at: currentTime) else {
+            waitForFeed()
+            return
+        }
         hostStart = CACurrentMediaTime()
         player.play()
+        for cue in scheduled where cue.time >= timelineOffset {
+            schedule(cue, elapsed: 0)
+        }
         if hapticsEnabled { haptics.start() }
         isPlaying = true
         startPump()
     }
 
     func pause() {
+        stopWaiting()
         guard isPlaying else { return }
         let t = currentTime
-        player.pause()
+        // `stop` et non `pause` : l'horloge du player repart ainsi de zéro, et
+        // `timelineOffset` porte seul la correspondance avec la passe.
+        player.stop()
         haptics.stop()
         pump?.invalidate()
         pump = nil
@@ -172,47 +187,55 @@ final class DiskNoiseEngine: ObservableObject {
         generation += 1
     }
 
-    func toggle() { isPlaying ? pause() : play() }
+    func toggle() {
+        if isPlaying || isBuffering { pause() } else { play() }
+    }
 
     func stop() {
+        stopWaiting()
         pump?.invalidate()
         pump = nil
         generation += 1
         player.stop()
         haptics.stop()
+        haptics.flush()
         isPlaying = false
         currentTime = 0
         timelineOffset = 0
-        nextCue = 0
-        nextSpinCue = 0
-        nextHapticCue = 0
+        spinCues = []
+        hapticCues = []
+        scheduled = []
         haptics.resetDiagnostics()
         spindle.snap(to: 0)
     }
 
-    /// Saut dans la chronologie. Le player est réinitialisé, ce qui remet son
-    /// horloge à zéro : `timelineOffset` porte alors la correspondance.
-    func seekTo(_ time: Double) {
-        let wasPlaying = isPlaying
-        pump?.invalidate()
-        pump = nil
-        generation += 1
-        player.stop()
-        haptics.flush()
-        isPlaying = false
+    // MARK: - Attente de la passe
 
-        let t = min(max(time, 0), traceDuration)
-        timelineOffset = t
-        currentTime = t
-        nextCue = cues.firstIndex { $0.time >= t } ?? cues.count
-        nextHapticCue = nextCue
-        nextSpinCue = spinCues.firstIndex { $0.time >= t } ?? spinCues.count
+    /// Les repères sont-ils complets assez loin devant cet instant ?
+    private func isReady(at time: Double) -> Bool {
+        guard let feed else { return false }
+        feed.update(now: time)
+        return feed.endTime != nil || feed.cueWatermark >= time + lookahead + 0.3
+    }
 
-        // Le plateau tourne-t-il déjà à cet instant ?
-        let previousSpin = spinCues.prefix(nextSpinCue).last
-        spindle.snap(to: (previousSpin?.up ?? false) ? 1 : 0)
+    private func waitForFeed() {
+        guard waiting == nil else { return }
+        isBuffering = true
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isReady(at: self.currentTime) else { return }
+                self.stopWaiting()
+                self.play()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        waiting = timer
+    }
 
-        if wasPlaying { play() }
+    private func stopWaiting() {
+        waiting?.invalidate()
+        waiting = nil
+        isBuffering = false
     }
 
     // MARK: - Horloge
@@ -236,23 +259,51 @@ final class DiskNoiseEngine: ObservableObject {
     }
 
     private func tick() {
-        guard isPlaying else { return }
+        guard isPlaying, let feed else { return }
         let elapsed = playerSeconds()
         let now = timelineOffset + elapsed
-        currentTime = min(now, traceDuration)
 
-        if now >= traceDuration {
+        feed.update(now: now)
+        if let end = feed.endTime, now >= end {
+            currentTime = end
             pause()
+            isFinished = true
+            return
+        }
+        currentTime = now
+
+        // Le producteur a pris du retard — un planificateur qui calcule
+        // longtemps sans rien émettre. Mieux vaut suspendre que jouer un trou.
+        if feed.endTime == nil && feed.cueWatermark < now + 0.05 {
+            pause()
+            waitForFeed()
             return
         }
 
+        // Transitoires : programmés en avance sur l'horloge du player. La
+        // rotation et l'haptique, elles, attendent leur échéance.
+        for cue in feed.takeCues(before: now + lookahead) {
+            switch cue.kind {
+            case .spinUp(let duration):
+                spinCues.append((cue.time, true, duration))
+            case .spinDown(let duration):
+                spinCues.append((cue.time, false, duration))
+            default:
+                schedule(cue, elapsed: elapsed)
+                scheduled.append(cue)
+                hapticCues.append(cue)
+            }
+        }
+        var played = 0
+        while played < scheduled.count && scheduled[played].time < now - 0.05 { played += 1 }
+        if played > 0 { scheduled.removeFirst(played) }
+
         // Rotation : traité à l'échéance, la précision à l'échantillon n'a
         // aucun intérêt sur une rampe de six secondes.
-        while nextSpinCue < spinCues.count && spinCues[nextSpinCue].time <= now + 0.05 {
-            let cue = spinCues[nextSpinCue]
+        while let cue = spinCues.first, cue.time <= now + 0.05 {
             if cue.up { spindle.spinUp(duration: cue.duration) }
             else { spindle.spinDown(duration: cue.duration) }
-            nextSpinCue += 1
+            spinCues.removeFirst()
         }
 
         if hapticsEnabled {
@@ -261,13 +312,8 @@ final class DiskNoiseEngine: ObservableObject {
             let failure = haptics.lastFailure.map { " · dernier échec : \($0)" } ?? ""
             hapticReport = "motifs \(haptics.patternsPlayed) · chocs \(haptics.transientsPlayed)"
                 + " · échecs \(haptics.patternsFailed)" + failure
-        }
-
-        // Transitoires : programmés en avance sur l'horloge du player.
-        while nextCue < cues.count && (cues[nextCue].time - timelineOffset) < elapsed + lookahead {
-            let cue = cues[nextCue]
-            nextCue += 1
-            schedule(cue, elapsed: elapsed)
+        } else {
+            hapticCues.removeAll { $0.time <= now }
         }
     }
 
@@ -276,13 +322,15 @@ final class DiskNoiseEngine: ObservableObject {
     /// est sous le seuil de discrimination tactile, et cela évite de dépendre de
     /// l'horloge du moteur haptique.
     private func fireDueHaptics(now: Double) {
-        while nextHapticCue < cues.count && cues[nextHapticCue].time <= now + 0.008 {
-            let cue = cues[nextHapticCue]
-            nextHapticCue += 1
+        var count = 0
+        while count < hapticCues.count && hapticCues[count].time <= now + 0.008 {
+            let cue = hapticCues[count]
+            count += 1
             // Après un à-coup, on saute le retard plutôt que de le rejouer en rafale.
             guard cue.time >= now - 0.05 else { continue }
             haptics.fire(cue)
         }
+        if count > 0 { hapticCues.removeFirst(count) }
     }
 
     private func schedule(_ cue: AudioCue, elapsed: Double) {

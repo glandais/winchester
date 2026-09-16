@@ -414,19 +414,18 @@ enum MapTrail {
 }
 
 /// Mutation de la carte des clusters, datée par la simulation.
-struct TimedMutation {
+struct TimedMutation: Sendable {
     let time: Double
     let start: Int
     let count: Int
     let category: UInt8
 }
 
-/// Tout ce que le rejeu de la carte a besoin de connaître d'une passe.
+/// Une passe entière, telle que les tests la fabriquent à la main : l'état de
+/// départ, et toutes les mutations d'un coup.
 ///
-/// C'est volontairement moins qu'un `DefragPlayback` : ni chronologie
-/// mécanique, ni repères audio, ni compteurs. Le rejeu n'en a que faire, et
-/// s'en tenir à ces trois champs le rend fabricable à la main — donc testable
-/// sans passer par le compilateur de scénarios.
+/// Le rejeu n'en a plus besoin — il reçoit ses mutations au fil de l'eau —
+/// mais c'est la forme la plus commode pour décrire une passe hors application.
 struct ClusterMapTimeline {
     /// Nombre de clusters de la partition. C'est lui, et non la longueur de la
     /// carte, qui fixe la taille d'un bloc : les deux coïncident sur les
@@ -440,12 +439,14 @@ struct ClusterMapTimeline {
     let mutations: [TimedMutation]
 }
 
-/// Rejoue la carte des clusters à un instant donné.
+/// Rejoue la carte des clusters à mesure que la passe avance.
 ///
-/// Les mutations sont appliquées dans l'ordre et l'état courant est conservé :
-/// avancer d'une image ne coûte que les quelques mutations écoulées. Un saut en
-/// arrière repart de la carte initiale — c'est rare et c'est le seul cas où le
-/// coût est celui de la passe entière.
+/// Les mutations arrivent datées, par paquets, un peu en avance sur l'écoute ;
+/// elles attendent leur instant puis sont appliquées dans l'ordre, et oubliées.
+/// Le rejeu **ne revient jamais en arrière** : il ne garde ni la carte de
+/// départ ni les mutations passées, et c'est ce qui borne sa mémoire à l'état
+/// courant du volume, quelle que soit la durée de la passe. Demander un instant
+/// antérieur rend simplement la carte telle qu'elle est.
 final class ClusterMapPlayer {
 
     private static let categoryCount = ClusterCategory.allCases.count
@@ -455,7 +456,11 @@ final class ClusterMapPlayer {
     /// alors reconstruit sans toucher à l'avancement du rejeu.
     private(set) var grid: MapGrid
 
-    private var timeline: ClusterMapTimeline?
+    private var isLoaded = false
+    /// Nombre de clusters de la partition, tenu à part de la carte : c'est lui
+    /// qui fixe la taille d'un bloc, et on le lit pendant que la carte se
+    /// remanie.
+    private var clusterCount = 0
     /// L'état courant de la carte, par plages.
     ///
     /// Il ne sert qu'à une chose : savoir **quelle catégorie occupait** les
@@ -471,7 +476,9 @@ final class ClusterMapPlayer {
     /// image ne coûte que les blocs affichés, et une mutation que les clusters
     /// qu'elle touche.
     private var tally: [UInt32] = []
-    private var index = 0
+    /// Mutations reçues et pas encore appliquées, dans l'ordre chronologique.
+    private var pending: [TimedMutation] = []
+    private var pendingHead = 0
     private var time: Double = 0
 
     init(grid: MapGrid = .standard) {
@@ -479,32 +486,60 @@ final class ClusterMapPlayer {
     }
 
     var clustersPerCell: Int {
-        guard let timeline else { return 1 }
-        return max(timeline.clusterCount / grid.cellCount, 1)
+        guard isLoaded else { return 1 }
+        return max(clusterCount / grid.cellCount, 1)
     }
 
-    func load(_ timeline: ClusterMapTimeline?) {
-        self.timeline = timeline
-        reset()
+    /// Repart d'un volume dans l'état donné, sans aucune mutation en attente.
+    func load(clusterCount: Int, initialRuns: [MapRun]) {
+        isLoaded = true
+        self.clusterCount = clusterCount
+        map = ClusterRunMap(clusterCount: clusterCount, occupied: initialRuns)
+        pending = []
+        pendingHead = 0
+        time = 0
+        rebuildTally()
     }
+
+    /// Une passe entière d'un coup — ou aucune.
+    func load(_ timeline: ClusterMapTimeline?) {
+        guard let timeline else {
+            isLoaded = false
+            map = ClusterRunMap(clusterCount: 0, occupied: [])
+            pending = []
+            pendingHead = 0
+            tally = []
+            return
+        }
+        load(clusterCount: timeline.clusterCount, initialRuns: timeline.initialRuns)
+        enqueue(timeline.mutations)
+    }
+
+    /// Des mutations de plus, postérieures à toutes celles déjà reçues.
+    func enqueue(_ mutations: [TimedMutation]) {
+        guard isLoaded, !mutations.isEmpty else { return }
+        // Ce qui a déjà été appliqué ne sert plus : on s'en débarrasse quand
+        // il pèse plus que ce qui attend, pour que le tableau suive la passe
+        // sans jamais la contenir.
+        if pendingHead > 4_096 && pendingHead * 2 > pending.count {
+            pending.removeFirst(pendingHead)
+            pendingHead = 0
+        }
+        pending.append(contentsOf: mutations)
+    }
+
+    /// Nombre de mutations reçues, pas encore appliquées.
+    var pendingCount: Int { pending.count - pendingHead }
 
     /// Change la grille sans perdre le fil du rejeu.
     ///
     /// Seule l'agrégation dépend de la grille : la carte par cluster, elle, est
-    /// déjà à l'instant demandé. On la re-agrège donc telle quelle, plutôt que
-    /// de repartir du début — sans quoi passer en plein écran au milieu d'une
-    /// passe rejouerait toutes les mutations écoulées.
+    /// déjà à l'instant demandé. On la re-agrège donc telle quelle — sans quoi
+    /// passer en plein écran au milieu d'une passe rejouerait toutes les
+    /// mutations écoulées, qu'on n'a d'ailleurs plus.
     func setGrid(_ grid: MapGrid) {
         guard grid != self.grid else { return }
         self.grid = grid
-        rebuildTally()
-    }
-
-    private func reset() {
-        map = ClusterRunMap(clusterCount: timeline?.clusterCount ?? 0,
-                            occupied: timeline?.initialRuns ?? [])
-        index = 0
-        time = 0
         rebuildTally()
     }
 
@@ -512,9 +547,9 @@ final class ClusterMapPlayer {
     ///
     /// Le parcours est celui des plages, jamais celui des clusters : sur le
     /// NTFS de 320 Go, cent soixante-dix-huit mille plages au lieu de
-    /// soixante-dix-huit millions de clusters. C'est ce chemin-là qu'empruntent
-    /// le rembobinage et le changement de grille, les deux seuls endroits où le
-    /// décompte se refait en entier.
+    /// soixante-dix-huit millions de clusters. C'est ce chemin-là qu'emprunte
+    /// le changement de grille, le seul endroit où le décompte se refait en
+    /// entier.
     private func rebuildTally() {
         tally = [UInt32](repeating: 0, count: grid.cellCount * Self.categoryCount)
         map.forEachRun { run in
@@ -564,8 +599,8 @@ final class ClusterMapPlayer {
     /// 320 Go, un bloc vaut quatre mille clusters et « la catégorie dominante »
     /// affiche plein un bloc où il reste les trois quarts de la place.
     func shades(at requestedTime: Double) -> [ClusterShade] {
-        guard let timeline else { return [] }
-        advance(to: requestedTime, timeline: timeline)
+        guard isLoaded else { return [] }
+        advance(to: requestedTime)
 
         let perCell = clustersPerCell
         var shades = [ClusterShade](repeating: .empty, count: grid.cellCount)
@@ -607,12 +642,13 @@ final class ClusterMapPlayer {
         min(cluster / clustersPerCell, grid.cellCount - 1)
     }
 
-    private func advance(to requestedTime: Double, timeline: ClusterMapTimeline) {
-        if requestedTime < time { reset() }
+    /// Applique ce qui est dû à cet instant. Un instant antérieur n'applique
+    /// rien : la carte reste où elle en est.
+    func advance(to requestedTime: Double) {
+        guard requestedTime >= time else { return }
         time = requestedTime
-        let mutations = timeline.mutations
-        while index < mutations.count && mutations[index].time <= requestedTime {
-            let mutation = mutations[index]
+        while pendingHead < pending.count && pending[pendingHead].time <= requestedTime {
+            let mutation = pending[pendingHead]
             // La carte rend ce que chaque morceau recouvert portait, et c'est
             // de cela seul que le décompte est décrémenté — le coût suit le
             // nombre de plages traversées, plus le nombre de clusters.
@@ -622,10 +658,10 @@ final class ClusterMapPlayer {
                     category: Int(old.category), delta: -1)
             }
             let start = max(mutation.start, 0)
-            let end = min(mutation.start + mutation.count, map.clusterCount)
+            let end = min(mutation.start + mutation.count, clusterCount)
             add(start: start, count: end - start,
                 category: Int(mutation.category), delta: 1)
-            index += 1
+            pendingHead += 1
         }
     }
 }

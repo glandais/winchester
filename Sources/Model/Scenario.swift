@@ -104,32 +104,18 @@ struct ScenarioLabel {
     let volumeNote: String
 }
 
-/// Tout ce qu'il faut pour rejouer visuellement une défragmentation.
+/// Ce qu'on sait d'une défragmentation avant de l'avoir écoutée : le volume
+/// tel qu'il est, et l'outil qui va le ranger. Le reste — ce que la passe a
+/// déplacé, l'état d'arrivée — n'est connu qu'à la fin, dans `PassEnd`.
 struct DefragPlayback {
     let partition: PartitionGeometry
-    let plan: DefragPlan
-    let mutations: [TimedMutation]
-    let activity: [ClusterActivity]
-    /// Octets déplacés cumulés, par tranche de `SimulationModel.bucketDuration`.
-    let movedBytes: [Double]
-    let workEndTime: Double
+    let strategy: any DefragStrategy
+    let before: VolumeStats
+    let initialRuns: [MapRun]
 }
 
-extension DefragPlayback {
-    /// Ce que le rejeu de la carte retient d'une passe. Le reste — chronologie
-    /// mécanique, repères audio, compteurs — ne le regarde pas, et l'en tenir à
-    /// l'écart est ce qui rend `ClusterMapPlayer` testable hors application.
-    var clusterTimeline: ClusterMapTimeline {
-        ClusterMapTimeline(clusterCount: partition.clusterCount,
-                           initialRuns: plan.initialRuns,
-                           mutations: mutations)
-    }
-}
-
-/// Ce qu'un démarrage a lu, une fois la passe simulée. C'est le bilan que
-/// l'écran affiche et que le rendu hors-ligne imprime : un démarrage n'a pas de
-/// carte de clusters à montrer — il ne déplace rien — mais il a des comptes à
-/// rendre.
+/// Ce qu'un démarrage lira, connu d'avance : un démarrage décrit en fichiers
+/// sait ce qu'il ouvre, pas combien de temps le disque le fera attendre.
 struct BootPlayback {
     let osName: String
     let appName: String?
@@ -137,44 +123,88 @@ struct BootPlayback {
     let residentFiles: Int
     /// Ce que le système aurait mis sans disque : la somme des calculs.
     let thinkSeconds: Double
-    /// Ce que le disque a ajouté par-dessus.
-    let diskSeconds: Double
+    /// Le silence qui suit la dernière lecture.
+    let tail: Double
     /// Ce qu'aurait duré le même démarrage si le volume n'avait jamais vieilli :
     /// mêmes fichiers, mêmes tailles, même ordre, chacun d'un seul tenant. La
     /// différence avec la durée réelle est le prix de la fragmentation, et il
     /// n'y a aucun autre écart entre les deux mesures.
     let freshSeconds: Double
+
+    /// Ce que le disque a ajouté par-dessus le calcul, une fois la passe finie.
+    func diskSeconds(duration: Double) -> Double {
+        max(duration - tail - thinkSeconds, 0)
+    }
 }
 
-/// Un scénario entièrement calculé : requêtes, chronologie mécanique, repères
-/// audio et séries d'affichage.
+/// Un scénario : ce qu'il faut pour **produire** une passe, pas la passe.
+///
+/// Tout était calculé avant que le premier son ne sorte — requêtes, chronologie
+/// mécanique, repères audio, séries d'affichage. Sur les gros volumes de la
+/// galerie cela plafonnait à 780 Mo, pour une passe dont on n'écoute jamais que
+/// l'instant présent. Le scénario ne garde plus que le disque, sa chronologie
+/// et la source des requêtes ; la passe se calcule à mesure qu'on l'écoute.
 struct Scenario {
     let kind: ScenarioKind
     let label: ScenarioLabel
     let geometry: DriveGeometry
     let seekModel: SeekModel
-    /// Nombre de requêtes bloc de la passe. La liste elle-même n'est pas
-    /// conservée : rien ne la relit une fois la chronologie mécanique obtenue,
-    /// et elle compte plus d'un million d'entrées sur les gros volumes.
-    let requestCount: Int
-    let spans: [PhaseSpan]
-    let trace: DiskTrace
-    let cues: [AudioCue]
-    let duration: Double
-
-    let iops: [Double]
-    let throughputMBs: [Double]
-    let peakIOPS: Double
+    let setup: PassSetup
+    let phases: [PhaseDescriptor]
+    /// Les phases à durée imposée du démarrage livré. `nil` en boucle fermée,
+    /// où chacune commence à sa première requête.
+    let fixedSpans: [PhaseSpan]?
 
     let defrag: DefragPlayback?
     let boot: BootPlayback?
 
-    var stats: TraceStats { trace.stats }
+    /// Nourrit la chaîne, requête après requête, et rend le plan s'il y en a
+    /// un. Le second argument dit si l'écoute a abandonné la passe.
+    fileprivate let feed: @Sendable (PassPipeline, @escaping () -> Bool) -> DefragPlan?
+
+    /// Toute la passe, sur le fil courant. `nil` si elle a été abandonnée.
+    @discardableResult
+    func produce(batchRequests: Int = 256,
+                 batchSeconds: Double = 0.05,
+                 isCancelled: @escaping () -> Bool = { false },
+                 deliver: @escaping PassPipeline.Delivery) -> PassEnd? {
+        let pipeline = PassPipeline(setup: setup, batchRequests: batchRequests,
+                                    batchSeconds: batchSeconds, deliver: deliver)
+        for span in fixedSpans ?? [] { pipeline.mark(phase: span.index, at: span.start) }
+        let plan = feed(pipeline, isCancelled)
+        guard !isCancelled() else { return nil }
+        return pipeline.finish(plan: plan)
+    }
+
+    /// La passe telle qu'on l'écoute : produite sur son propre fil, quelques
+    /// secondes en avance.
+    func startLivePass() -> LivePass {
+        let scenario = self
+        let session = PassSession { outlet in
+            scenario.produce(isCancelled: { outlet.isCancelled },
+                             deliver: outlet.deliver)
+        }
+        let live = LivePass(session: session,
+                            geometry: geometry,
+                            seekModel: seekModel,
+                            spindle: setup.spindle,
+                            phases: phases,
+                            map: defrag.map { ($0.partition.clusterCount, $0.initialRuns) })
+        session.start()
+        return live
+    }
+
+    /// Les phases datées, une fois la passe finie.
+    func spans(of end: PassEnd) -> [PhaseSpan] {
+        fixedSpans ?? PhaseSpan.closedLoop(firstStarts: end.firstStarts,
+                                           descriptors: phases,
+                                           duration: end.duration)
+    }
 }
 
 enum ScenarioBuilder {
 
-    static let bucketDuration = 0.1
+    static let bucketDuration = ActivityBucket.duration
 
     static func build(_ kind: ScenarioKind) -> Scenario {
         switch kind {
@@ -191,6 +221,8 @@ enum ScenarioBuilder {
         let seekModel = drive.seekModel
         let phases = WorkloadLibrary.windowsBootAndOffice
 
+        // Une minute et quelques milliers de requêtes : les générer d'avance ne
+        // coûte rien, et c'est la chronologie des phases qui les date.
         let generator = WorkloadGenerator(geometry: geometry)
         let (requests, spans) = generator.generate(phases: phases)
         let total = spans.last?.end ?? 0
@@ -200,35 +232,33 @@ enum ScenarioBuilder {
         // coupure, ce que le scénario n'avait pas à dire.
         let spin = SpinSchedule(phases: phases, spans: spans)
 
-        let trace = DiskSimulator.run(
-            geometry: geometry,
-            seekModel: seekModel,
-            requests: requests,
-            totalDuration: total,
-            spinUpAt: spin.spinUpAt,
-            spinUpDuration: spin.spinUpDuration,
-            idle: IdleBehavior(parkAfter: parkDelay,
-                               stopAt: spin.idle.stopAt,
-                               stopDuration: spin.idle.stopDuration)
-        )
-
-        let series = buildSeries(requests: requests, trace: trace, duration: trace.duration)
+        let setup = PassSetup(geometry: geometry, seekModel: seekModel,
+                              spinUpAt: spin.spinUpAt,
+                              spinUpDuration: spin.spinUpDuration,
+                              idle: IdleBehavior(parkAfter: parkDelay,
+                                                 stopAt: spin.idle.stopAt,
+                                                 stopDuration: spin.idle.stopDuration),
+                              tail: nil,
+                              minimumDuration: total,
+                              datesPhases: false)
 
         return Scenario(
             kind: .windowsBoot,
             label: ScenarioKind.windowsBoot.label,
             geometry: geometry,
             seekModel: seekModel,
-            requestCount: requests.count,
-            spans: spans,
-            trace: trace.summarized(),
-            cues: AudioCueBuilder.build(from: trace, cylinders: geometry.cylinders),
-            duration: trace.duration,
-            iops: series.iops,
-            throughputMBs: series.throughput,
-            peakIOPS: series.peak,
+            setup: setup,
+            phases: phases.map(\.descriptor),
+            fixedSpans: spans,
             defrag: nil,
-            boot: nil
+            boot: nil,
+            feed: { pipeline, isCancelled in
+                for request in requests {
+                    guard !isCancelled() else { break }
+                    pipeline.serve(request)
+                }
+                return nil
+            }
         )
     }
 
@@ -250,38 +280,21 @@ enum ScenarioBuilder {
         let plan = BootPlanner.plan(disk: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
                                                    atLeast: plan.partition.totalSectors)
-
-        let trace = DiskSimulator.run(
-            geometry: hardware.geometry,
-            seekModel: hardware.seek,
-            requests: plan.requests,
-            totalDuration: 0,
-            spinUpAt: 0.35,
-            spinUpDuration: max(plan.post - 0.6, 0.5),
-            // Pas d'arrêt moteur : la machine vient de démarrer. Mais le bras
-            // n'a plus rien à faire, et la queue du scénario est faite pour ça.
-            idle: IdleBehavior(parkAfter: parkDelay)
-        )
-
-        let duration = (trace.timings.last?.end ?? 0) + plan.tail
+        let spinUpDuration = max(plan.post - 0.6, 0.5)
 
         // Le témoin : le même contenu jamais fragmenté. Une seconde passe de
-        // planification et de simulation, sur quelques milliers de requêtes —
-        // le prix d'une phrase qui dit ce que ce volume-ci coûte.
+        // planification et de simulation, sur quelques milliers de requêtes et
+        // d'un bloc — le prix d'une phrase qui dit ce que ce volume-ci coûte.
+        // Il doit être connu avant l'écoute, puisque c'est à lui qu'on la
+        // compare.
         let fresh = BootPlanner.plan(disk: disk.freshlyInstalled())
         let freshTrace = DiskSimulator.run(geometry: hardware.geometry,
                                            seekModel: hardware.seek,
                                            requests: fresh.requests,
                                            totalDuration: 0,
                                            spinUpAt: 0.35,
-                                           spinUpDuration: max(plan.post - 0.6, 0.5))
+                                           spinUpDuration: spinUpDuration)
         let freshSeconds = (freshTrace.timings.last?.end ?? 0) + fresh.tail
-
-        let spans = closedLoopSpans(requests: plan.requests,
-                                    trace: trace,
-                                    descriptors: plan.phases,
-                                    duration: duration)
-        let series = buildSeries(requests: plan.requests, trace: trace, duration: duration)
 
         let launch = plan.appName.map { " puis lancement de \($0)" } ?? ""
         let note = "« \(disk.spec.displayName) », généré par la galerie : "
@@ -294,6 +307,7 @@ enum ScenarioBuilder {
             + "Le même contenu jamais fragmenté démarrerait en "
             + "\(format(seconds: freshSeconds))."
 
+        let requests = plan.requests
         return Scenario(
             kind: .windowsBoot,
             label: ScenarioLabel(title: disk.spec.displayName,
@@ -302,22 +316,31 @@ enum ScenarioBuilder {
                                  volumeNote: note),
             geometry: hardware.geometry,
             seekModel: hardware.seek,
-            requestCount: plan.requests.count,
-            spans: spans,
-            trace: trace.summarized(),
-            cues: AudioCueBuilder.build(from: trace, cylinders: hardware.geometry.cylinders),
-            duration: duration,
-            iops: series.iops,
-            throughputMBs: series.throughput,
-            peakIOPS: series.peak,
+            setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
+                             spinUpAt: 0.35,
+                             spinUpDuration: spinUpDuration,
+                             // Pas d'arrêt moteur : la machine vient de démarrer.
+                             // Mais le bras n'a plus rien à faire, et la queue
+                             // du scénario est faite pour ça.
+                             idle: IdleBehavior(parkAfter: parkDelay),
+                             tail: plan.tail),
+            phases: plan.phases,
+            fixedSpans: nil,
             defrag: nil,
             boot: BootPlayback(osName: plan.osName,
                                appName: plan.appName,
                                filesRead: plan.filesRead,
                                residentFiles: plan.residentFiles,
                                thinkSeconds: plan.thinkSeconds,
-                               diskSeconds: max(duration - plan.tail - plan.thinkSeconds, 0),
-                               freshSeconds: freshSeconds)
+                               tail: plan.tail,
+                               freshSeconds: freshSeconds),
+            feed: { pipeline, isCancelled in
+                for request in requests {
+                    guard !isCancelled() else { break }
+                    pipeline.serve(request)
+                }
+                return nil
+            }
         )
     }
 
@@ -398,14 +421,12 @@ enum ScenarioBuilder {
                                                    volumeNote: note))
     }
 
-    /// Planifie la passe sur un volume donné, la fait tourner sur le disque
-    /// donné, et date tout ce que l'écran doit en montrer.
+    /// Décrit la passe d'un outil sur un volume et un disque donnés.
     ///
-    /// `DefragPlanner.plan` travaille sur sa propre copie du volume — il y
-    /// rejoue chaque déplacement pour connaître l'état d'arrivée — et ne touche
-    /// pas à celui qu'on lui passe.
+    /// Rien n'est planifié ici : la stratégie tournera sur le fil producteur,
+    /// sur sa propre copie du volume, et émettra ses opérations à mesure.
     private static func assembleDefrag(volume: DefragVolume,
-                                       strategy: (any DefragStrategy)? = nil,
+                                       strategy chosen: (any DefragStrategy)? = nil,
                                        geometry: DriveGeometry,
                                        seekModel: SeekModel,
                                        label: ScenarioLabel) -> Scenario {
@@ -413,158 +434,38 @@ enum ScenarioBuilder {
         precondition(geometry.totalSectors >= partition.totalSectors,
                      "la partition déborde du disque qui la porte")
 
-        let plan = strategy.map { DefragPlanner.plan(volume: volume, using: $0) }
-            ?? DefragPlanner.plan(volume: volume)
-
-        let requests = plan.operations.map {
-            BlockRequest(issueTime: $0.issueTime,
-                         lba: $0.lba,
-                         sectorCount: $0.sectors,
-                         isWrite: $0.isWrite,
-                         phaseIndex: $0.phase)
-        }
+        let strategy = chosen ?? DefragPlanner.strategy(for: partition.format)
 
         // Le plateau tourne déjà : Windows est démarré. La rampe de 0,9 s n'est
         // qu'un fondu pour que la couche de rotation s'installe.
-        let trace = DiskSimulator.run(
-            geometry: geometry,
-            seekModel: seekModel,
-            requests: requests,
-            totalDuration: 0,
-            spinUpAt: 0,
-            spinUpDuration: 0.9,
-            idle: IdleBehavior(parkAfter: parkDelay)
-        )
-
-        let workEnd = trace.timings.last?.end ?? 0
-        let duration = workEnd + tailDuration
-
-        // Datation des mutations de la carte et des surlignages.
-        var mutations: [TimedMutation] = []
-        var activity: [ClusterActivity] = []
-        var movedBytes = [Double](repeating: 0, count: bucketCount(duration))
-
-        for (index, operation) in plan.operations.enumerated() {
-            guard index < trace.timings.count else { break }
-            let timing = trace.timings[index]
-
-            for index in Int(operation.mutationStart)..<Int(operation.mutationStart + operation.mutationCount) {
-                let mutation = plan.mutations[index]
-                mutations.append(TimedMutation(time: timing.end,
-                                               start: mutation.start,
-                                               count: mutation.count,
-                                               category: mutation.category.rawValue))
-            }
-            if let cluster = operation.cluster {
-                activity.append(ClusterActivity(start: timing.start, end: timing.end,
-                                                cluster: cluster, isWrite: operation.isWrite))
-            }
-            if operation.kind == .writeExtent {
-                let bucket = min(Int(timing.end / bucketDuration), movedBytes.count - 1)
-                movedBytes[bucket] += Double(operation.sectors * DriveGeometry.bytesPerSector)
-            }
-        }
-        mutations.sort { $0.time < $1.time }
-        for index in 1..<max(movedBytes.count, 1) { movedBytes[index] += movedBytes[index - 1] }
-
-        let spans = closedLoopSpans(requests: requests,
-                                    trace: trace,
-                                    descriptors: plan.phases,
-                                    duration: duration)
-        let series = buildSeries(requests: requests, trace: trace, duration: duration)
+        let setup = PassSetup(geometry: geometry, seekModel: seekModel,
+                              spinUpAt: 0, spinUpDuration: 0.9,
+                              idle: IdleBehavior(parkAfter: parkDelay),
+                              tail: tailDuration)
 
         return Scenario(
             kind: .defrag,
             label: label,
             geometry: geometry,
             seekModel: seekModel,
-            requestCount: requests.count,
-            spans: spans,
-            trace: trace.summarized(),
-            cues: AudioCueBuilder.build(from: trace, cylinders: geometry.cylinders),
-            duration: duration,
-            iops: series.iops,
-            throughputMBs: series.throughput,
-            peakIOPS: series.peak,
+            setup: setup,
+            phases: strategy.phases,
+            fixedSpans: nil,
             defrag: DefragPlayback(partition: partition,
-                                   plan: plan.summarized(),
-                                   mutations: mutations,
-                                   activity: activity,
-                                   movedBytes: movedBytes,
-                                   workEndTime: workEnd),
-            boot: nil
-        )
-    }
-
-    // MARK: - Outils communs
-
-    private static func bucketCount(_ duration: Double) -> Int {
-        max(Int(ceil(duration / bucketDuration)), 1)
-    }
-
-    /// Les phases d'un scénario en boucle fermée ne se datent qu'après coup :
-    /// chacune commence quand sa première opération est prise en charge et
-    /// s'arrête quand la suivante démarre.
-    private static func closedLoopSpans(requests: [BlockRequest],
-                                        trace: DiskTrace,
-                                        descriptors: [PhaseDescriptor],
-                                        duration: Double) -> [PhaseSpan] {
-        var firstTime: [Int: Double] = [:]
-        for (index, request) in requests.enumerated() where index < trace.timings.count {
-            let time = trace.timings[index].start
-            if let existing = firstTime[request.phaseIndex] {
-                firstTime[request.phaseIndex] = min(existing, time)
-            } else {
-                firstTime[request.phaseIndex] = time
+                                   strategy: strategy,
+                                   before: volume.stats,
+                                   initialRuns: volume.categoryRuns()),
+            boot: nil,
+            feed: { pipeline, isCancelled in
+                // Une passe abandonnée ne s'interrompt pas — les stratégies
+                // n'ont pas de point d'arrêt — mais elle cesse de simuler : le
+                // planificateur finit son calcul à vide.
+                let sink = OperationSink { operation, mutations, progress in
+                    guard !isCancelled() else { return }
+                    pipeline.serve(operation, mutations: mutations, progress: progress)
+                }
+                return strategy.plan(volume: volume, into: sink)
             }
-        }
-
-        // Une phase peut n'avoir aucune opération — le POST d'un démarrage, où
-        // le plateau monte en régime sans que rien ne soit lu. Elle garde sa
-        // place et sa durée : elle s'arrête quand la suivante commence.
-        var starts = [Double](repeating: duration, count: descriptors.count)
-        var next = duration
-        for index in stride(from: descriptors.count - 1, through: 0, by: -1) {
-            if let time = firstTime[index] { next = min(next, time) }
-            starts[index] = next
-        }
-
-        var spans: [PhaseSpan] = []
-        var cursor = 0.0
-        for index in descriptors.indices {
-            // La première phase commence à zéro : ce qui précède la première
-            // opération lui appartient, c'est le temps de mise en rotation.
-            let start = index == 0 ? 0 : max(starts[index], cursor)
-            let end = index + 1 < descriptors.count
-                ? max(starts[index + 1], start)
-                : duration
-            spans.append(PhaseSpan(descriptor: descriptors[index], index: index,
-                                   start: start, end: end))
-            cursor = end
-        }
-        return spans
-    }
-
-    /// Séries d'affichage bâties sur les **temps simulés** et non sur les dates
-    /// d'émission : en boucle fermée, toutes les requêtes sont émises à zéro et
-    /// c'est le disque qui décide du rythme.
-    private static func buildSeries(requests: [BlockRequest],
-                                    trace: DiskTrace,
-                                    duration: Double) -> (iops: [Double], throughput: [Double], peak: Double) {
-        let count = bucketCount(duration)
-        var counts = [Double](repeating: 0, count: count)
-        var bytes = [Double](repeating: 0, count: count)
-
-        for (index, request) in requests.enumerated() {
-            let time = index < trace.timings.count ? trace.timings[index].start : request.issueTime
-            let bucket = min(max(Int(time / bucketDuration), 0), count - 1)
-            counts[bucket] += 1
-            bytes[bucket] += Double(request.sectorCount * DriveGeometry.bytesPerSector)
-        }
-
-        let iops = counts.map { $0 / bucketDuration }
-        return (iops,
-                bytes.map { $0 / bucketDuration / 1_000_000 },
-                max(iops.max() ?? 1, 1))
+        )
     }
 }

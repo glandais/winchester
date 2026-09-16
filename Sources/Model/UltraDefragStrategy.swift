@@ -108,7 +108,7 @@ struct UltraDefragStrategy: DefragStrategy {
 
     // MARK: - Planification
 
-    func plan(volume input: DefragVolume) -> DefragPlan {
+    func plan(volume input: DefragVolume, into sink: OperationSink) -> DefragPlan {
 
         var volume = input
         let partition = volume.partition
@@ -116,14 +116,11 @@ struct UltraDefragStrategy: DefragStrategy {
         let initialRuns = volume.categoryRuns()
         let buffer = bufferBytes ?? Self.moveAtOnce(capacityBytes: partition.capacityBytes)
 
-        var operations: [DiskOperation] = []
-        var mutations: [MapMutation] = []
-
         // MARK: Phase 0 — analyse
 
-        operations.append(contentsOf: DefragOperations.analysis(
-            partition: partition,
-            directoryCount: DefragOperations.directoryCount(of: volume)))
+        DefragOperations.analysis(partition: partition,
+                                  directoryCount: DefragOperations.directoryCount(of: volume),
+                                  into: sink)
 
         let candidates = volume.files.indices.filter { canDefragment(volume.files[$0], fragmented: false) }
         let alreadyInPlace = candidates.filter { volume.files[$0].isContiguous }.count
@@ -140,8 +137,7 @@ struct UltraDefragStrategy: DefragStrategy {
         repeat {
             moved.clustersThisPass = 0
             routine(threshold: nil, phase: 1, bufferBytes: buffer,
-                    volume: &volume, operations: &operations,
-                    mutations: &mutations, moved: &moved)
+                    volume: &volume, sink: sink, moved: &moved)
         } while moved.clustersThisPass > 0
 
         // MARK: Phase 2 — la même routine à 20 Mo : la défragmentation partielle
@@ -149,20 +145,20 @@ struct UltraDefragStrategy: DefragStrategy {
         repeat {
             moved.clustersThisPass = 0
             routine(threshold: fragmentSizeThreshold, phase: 2, bufferBytes: buffer,
-                    volume: &volume, operations: &operations,
-                    mutations: &mutations, moved: &moved)
+                    volume: &volume, sink: sink, moved: &moved)
         } while moved.clustersThisPass > 0
 
         // MARK: Phase 3 — la MFT et la bitmap, une dernière fois
 
-        operations.append(contentsOf: DefragOperations.final(partition: partition, phase: 3))
+        sink.progress = 1
+        DefragOperations.final(partition: partition, phase: 3, into: sink)
 
         return DefragPlan(
             strategy: self,
             partition: partition,
             initialRuns: initialRuns,
-            operations: operations,
-            mutations: mutations,
+            operations: [],
+            mutations: [],
             phases: phases,
             before: before,
             after: volume.stats,
@@ -196,8 +192,7 @@ struct UltraDefragStrategy: DefragStrategy {
                          phase: Int,
                          bufferBytes: Int,
                          volume: inout DefragVolume,
-                         operations: inout [DiskOperation],
-                         mutations: inout [MapMutation],
+                         sink: OperationSink,
                          moved: inout Movements) {
 
         let partition = volume.partition
@@ -214,7 +209,10 @@ struct UltraDefragStrategy: DefragStrategy {
                 return a.path < b.path
             }
 
-        for position in order {
+        for (rank, position) in order.enumerated() {
+            // Un tour de la routine après l'autre : l'avancement repart de zéro
+            // à chacun, comme la barre de l'outil.
+            sink.progress = Double(rank) / Double(order.count)
             guard canDefragment(volume.files[position]) else { continue }
             let file = volume.files[position]
 
@@ -231,9 +229,9 @@ struct UltraDefragStrategy: DefragStrategy {
                 DefragOperations.move(source: file.extents, destination: [target],
                                       category: file.category, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
-                                      into: &operations, mutations: &mutations)
+                                      into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
-                                        phase: phase, partition: partition, into: &operations)
+                                        phase: phase, partition: partition, into: sink)
                 volume.relocate(position, to: [target])
                 moved.clusters += Int(file.clusterCount)
                 moved.clustersThisPass += Int(file.clusterCount)
@@ -241,7 +239,7 @@ struct UltraDefragStrategy: DefragStrategy {
             } else if let threshold {
                 eliminateLittleFragments(of: position, threshold: threshold, phase: phase,
                                          bufferBytes: bufferBytes, volume: &volume,
-                                         operations: &operations, mutations: &mutations,
+                                         sink: sink,
                                          moved: &moved)
             }
         }
@@ -279,8 +277,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                           phase: Int,
                                           bufferBytes: Int,
                                           volume: inout DefragVolume,
-                                          operations: inout [DiskOperation],
-                                          mutations: inout [MapMutation],
+                                          sink: OperationSink,
                                           moved: inout Movements) {
 
         let partition = volume.partition
@@ -385,9 +382,9 @@ struct UltraDefragStrategy: DefragStrategy {
                 DefragOperations.move(source: source, destination: [target],
                                       category: category, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
-                                      into: &operations, mutations: &mutations)
+                                      into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
-                                        phase: phase, partition: partition, into: &operations)
+                                        phase: phase, partition: partition, into: sink)
                 volume.relocate(position, to: result.coalesced())
                 moved.clusters += Int(length)
                 moved.clustersThisPass += Int(length)

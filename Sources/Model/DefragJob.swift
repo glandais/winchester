@@ -111,6 +111,16 @@ struct DefragPlan {
     let filesAlreadyInPlace: Int
     let evacuations: Int
 
+    /// Le même plan, avec les opérations et les mutations qu'un récepteur a
+    /// gardées.
+    func with(operations: [DiskOperation], mutations: [MapMutation]) -> DefragPlan {
+        DefragPlan(strategy: strategy, partition: partition, initialRuns: initialRuns,
+                   operations: operations, mutations: mutations, phases: phases,
+                   before: before, after: after, movedBytes: movedBytes,
+                   filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,
+                   evacuations: evacuations)
+    }
+
     /// Le même plan, sans les opérations ni les mutations.
     ///
     /// Une fois la passe simulée et datée, l'écran n'a plus besoin que de l'état

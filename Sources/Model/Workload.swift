@@ -105,6 +105,41 @@ struct PhaseSpan: Identifiable {
     var duration: Double { end - start }
 }
 
+extension PhaseSpan {
+
+    /// Les phases d'un scénario en boucle fermée ne se datent qu'après coup :
+    /// chacune commence quand sa première opération est prise en charge et
+    /// s'arrête quand la suivante démarre.
+    static func closedLoop(firstStarts: [Int: Double],
+                           descriptors: [PhaseDescriptor],
+                           duration: Double) -> [PhaseSpan] {
+        // Une phase peut n'avoir aucune opération — le POST d'un démarrage, où
+        // le plateau monte en régime sans que rien ne soit lu. Elle garde sa
+        // place et sa durée : elle s'arrête quand la suivante commence.
+        var starts = [Double](repeating: duration, count: descriptors.count)
+        var next = duration
+        for index in stride(from: descriptors.count - 1, through: 0, by: -1) {
+            if let time = firstStarts[index] { next = min(next, time) }
+            starts[index] = next
+        }
+
+        var spans: [PhaseSpan] = []
+        var cursor = 0.0
+        for index in descriptors.indices {
+            // La première phase commence à zéro : ce qui précède la première
+            // opération lui appartient, c'est le temps de mise en rotation.
+            let start = index == 0 ? 0 : max(starts[index], cursor)
+            let end = index + 1 < descriptors.count
+                ? max(starts[index + 1], start)
+                : duration
+            spans.append(PhaseSpan(descriptor: descriptors[index], index: index,
+                                   start: start, end: end))
+            cursor = end
+        }
+        return spans
+    }
+}
+
 // MARK: - Scénario
 
 enum WorkloadLibrary {

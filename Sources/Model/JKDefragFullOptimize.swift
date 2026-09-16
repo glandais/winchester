@@ -113,6 +113,7 @@ extension JKDefragStrategy.Pass {
         while true {
             guard let gap = gap(from: gapBegin, size: 0, mustFit: true) else { break }
             gapBegin = gap.start
+            sink.progress = Double(gapBegin) / Double(clusterTotal)
             report.gapsVisited += 1
 
             guard let highest = highestFragment(before: maxLcn) else { break }
@@ -145,6 +146,8 @@ extension JKDefragStrategy.Pass {
             guard let gap = highestGap(from: zones[1], before: gapEnd, size: 0) else { break }
             var gapBegin = gap.start
             gapEnd = gap.end
+            // Le tassement vers le haut avance en descendant.
+            sink.progress = 1 - Double(gapEnd) / Double(clusterTotal)
             report.gapsVisited += 1
 
             // Tout ce qui pourrait venir combler ce trou : les fichiers qui
@@ -291,6 +294,7 @@ extension JKDefragStrategy.Pass {
 
             for position in sorted[zone] where order.contains(position) {
                 let clusters = UInt64(order.items[order.index(of: position)!].clusters)
+                sink.progress = Double(lcn) / Double(clusterTotal)
 
                 // Déjà à sa place — c'est-à-dire, pour l'original, que son
                 // **premier** fragment commence au curseur. Le reste du

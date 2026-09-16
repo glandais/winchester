@@ -217,19 +217,28 @@ struct JKDefragStrategy: DefragStrategy {
 
     // MARK: - Planification
 
-    func plan(volume: DefragVolume) -> DefragPlan { run(volume: volume).plan }
+    func plan(volume: DefragVolume, into sink: OperationSink) -> DefragPlan {
+        run(volume: volume, into: sink).plan
+    }
 
-    /// Le plan, et ce que la passe sait d'elle-même au-delà des compteurs
-    /// communs : c'est là que se lit le travail de `FindBestItem`.
-    func run(volume input: DefragVolume) -> (plan: DefragPlan, report: Report) {
+    /// Le plan complet, opérations comprises, et ce que la passe sait
+    /// d'elle-même au-delà des compteurs communs : c'est là que se lit le
+    /// travail de `FindBestItem`.
+    func run(volume: DefragVolume) -> (plan: DefragPlan, report: Report) {
+        let sink = OperationSink()
+        let (plan, report) = run(volume: volume, into: sink)
+        return (plan.with(operations: sink.operations, mutations: sink.mutations), report)
+    }
+
+    func run(volume input: DefragVolume, into sink: OperationSink) -> (plan: DefragPlan, report: Report) {
         let before = input.stats
         let initialRuns = input.categoryRuns()
 
-        var pass = Pass(strategy: self, volume: input)
+        var pass = Pass(strategy: self, volume: input, sink: sink)
 
-        pass.operations.append(contentsOf: DefragOperations.analysis(
-            partition: input.partition,
-            directoryCount: DefragOperations.directoryCount(of: input)))
+        DefragOperations.analysis(partition: input.partition,
+                                  directoryCount: DefragOperations.directoryCount(of: input),
+                                  into: sink)
 
         switch mode {
         case .fastOptimize:
@@ -251,15 +260,15 @@ struct JKDefragStrategy: DefragStrategy {
             pass.optimizeSort(field: field, phases: [1, 1, 2])
         }
 
-        pass.operations.append(contentsOf: DefragOperations.final(partition: input.partition,
-                                                                  phase: phases.count - 2))
+        sink.progress = 1
+        DefragOperations.final(partition: input.partition, phase: phases.count - 2, into: sink)
 
         let plan = DefragPlan(
             strategy: self,
             partition: input.partition,
             initialRuns: initialRuns,
-            operations: pass.operations,
-            mutations: pass.mutations,
+            operations: [],
+            mutations: [],
             phases: phases,
             before: before,
             after: pass.volume.stats,
@@ -482,14 +491,17 @@ extension JKDefragStrategy {
         var order: ItemOrder
         /// Début des zones 0, 1 et 2, puis fin de la zone 2 — `Data->Zones`.
         var zones: [UInt32]
-        var operations: [DiskOperation] = []
-        var mutations: [MapMutation] = []
+        /// Où partent les opérations. Une référence et non un tableau : la
+        /// passe est une valeur qu'on recopie volontiers, pas le flux qu'elle
+        /// alimente.
+        let sink: OperationSink
         var touched = Set<Int32>()
         var report = Report()
 
-        init(strategy: JKDefragStrategy, volume: DefragVolume) {
+        init(strategy: JKDefragStrategy, volume: DefragVolume, sink: OperationSink) {
             self.strategy = strategy
             self.volume = volume
+            self.sink = sink
 
             let clusterBytes = volume.partition.clusterBytes
             var items: [Item] = []
@@ -646,9 +658,9 @@ extension JKDefragStrategy {
                                   category: file.category, phase: phase,
                                   partition: volume.partition,
                                   bufferBytes: strategy.bufferBytes,
-                                  into: &operations, mutations: &mutations)
+                                  into: sink)
             DefragOperations.commit(cluster: Int(lcn), fileIndex: index, phase: phase,
-                                    partition: volume.partition, into: &operations)
+                                    partition: volume.partition, into: sink)
             let extents = result.coalesced()
             volume.relocateChanges(index, to: extents)
             order.move(position, to: extents[0].start)
@@ -665,8 +677,14 @@ extension JKDefragStrategy {
         /// exactement comme dans l'original.
         mutating func walk(_ body: (inout Pass, Int32) -> Bool) {
             var next = order.items.first?.position
+            let total = Double(max(volume.partition.clusterCount, 1))
             while let current = next {
                 next = order.successor(of: current)
+                // L'avancement de JkDefrag est une position sur le disque, pas
+                // un compte de fichiers : c'est ce que dessinait son écran.
+                if let index = order.index(of: current) {
+                    sink.progress = Double(order.items[index].lcn) / total
+                }
                 guard body(&self, current) else { return }
             }
         }
@@ -802,6 +820,7 @@ extension JKDefragStrategy {
                     // bornée à la zone, seuls les fichiers le sont.
                     guard let found = gap(from: begin, size: 0, mustFit: true) else { break }
                     begin = found.start
+                    sink.progress = Double(begin) / Double(total)
                     let end = found.end
                     report.gapsVisited += 1
 

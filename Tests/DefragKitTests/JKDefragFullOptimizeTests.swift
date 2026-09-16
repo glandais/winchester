@@ -67,7 +67,7 @@ private func replay(_ plan: DefragPlan, on volume: DefragVolume) -> DefragVolume
 private func finalFiles(_ volume: DefragVolume, _ mode: JKDefragStrategy.Mode) -> [DefragFile] {
     var strategy = JKDefragStrategy(mode: mode)
     strategy.freeSpacePercent = 0
-    var pass = JKDefragStrategy.Pass(strategy: strategy, volume: volume)
+    var pass = JKDefragStrategy.Pass(strategy: strategy, volume: volume, sink: OperationSink())
     switch mode {
     case .fastOptimize: break
     case .forcedFill: pass.report.moves = [0]; pass.forcedFill(phase: 1)

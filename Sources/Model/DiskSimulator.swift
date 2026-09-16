@@ -130,6 +130,10 @@ struct DiskTrace {
 /// précisément ce qui rend le crépitement si dense.
 enum DiskSimulator {
 
+    /// Toute une passe d'un coup, et tout ce qu'elle a produit. C'est la
+    /// mécanique pas à pas, nourrie d'une liste : les tests et les petits
+    /// scénarios s'en servent, la lecture au fil de l'eau passe par
+    /// `DiskMechanics` directement.
     static func run(geometry: DriveGeometry,
                     seekModel: SeekModel,
                     requests: [BlockRequest],
@@ -147,121 +151,192 @@ enum DiskSimulator {
         timings.reserveCapacity(requests.count)
         samples.reserveCapacity(requests.count)
         events.reserveCapacity(requests.count * 3)
-        var stats = TraceStats()
 
-        events.append(DiskEvent(time: spinUpAt, kind: .spinUp(duration: spinUpDuration)))
+        var mechanics = DiskMechanics(geometry: geometry, seekModel: seekModel,
+                                      spinUpAt: spinUpAt, spinUpDuration: spinUpDuration,
+                                      idle: idle)
+        mechanics.start(events: &events)
+        for request in requests {
+            let served = mechanics.serve(request, events: &events)
+            samples.append(served.sample)
+            timings.append(served.timing)
+        }
+        let parkAt = mechanics.finish(events: &events)
+        // Déjà dans l'ordre, sauf si la coupure du moteur tombe avant la fin du
+        // travail — un scénario dont les requêtes débordent sur son extinction.
+        events.sort { $0.time < $1.time }
 
-        let revolution = geometry.revolutionDuration
-        var clock = spinUpAt + spinUpDuration
+        let end = max(max(totalDuration, mechanics.clock), parkAt ?? 0)
+        return DiskTrace(events: events, headSamples: samples, timings: timings,
+                         spindle: mechanics.spindle, parkAt: parkAt, duration: end,
+                         stats: mechanics.stats)
+    }
+}
+
+/// Le disque, une requête après l'autre.
+///
+/// Rien de ce qu'il calcule ne dépend des requêtes à venir : chacune part quand
+/// la précédente est finie et que le système l'a émise, le bras est là où la
+/// précédente l'a laissé, le plateau à l'angle que donne l'horloge. C'est cette
+/// causalité qui permet de simuler une passe **à mesure qu'on la planifie**,
+/// sans jamais tenir la liste de ses requêtes.
+///
+/// Les événements sortent dans l'ordre chronologique : la mise en rotation
+/// d'abord, puis ceux de chaque requête, qui commence où la précédente finit,
+/// puis le parcage et la coupure du moteur.
+struct DiskMechanics {
+
+    let geometry: DriveGeometry
+    let seekModel: SeekModel
+    let spinUpAt: Double
+    let spinUpDuration: Double
+    let idle: IdleBehavior
+
+    /// Fin de la dernière requête servie — ou fin de la mise en rotation, si
+    /// aucune ne l'a encore été.
+    private(set) var clock: Double
+    private(set) var stats = TraceStats()
+    private var headCylinder: Int
+    private var headIndex = 0
+    private var served = false
+
+    init(geometry: DriveGeometry, seekModel: SeekModel,
+         spinUpAt: Double, spinUpDuration: Double, idle: IdleBehavior = .none) {
+        self.geometry = geometry
+        self.seekModel = seekModel
+        self.spinUpAt = spinUpAt
+        self.spinUpDuration = spinUpDuration
+        self.idle = idle
+        self.clock = spinUpAt + spinUpDuration
         // Au repos le bras est parqué au diamètre intérieur (ou sur une rampe
         // hors plateau). Le premier accès est donc une course quasi complète :
         // c'est le « clac » franc qu'on entend juste après le lancement du moteur.
-        var headCylinder = geometry.parkCylinder
-        var headIndex = 0
+        self.headCylinder = geometry.parkCylinder
+    }
 
-        for request in requests {
-            // Le disque ne repart pas à la milliseconde où il s'est arrêté :
-            // la machine a peut-être quelque chose à faire de ce qu'elle vient
-            // de lire. `thinkTime` est nul partout sauf pour un démarrage.
-            let issued = max(clock + request.thinkTime, request.issueTime)
-            var t = issued
-            let target = geometry.position(ofLBA: request.lba)
+    /// La rotation du plateau, connue d'avance : la montée comme la coupure
+    /// sont des dates, pas des conséquences des requêtes.
+    var spindle: SpindleTimeline {
+        SpindleTimeline(spinUpAt: spinUpAt, duration: spinUpDuration,
+                        rpm: geometry.rpm,
+                        spinDownAt: idle.stopAt,
+                        spinDownDuration: idle.stopDuration)
+    }
 
-            // 1. Déplacement du bras.
-            if target.cylinder != headCylinder {
-                let distance = abs(target.cylinder - headCylinder)
-                let profile = seekModel.profile(distance: distance)
-                events.append(DiskEvent(time: t, kind: .seek(profile)))
-                stats.seekCount += 1
-                stats.totalSeekDistance += distance
-                if distance > geometry.cylinders / 2 { stats.fullStrokeSeeks += 1 }
-                t += profile.total
-                headCylinder = target.cylinder
-            } else if target.head != headIndex {
+    func start(events: inout [DiskEvent]) {
+        events.append(DiskEvent(time: spinUpAt, kind: .spinUp(duration: spinUpDuration)))
+    }
+
+    mutating func serve(_ request: BlockRequest,
+                        events: inout [DiskEvent]) -> (sample: HeadSample, timing: RequestTiming) {
+        let revolution = geometry.revolutionDuration
+
+        // Le disque ne repart pas à la milliseconde où il s'est arrêté :
+        // la machine a peut-être quelque chose à faire de ce qu'elle vient
+        // de lire. `thinkTime` est nul partout sauf pour un démarrage.
+        let issued = max(clock + request.thinkTime, request.issueTime)
+        var t = issued
+        let target = geometry.position(ofLBA: request.lba)
+
+        // 1. Déplacement du bras.
+        if target.cylinder != headCylinder {
+            let distance = abs(target.cylinder - headCylinder)
+            let profile = seekModel.profile(distance: distance)
+            events.append(DiskEvent(time: t, kind: .seek(profile)))
+            stats.seekCount += 1
+            stats.totalSeekDistance += distance
+            if distance > geometry.cylinders / 2 { stats.fullStrokeSeeks += 1 }
+            t += profile.total
+            headCylinder = target.cylinder
+        } else if target.head != headIndex {
+            events.append(DiskEvent(time: t, kind: .headSwitch))
+            t += seekModel.headSwitchDuration
+        }
+        headIndex = target.head
+
+        // 2. Latence rotationnelle : attendre que le secteur visé passe
+        //    sous la tête. En moyenne un demi-tour, soit 4,17 ms ici.
+        let spt = geometry.sectorsPerTrack(cylinder: headCylinder)
+        let currentAngle = (t / revolution).truncatingRemainder(dividingBy: 1.0)
+        let targetAngle = Double(target.sector) / Double(spt)
+        var delta = targetAngle - currentAngle
+        if delta < 0 { delta += 1 }
+        t += delta * revolution
+
+        // L'échantillon d'affichage est refermé après le transfert, une fois
+        // connu le cylindre d'arrivée : c'est lui qui fait avancer le bras
+        // à l'écran pendant une lecture séquentielle.
+        let sampleTime = t
+        let sampleCylinder = headCylinder
+        let sampleHead = headIndex
+
+        // 3. Transfert, piste par piste.
+        var remaining = request.sectorCount
+        var sector = target.sector
+        var transferSeconds = 0.0
+
+        while remaining > 0 {
+            let spt = geometry.sectorsPerTrack(cylinder: headCylinder)
+            let onThisTrack = min(remaining, spt - sector)
+            let dt = Double(onThisTrack) / Double(spt) * revolution
+
+            events.append(DiskEvent(time: t, kind: .transfer(
+                duration: dt, sectors: onThisTrack, isWrite: request.isWrite)))
+
+            t += dt
+            transferSeconds += dt
+            remaining -= onThisTrack
+            sector = 0
+
+            guard remaining > 0 else { break }
+
+            // Passage à la piste logique suivante.
+            if headIndex + 1 < geometry.heads {
+                headIndex += 1
                 events.append(DiskEvent(time: t, kind: .headSwitch))
                 t += seekModel.headSwitchDuration
+            } else if headCylinder + 1 < geometry.cylinders {
+                headIndex = 0
+                headCylinder += 1
+                events.append(DiskEvent(time: t, kind: .trackStep))
+                t += seekModel.duration(distance: 1)
+            } else {
+                // Plus de piste suivante : la requête déborde du disque. La
+                // tronquer, parce que c'est ce qu'un disque répond. Bloquer
+                // le cylindre au dernier faisait relire la même piste
+                // jusqu'à épuisement du compte — des pas de piste qui ne
+                // menaient nulle part, et un bras collé au moyeu.
+                break
             }
-            headIndex = target.head
-
-            // 2. Latence rotationnelle : attendre que le secteur visé passe
-            //    sous la tête. En moyenne un demi-tour, soit 4,17 ms ici.
-            let spt = geometry.sectorsPerTrack(cylinder: headCylinder)
-            let currentAngle = (t / revolution).truncatingRemainder(dividingBy: 1.0)
-            let targetAngle = Double(target.sector) / Double(spt)
-            var delta = targetAngle - currentAngle
-            if delta < 0 { delta += 1 }
-            t += delta * revolution
-
-            // L'échantillon d'affichage est refermé après le transfert, une fois
-            // connu le cylindre d'arrivée : c'est lui qui fait avancer le bras
-            // à l'écran pendant une lecture séquentielle.
-            let sampleTime = t
-            let sampleCylinder = headCylinder
-            let sampleHead = headIndex
-
-            // 3. Transfert, piste par piste.
-            var remaining = request.sectorCount
-            var sector = target.sector
-            var transferSeconds = 0.0
-
-            while remaining > 0 {
-                let spt = geometry.sectorsPerTrack(cylinder: headCylinder)
-                let onThisTrack = min(remaining, spt - sector)
-                let dt = Double(onThisTrack) / Double(spt) * revolution
-
-                events.append(DiskEvent(time: t, kind: .transfer(
-                    duration: dt, sectors: onThisTrack, isWrite: request.isWrite)))
-
-                t += dt
-                transferSeconds += dt
-                remaining -= onThisTrack
-                sector = 0
-
-                guard remaining > 0 else { break }
-
-                // Passage à la piste logique suivante.
-                if headIndex + 1 < geometry.heads {
-                    headIndex += 1
-                    events.append(DiskEvent(time: t, kind: .headSwitch))
-                    t += seekModel.headSwitchDuration
-                } else if headCylinder + 1 < geometry.cylinders {
-                    headIndex = 0
-                    headCylinder += 1
-                    events.append(DiskEvent(time: t, kind: .trackStep))
-                    t += seekModel.duration(distance: 1)
-                } else {
-                    // Plus de piste suivante : la requête déborde du disque. La
-                    // tronquer, parce que c'est ce qu'un disque répond. Bloquer
-                    // le cylindre au dernier faisait relire la même piste
-                    // jusqu'à épuisement du compte — des pas de piste qui ne
-                    // menaient nulle part, et un bras collé au moyeu.
-                    break
-                }
-            }
-
-            samples.append(HeadSample(time: sampleTime,
-                                      duration: Float(t - sampleTime),
-                                      cylinder: Int32(sampleCylinder),
-                                      endCylinder: Int32(headCylinder),
-                                      head: UInt8(min(sampleHead, Int(UInt8.max))),
-                                      isWrite: request.isWrite))
-
-            let bytes = (request.sectorCount - remaining) * DriveGeometry.bytesPerSector
-            if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
-            stats.requestCount += 1
-            stats.busySeconds += transferSeconds
-            timings.append(RequestTiming(start: issued, end: t))
-
-            clock = t
         }
 
-        // Le travail est fini ; le disque, lui, ne l'est pas.
-        //
-        // Le parcage n'entre pas dans `stats` : ces compteurs décrivent ce qu'on
-        // a demandé au disque, et personne n'a demandé celui-ci. L'y inclure
-        // décalerait le seek moyen d'une passe sans qu'aucune requête ait bougé.
+        let sample = HeadSample(time: sampleTime,
+                                duration: Float(t - sampleTime),
+                                cylinder: Int32(sampleCylinder),
+                                endCylinder: Int32(headCylinder),
+                                head: UInt8(min(sampleHead, Int(UInt8.max))),
+                                isWrite: request.isWrite)
+
+        let bytes = (request.sectorCount - remaining) * DriveGeometry.bytesPerSector
+        if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
+        stats.requestCount += 1
+        stats.busySeconds += transferSeconds
+
+        clock = t
+        served = true
+        return (sample, RequestTiming(start: issued, end: t))
+    }
+
+    /// Le travail est fini ; le disque, lui, ne l'est pas. Rend l'instant où le
+    /// bras repart se parquer, s'il le fait.
+    ///
+    /// Le parcage n'entre pas dans `stats` : ces compteurs décrivent ce qu'on
+    /// a demandé au disque, et personne n'a demandé celui-ci. L'y inclure
+    /// décalerait le seek moyen d'une passe sans qu'aucune requête ait bougé.
+    mutating func finish(events: inout [DiskEvent]) -> Double? {
+        var tail: [DiskEvent] = []
         var parkAt: Double?
-        if let delay = idle.parkAfter, !samples.isEmpty {
+        if let delay = idle.parkAfter, served {
             let distance = abs(geometry.parkCylinder - headCylinder)
             let travel = seekModel.duration(distance: distance)
             // Un disque parque toujours ses têtes **avant** de couper le
@@ -271,7 +346,7 @@ enum DiskSimulator {
             if let stopAt = idle.stopAt { moment = min(moment, stopAt - travel) }
             moment = max(moment, clock)
             if distance > 0 {
-                events.append(DiskEvent(
+                tail.append(DiskEvent(
                     time: moment, kind: .seek(seekModel.profile(distance: distance))))
                 parkAt = moment
                 headCylinder = geometry.parkCylinder
@@ -279,17 +354,11 @@ enum DiskSimulator {
         }
 
         if let stopAt = idle.stopAt {
-            events.append(DiskEvent(time: stopAt, kind: .spinDown(duration: idle.stopDuration)))
+            tail.append(DiskEvent(time: stopAt, kind: .spinDown(duration: idle.stopDuration)))
         }
 
-        events.sort { $0.time < $1.time }
-
-        let end = max(max(totalDuration, clock), parkAt ?? 0)
-        let spindle = SpindleTimeline(spinUpAt: spinUpAt, duration: spinUpDuration,
-                                      rpm: geometry.rpm,
-                                      spinDownAt: idle.stopAt,
-                                      spinDownDuration: idle.stopDuration)
-        return DiskTrace(events: events, headSamples: samples, timings: timings,
-                         spindle: spindle, parkAt: parkAt, duration: end, stats: stats)
+        tail.sort { $0.time < $1.time }
+        events.append(contentsOf: tail)
+        return parkAt
     }
 }

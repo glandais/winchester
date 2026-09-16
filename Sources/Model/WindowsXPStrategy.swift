@@ -112,24 +112,22 @@ struct WindowsXPStrategy: DefragStrategy {
                         detail: "Le rapport liste ce qui est resté en morceaux, faute de trou assez grand"),
     ]
 
-    func plan(volume input: DefragVolume) -> DefragPlan {
+    func plan(volume input: DefragVolume, into sink: OperationSink) -> DefragPlan {
 
         var volume = input
         let partition = volume.partition
         let before = volume.stats
         let initialRuns = volume.categoryRuns()
 
-        var operations: [DiskOperation] = []
-        var mutations: [MapMutation] = []
         var movedClusters = 0
         var filesMoved = 0
         var alreadyInPlace = 0
 
         // MARK: Phase 0 — analyse
 
-        operations.append(contentsOf: DefragOperations.analysis(
-            partition: partition,
-            directoryCount: DefragOperations.directoryCount(of: volume)))
+        DefragOperations.analysis(partition: partition,
+                                  directoryCount: DefragOperations.directoryCount(of: volume),
+                                  into: sink)
 
         // MARK: Phase 1 — les fichiers cassés, et eux seuls
 
@@ -143,8 +141,9 @@ struct WindowsXPStrategy: DefragStrategy {
             .filter { canTouch(volume.files[$0]) }
             .sorted { order.precedes(volume.files[$0], volume.files[$1]) }
 
-        for position in candidates {
+        for (rank, position) in candidates.enumerated() {
             let file = volume.files[position]
+            sink.progress = Double(rank) / Double(candidates.count)
 
             // Déjà d'un seul tenant : rien à faire, et surtout rien à lire. Un
             // volume NTFS de 2007 est dans ce cas à 98 %, et c'est pour cela
@@ -169,9 +168,9 @@ struct WindowsXPStrategy: DefragStrategy {
             DefragOperations.move(source: file.extents, destination: [target],
                                   category: file.category, phase: 1,
                                   partition: partition, bufferBytes: bufferBytes,
-                                  into: &operations, mutations: &mutations)
+                                  into: sink)
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
-                                    phase: 1, partition: partition, into: &operations)
+                                    phase: 1, partition: partition, into: sink)
             volume.relocate(position, to: [target])
             movedClusters += Int(file.clusterCount)
             filesMoved += 1
@@ -179,14 +178,15 @@ struct WindowsXPStrategy: DefragStrategy {
 
         // MARK: Phase 2 — la MFT et la bitmap, une dernière fois
 
-        operations.append(contentsOf: DefragOperations.final(partition: partition, phase: 2))
+        sink.progress = 1
+        DefragOperations.final(partition: partition, phase: 2, into: sink)
 
         return DefragPlan(
             strategy: self,
             partition: partition,
             initialRuns: initialRuns,
-            operations: operations,
-            mutations: mutations,
+            operations: [],
+            mutations: [],
             phases: phases,
             before: before,
             after: volume.stats,

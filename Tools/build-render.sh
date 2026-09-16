@@ -27,10 +27,14 @@ swiftc -O -swift-version 6 -o "${1:-/tmp/rendertrace}" \
     Sources/Model/UltraDefragStrategy.swift \
     Sources/Model/GeneratedVolume.swift \
     Sources/Model/ClusterMap.swift \
+    Sources/Model/OperationSink.swift \
+    Sources/Model/PassPipeline.swift \
+    Sources/Model/PassSession.swift \
+    Sources/Model/LivePass.swift \
     Sources/Model/ClusterPalette.swift \
     Sources/Model/Scenario.swift \
     Sources/Audio/Biquad.swift \
     Sources/Audio/SeekSynth.swift \
     Sources/Audio/SpindleVoice.swift \
-    Sources/Audio/AudioCue.swift \
+    Sources/Model/AudioCue.swift \
     Tools/RenderTrace/main.swift

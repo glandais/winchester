@@ -88,11 +88,12 @@ struct ClusterMapTests {
 
     // MARK: - Le rejeu
 
-    /// Le curseur de la barre de progression se traîne dans les deux sens. Un
-    /// retour en arrière repart de la carte initiale ; si ce redémarrage n'était
-    /// pas exact, la carte dériverait un peu plus à chaque aller-retour.
-    @Test("Revenir en arrière puis revancer redonne exactement la même carte")
-    func rewindIsIdempotent() {
+    /// Le rejeu ne revient plus en arrière : il n'a gardé ni la carte de
+    /// départ ni les mutations passées. Demander un instant antérieur doit
+    /// laisser la carte exactement où elle en est — et surtout ne pas la
+    /// corrompre pour la suite.
+    @Test("Un instant antérieur ne rembobine pas la carte")
+    func earlierInstantLeavesTheMapAlone() {
         let plan = Self.plan()
         let timeline = Self.timeline(from: plan)
         let player = ClusterMapPlayer()
@@ -101,21 +102,45 @@ struct ClusterMapTests {
         let instant = Self.endTime(timeline) * 0.6
         let reference = player.cells(at: instant)
 
-        // Un aller-retour complet, puis plusieurs sauts désordonnés : le
-        // résultat ne doit dépendre que de l'instant demandé.
-        _ = player.cells(at: 0)
+        #expect(player.cells(at: 0) == reference)
+        #expect(player.cells(at: instant * 0.2) == reference)
         #expect(player.cells(at: instant) == reference)
 
-        for time in [Self.endTime(timeline), instant * 0.2, 0, instant * 0.9] {
-            _ = player.cells(at: time)
-        }
-        #expect(player.cells(at: instant) == reference)
-
-        // Et une lecture fraîche, depuis un player qui n'a jamais rien vu
-        // d'autre, tombe sur la même chose.
+        // Et la suite de la passe tombe sur ce qu'aurait vu un player qui n'a
+        // jamais regardé en arrière.
+        let end = Self.endTime(timeline)
         let fresh = ClusterMapPlayer()
         fresh.load(timeline)
-        #expect(fresh.cells(at: instant) == reference)
+        #expect(player.cells(at: end) == fresh.cells(at: end))
+    }
+
+    /// C'est ainsi que la carte est nourrie pendant l'écoute : quelques
+    /// secondes de mutations à la fois, reçues en avance, entrecoupées
+    /// d'images. Le découpage ne doit rien changer à l'arrivée.
+    @Test("Des mutations reçues par paquets donnent la carte de la passe entière")
+    func chunkedMutationsMatchTheWholePass() {
+        let plan = Self.plan()
+        let timeline = Self.timeline(from: plan)
+        let end = Self.endTime(timeline)
+
+        let streamed = ClusterMapPlayer()
+        streamed.load(clusterCount: timeline.clusterCount, initialRuns: timeline.initialRuns)
+        let mutations = timeline.mutations
+        var cursor = 0
+        var time = 0.0
+        while cursor < mutations.count {
+            let next = min(cursor + 97, mutations.count)
+            streamed.enqueue(Array(mutations[cursor..<next]))
+            cursor = next
+            time += 0.5
+            _ = streamed.cells(at: time)
+            #expect(streamed.tallyTotal == timeline.clusterCount)
+        }
+
+        let whole = ClusterMapPlayer()
+        whole.load(timeline)
+        #expect(streamed.cells(at: end) == whole.cells(at: end))
+        #expect(streamed.pendingCount == 0)
     }
 
     /// Le rejeu avance par petits pas soixante fois par seconde ; il doit
