@@ -250,9 +250,13 @@ struct PlatterView: View {
         var y = center.y - radius * 0.55
         for face in 0..<faces {
             let rect = CGRect(x: x, y: y, width: width, height: thickness)
-            let active = face == frame.head && frame.activity.isTransferring
-            let color = active ? tipColor : Color.white.opacity(0.18)
-            context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(color))
+            context.fill(Path(roundedRect: rect, cornerRadius: 1),
+                         with: .color(Color.white.opacity(0.18)))
+            if face < frame.faces.count, let light = frame.faces[face], light.intensity > 0.02 {
+                let color = light.isWrite ? Theme.write : Theme.read
+                context.fill(Path(roundedRect: rect, cornerRadius: 1),
+                             with: .color(color.opacity(light.intensity)))
+            }
             y += thickness + (face % 2 == 0 ? faceGap : platterGap)
         }
     }

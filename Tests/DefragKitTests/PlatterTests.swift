@@ -87,6 +87,24 @@ struct PlatterTests {
         #expect(track.frame(at: sample.time).activity == .writing)
     }
 
+    /// Un transfert de quelques millisecondes tombe le plus souvent entre deux
+    /// images : la pile de faces ne peut pas se contenter de l'instant présent.
+    @Test("Une face s'allume pour un transfert glissé entre deux images")
+    func faceLightsForTransferBetweenFrames() throws {
+        let track = Self.track(requests: [Self.request(at: 0, lba: 5_000, isWrite: true)])
+        let sample = try #require(track.samples.first)
+        let face = Int(sample.head)
+
+        let justAfter = track.frame(at: sample.endTime + 0.005)
+        #expect(justAfter.activity != .writing)
+        #expect(justAfter.faces[face] == FaceLight(intensity: 1, isWrite: true))
+
+        let fading = try #require(track.frame(at: sample.endTime + 0.07).faces[face])
+        #expect(fading.intensity > 0 && fading.intensity < 1)
+
+        #expect(track.frame(at: sample.endTime + 1).faces[face] == nil)
+    }
+
     /// Le bras ne doit jamais se téléporter : entre deux images, il ne parcourt
     /// que ce que la loi de seek autorise.
     @Test("La position du bras est continue d'une image à l'autre")

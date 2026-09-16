@@ -102,6 +102,15 @@ struct PlatterFrame: Sendable {
     /// au plus récent. Une plage et non un tableau — la fenêtre est contiguë par
     /// construction, il n'y a donc rien à allouer soixante fois par seconde.
     let trail: Range<Int>
+    /// Éclairage de chaque face, indexé par tête : `nil` pour une face au repos.
+    let faces: [FaceLight?]
+}
+
+/// Une face de la pile qui vient de transférer.
+struct FaceLight: Sendable, Equatable {
+    /// 1 si la face a transféré pendant l'image écoulée, puis décroît jusqu'à 0.
+    let intensity: Double
+    let isWrite: Bool
 }
 
 /// La trace de position de la tête, interrogée à la cadence de l'écran.
@@ -131,6 +140,14 @@ struct PlatterTrack {
 
     /// Nombre maximal de points de traînée dessinés.
     static let trailLimit = 240
+
+    /// Persistance d'une face allumée après son dernier transfert.
+    ///
+    /// Un accès dure quelques millisecondes, une image seize : échantillonner
+    /// l'activité à l'instant de l'image manquerait la plupart des transferts,
+    /// et la pile ne clignoterait qu'au hasard. Comme une diode d'activité, la
+    /// face reste allumée un instant et s'éteint en fondu.
+    static let faceGlow = 0.12
 
     let geometry: DriveGeometry
     let seekModel: SeekModel
@@ -188,7 +205,35 @@ struct PlatterTrack {
             activity: activity,
             turns: turns(at: time),
             spin: spindle.speed(at: time),
-            trail: trail(endingAt: current, time: time))
+            trail: trail(endingAt: current, time: time),
+            faces: faces(at: time, index: current, frameDuration: frameDuration))
+    }
+
+    /// Faces qui ont transféré récemment, avec le plus récent accès de chacune.
+    private func faces(at time: Double, index: Int?, frameDuration: Double) -> [FaceLight?] {
+        var lights = [FaceLight?](repeating: nil, count: max(geometry.heads, 1))
+        guard let index else { return lights }
+
+        let from = time - frameDuration
+        let horizon = time - Self.faceGlow
+        var i = index
+        var scanned = 0
+        while i >= 0 && scanned < Self.sweepScanLimit {
+            let sample = samples[i]
+            guard sample.endTime >= horizon else { break }
+            let face = Int(sample.head)
+            // On remonte le temps : le premier accès trouvé est le plus récent.
+            if face < lights.count, lights[face] == nil {
+                let intensity = sample.endTime >= from
+                    ? 1
+                    : 1 - (from - sample.endTime) / (Self.faceGlow - frameDuration)
+                lights[face] = FaceLight(intensity: min(max(intensity, 0), 1),
+                                         isWrite: sample.isWrite)
+            }
+            i -= 1
+            scanned += 1
+        }
+        return lights
     }
 
     /// Position du bras, fonction pure du temps.
