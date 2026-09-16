@@ -150,11 +150,11 @@ enum DefragPlanner {
 
     /// Tout ce que la couche sait simuler, dans l'ordre chronologique des
     /// outils. Seules les deux premières sont choisies par `strategy(for:)` :
-    /// UltraDefrag est de 2018 et n'a jamais tourné sur ces disques-là, il ne
-    /// s'obtient que sur demande — c'est un point de comparaison, pas l'outil
-    /// que la machine avait sous la main.
+    /// JkDefrag est de 2008 et UltraDefrag de 2018, aucun n'a tourné sur ces
+    /// disques-là, et ils ne s'obtiennent que sur demande — ce sont des points
+    /// de comparaison, pas l'outil que la machine avait sous la main.
     static let all: [any DefragStrategy] = [
-        Windows95Strategy(), WindowsXPStrategy(), UltraDefragStrategy(),
+        Windows95Strategy(), WindowsXPStrategy(), JKDefragStrategy(), UltraDefragStrategy(),
     ]
 
     static func strategy(named id: String) -> (any DefragStrategy)? {

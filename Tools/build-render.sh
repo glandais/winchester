@@ -22,6 +22,7 @@ swiftc -O -swift-version 6 -o "${1:-/tmp/rendertrace}" \
     Sources/Model/DefragStrategy.swift \
     Sources/Model/Windows95Strategy.swift \
     Sources/Model/WindowsXPStrategy.swift \
+    Sources/Model/JKDefragStrategy.swift \
     Sources/Model/UltraDefragStrategy.swift \
     Sources/Model/GeneratedVolume.swift \
     Sources/Model/ClusterMap.swift \

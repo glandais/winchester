@@ -380,8 +380,8 @@ struct UltraDefragStrategy: DefragStrategy {
             }
 
             if let target = DefragOperations.firstGap(in: volume, need: length) {
-                let (source, result) = relocation(of: volume.files[position].extents,
-                                                  vcn: vcn, length: length, to: target)
+                let (source, result) = DefragOperations.relocation(of: volume.files[position].extents,
+                                                                    vcn: vcn, length: length, to: target)
                 DefragOperations.move(source: source, destination: [target],
                                       category: category, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
@@ -428,43 +428,6 @@ struct UltraDefragStrategy: DefragStrategy {
             vcn += extent.length
         }
         return result
-    }
-
-    /// Ce qu'un déplacement partiel lit, et ce que devient la description du
-    /// fichier une fois qu'il est fait.
-    ///
-    /// C'est la seule chose que `move_file(file, vcn, length, lcn)` ajoute au
-    /// modèle : jusqu'ici un fichier était déplacé en entier, donc sa nouvelle
-    /// description était le simple extent d'arrivée. Ici il faut **couper** la
-    /// liste aux bornes de la plage, remplacer le milieu par l'extent
-    /// d'arrivée, et garder l'ordre logique — c'est lui, et non l'ordre sur le
-    /// plateau, qui dit ce que la tête lira à la suite.
-    private func relocation(of extents: [Extent], vcn: UInt32, length: UInt32,
-                            to target: Extent) -> (source: [Extent], result: [Extent]) {
-        var source: [Extent] = []
-        var result: [Extent] = []
-        var inserted = false
-        var offset: UInt32 = 0
-
-        for extent in extents {
-            let start = offset
-            let end = offset + extent.length
-            offset = end
-
-            let from = max(start, vcn)
-            let to = min(end, vcn + length)
-            guard from < to else { result.append(extent); continue }
-
-            if from > start {
-                result.append(Extent(start: extent.start, length: from - start))
-            }
-            source.append(Extent(start: extent.start + (from - start), length: to - from))
-            if !inserted { result.append(target); inserted = true }
-            if to < end {
-                result.append(Extent(start: extent.start + (to - start), length: end - to))
-            }
-        }
-        return (source, result)
     }
 
     // MARK: - Ce à quoi l'outil a le droit de toucher
