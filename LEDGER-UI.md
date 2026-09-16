@@ -570,10 +570,13 @@ remplissage, pas quels fichiers il porte.
   le simulateur. La grille se dérive de la surface, le panneau est posé sur la
   carte ; rien de propre au paysage, mais rien de regardé.
 - Pas de glisser pour parcourir les blocs, pas de zoom.
-- La plage d'un bloc de la passe suit le découpage entier du rejeu
-  (`ClusterMapPlayer.clustersPerCell`), celle d'un disque de la galerie le
-  découpage fractionnaire de `shaded(count:)` : deux découpages qui existaient
-  déjà, chacun fidèle à la carte qu'il décrit.
+- ~~Deux découpages en blocs, entier pour la passe, fractionnaire pour la
+  galerie~~ : repris sur `develop` (`8aabe6a`, `61f3729`). Le découpage entier
+  entassait le reste de la division dans le dernier bloc, et la liste d'un bloc
+  de la galerie pouvait nommer un cluster peint dans le bloc voisin.
+  `CellPartition`, dans `DiskCore`, sert désormais aux deux cartes et à
+  `clusterRange(ofCell:cellCount:)`, et la légende n'écrit « = » que pour une
+  part entière.
 
 ---
 
