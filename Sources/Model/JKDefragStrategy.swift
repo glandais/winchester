@@ -88,7 +88,7 @@ struct JKDefragStrategy: DefragStrategy {
     /// Deux millions, c'est une demi-seconde à 250 ns la visite — un défaut de
     /// cache par nœud d'un arbre chaîné, sur une machine de 2008. Estimation
     /// pessimiste, et elle ne décide de rien : sur les vingt volumes de la
-    /// galerie, la recherche la plus longue en fait 152 854.
+    /// galerie, la recherche la plus longue en fait 166 176.
     var perfectFitVisits = 2_000_000
 
     /// Les masques de space hogs que `RunJkDefrag` installe par défaut
@@ -422,6 +422,14 @@ extension JKDefragStrategy {
                 unmovable = [0, 0, 0]
                 if let mft = volume.mftZone, let z = zone(of: UInt64(mft.lowerBound)) {
                     unmovable[z] += UInt64(mft.count)
+                }
+                // La MFT et sa copie sont les deux autres `MftExcludes` de
+                // l'original. Ce qui en est déjà dans la zone MFT y est compté.
+                for extent in volume.systemExtents where !extent.isEmpty {
+                    if let mft = volume.mftZone, mft.contains(extent.start) { continue }
+                    if let z = zone(of: UInt64(extent.start)) {
+                        unmovable[z] += UInt64(extent.length)
+                    }
                 }
                 for (position, file) in volume.files.enumerated()
                 where !order.contains(Int32(position)) {

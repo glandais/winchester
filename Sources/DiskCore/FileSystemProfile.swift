@@ -146,20 +146,15 @@ public struct NTFSProfile: FileSystemProfile {
 
     /// Part du volume que NTFS réserve à la croissance de la MFT et tient à
     /// l'écart des données ordinaires.
+    ///
+    /// Aucun seuil de remplissage ne l'ouvre : elle cède de moitié chaque fois
+    /// que le reste du volume est plein (`NTFSAllocator`).
     public let mftZoneShare: Double
 
-    /// Remplissage au-delà duquel la zone MFT est ouverte aux données. C'est ce
-    /// seuil qui fait qu'un NTFS plein se dégrade brutalement plutôt que
-    /// progressivement : jusque-là tout va bien, après quoi la MFT elle-même se
-    /// met à fragmenter.
-    public let mftZoneYieldsAt: Double
-
     public init(clusterKB: UInt32 = 4,
-                mftZoneShare: Double = 0.125,
-                mftZoneYieldsAt: Double = 0.87) {
+                mftZoneShare: Double = 0.125) {
         precondition(clusterKB > 0 && clusterKB.nonzeroBitCount == 1)
         self.clusterBytes = clusterKB * 1_024
         self.mftZoneShare = mftZoneShare
-        self.mftZoneYieldsAt = mftZoneYieldsAt
     }
 }

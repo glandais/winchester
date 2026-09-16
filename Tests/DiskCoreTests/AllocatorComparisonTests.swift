@@ -345,11 +345,11 @@ struct AllocatorComparisonTests {
         #expect(onFAT16.metrics.allocatedBytes > onFAT32.metrics.allocatedBytes * 13 / 10)
     }
 
-    /// Le mécanisme le plus caractéristique de NTFS : tant que le volume reste
-    /// sous le seuil, la zone MFT est intouchable et la MFT est d'un seul
-    /// tenant. Passé le seuil, les données s'y installent, la MFT n'a plus de
-    /// réserve et se fragmente à son tour. C'est pour cela qu'un NTFS plein se
-    /// dégrade d'un coup et non progressivement.
+    /// Le mécanisme le plus caractéristique de NTFS : tant que le reste du
+    /// volume a de la place, la zone MFT est intouchable et la MFT est d'un
+    /// seul tenant. Quand le reste est plein, la zone rend la moitié de sa
+    /// queue libre — pas tout d'un coup — et recommence à chaque fois. La MFT
+    /// garde ainsi de quoi grandir un moment, puis se fragmente à son tour.
     @Test("La zone MFT cède quand le volume se remplit, et la MFT se fragmente")
     func mftZoneYields() {
         let clusterCount: UInt32 = 262_144          // 1 Go en clusters de 4 Ko
@@ -363,6 +363,8 @@ struct AllocatorComparisonTests {
         var files: [FileEntry] = []
         var id: UInt32 = 1
         var breachedAt: Double?
+        var zoneAtBreach: Range<UInt32>?
+        let initialZone = allocator.mftZone
 
         // On remplit jusqu'à 96 % avec des fichiers de taille ordinaire.
         while allocator.bitmap.fill < 0.96 {
@@ -375,19 +377,31 @@ struct AllocatorComparisonTests {
             files.append(file)
             if breachedAt == nil, allocator.mftZoneBreached {
                 breachedAt = allocator.bitmap.fill
+                zoneAtBreach = allocator.mftZone
             }
         }
 
-        // La zone n'a cédé qu'au voisinage du seuil annoncé, pas avant.
-        guard let breachedAt else {
+        // La zone n'a cédé qu'une fois le reste du volume plein : 87,5 % moins
+        // la MFT, donc pas avant 80 %.
+        guard let breachedAt, let zoneAtBreach else {
             Issue.record("la zone MFT n'a jamais cédé, à \(allocator.bitmap.fill * 100) % de remplissage")
             return
         }
         #expect(breachedAt > 0.80)
         #expect(!allocator.mftZoneIsProtected)
 
-        // Et la MFT, privée de sa réserve, finit par se fragmenter.
-        for _ in 0..<4_000 {
+        // Elle a cédé de moitié, pas tout entière : la première fois, il en
+        // reste à peu près la moitié, collée à la MFT.
+        #expect(zoneAtBreach.lowerBound == initialZone.lowerBound)
+        #expect(zoneAtBreach.count > initialZone.count / 3)
+        #expect(zoneAtBreach.count < initialZone.count * 2 / 3)
+        // Et à 96 %, elle a cédé plusieurs fois.
+        #expect(allocator.mftZoneHalvings > 1)
+        #expect(allocator.mftZone.count < zoneAtBreach.count)
+
+        // La MFT, dont la réserve a fondu, finit par se fragmenter : quarante
+        // mille enregistrements d'un kilo-octet ne tiennent pas dans ce qui reste.
+        for _ in 0..<40_000 {
             allocator.noteFileCreated(logicalSize: 4_096)
         }
         #expect(allocator.mft.extents.count > 1)

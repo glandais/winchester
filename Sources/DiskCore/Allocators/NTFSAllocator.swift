@@ -8,10 +8,10 @@ import Foundation
 /// - **best-fit** plutôt que premier trou venu : un fichier va dans le trou qui
 ///   lui convient, pas dans le premier rencontré ;
 /// - **zone MFT**, 12,5 % du volume tenus à l'écart des données ordinaires. Tant
-///   qu'il reste de la place ailleurs, l'allocateur n'y touche pas ; au-delà de
-///   87 % de remplissage il commence à la grignoter, et la MFT, qui n'a plus où
-///   grandir, se fragmente à son tour. C'est ce basculement qui fait qu'un NTFS
-///   plein se dégrade d'un coup et non progressivement ;
+///   qu'il reste de la place ailleurs, l'allocateur n'y touche pas. Quand le
+///   reste du volume est plein, NTFS **rend la moitié de ce qui reste libre de
+///   la zone**, et recommence à chaque fois que le reste se remplit à nouveau.
+///   La MFT, dont la réserve fond, finit par se fragmenter à son tour ;
 /// - **prolongement en place** : agrandir un fichier, c'est d'abord essayer les
 ///   clusters qui suivent immédiatement son dernier extent. Un `.doc`
 ///   réenregistré reste contigu là où FAT en aurait fait trois morceaux.
@@ -48,10 +48,14 @@ public struct NTFSAllocator: Allocator {
     /// les fichiers qui l'ont fait gonfler ont disparu depuis longtemps.
     public private(set) var mftPeakRecords: UInt64
 
-    /// Plage réservée à la croissance de la MFT, juste derrière celle-ci.
+    /// Plage réservée à la croissance de la MFT, juste derrière celle-ci — la
+    /// zone **courante**, celle que renverrait `FSCTL_GET_NTFS_VOLUME_DATA`.
+    /// Elle ne fait que rétrécir.
     public private(set) var mftZone: Range<UInt32>
-    /// La zone MFT a-t-elle déjà été entamée par des données ?
-    public private(set) var mftZoneBreached = false
+    /// Combien de fois la zone a cédé la moitié de sa queue libre.
+    public private(set) var mftZoneHalvings = 0
+    /// La zone a-t-elle déjà cédé de la place aux données ?
+    public var mftZoneBreached: Bool { mftZoneHalvings > 0 }
 
     /// Plus haut cluster jamais alloué, plus un : la frontière de l'espace
     /// vierge.
@@ -137,26 +141,68 @@ public struct NTFSAllocator: Allocator {
 
     // MARK: - Zones
 
-    /// La zone MFT est-elle encore protégée ? Elle cède quand le volume passe
-    /// le seuil, et ne se referme jamais ensuite : une fois des données
-    /// installées dedans, la MFT a définitivement perdu sa réserve.
-    public var mftZoneIsProtected: Bool {
-        !mftZoneBreached && bitmap.fill < ntfs.mftZoneYieldsAt
+    /// `$Boot`, la MFT et `$MFTMirr` : tout ce que le volume occupe sans
+    /// qu'aucun fichier du catalogue ne le décrive.
+    public var systemExtents: [Extent] {
+        [Extent(start: 0, length: 1)] + mft.extents + [mftMirror]
     }
 
-    /// Plage dans laquelle les données ordinaires ont le droit d'aller.
+    /// La zone MFT a-t-elle encore toute sa taille d'origine ?
+    public var mftZoneIsProtected: Bool { !mftZoneBreached }
+
+    /// Plage dans laquelle les données ordinaires ont le droit d'aller : tout
+    /// ce qui suit la zone courante. Devant elle, il n'y a que `$Boot` et la
+    /// MFT.
     private var dataRange: Range<UInt32> {
-        mftZoneIsProtected
-            ? mftZone.upperBound..<bitmap.clusterCount
-            : 0..<bitmap.clusterCount
+        mftZone.isEmpty
+            ? 0..<bitmap.clusterCount
+            : mftZone.upperBound..<bitmap.clusterCount
+    }
+
+    /// Le reste du volume est plein : la zone rend la moitié de sa queue.
+    ///
+    /// La queue est ce que la MFT n'a pas encore occupé. C'est la seule règle
+    /// que publient les descriptions de NTFS (« each time the rest of the disk
+    /// becomes full, the buffer size is halved », documentation Linux-NTFS) ;
+    /// Microsoft ne détaille pas l'algorithme. La moitié rendue est la plus
+    /// éloignée de la MFT, pour que celle-ci garde de quoi grandir d'un seul
+    /// tenant.
+    ///
+    /// - Returns: `false` si la zone n'a plus rien à rendre.
+    private mutating func yieldMFTZone() -> Bool {
+        let mftEnd = mft.extents.map(\.end).filter { mftZone.contains($0) }.max()
+            ?? mftZone.lowerBound
+        let tailStart = max(mftZone.lowerBound, mftEnd)
+        guard mftZone.upperBound > tailStart else {
+            guard !mftZone.isEmpty else { return false }
+            mftZone = mftZone.lowerBound..<mftZone.lowerBound
+            mftZoneHalvings += 1
+            return true
+        }
+        let tail = mftZone.upperBound - tailStart
+        let upper = tailStart + tail / 2
+        mftZone = mftZone.lowerBound..<(upper > tailStart ? upper : mftZone.lowerBound)
+        mftZoneHalvings += 1
+        return true
     }
 
     // MARK: - Allocation
 
     public mutating func allocate(clusterCount count: UInt32, hint: AllocationHint) -> [Extent] {
         guard count > 0, count <= bitmap.freeCount else { return [] }
-        let range = dataRange
+        // Tant que la place manque hors de la zone, la zone cède de moitié. Un
+        // échec de placement hors zone n'arrive que si le reste du volume n'a
+        // plus assez de clusters libres : `scatter` prend n'importe quels
+        // morceaux.
+        while true {
+            let extents = place(count, hint: hint, in: dataRange)
+            if !extents.isEmpty { return extents }
+            guard yieldMFTZone() else { return [] }
+        }
+    }
 
+    private mutating func place(_ count: UInt32, hint: AllocationHint,
+                                in range: Range<UInt32>) -> [Extent] {
         switch hint {
         case .reservedContiguous:
             // `pagefile.sys` à taille fixe, `hiberfil.sys` : d'un seul tenant
@@ -289,9 +335,6 @@ public struct NTFSAllocator: Allocator {
             // Le curseur suit l'écriture : la place suivante est cherchée à
             // partir d'ici, pas depuis le début du volume.
             searchCursor = extent.end < bitmap.clusterCount ? extent.end : 0
-            if extent.start < mftZone.upperBound && extent.end > mftZone.lowerBound {
-                mftZoneBreached = true
-            }
         }
         return extents
     }
@@ -353,9 +396,6 @@ public struct NTFSAllocator: Allocator {
         guard bitmap.isFree(extent) else { return false }
         bitmap.allocate(extent)
         highWater = max(highWater, extent.end)
-        if extent.start < mftZone.upperBound && extent.end > mftZone.lowerBound {
-            mftZoneBreached = true
-        }
         return true
     }
 

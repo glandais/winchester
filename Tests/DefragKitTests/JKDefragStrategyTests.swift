@@ -13,14 +13,16 @@ private struct JKFile {
 
 /// Un volume dont on choisit le placement au cluster près.
 private func jkVolume(clusterCount: Int, files: [JKFile], format: VolumeFormat = .fat16,
-                      mftZone: Range<UInt32>? = nil) -> DefragVolume {
+                      mftZone: Range<UInt32>? = nil,
+                      systemExtents: [Extent] = []) -> DefragVolume {
     let partition = PartitionGeometry(startLBA: 0, clusterCount: clusterCount,
                                       clusterSectors: 8, format: format)
     let records = files.enumerated().map { position, file in
         DefragFile(id: UInt32(position), path: "\\\(file.name)", category: file.category,
                    walkOrder: position, extents: file.extents, isMovable: file.category != .swap)
     }
-    return DefragVolume(partition: partition, files: records, mftZone: mftZone)
+    return DefragVolume(partition: partition, files: records, mftZone: mftZone,
+                        systemExtents: systemExtents)
 }
 
 /// Sans réserve d'espace libre, les zones se réduisent à ce qu'elles
@@ -262,6 +264,39 @@ struct JKDefragStrategyTests {
         for mutation in plan.mutations where mutation.category != .free {
             #expect(mutation.start >= 380 || mutation.start + mutation.count <= 20,
                     "un fichier a été écrit dans la zone MFT")
+        }
+    }
+
+    /// Une MFT dont la zone a entièrement cédé n'est plus protégée que par la
+    /// bitmap : ses clusters ne sont décrits par aucun fichier. Aucun outil ne
+    /// doit y voir un trou — ici le seul trou du début du volume, là où les
+    /// quatre passes aimeraient ranger.
+    @Test("Aucun défragmenteur n'écrit sur la MFT")
+    func nobodyWritesOverTheMft() {
+        var files: [JKFile] = [
+            JKFile(name: "BIG.DAT", category: .application, extents: [Extent(start: 100, length: 600)]),
+        ]
+        for index in 0..<20 {
+            let base = 720 + UInt32(index) * 12
+            files.append(JKFile(name: "F\(index).DAT", category: .document,
+                                extents: [Extent(start: base, length: 3), Extent(start: base + 6, length: 3)]))
+        }
+        let mft = [Extent(start: 0, length: 1), Extent(start: 1, length: 60), Extent(start: 70, length: 20)]
+        let volume = jkVolume(clusterCount: 1_000, files: files, format: .ntfs,
+                              mftZone: 61..<61, systemExtents: mft)
+        #expect(volume.bitmap.isFree(Extent(start: 61, length: 9)), "le trou entre deux morceaux de MFT reste un trou")
+
+        let strategies: [any DefragStrategy] = [
+            Windows95Strategy(), WindowsXPStrategy(), JKDefragStrategy(), UltraDefragStrategy(),
+        ]
+        for strategy in strategies {
+            let plan = DefragPlanner.plan(volume: volume, using: strategy)
+            for mutation in plan.mutations where mutation.category != .free {
+                for extent in mft {
+                    #expect(!(mutation.start < Int(extent.end) && mutation.start + mutation.count > Int(extent.start)),
+                            "\(strategy.label) écrit sur la MFT")
+                }
+            }
         }
     }
 

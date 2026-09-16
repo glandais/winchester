@@ -84,11 +84,12 @@ struct Windows95Strategy: DefragStrategy {
 
         // MARK: Clusters intouchables
 
-        // Ils tiennent en quelques extents — le fichier d'échange, et lui seul :
-        // aucune raison d'en faire un tableau de booléens de la taille du volume.
-        let blocked = volume.files
+        // Ils tiennent en quelques extents — le fichier d'échange, et sur NTFS
+        // la MFT et sa copie : aucune raison d'en faire un tableau de booléens
+        // de la taille du volume.
+        let blocked = (volume.files
             .filter { !$0.isMovable }
-            .flatMap(\.extents)
+            .flatMap(\.extents) + volume.systemExtents)
             .sorted { $0.start < $1.start }
 
         // MARK: Empaquetage

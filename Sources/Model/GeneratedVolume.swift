@@ -106,7 +106,8 @@ enum GeneratedVolumeBridge {
         // plage que l'allocateur a tenue à l'écart pendant tout le
         // vieillissement, pas une reconstitution.
         return DefragVolume(partition: partition, files: files,
-                            mftZone: disk.mftZone)
+                            mftZone: disk.mftZone,
+                            systemExtents: disk.systemExtents)
     }
 }
 

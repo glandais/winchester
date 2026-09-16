@@ -18,6 +18,14 @@ public struct GeneratedDisk: Sendable {
     /// NTFS. Elle est libre dans la bitmap sans être disponible : qui la lit
     /// doit la traiter comme occupée.
     public var mftZone: Range<UInt32>?
+    /// Ce que le système de fichiers occupe hors de tout fichier du catalogue :
+    /// sur NTFS, `$Boot`, la MFT et `$MFTMirr`. Vide hors NTFS, où les tables
+    /// vivent avant la zone de données.
+    ///
+    /// Occupé dans la bitmap, absent du catalogue : un défragmenteur qui ne
+    /// regarderait que les fichiers y verrait des trous, et écrirait sur la
+    /// MFT.
+    public var systemExtents: [Extent] = []
 
     public var clusterCount: UInt32 { bitmap.clusterCount }
 
@@ -139,7 +147,8 @@ public enum DiskGenerator {
                                  dayCount: outcome.dayCount,
                                  mftClusters: 0,
                                  mftExtents: 0,
-                                 mftZone: nil)
+                                 mftZone: nil,
+                                 systemExtents: [])
 
         case .ntfs:
             let profile = NTFSProfile(clusterKB: spec.fileSystem.clusterKB ?? 4)
@@ -164,7 +173,8 @@ public enum DiskGenerator {
                                  dayCount: outcome.dayCount,
                                  mftClusters: allocator.mft.clusterCount,
                                  mftExtents: allocator.mft.extents.count,
-                                 mftZone: allocator.mftZone)
+                                 mftZone: allocator.mftZone,
+                                 systemExtents: allocator.systemExtents)
         }
     }
 

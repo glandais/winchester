@@ -156,12 +156,26 @@ struct DefragVolume {
     /// qu'on ne lui passe pas `IgnoreMftExcludes`.
     let mftZone: Range<UInt32>?
 
+    /// Ce que le système de fichiers occupe sans qu'aucun fichier ne le
+    /// décrive : la MFT, sa copie, le secteur d'amorçage.
+    ///
+    /// Occupé dans la bitmap, donc jamais proposé comme trou ; absent de
+    /// `files`, donc jamais déplacé ni compté. Tant que la zone MFT gardait sa
+    /// taille d'origine, elle recouvrait la MFT et le cachait. Depuis qu'elle
+    /// rétrécit, une MFT hors zone paraissait libre, et un défragmenteur
+    /// pouvait écrire dessus.
+    let systemExtents: [Extent]
+
     init(partition: PartitionGeometry, files: [DefragFile],
-         mftZone: Range<UInt32>? = nil) {
+         mftZone: Range<UInt32>? = nil, systemExtents: [Extent] = []) {
         self.partition = partition
         self.files = files
         self.mftZone = mftZone
+        self.systemExtents = systemExtents
         var bitmap = ClusterBitmap(clusterCount: UInt32(partition.clusterCount))
+        for extent in systemExtents where !extent.isEmpty && extent.end <= UInt32(partition.clusterCount) {
+            bitmap.allocate(extent)
+        }
         var index = ExtentIndex(clusterCount: UInt32(partition.clusterCount))
         for (position, file) in files.enumerated() {
             for extent in file.extents {
