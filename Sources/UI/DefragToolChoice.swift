@@ -90,7 +90,7 @@ struct DefragTool: Identifiable {
                        sound: "Beaucoup de requêtes courtes ; bien moins de morceaux à la fin.",
                        periodFormats: [], onlyOn: nil, isAdvanced: false,
                        measured: [.fat: "environ une minute (un seul disque mesuré)",
-                                  .ntfs: "de 6 min à 1 h 30"]),
+                                  .ntfs: "de quelques secondes à 1 h 30"]),
             DefragTool(strategy: strategy("jkDefrag"),
                        name: "JkDefrag 3.36",
                        origin: "2008 · mode par défaut",
@@ -98,6 +98,23 @@ struct DefragTool: Identifiable {
                        sound: "Rapide tant qu'il reste de la place ; presque rien sur un disque plein.",
                        periodFormats: [], onlyOn: nil, isAdvanced: false,
                        measured: [.fat: "de quelques secondes à 20 min", .ntfs: "de 6 min à 2 h"]),
+            // Les deux derniers n'imitent aucun outil : ils ont été écrits dans
+            // ce projet, chacun pour un format, à partir de ce que les autres
+            // font mal. Proposés sur leur format seulement.
+            DefragTool(strategy: strategy("frontierCompaction"),
+                       name: "Tassage à la frontière",
+                       origin: "écrit pour DiskNoise · FAT uniquement",
+                       principle: "Tasse le volume dans l'ordre où il est : les fichiers glissent vers le début par tronçons, et aucune écriture ne tombe sur une donnée encore référencée.",
+                       sound: "Une navette courte qui remonte le plateau ; long sur un disque plein.",
+                       periodFormats: [], onlyOn: .fat, isAdvanced: false,
+                       measured: [.fat: "de 5 min à 55 min"]),
+            DefragTool(strategy: strategy("fragmentMerge"),
+                       name: "Recollage économe",
+                       origin: "écrit pour DiskNoise · NTFS uniquement",
+                       principle: "Ne recopie que les petits morceaux, contre leur gros voisin ou dans le trou le plus proche, et regroupe l'espace libre.",
+                       sound: "Des blocs lus morceau par morceau puis écrits d'un coup, et un point de contrôle tous les seize déplacements.",
+                       periodFormats: [], onlyOn: .ntfs, isAdvanced: false,
+                       measured: [.ntfs: "de quelques secondes à 25 min"]),
             jk("jkDefragForcedFill", "Tasser au début",
                "Remplit chaque trou par la fin du fragment le plus haut du volume.",
                "Court, mais il casse plus de fichiers qu'il n'en répare.",
@@ -142,6 +159,11 @@ struct DefragToolChoiceScreen: View {
 
     @State private var selectedID: String
     @State private var showsAdvanced = false
+    /// Déplacer par blocs pleins : l'option de XP, UltraDefrag et JkDefrag qui
+    /// les fait déplacer comme le recollage économe. Ce n'est pas le
+    /// comportement de l'outil ; elle sert à comparer les algorithmes à
+    /// primitive égale.
+    @State private var fullBlocks = false
     @State private var failure: String?
 
     private let tools = DefragTool.all()
@@ -275,8 +297,24 @@ struct DefragToolChoiceScreen: View {
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(color.opacity(0.5), lineWidth: 1))
     }
 
+    private var selectedTool: DefragTool? { tools.first { $0.id == selectedID } }
+
     private var launchBar: some View {
         VStack(spacing: 6) {
+            if let tool = selectedTool, DefragPlanner.withFullBlocks(tool.strategy) != nil {
+                Toggle(isOn: $fullBlocks) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Déplacer par blocs pleins")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                        Text("Pas le comportement de l'outil : pour le comparer au recollage économe. Les durées mesurées ne valent plus.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.dim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(Theme.read)
+            }
             if let failure {
                 Text(failure)
                     .font(.system(size: 11, design: .monospaced))
@@ -285,9 +323,12 @@ struct DefragToolChoiceScreen: View {
             }
             Button {
                 failure = nil
-                guard let tool = tools.first(where: { $0.id == selectedID }) else { return }
+                guard let tool = selectedTool else { return }
+                let strategy = fullBlocks
+                    ? DefragPlanner.withFullBlocks(tool.strategy) ?? tool.strategy
+                    : tool.strategy
                 do {
-                    try onHandover(disk, .defrag, tool.strategy)
+                    try onHandover(disk, .defrag, strategy)
                 } catch {
                     failure = "\(error)"
                 }

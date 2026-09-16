@@ -414,6 +414,27 @@ comparaison des chantiers 2, 9 et 11 — ne s'entendaient que par
 
 ---
 
+### Rebasé sur `develop` : six défragmenteurs et les blocs pleins
+
+`develop` a reçu deux stratégies écrites dans le projet, et une option pour
+trois des outils existants (`6da1772`). L'écran de choix les suit :
+
+- **Tassage à la frontière** (`frontierCompaction`), proposé sur FAT seulement,
+  grisé sur NTFS ; mesuré de 5 min 22 à 53 min 45 sur les douze volumes FAT.
+- **Recollage économe** (`fragmentMerge`), sur NTFS seulement ; mesuré de 8 s à
+  23 min 37 sur les huit volumes NTFS.
+- Ni l'un ni l'autre n'est marqué « D'époque », et leur carte dit « écrit pour
+  DiskNoise ».
+- **« Déplacer par blocs pleins »**, un interrupteur au-dessus de **Lancer la
+  passe**, quand l'outil choisi a l'option (`DefragPlanner.withFullBlocks`) :
+  XP, UltraDefrag et les modes de JkDefrag. Il dit que ce n'est pas le
+  comportement de l'outil, et que les durées mesurées ne valent plus.
+- Deux fourchettes recalées sur les nouveaux tableaux : UltraDefrag et XP
+  descendent à quelques secondes sur `gamer-2003`.
+
+Vérifié sur le simulateur, `secretaire-2003` : tassage grisé (« Réservé à
+FAT »), recollage proposé, interrupteur visible avec XP présélectionné.
+
 ## Chantier U4 — l'écran de la passe
 
 **Fait** · branche `interface-grand-public`
@@ -477,12 +498,11 @@ frise, et seuls **Relancer** et lecture/pause existaient.
 - **Fichiers déplacés et évacuations en direct** : compter dans les
   stratégies, dater avec la requête qui valide le déplacement, et vérifier que
   les WAV restent identiques. À faire avant U6, qui en a aussi besoin.
-- **`Tools/build-render.sh` ne compile plus sous Xcode 27.** SwiftPM 6.4 range
-  `DiskCore` directement dans `.build/release` (`DiskCore.o`,
-  `DiskCore.swiftmodule`), sans `Modules/` ni `DiskCore.build/`. La
-  vérification ci-dessus a appelé `swiftc` avec ces chemins-là, et posé le
-  paquet de ressources `DiskCore_DiskCore.bundle` à côté de l'exécutable. Le
-  script lui-même n'est pas corrigé ici : il appartient au modèle.
+- ~~`Tools/build-render.sh` ne compile plus sous Xcode 27~~ : corrigé sur
+  `develop` (`968e7df`). Après le rebase, le script compile tel quel, et la
+  comparaison a été refaite contre `develop` : `windowsBoot`, `defrag`,
+  `boot:famille-2007`, `gamer-2003`, `dev-1993` et le recollage économe sur
+  `secretaire-2003`, six WAV identiques à l'octet.
 - **L'effet de bord de défilement d'iOS 26** laisse deviner le contenu sous la
   barre de transport et sous la barre d'onglets flottante : comportement du
   système, laissé tel quel.

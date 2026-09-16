@@ -433,17 +433,20 @@ vit — donc plus de « clac … clac … clac ».
 Les deux autres ne sont d'aucune époque, et ne se choisissent jamais tout seuls.
 **UltraDefrag 7.1.1**, de 2018, répond à un échec des outils d'époque sur les
 gros fichiers. **JkDefrag 3.36**, de 2008, est le seul qui range le volume sans
-évacuer personne. On les demande explicitement pour comparer des passes sur
-exactement le même volume : dans l'app, sur l'écran « Avec quel outil ? » qui
-suit **Défragmenter ce disque**, où l'outil d'époque est présélectionné ; au
-rendu hors-ligne, par `STRATEGY=ultraDefrag` ou `STRATEGY=jkDefrag`. JkDefrag
-s'obtient aussi dans ses autres modes, décrits plus bas.
+évacuer personne. On les demande explicitement (`STRATEGY=ultraDefrag`,
+`STRATEGY=jkDefrag`) pour comparer des passes sur exactement le même volume.
+JkDefrag s'obtient aussi dans ses autres modes, décrits plus bas.
 
 Les deux derniers n'imitent aucun outil, et ont été écrits ici à partir de ce
 que les quatre autres font mal : le **tassage à la frontière**
 (`STRATEGY=frontierCompaction`) pour FAT, et le **recollage économe**
 (`STRATEGY=fragmentMerge`) pour les gros volumes NTFS. Ils sont décrits en
 dernier.
+
+Dans l'app, tous se choisissent sur l'écran « Avec quel outil ? » qui suit
+**Défragmenter ce disque**. L'outil d'époque y est présélectionné ; les deux
+outils d'époque et les deux écrits ici ne sont proposés que sur leur format, et
+les déplacements par blocs pleins s'y activent pour XP, UltraDefrag et JkDefrag.
 
 L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
 `famille-2007` tassait trois cents gigaoctets par tampons de 256 Ko : vingt-huit
