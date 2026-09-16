@@ -368,7 +368,7 @@ rien : le planificateur travaille en extents, et un volume de 320 Go ne lui
 coûte pas plus cher qu'un de 180 Mo. Ce qui change avec le format, c'est
 l'**outil** — parce que c'est lui que le format datait.
 
-#### Trois défragmenteurs, dont deux d'époque
+#### Quatre défragmenteurs, dont deux d'époque
 
 Sur un volume FAT, c'est la passe livrée avec Windows 95 puis 98 : tasser tous
 les fichiers contre le début du volume, dans l'ordre du parcours de
@@ -380,10 +380,11 @@ de 4 Mo. Il n'évacue personne, et la validation d'un déplacement n'est plus
 trois écritures au bord du plateau mais un enregistrement de MFT, là où il
 vit — donc plus de « clac … clac … clac ».
 
-Le troisième n'est d'aucune époque : **UltraDefrag 7.1.1**, de 2018, et il ne
-se choisit jamais tout seul. Il est là pour répondre à un échec des deux autres,
-et on le demande explicitement (`STRATEGY=ultraDefrag`) pour comparer deux
-passes sur exactement le même volume.
+Les deux autres ne sont d'aucune époque, et ne se choisissent jamais tout seuls.
+**UltraDefrag 7.1.1**, de 2018, répond à un échec des outils d'époque sur les
+gros fichiers. **JkDefrag 3.36**, de 2008, est le seul qui range le volume sans
+évacuer personne. On les demande explicitement (`STRATEGY=ultraDefrag`,
+`STRATEGY=jkDefrag`) pour comparer des passes sur exactement le même volume.
 
 L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
 `famille-2007` tassait trois cents gigaoctets par tampons de 256 Ko : vingt-huit
@@ -452,6 +453,52 @@ partielle n'a rien à mordre : la passe est quarante fois plus courte que celle
 de Windows 95 (79 s contre 36 min sur `dev-1996`) parce qu'elle n'évacue
 personne, et elle laisse trois fois plus de morceaux derrière elle pour
 exactement la même raison.
+
+#### Ranger sans évacuer
+
+JkDefrag joue son mode par défaut, le mode 2, qui enchaîne quatre passes :
+recopier les fichiers cassés dans le premier trou à leur taille, ou par tranches
+dans les plus grands ; renvoyer chaque fichier dans sa **zone** (les gros, les
+archives, les installateurs au fond du volume, derrière les fichiers ordinaires
+et une réserve de 1 %) ; combler chaque trou, de bas en haut, par des fichiers
+pris plus haut, au cluster près si une combinaison existe, sinon par le plus
+haut qui tient ; puis remettre en zone ce que l'optimisation a dérangé. Une
+destination est toujours un trou déjà libre.
+
+Sur FAT, il fait en quelques minutes ce que Windows 95 faisait en heures, et il
+laisse plus de morceaux derrière lui dès que les trous manquent :
+
+| scénario | plein | durée, 95 → JkDefrag | évacuations, 95 | morceaux restants, 95 → JkDefrag |
+|---|---:|---:|---:|---:|
+| `dev-1993` | 74 % | 30 min 35 → 4 min 30 | 4 561 | 0 → 0 |
+| `dev-1996` | 87 % | 36 min 21 → 5 min 03 | 3 811 | 290 → 330 |
+| `secretaire-1999` | 87 % | 3 h 07 → 10 min 19 | 19 595 | 3 → 1 032 |
+| `famille-1999` | 97 % | 4 h 29 → 12 min 09 | 11 989 | 8 → 2 707 |
+| `gamer-1996` | 99 % | 59 min 18 → 7,9 s | 4 438 | 14 → 1 622 |
+
+À 99 %, il ne fait presque rien : un outil qui n'évacue personne a besoin de
+trous.
+
+Sur NTFS, les morceaux restants tombent au niveau d'UltraDefrag, mais la passe
+range tout le volume et déplace bien plus que les seuls fichiers cassés — 4 Go
+sur `gamer-2003`, plein à 8 % et sans un fichier en morceaux :
+
+| scénario | plein | morceaux restants, XP | UltraDefrag | JkDefrag | durée, XP → JkDefrag | Go déplacés, XP → JkDefrag |
+|---|---:|---:|---:|---:|---:|---:|
+| `famille-2003` | 93 % | 38 054 | 15 186 | 3 093 | 2 min 28 → 23 min 37 | 0,7 → 6,2 |
+| `dev-2003` | 94 % | 10 229 | 474 | 432 | 5 min 58 → 13 min 51 | 2,8 → 3,5 |
+| `gamer-2003` | 8 % | 0 | 0 | 0 | 7,8 s → 6 min 09 | 0,0 → 4,0 |
+| `famille-2007` | 93 % | 130 288 | 1 378 | 2 828 | 23 min 28 → 1 h 40 | 19,0 → 55,4 |
+| `gamer-2007` | 90 % | 26 753 | 376 | 407 | 27 min 31 → 1 h 29 | 31,4 → 109,0 |
+
+Ces chiffres NTFS dépendent d'un choix du générateur : la zone réservée à la MFT
+est publiée entière même quand l'allocateur l'a entamée, et JkDefrag passe alors
+une bonne part de sa passe à la vider. Le journal donne l'écart.
+
+`FindBestItem`, la recherche de combinaison exacte, s'arrêtait chez l'original
+au bout d'une demi-seconde de temps réel. Elle est bornée ici en visites, pour
+que le plan ne dépende pas de la machine ; la borne ne mord sur aucun des vingt
+volumes.
 
 Ces passes FAT-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`),
 contre 3 min 24 pour le scénario livré, dont le volume est délibérément réduit.
@@ -600,8 +647,8 @@ STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace ud.wav  # un autre o
 ```
 
 `STRATEGY` force le défragmenteur simulé au lieu de laisser le format le dater :
-`windows95`, `windowsXP`, `ultraDefrag`. C'est ainsi que se comparent deux
-passes sur exactement le même volume.
+`windows95`, `windowsXP`, `jkDefrag`, `ultraDefrag`. C'est ainsi que se
+comparent deux passes sur exactement le même volume.
 
 `PLAN_ONLY` s'arrête au bilan de la passe — volume, déplacements, évacuations,
 octets déplacés — sans rendre une note. C'est ce qu'il faut pour juger d'un
@@ -660,7 +707,10 @@ Sources/Model/
                            fabriques d'opérations communes à tous, et la
                            recherche de trou
     Windows95Strategy.swift  tasser le volume contre son début (FAT16, FAT32)
-    WindowsXPStrategy.swift  réparer les seuls fichiers cassés (NTFS)
+    WindowsXPStrategy.swift  réparer les seuls fichiers cassés (NTFS), dans
+                           l'ordre de la MFT ou d'un autre outil
+    JKDefragStrategy.swift  ranger en trois zones et combler les trous par le
+                           haut, sans évacuer personne ; sur demande
     UltraDefragStrategy.swift  recoller les petits morceaux des gros fichiers,
                            sur demande et quel que soit le format
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
@@ -702,7 +752,7 @@ journal dit pourquoi il est ainsi.
    déclaratif.
 4. Ajouter d'autres géométries (15 000 tr/min SCSI, disquette) : seules la table
    de zones et les constantes de seek changent.
-5. Écouter les trois stratégies sur le même volume. `STRATEGY` les rend déjà
+5. Écouter les quatre stratégies sur le même volume. `STRATEGY` les rend déjà
    comparables au rendu hors-ligne, et tout ce qui les sépare est mesuré ; rien
    de tout cela n'a encore été confronté à l'oreille, et l'écran de
    l'application ne propose toujours que l'outil d'époque.

@@ -79,7 +79,7 @@ l'interpolation y est la plus fragile.
 ## Chantier 2 — le défragmenteur travaille en extents
 
 **Partiellement fait** · commits `c2b8640`, `794a921`, `faa2bbd`, `47a9abc`,
-`ac71696`, `2ef7533`, `f3c8177`
+`ac71696`, `2ef7533`, `f3c8177`, puis branche `chantier-2`
 
 ### Le problème
 
@@ -391,35 +391,233 @@ depuis le commit `47a9abc` lui-même : les requêtes sont identiques à l'unité
 les durées aussi. Le modèle n'a pas bougé, c'est la transcription qui était
 fausse. Le tableau ci-dessus et le README sont corrigés.
 
+### Ranger sans évacuer — `JKDefragStrategy`
+
+**Fait** · branche `chantier-2`
+
+La première des pistes laissées ouvertes : le comblement de trous
+d'`OptimizeVolume`. Il n'a pas été écrit seul, et c'est la première décision.
+
+#### Pourquoi le mode 2 entier, et pas `OptimizeVolume`
+
+`OptimizeVolume` n'est jamais appelé seul. Le mode par défaut de JkDefrag est le
+mode 2 (`JkDefrag.cpp:267`), qui enchaîne quatre passes : `Defragment`, `Fixup`,
+`OptimizeVolume`, `Fixup` (`JkDefragLib.cpp:5417`). Les deux `Fixup` remettent
+chaque fichier dans sa **zone**, et les zones sont `CalculateZones` : la moitié
+de la deuxième piste venait donc avec la première. Transposer le comblement sans
+le reste aurait donné un outil qui n'a jamais existé, sur un volume encore
+fragmenté que l'original n'aurait jamais vu.
+
+Ce qui distingue cet outil des trois autres, et que les chiffres confirment : il
+**range** le volume comme celui de 1995, et **n'évacue personne** comme XP et
+UltraDefrag. Une destination est toujours un trou déjà libre.
+
+#### Les décisions
+
+- **La transposition est littérale**, jusqu'aux défauts, parce que ce sont eux
+  qui fixent l'ordre des déplacements. `FindBestItem` rembobine sur le fichier
+  qui suit le premier retenu, et rend ce **premier**. Il ne rembobine pas s'il
+  n'existe aucun fichier sous le trou. Un fichier de la taille exacte du trou
+  n'entre pas dans la somme qui sert de sortie anticipée
+  (`Item->Clusters < ClusterEnd - ClusterStart`). Et `Defragment` s'arrête tout
+  entier au premier fichier pour lequel le volume n'a plus un seul trou.
+- **`FindHighestItem` rend le fichier le plus haut qui tient, pas le plus gros.**
+  `ALGO.md` §6.4 dit « le plus gros qui rentre », et c'est inexact : le parcours
+  part du fond du disque et s'arrête au premier qui convient. C'est ce qui vide
+  le volume par le fond.
+- **Le budget de `FindBestItem` est compté en visites, et il vaut deux
+  millions.** L'original s'arrête au bout d'une demi-seconde de temps réel, ce
+  qui rendrait le plan dépendant de la machine. Deux millions, c'est une
+  demi-seconde à 250 ns la visite, un défaut de cache par nœud d'un arbre chaîné.
+  **Il ne mord jamais** : sur les vingt volumes, la recherche la plus longue fait
+  152 854 visites (`secretaire-2007`). Le plan est donc celui qu'aurait produit
+  l'original sur n'importe quelle machine de l'époque, et non une approximation.
+- **Un déplacement peut échouer, et l'échec coûte cher.** `Fixup` garde un trou
+  courant par zone sans le relire, et rien n'empêche deux zones de viser le même
+  trou. La zone 2 le remplit, la zone 1 croit qu'il est libre. Chez l'original,
+  `FSCTL_MOVE_FILE` refuse la destination occupée, et `MoveItem` en conclut que
+  le fichier est **immobile** pour le reste de la passe, puis recalcule les zones
+  (`JkDefragLib.cpp:2542-2547`). C'est modélisé tel quel. Le premier essai ne le
+  modélisait pas et écrivait par-dessus un voisin : c'est un plantage sur
+  `famille-1996` qui l'a révélé. Mesuré : 1 échec sur `famille-1996`, 6 sur
+  `dev-2007`, 29 sur `secretaire-2007`, aucun ailleurs.
+- **Une tranche qui déborde du fichier est refusée.** `Defragment` ne recalcule
+  pas la taille de sa tranche après avoir sauté les morceaux trop gros pour elle.
+  Elle peut alors demander des clusters au-delà de la fin du fichier. Borner la
+  tranche aurait inventé un déplacement. La lecture retenue est que l'API refuse
+  la plage, et comme `ClustersDone` avance quand même, le fichier est
+  abandonné là. C'est une **hypothèse sur l'API**, pas une mesure : de 0 à
+  150 cas par volume.
+- **Space hogs** : plus de 50 Mo, ou l'un des 52 masques par défaut de
+  `RunJkDefrag`. Le critère du dernier accès à plus de trente jours est
+  **inactif** : le catalogue ne connaît pas les dates d'accès. C'est le
+  comportement de Vista, qui désactive leur mise à jour par défaut, et non celui
+  de XP.
+- **Les répertoires n'ont pas de clusters** dans la galerie : la zone 0 ne
+  contient que la réserve de 1 % et, sur NTFS, la zone MFT.
+- **Le grain est celui de XP**, 4 Mo : JkDefrag passe par `FSCTL_MOVE_FILE`
+  comme lui, et ses tranches de 1 Gio découpent les appels, pas la copie.
+- **Elle ne se choisit pas toute seule** : JkDefrag est de 2008. Elle s'obtient
+  par `STRATEGY=jkDefrag`, comme UltraDefrag.
+
+`relocation(of:vcn:length:to:)` quitte `UltraDefragStrategy` pour
+`DefragOperations`, puisque les tranches de `Defragment` en ont besoin. Les
+vingt passes d'époque et trois passes UltraDefrag sont vérifiées à la requête
+près.
+
+#### Effets mesurés — FAT
+
+| scénario | plein | durée, 95 → JkDefrag | évacuations, 95 | morceaux restants, 95 → JkDefrag |
+|---|---:|---:|---:|---:|
+| `secretaire-1993` | 90 % | 1 h 06 → 8 min 15 | 9 249 | 0 → 0 |
+| `poweruser-1993` | 86 % | 40 min 51 → 6 min 07 | 2 705 | 0 → 64 |
+| `gamer-1993` | 99 % | 32 min 36 → 8,7 s | 1 426 | 0 → 941 |
+| `dev-1993` | 74 % | 30 min 35 → 4 min 30 | 4 561 | 0 → 0 |
+| `secretaire-1996` | 75 % | 46 min 12 → 7 min 21 | 4 009 | 2 → 2 |
+| `famille-1996` | 89 % | 1 h 01 → 6 min 54 | 4 039 | 176 → 192 |
+| `gamer-1996` | 99 % | 59 min 18 → 7,9 s | 4 438 | 14 → 1 622 |
+| `dev-1996` | 87 % | 36 min 21 → 5 min 03 | 3 811 | 290 → 330 |
+| `secretaire-1999` | 87 % | 3 h 07 → 10 min 19 | 19 595 | 3 → 1 032 |
+| `famille-1999` | 97 % | 4 h 29 → 12 min 09 | 11 989 | 8 → 2 707 |
+| `gamer-1999` | 97 % | 4 h 14 → 8 min 55 | 8 675 | 89 → 1 325 |
+| `dev-1999` | 93 % | 5 h 04 → 17 min 40 | 23 284 | 3 → 658 |
+
+Hors des deux volumes pleins, la passe est **de six à vingt-huit fois plus
+courte**, sans une évacuation. Ce que le tassage de 95 payait en va-et-vient,
+JkDefrag le paie en morceaux laissés derrière lui. Sur les autres volumes de 1993
+et 1996, l'écart tient en quelques dizaines de morceaux (64 au pire). Sur ceux de
+1999, remplis de 87 à 97 %, il en reste de 658 à 2 707. Le remplissage seul ne
+l'explique pas, puisque `famille-1996` est plein à 89 % et n'en garde que 192 ;
+la cause n'a pas été cherchée.
+
+Sur les deux volumes pleins à 99 %, JkDefrag ne fait **presque rien** : 7
+fichiers déplacés sur l'un, 1 sur l'autre. `Defragment` s'arrête au premier
+fichier pour lequel le volume n'a plus de trou (« Disk is full, cannot
+defragment », `JkDefragLib.cpp:4047`), et `Fixup` échoue sur tous les autres. Un
+outil qui n'évacue personne a besoin de trous, et ces deux volumes n'en ont plus.
+
+#### Effets mesurés — NTFS
+
+| scénario | plein | morceaux restants, XP | UltraDefrag | JkDefrag | durée, XP → JkDefrag | Go déplacés, XP → JkDefrag |
+|---|---:|---:|---:|---:|---:|---:|
+| `secretaire-2003` | 94 % | 17 704 | 7 622 | **3 878** | 2 min 22 → 20 min 17 | 1,2 → 6,4 |
+| `famille-2003` | 93 % | 38 054 | 15 186 | **3 093** | 2 min 28 → 23 min 37 | 0,7 → 6,2 |
+| `gamer-2003` | 8 % | 0 | 0 | 0 | 7,8 s → 6 min 09 | 0,0 → 4,0 |
+| `dev-2003` | 94 % | 10 229 | 474 | 432 | 5 min 58 → 13 min 51 | 2,8 → 3,5 |
+| `secretaire-2007` | 88 % | 0 | 0 | 0 | 16 min 03 → 47 min 53 | 17,2 → 45,1 |
+| `famille-2007` | 93 % | 130 288 | 1 378 | 2 828 | 23 min 28 → 1 h 40 | 19,0 → 55,4 |
+| `gamer-2007` | 90 % | 26 753 | 376 | 407 | 27 min 31 → 1 h 29 | 31,4 → 109,0 |
+| `dev-2007` | 86 % | 0 | 0 | 0 | 1 h 18 → 2 h 04 | 38,4 → 77,6 |
+
+Sur les cinq volumes où XP laisse du travail, JkDefrag fait mieux
+qu'UltraDefrag sur les trois de 2003, et moins bien sur les deux de 2007 — sans
+jamais s'en éloigner d'un ordre de grandeur. Les deux mécanismes diffèrent :
+UltraDefrag ne recolle que les petits morceaux, `Defragment` recopie le fichier
+entier par tranches, chacune dans le plus grand trou du moment. Ce qui fait
+gagner l'un ou l'autre selon le volume n'a pas été isolé.
+
+Le prix est ailleurs que chez UltraDefrag : dans ce qui est déplacé sans être
+cassé. `gamer-2003` est plein à 8 % et n'a pas un fichier en morceaux ; JkDefrag
+y déplace pourtant **4 Go en six minutes**. La zone des fichiers ordinaires
+commence après la zone MFT et la réserve, à 13,5 % du volume, et tout ce qui est
+posé devant est renvoyé derrière. C'est la mise en zone, pas un défaut.
+
+Même leçon que pour UltraDefrag, dans l'autre sens : le nombre de **fichiers**
+fragmentés monte (155 → 201 sur `famille-2007`, 39 → 81 sur `dev-2003`), parce
+qu'une tranche ramène un fichier à deux morceaux là où XP renonçait et le
+laissait intact.
+
+#### La zone MFT publiée décide de la moitié d'une passe NTFS
+
+Ce qui n'était qu'une garde pour XP devient ici **le premier paramètre**. Le
+générateur publie la zone réservée telle que l'allocateur l'a posée, 12,5 % du
+volume, même quand il a fini par y écrire. C'est le cas de sept volumes NTFS sur
+huit, tous ceux qui ont passé 87 % de remplissage pendant leur vieillissement.
+`CalculateZones` compte alors cette zone comme de l'immobile, **en plus** des
+fichiers qui l'occupent : la somme dépasse le volume, et la zone des space hogs
+est tronquée à la fin du disque. `Fixup` veut sortir de la zone tous les
+fichiers qui s'y trouvent ; sur `dev-2003`, il échoue 16 998 fois faute de
+trou.
+
+Or NTFS cède sa zone quand le volume se remplit, et la zone que renvoie
+`FSCTL_GET_NTFS_VOLUME_DATA` devrait être la zone **courante**, pas la réserve
+d'origine. C'est une lecture de la documentation de Windows, pas une mesure sur
+un vrai volume. Les mêmes passes, avec une zone retirée dès qu'un fichier y est
+écrit :
+
+| scénario | Fixup, zone publiée → retirée | OptimizeVolume | Go déplacés | morceaux restants |
+|---|---:|---:|---:|---:|
+| `dev-2003` | 2 032 → 1 098 | **0** → 2 351 | 3,5 → 8,8 | 432 → 206 |
+| `famille-2003` | 452 → 40 | 1 508 → 2 889 | 6,2 → 9,7 | 3 093 → 2 031 |
+| `secretaire-2003` | 1 023 → 370 | 4 855 → 6 515 | 6,4 → 8,3 | 3 878 → 2 757 |
+| `famille-2007` | 1 532 → 10 | 6 037 → 11 085 | 55,4 → 101,2 | 2 828 → 1 991 |
+| `gamer-2007` | 2 768 → 41 | 8 057 → 9 366 | 109,0 → 127,4 | 407 → 297 |
+| `secretaire-2007` | **13 196** → 3 584 | 6 378 → 4 034 | 45,1 → 45,6 | 0 → 0 |
+| `dev-2007` | 10 766 → 2 508 | 7 032 → 8 985 | 77,6 → 79,7 | 0 → 0 |
+
+Deux lectures ressortent. Sur `dev-2003`, la phase d'optimisation **ne fait rien
+du tout** tant que la zone est publiée : aucun trou ne reste hors de la zone
+au-delà du début des fichiers ordinaires. Et sur `secretaire-2007`, près des
+trois quarts de `Fixup` servent à vider une réserve que Windows aurait sans
+doute déjà rendue.
+
+**Ce n'est pas tranché ici**, et c'est délibéré. La zone publiée est une décision
+du commit `47a9abc`, qui a changé les chiffres de XP. Pour XP, la retirer ne
+toucherait que `dev-2003` (19 353 → 27 747 requêtes) et `gamer-2007`
+(76 425 → 78 305). Le bon modèle est sans doute une zone qui se réduit au lieu
+de disparaître d'un coup, mais la loi de cette réduction reste à établir. C'est
+une décision du générateur, qui dépasse ce chantier. Les tableaux précédents
+sont ceux de la zone publiée.
+
+### L'ordre de passage, isolé
+
+La troisième piste. `WindowsXPStrategy` gagne un réglage `order`, et la même
+passe (même placement, même garde, même grain) est rejouée dans l'ordre de
+chacun des autres outils. Par défaut rien ne change : les huit passes XP
+retombent à la requête près.
+
+Seek moyen, en cylindres :
+
+| scénario | MFT (XP) | plus fragmenté d'abord (UD) | position sur le disque (JK) | arborescence (95) | mêmes fichiers déplacés ? |
+|---|---:|---:|---:|---:|---|
+| `famille-2003` | 30 277 | 22 311 (−26 %) | 22 758 (−25 %) | 31 856 (+5 %) | oui |
+| `secretaire-2007` | 41 242 | 39 998 (−3 %) | 38 542 (−7 %) | 41 214 (0 %) | oui |
+| `dev-2007` | 50 291 | 51 572 (+3 %) | 52 280 (+4 %) | 50 298 (0 %) | oui |
+| `famille-2007` | 35 489 | 49 031 (+38 %) | 69 913 (+97 %) | 36 838 (+4 %) | **non** |
+| `dev-2003` | 33 412 | 25 648 (−23 %) | 37 143 (+11 %) | 33 237 (−1 %) | **non** |
+
+**Les « 39 % » écrits plus haut ne mesuraient pas un ordre de passage.** Ils
+comparaient la première séquence d'UltraDefrag à la passe de XP sur
+`famille-2007`, et le même écart se retrouve ici (+38 %). Mais sur ce volume,
+l'ordre décide aussi **quels fichiers obtiennent les trous** : dans l'ordre
+d'UltraDefrag, la passe XP lit deux fois plus de requêtes (167 727 contre 78 797)
+et laisse 84 714 morceaux au lieu de 130 288. Ce n'est plus la même passe.
+
+Là où les fichiers déplacés sont les mêmes à l'unité, **l'ordre seul pèse de
+−26 % à +4 %**. C'est audible sur `famille-2003`, négligeable sur les deux
+volumes de 2007. Et l'ordre qui semble le plus local est parfois le pire : par
+position sur le disque, `famille-2007` double son seek moyen. L'hypothèse est
+que la destination reste le premier trou depuis le début du volume : chaque
+fichier pris un peu plus loin allonge l'aller-retour. Rien n'a vérifié cette
+hypothèse.
+
+La leçon utile : **l'ordre de passage agit surtout sur ce qui est réparé**, et
+seulement ensuite sur la façon dont le bras s'y déplace. Sur `dev-2003`, la
+passe XP laisse 3 153 morceaux dans l'ordre d'UltraDefrag contre 10 229 dans le
+sien, à placement identique.
+
 ### Ce qui reste
 
-Deux des trois pistes ouvertes par la lecture de `COMPARAISON-DEFRAGMENTEURS.md`,
-la première ayant été traitée ci-dessus. Toutes deux sont **indépendantes du
-format** : elles s'appliquent aux volumes FAT comme aux NTFS.
-
-**1. Le comblement de trous d'`OptimizeVolume`.** La signature de placement la
-plus caractéristique de JKDefrag : pour chaque trou, chercher d'abord une
-**combinaison de fichiers qui le comble exactement** (`FindBestItem`), sinon le
-plus gros qui tient (`FindHighestItem`). Beaucoup moins d'évacuations que le
-tassage de 95.
-
-Piège identifié : `FindBestItem` n'a pour seul garde-fou contre l'explosion
-combinatoire qu'un **budget de 0,5 s de temps réel** (`ALGO.md` §5.2).
-Inutilisable tel quel — une passe simulée doit être reproductible. Il faudra une
-borne déterministe, en nombre de candidats ou d'itérations, et assumer que le
-plan diverge de l'original.
-
-**2. Les trois zones et les tris.** `CalculateZones` découpe le volume en
-répertoires / fichiers ordinaires / *space hogs*, avec une réserve d'espace
-libre après les deux premières et une itération à point fixe plafonnée à dix
-passes. S'y ajoutent les cinq tris complets du disque (nom, taille, dernier
-accès, dernière modification, création), `ForcedFill` et `OptimizeUp`. Le plus
-gros morceau, et le moins urgent.
-
-**Et une troisième, née de ce qui précède :** l'ordre de passage pèse plus lourd
-que l'algorithme de placement — 39 % de seek moyen en plus rien qu'en changeant
-de tri. Cela se mesure sans écrire une stratégie de plus, en rejouant la même
-sur plusieurs ordres, et cela dit quelque chose d'audible.
+- **La zone MFT publiée** (ci-dessus) : la décision la plus lourde, et une
+  décision du générateur.
+- **Les tris complets de JkDefrag** : `OptimizeSort` sur les cinq critères, avec
+  `Vacate` et sa protection anti-ver, plus `ForcedFill` et `OptimizeUp`. Ce sont
+  les seuls modes qui évacuent. Les zones, elles, sont faites.
+- **`SlowDown`** reste un réglage de tempo historique et audible (`-s 1..5`).
+  Non transposé : la vitesse par défaut n'endort rien.
+- **Rien n'a été écouté.** JkDefrag comme l'ordre de passage sont mesurés en
+  `PLAN_ONLY`. La signature attendue (prendre au fond, poser dans le trou en
+  cours, un trou après l'autre en remontant) est déduite, pas entendue.
 
 ### Deux petits points, et une mise au point de vocabulaire
 
@@ -428,6 +626,14 @@ plein à 8 % et n'a pas un fichier fragmenté : il rend une passe de 17 requête
 et 7,8 s. UltraDefrag a exactement la garde qui manque —
 `check_fragmentation_level` annule le job sous un seuil. C'est quelques lignes,
 et c'est plus juste que sept secondes de bruit.
+
+**Correction, à la relecture du source : cette garde ne garde rien par défaut.**
+Le seuil vaut zéro (`memset` des options, `options.c:51`), et l'interface
+graphique efface la variable qui le règle (`wxgui/config.cpp:180`). La condition
+est `fragmentation < seuil`, donc `0 < 0`, qui est fausse : un volume sans un
+fichier cassé passe quand même. La garde n'existe que pour qui pose
+`UD_FRAGMENTATION_THRESHOLD`. L'ajouter ici aurait fait mieux que l'outil
+qu'elle prétend imiter. Elle n'est pas écrite.
 
 **`SlowDown()` (`-s 1..5`) de JKDefrag bride volontairement l'I/O.** Pour un
 projet qui sonifie une passe, c'est un réglage de tempo directement audible,
