@@ -46,6 +46,12 @@ import DiskCore
 /// prise entre-temps, n'a rien à rattraper : un plan simulé ne perd pas une
 /// course contre le système. Et `can_defragment` saute les répertoires sur FAT,
 /// distinction qu'un `ClusterCategory` ne porte pas.
+///
+/// Une troisième, en revanche, est suivie à la lettre parce qu'elle s'entend :
+/// sur NTFS, l'espace qu'un déplacement libère ne sert qu'au **tour suivant**
+/// de la routine (`move.c:719-727`, voir `apply`). Les destinations d'un tour
+/// sont donc prises plus loin qu'elles ne le seraient sur FAT, et le bras
+/// voyage d'autant.
 struct UltraDefragStrategy: DefragStrategy {
 
     let id = "ultraDefrag"
@@ -150,6 +156,9 @@ struct UltraDefragStrategy: DefragStrategy {
 
         // MARK: Phase 3 — la MFT et la bitmap, une dernière fois
 
+        // Le bilan est celui d'un volume revenu au repos : ce qui était retenu
+        // depuis le dernier tour est rendu.
+        volume.releaseHeldClusters()
         sink.progress = 1
         DefragOperations.final(partition: partition, phase: 3, into: sink)
 
@@ -197,6 +206,10 @@ struct UltraDefragStrategy: DefragStrategy {
 
         let partition = volume.partition
 
+        // `release_temp_space_regions` : les clusters quittés au tour
+        // précédent sont enfin libres, et seulement maintenant.
+        volume.releaseHeldClusters()
+
         // L'arbre rouge-noir `jp->fragmented_files`, dans son ordre de
         // parcours : décroissant sur le nombre de fragments, départagé par le
         // chemin. C'est cet ordre-là, et non celui de la MFT, qui fait qu'une
@@ -232,7 +245,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                       into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
                                         phase: phase, partition: partition, into: sink)
-                volume.relocate(position, to: [target])
+                apply(position, to: [target], in: &volume)
                 moved.clusters += Int(file.clusterCount)
                 moved.clustersThisPass += Int(file.clusterCount)
                 moved.entirely.insert(position)
@@ -385,7 +398,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                       into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
                                         phase: phase, partition: partition, into: sink)
-                volume.relocate(position, to: result.coalesced())
+                apply(position, to: result.coalesced(), in: &volume)
                 moved.clusters += Int(length)
                 moved.clustersThisPass += Int(length)
                 succeeded = true
@@ -394,6 +407,20 @@ struct UltraDefragStrategy: DefragStrategy {
         }
 
         if succeeded { moved.partially.insert(position) }
+    }
+
+    /// Valide un déplacement dans le volume de travail.
+    ///
+    /// Sur NTFS, ce que le fichier quitte reste hors d'atteinte jusqu'au tour
+    /// suivant : Windows tient ces clusters pour temporairement alloués, et
+    /// UltraDefrag ne les rend pas à sa liste de régions libres
+    /// (`move.c:719-727`). Sur FAT, ils sont réutilisables aussitôt.
+    private func apply(_ position: Int, to extents: [Extent], in volume: inout DefragVolume) {
+        if volume.partition.format == .ntfs {
+            volume.relocateHoldingReleased(position, to: extents)
+        } else {
+            volume.relocate(position, to: extents)
+        }
     }
 
     // MARK: - Morceaux d'un fichier
@@ -408,10 +435,11 @@ struct UltraDefragStrategy: DefragStrategy {
 
     /// Les morceaux que la tête devra aller chercher — `build_fragments_list`.
     ///
-    /// Deux extents qui se touchent bout à bout n'en font qu'un, par la même
-    /// règle que `DefragFile.fragmentCount` : sans cela, la passe croirait
-    /// avoir des petits fragments à recoller là où il n'y a qu'une seule
-    /// rafale de lecture.
+    /// Deux extents qui se suivent dans le fichier et se touchent sur le
+    /// plateau n'en font qu'un, par la même règle que
+    /// `DefragFile.fragmentCount` : sans cela, la passe croirait avoir des
+    /// petits fragments à recoller là où il n'y a qu'une seule rafale de
+    /// lecture. `fragments(of:).count` et `fragmentCount` sont donc égaux.
     private func fragments(of extents: [Extent]) -> [Fragment] {
         var result: [Fragment] = []
         var vcn: UInt32 = 0

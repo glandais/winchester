@@ -479,13 +479,15 @@ struct WindowsXPStrategyTests {
         #expect(split.fragmentCount == 2)
         #expect(!split.isContiguous)
 
-        // L'ordre de la liste ne doit rien changer : c'est la position sur le
-        // plateau qui décide, pas l'ordre des runs dans la description.
+        // Jointifs sur le plateau mais dans l'ordre inverse du fichier : la
+        // tête lit le premier, puis revient en arrière chercher le second.
+        // Deux morceaux, comme le comptent JKDefrag et UltraDefrag.
         let reversed = DefragFile(id: 0, path: "\\A.dat", category: .document, walkOrder: 0,
                                   extents: [Extent(start: 14, length: 6),
                                             Extent(start: 10, length: 4)],
                                   isMovable: true)
-        #expect(reversed.fragmentCount == 1)
+        #expect(reversed.fragmentCount == 2)
+        #expect(!reversed.isContiguous)
     }
 
     /// Conséquence directe : un fichier décrit en deux extents jointifs ne
@@ -984,6 +986,52 @@ struct UltraDefragStrategyTests {
         sorted.order = .mostFragmented
         let reordered = DefragPlanner.plan(volume: volume, using: sorted)
         #expect(firstServed(reordered)?.1 == .document)
+    }
+
+    /// `move.c:719-727` : sur NTFS, les clusters qu'un déplacement quitte ne
+    /// reviennent dans la liste des régions libres qu'au tour suivant, parce
+    /// que Windows les tient pour temporairement alloués. Sur FAT, ils sont
+    /// réutilisables aussitôt.
+    ///
+    /// Le fichier le plus fragmenté part en premier et libère, en quittant son
+    /// dernier morceau, de quoi compléter un trou de quatre clusters en un trou
+    /// de six. Le second fichier en veut six : sur FAT il les prend là, en bas
+    /// du volume ; sur NTFS ce trou n'existe pas encore, et il part au fond.
+    @Test("Sur NTFS, l'espace libéré n'est réutilisé qu'au tour suivant")
+    func releasedSpaceWaitsForTheNextRoundOnNTFS() {
+        let files = [
+            TestFile(category: .application, extents: [Extent(start: 0, length: 10)]),
+            // Trois morceaux : le premier servi.
+            TestFile(category: .document, extents: [Extent(start: 10, length: 2),
+                                                    Extent(start: 14, length: 2),
+                                                    Extent(start: 18, length: 2)]),
+            TestFile(category: .application, extents: [Extent(start: 12, length: 2)]),
+            TestFile(category: .application, extents: [Extent(start: 16, length: 2)]),
+            // Libre : [20, 24).
+            // Deux morceaux, six clusters.
+            TestFile(category: .archive, extents: [Extent(start: 24, length: 3),
+                                                   Extent(start: 28, length: 3)]),
+            TestFile(category: .application, extents: [Extent(start: 27, length: 1)]),
+            TestFile(category: .application, extents: [Extent(start: 31, length: 29)]),
+            // Libre : [60, 66), où part le premier fichier.
+            TestFile(category: .application, extents: [Extent(start: 66, length: 24)]),
+            // Libre : [90, 96).
+        ]
+        let archiveLandsAt = { (plan: DefragPlan) in
+            plan.mutations.first { $0.category == .archive }?.start
+        }
+
+        let ntfs = ultraPlan(clusterCount: 96, files: files)
+        #expect(archiveLandsAt(ntfs) == 90)
+        #expect(ntfs.after.fragmentedFiles == 0)
+        // Le bilan est pris une fois tout rendu : rien ne reste retenu.
+        #expect(ntfs.after.fill == ntfs.before.fill)
+
+        var strategy = UltraDefragStrategy()
+        strategy.fragmentSizeThreshold = 10 * 4_096
+        let fat = DefragPlanner.plan(volume: volume(clusterCount: 96, files: files), using: strategy)
+        #expect(archiveLandsAt(fat) == 18)
+        #expect(fat.after.fragmentedFiles == 0)
     }
 
     /// La première séquence de `defrag_sequence` a un seuil infini : tout

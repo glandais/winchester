@@ -422,11 +422,11 @@ requêtes et 23 min 14**.
 | scénario NTFS     | plein | requêtes | durée      | déplacés | fragmentés avant → après | morceaux avant → après |
 |-------------------|------:|---------:|-----------:|---------:|--------------------------|------------------------|
 | `gamer-2003`      |   8 % |       17 |      7,8 s |        0 | 0 → 0                    | 0 → 0                  |
-| `secretaire-2003` |  94 % |    4 819 |   1 min 18 |       68 | 178 → 110                | 26 099 → 23 777        |
-| `famille-2003`    |  93 % |    9 144 |   2 min 34 |       27 | 68 → 41                  | 47 055 → 42 617        |
+| `secretaire-2003` |  94 % |    4 819 |   1 min 18 |       68 | 178 → 110                | 26 101 → 23 778        |
+| `famille-2003`    |  93 % |    9 144 |   2 min 34 |       27 | 68 → 41                  | 47 063 → 42 617        |
 | `dev-2003`        |  94 % |   17 309 |   4 min 50 |       32 | 36 → 4                   | 12 253 → 3 771         |
-| `secretaire-2007` |  88 % |   23 962 |   9 min 49 |       49 | 49 → **0**               | 9 651 → **0**          |
-| `famille-2007`    |  93 % |   69 967 |  23 min 14 |      118 | 268 → 150                | 163 226 → 132 920      |
+| `secretaire-2007` |  88 % |   23 962 |   9 min 49 |       49 | 49 → **0**               | 9 662 → **0**          |
+| `famille-2007`    |  93 % |   69 967 |  23 min 14 |      118 | 268 → 150                | 163 249 → 132 920      |
 | `gamer-2007`      |  90 % |   50 991 |  18 min 42 |       85 | 175 → 90                 | 60 516 → 38 419        |
 | `dev-2007`        |  86 % |  258 179 | 1 h 07 min |      176 | 176 → **0**              | 120 211 → **0**        |
 
@@ -454,18 +454,25 @@ sujet : un fichier ramené de quarante morceaux à deux y reste « fragmenté »
 
 | scénario NTFS     | morceaux restants, XP | UltraDefrag |  requêtes XP → UD |    durée XP → UD |
 |-------------------|----------------------:|------------:|------------------:|-----------------:|
-| `secretaire-2003` |                23 777 |      13 821 |   4 819 → 25 975  | 1 min 18 → 6 min 10 |
-| `famille-2003`    |                42 617 |      17 131 |   9 144 → 61 912  | 2 min 34 → 16 min 09 |
-| `dev-2003`        |                 3 771 |      **13** |  17 309 → 24 989  | 4 min 50 → 6 min 27 |
-| `secretaire-2007` |                     0 |           0 |  23 962 → 21 684  | 9 min 49 → 9 min 39 |
-| `famille-2007`    |               132 920 |   **1 350** | 69 967 → 329 977  | 23 min 14 → 1 h 22 |
-| `gamer-2007`      |                38 419 |     **511** | 50 991 → 123 331  | 18 min 42 → 38 min 07 |
-| `dev-2007`        |                     0 |           3 | 258 179 → 248 719 | 1 h 07 → 1 h 13 |
+| `secretaire-2003` |                23 778 |      14 334 |   4 819 → 25 153  | 1 min 18 → 6 min 24 |
+| `famille-2003`    |                42 617 |      14 949 |   9 144 → 66 598  | 2 min 34 → 18 min 04 |
+| `dev-2003`        |                 3 771 |      **11** |  17 309 → 24 987  | 4 min 50 → 6 min 48 |
+| `secretaire-2007` |                     0 |           0 |  23 962 → 21 684  | 9 min 49 → 9 min 53 |
+| `famille-2007`    |               132 920 |   **1 503** | 69 967 → 331 349  | 23 min 14 → 1 h 27 |
+| `gamer-2007`      |                38 419 |     **561** | 50 991 → 123 361  | 18 min 42 → 38 min 20 |
+| `dev-2007`        |                     0 |          19 | 258 179 → 247 803 | 1 h 07 → 1 h 16 |
 
 Sur `famille-2007`, les 132 920 morceaux que XP laisse derrière lui tombent à
-**1 350** — 99 % de moins — pendant que le nombre de fichiers fragmentés, lui,
-monte de 150 à 156. Le prix est près de cinq fois plus de requêtes et trois fois
-et demie plus de temps.
+**1 503** — 99 % de moins — pendant que le nombre de fichiers fragmentés, lui,
+monte de 150 à 157. Le prix est près de cinq fois plus de requêtes et près de
+quatre fois plus de temps.
+
+Sur NTFS, la passe ne réutilise pas dans un tour l'espace qu'elle vient de
+libérer : Windows tient ces clusters pour temporairement alloués jusqu'au
+prochain point de contrôle, et UltraDefrag ne relit sa liste de trous qu'en tête
+de tour. Ses destinations sont donc plus lointaines — le seek moyen de
+`dev-2007` passe de 47 430 à 64 868 cylindres — et un morceau inversé compte
+pour deux : la tête le lit dans l'ordre du fichier.
 
 Cela ne fait pas d'UltraDefrag le meilleur outil partout. Les deux volumes que
 XP nettoie entièrement, il les nettoie aussi, ni mieux ni plus vite. Et sur un
@@ -492,9 +499,9 @@ laisse plus de morceaux derrière lui dès que les trous manquent :
 | scénario | plein | durée, 95 → JkDefrag | évacuations, 95 | morceaux restants, 95 → JkDefrag |
 |---|---:|---:|---:|---:|
 | `dev-1993` | 74 % | 30 min 35 → 4 min 30 | 4 561 | 0 → 0 |
-| `dev-1996` | 87 % | 36 min 21 → 5 min 03 | 3 811 | 290 → 330 |
-| `secretaire-1999` | 87 % | 3 h 07 → 10 min 19 | 19 595 | 3 → 1 032 |
-| `famille-1999` | 97 % | 4 h 29 → 12 min 09 | 11 989 | 8 → 2 707 |
+| `dev-1996` | 87 % | 36 min 21 → 5 min 03 | 3 811 | 290 → 334 |
+| `secretaire-1999` | 87 % | 3 h 07 → 10 min 19 | 19 595 | 3 → 1 057 |
+| `famille-1999` | 97 % | 4 h 29 → 12 min 09 | 11 989 | 8 → 2 739 |
 | `gamer-1996` | 99 % | 59 min 18 → 7,9 s | 4 438 | 14 → 1 622 |
 
 À 99 %, il ne fait presque rien : un outil qui n'évacue personne a besoin de
@@ -507,12 +514,12 @@ tout le volume et déplace bien plus que les seuls fichiers cassés — 4,1 Go s
 
 | scénario | plein | morceaux restants, XP | UltraDefrag | JkDefrag | durée, XP → JkDefrag | Go déplacés, XP → JkDefrag |
 |---|---:|---:|---:|---:|---:|---:|
-| `secretaire-2003` | 94 % | 23 777 | 13 821 | 5 118 | 1 min 18 → 21 min 25 | 0,4 → 5,6 |
-| `famille-2003` | 93 % | 42 617 | 17 131 | 1 786 | 2 min 34 → 28 min 24 | 0,7 → 11,6 |
-| `dev-2003` | 94 % | 3 771 | 13 | 25 | 4 min 50 → 11 min 38 | 1,1 → 3,6 |
+| `secretaire-2003` | 94 % | 23 778 | 14 334 | 5 307 | 1 min 18 → 21 min 25 | 0,4 → 5,6 |
+| `famille-2003` | 93 % | 42 617 | 14 949 | 2 128 | 2 min 34 → 28 min 24 | 0,7 → 11,6 |
+| `dev-2003` | 94 % | 3 771 | 11 | 25 | 4 min 50 → 11 min 38 | 1,1 → 3,6 |
 | `gamer-2003` | 8 % | 0 | 0 | 0 | 7,8 s → 6 min 11 | 0,0 → 4,1 |
-| `famille-2007` | 93 % | 132 920 | 1 350 | 1 911 | 23 min 14 → 2 h 02 | 22,9 → 103,1 |
-| `gamer-2007` | 90 % | 38 419 | 511 | 1 437 | 18 min 42 → 1 h 15 | 20,6 → 86,9 |
+| `famille-2007` | 93 % | 132 920 | 1 503 | 2 191 | 23 min 14 → 2 h 02 | 22,9 → 103,1 |
+| `gamer-2007` | 90 % | 38 419 | 561 | 1 439 | 18 min 42 → 1 h 15 | 20,6 → 86,9 |
 
 La zone MFT que voient ces passes est la zone **courante**, réduite de moitié
 chaque fois que le reste du volume s'est rempli, et non la réserve d'origine :
@@ -543,8 +550,8 @@ Un tri est long, et il déplace plus que le volume : ce qu'on évacue redescend
 quand vient son tour. Sur `famille-2007`, 448 Go déplacés pour 320, 156 563
 évacuations, 7 h 21 de passe contre 2 h 02 pour le mode 2. Sur un volume plein,
 ce qui ne trouve pas de place est posé en morceaux : `gamer-2007` en sort avec
-30 095 morceaux contre 1 437. Sur `secretaire-1999`, il en laisse 14 contre
-1 032.
+30 441 morceaux contre 1 439. Sur `secretaire-1999`, il en laisse 14 contre
+1 057.
 
 Le catalogue ne date que les écritures, au jour près : le dernier accès y est la
 dernière écriture, et à jour égal c'est le chemin qui départage.

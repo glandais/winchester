@@ -35,6 +35,12 @@ struct DefragFile {
     /// (`ALGO.md` §4.2), et le §8 la range parmi les cinq choses à transposer :
     /// sans elle, les compteurs de fragmentation sont faux.
     ///
+    /// « Bout à bout » s'entend **dans l'ordre du fichier** : un extent
+    /// prolonge le précédent de la liste, pas son voisin sur le plateau. Si B
+    /// est posé juste avant A, la tête lit A puis revient en arrière chercher
+    /// B — deux morceaux. C'est la règle de JKDefrag (`NextLcn`,
+    /// `JkDefragLib.cpp:1348`) comme d'UltraDefrag (`ftw_ntfs.c:1098`).
+    ///
     /// Le cas n'est pas théorique. Un fichier écrit en deux fois par un
     /// allocateur next-fit qui n'a bougé entre-temps sort en deux extents
     /// adjacents ; et sur NTFS, un fichier dont la description déborde d'un
@@ -43,9 +49,8 @@ struct DefragFile {
     /// défragmenteur du travail qui n'existe pas.
     var fragmentCount: Int {
         guard extents.count > 1 else { return extents.count }
-        let ordered = extents.sorted { $0.start < $1.start }
         var count = 1
-        for (previous, next) in zip(ordered, ordered.dropFirst()) where previous.end != next.start {
+        for (previous, next) in zip(extents, extents.dropFirst()) where previous.end != next.start {
             count += 1
         }
         return count
@@ -251,6 +256,46 @@ struct DefragVolume {
         for extent in extents { bitmap.allocate(extent) }
         index.insert(extents, file: position)
         files[position].extents = extents
+    }
+
+    /// Les clusters qu'un déplacement a libérés mais qu'on s'interdit encore de
+    /// réutiliser : occupés dans la bitmap, portés par aucun fichier.
+    ///
+    /// C'est la comptabilité d'UltraDefrag sur NTFS (`move.c:719-727`). Windows
+    /// marque les clusters quittés par `FSCTL_MOVE_FILE` comme temporairement
+    /// alloués jusqu'au prochain point de contrôle ; l'outil ne les rend donc
+    /// pas à sa liste de régions libres, et ne la relit qu'en tête de chaque
+    /// tour (`release_temp_space_regions`). Un trou ouvert pendant un tour
+    /// n'existe qu'au tour suivant.
+    private(set) var heldClusters: [Extent] = []
+
+    /// `relocate`, en retenant ce que le fichier quitte au lieu de le rendre
+    /// aussitôt aux recherches de trou.
+    ///
+    /// Ce qui est libéré, c'est ce que l'empreinte d'origine a de libre une
+    /// fois le déplacement fait : la plage déplacée, et pas ce qui est resté en
+    /// place.
+    mutating func relocateHoldingReleased(_ position: Int, to extents: [Extent]) {
+        let old = files[position].extents
+        relocate(position, to: extents)
+        for extent in old where !extent.isEmpty {
+            var cursor = extent.start
+            // Le run est borné à l'extent : un trou voisin, déjà libre avant le
+            // déplacement, n'a rien à attendre.
+            while let found = bitmap.nextFreeRun(from: cursor, limit: extent.end - cursor,
+                                                 before: extent.end) {
+                let run = Extent(start: found.start, length: min(found.end, extent.end) - found.start)
+                bitmap.allocate(run)
+                heldClusters.append(run)
+                cursor = run.end
+            }
+        }
+    }
+
+    /// Le point de contrôle : tout ce qui était retenu redevient libre.
+    mutating func releaseHeldClusters() {
+        for extent in heldClusters { bitmap.free(extent) }
+        heldClusters.removeAll(keepingCapacity: true)
     }
 
     /// Le même déplacement, qui ne touche la bitmap et l'index que pour les
