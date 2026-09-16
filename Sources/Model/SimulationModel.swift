@@ -75,12 +75,17 @@ final class SimulationModel: ObservableObject {
     /// Un seul disque de la galerie est gardé à la fois, quelle que soit
     /// l'activité : le sélecteur est segmenté, et une quatrième entrée n'y
     /// tiendrait pas. Revenir sur le précédent se fait depuis la galerie.
-    func load(generated disk: GeneratedDisk, as activity: GeneratedActivity) throws {
+    ///
+    /// `strategy` choisit le défragmenteur ; `nil` laisse le format décider,
+    /// comme l'aurait fait la machine de l'époque. Un démarrage l'ignore.
+    func load(generated disk: GeneratedDisk,
+              as activity: GeneratedActivity,
+              using strategy: (any DefragStrategy)? = nil) throws {
         let selection = ScenarioSelection.generated(disk.spec.id, activity)
         let scenario: Scenario
         switch activity {
         case .boot:   scenario = ScenarioBuilder.build(boot: disk)
-        case .defrag: scenario = try ScenarioBuilder.build(generated: disk)
+        case .defrag: scenario = try ScenarioBuilder.build(generated: disk, using: strategy)
         }
         for key in cache.keys where key.isGenerated { cache[key] = nil }
         cache[selection] = scenario

@@ -14,9 +14,10 @@ struct DiskLibraryView: View {
     /// Confie le disque affiché au simulateur, qui en planifie la passe et
     /// bascule dessus. Lève si le pont refuse le volume — ce que le bouton
     /// empêche normalement d'atteindre.
-    let onHandover: (GeneratedDisk, GeneratedActivity) throws -> Void
+    let onHandover: DiskHandover
 
     @State private var handoverFailure: String?
+    @State private var showsTools = false
     @State private var showsFullScreenMap = false
     @State private var showsDetails = false
 
@@ -36,6 +37,15 @@ struct DiskLibraryView: View {
                 details(of: disk)
             case let .failed(message):
                 failure(message)
+            }
+        }
+        .navigationDestination(isPresented: $showsTools) {
+            if let disk = model.state.disk {
+                DefragToolChoiceScreen(disk: disk) { disk, activity, strategy in
+                    try onHandover(disk, activity, strategy)
+                    // De retour sur l'onglet Disques, on retrouve la fiche.
+                    showsTools = false
+                }
             }
         }
     }
@@ -290,8 +300,8 @@ struct DiskLibraryView: View {
 
     // MARK: - Passage au simulateur
 
-    /// Les deux ponts entre les écrans : **défragmenter** ce disque, ou le
-    /// **démarrer**.
+    /// Les deux ponts entre les écrans : **défragmenter** ce disque, en
+    /// choisissant l'outil sur l'écran suivant, ou le **démarrer**.
     ///
     /// Les deux marchent sur les vingt disques : démarrer ne suppose aucune
     /// stratégie de rangement, et chaque format a le défragmenteur de son
@@ -328,8 +338,13 @@ struct DiskLibraryView: View {
         let enabled = refusal == nil
         return Button {
             handoverFailure = nil
+            // Défragmenter demande d'abord avec quel outil ; démarrer, non.
+            guard activity == .boot else {
+                showsTools = true
+                return
+            }
             do {
-                try onHandover(disk, activity)
+                try onHandover(disk, .boot, nil)
             } catch {
                 handoverFailure = "\(error)"
             }

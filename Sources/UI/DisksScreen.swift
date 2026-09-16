@@ -38,8 +38,8 @@ struct DisksScreen: View {
             .navigationTitle("Disques")
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { id in
-                DiskDetailScreen(library: library, id: id) { disk, activity in
-                    try model.load(generated: disk, as: activity)
+                DiskDetailScreen(library: library, id: id) { disk, activity, strategy in
+                    try model.load(generated: disk, as: activity, using: strategy)
                     play()
                 }
             }

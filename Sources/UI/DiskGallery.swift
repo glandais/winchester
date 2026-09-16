@@ -201,7 +201,7 @@ struct DiskDetailScreen: View {
 
     @ObservedObject var library: DiskLibraryModel
     let id: String
-    let onHandover: (GeneratedDisk, GeneratedActivity) throws -> Void
+    let onHandover: DiskHandover
 
     var body: some View {
         ZStack {

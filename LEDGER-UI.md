@@ -355,33 +355,62 @@ disait « jour 62 », un compteur que personne ne sait lire.
 
 ## Chantier U3 — choisir le défragmenteur
 
-**À faire** · prompt §3
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-Un sélecteur pédagogique, une carte par outil : nom, année, principe en une
-phrase, ce qu'on va entendre, ordre de grandeur de durée.
+L'app ne jouait que l'outil que le format imposait : Windows 95 sur FAT, XP sur
+NTFS. UltraDefrag et les huit modes de JkDefrag — tout le travail de
+comparaison des chantiers 2, 9 et 11 — ne s'entendaient que par
+`STRATEGY=` dans `RenderTrace`.
 
-| outil | formats | défaut |
-|---|---|---|
-| Windows 95/98 (`windows95`) | FAT | oui sur FAT |
-| Windows XP (`windowsXP`) | NTFS | oui sur NTFS |
-| UltraDefrag 7.1.1 (`ultraDefrag`) | tous | — |
-| JkDefrag mode 2 (`jkDefrag`) | tous | — |
-| JkDefrag tasser au début / à la fin (`jkDefragForcedFill`, `jkDefragMoveUp`) | tous | avancé |
-| JkDefrag trier par nom, taille, accès, modification, création (`jkDefragSort…`) | tous | avancé |
+### Les décisions
 
-Outil indisponible : grisé, raison écrite dessous (comme `refusal(for:)`).
+- **« Défragmenter ce disque » ouvre « Avec quel outil ? »** (maquette 08,
+  `DefragToolChoiceScreen`), poussé depuis la fiche. **Démarrer cet OS** ne
+  demande rien.
+- **Une carte par outil** : nom, année, principe en une phrase, ce qu'on
+  entend. L'outil de l'époque du format est **présélectionné** et marqué
+  « D'époque ». UltraDefrag et le mode par défaut de JkDefrag suivent ; les
+  deux tassements et les cinq tris vont dans **Options avancées**.
+- **Windows 95 et Windows XP sont grisés hors de leur format**, avec la raison
+  (« Réservé à NTFS · ce volume est en VFAT »). Le moteur les passerait
+  pourtant : c'est l'écran qui refuse le contresens, pas le planificateur.
+- **Aucune durée estimée.** Rien ne calcule la durée d'une passe avant de
+  l'entendre. Chaque carte donne, par format, la **fourchette mesurée** sur les
+  disques de la galerie, relevée dans le README et `LEDGER.md` (« Mesuré sur la
+  galerie : de 30 min à 5 h »), et rien là où l'outil n'a pas été mesuré.
+  UltraDefrag sur FAT n'a qu'une mesure (`dev-1996`, 79 s) : la carte le dit.
+- **La stratégie descend jusqu'au modèle** : `SimulationModel.load(generated:as:using:)`
+  la passe à `ScenarioBuilder.build(generated:using:)`, qui l'acceptait déjà.
+  `nil` garde le choix du format. Le pont des écrans devient `DiskHandover`,
+  qui porte la stratégie.
+- **Après le lancement**, l'écran de choix se referme : revenu sur l'onglet
+  Disques, on retrouve la fiche.
 
-### À ajouter côté moteur
+### Ce qui valide
 
-- **Passer une stratégie à `SimulationModel.load(generated:as:)`** : la
-  résolution par identifiant existe dans `RenderTrace`, pas dans l'app.
-- **Une estimation de durée.** Rien ne la calcule : les ordres de grandeur ne
-  sont que dans les tableaux du README. Soit une table figée par profil et par
-  outil, soit une fourchette qualitative (« quelques minutes », « des
-  heures »). À trancher — une estimation fausse d'un facteur dix est pire que
-  pas d'estimation.
+- Construit en Debug pour le simulateur iPhone 17 Pro, sans erreur. `Sources/Model`
+  n'est touché que dans `SimulationModel.swift`, hors tests et hors rendu
+  hors-ligne.
+- Sur le simulateur, `secretaire-1996` (VFAT) : Windows 95/98 présélectionné et
+  « D'époque », Windows XP grisé avec sa raison, fourchettes affichées ;
+  JkDefrag choisi puis **Lancer la passe** : l'onglet Passe annonce
+  « JkDefrag 3.36 » et montre la carte de ce volume.
+
+### Laissé ouvert
+
+- **Les fourchettes sont figées dans le code**, recopiées des tableaux de
+  mesure. Si un chantier du modèle change une durée, elles ne suivront pas.
+  Certaines datent d'avant les chantiers 9 à 12.
+- **« Comparer deux outils »** n'est pas là : c'est U8, qui demande de garder le
+  bilan d'une passe.
+- **Pas de choix d'outil pour les démos** : la défragmentation livrée reste
+  celle de Windows 95.
+- **Les maquettes avaient faux sur le disque d'exemple.** `secretaire-1996`,
+  une fois généré, compte 3 128 fichiers, 9 % fragmentés et 642 trous, là où
+  les maquettes en supposaient 7 412, 41 % et 38. La réserve notée à leur
+  validation se confirme : ne pas s'en servir comme référence de chiffres.
 
 ---
 
