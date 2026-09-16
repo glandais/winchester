@@ -122,6 +122,7 @@ public struct ScenarioCompiler {
 
         var timeline = writer.timeline
         timeline.sortByDay()
+        timeline.giveUniqueNames()
         return CompiledScenario(spec: spec, catalog: catalog, timeline: timeline)
     }
 

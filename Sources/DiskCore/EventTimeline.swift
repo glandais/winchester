@@ -139,6 +139,111 @@ public struct EventTimeline: Sendable {
         }
         events = sorted
     }
+
+    /// Renomme chaque fichier créé sous un nom que porte encore un fichier
+    /// présent du même répertoire.
+    ///
+    /// FAT comme NTFS refusent deux fois le même nom dans un répertoire, sans
+    /// distinction de casse, et les défragmenteurs s'appuient dessus : un tri
+    /// par nom ou un départage par chemin n'est un ordre unique qu'à cette
+    /// condition. Le compilateur, lui, nomme les fichiers d'après ce qu'ils
+    /// sont — `MODULE.C`, `SAVE.DAT` — sans savoir ce qui existe encore au jour
+    /// où ils sont écrits.
+    ///
+    /// Seuls les fichiers **présents en même temps** sont en conflit : un nom
+    /// libéré par une suppression est repris tel quel, comme le ferait
+    /// Windows. D'où une passe sur la timeline déjà triée, qui rejoue les
+    /// créations et les suppressions dans l'ordre où le simulateur les verra.
+    ///
+    /// L'alias suit les noms courts de Windows : `MODULE~1.C`, radical ramené à
+    /// huit caractères, extension gardée — c'est elle que lisent les requêtes
+    /// du démarrage et les masques de JkDefrag. Aucun tirage aléatoire n'est
+    /// consommé : la disposition sur le disque ne change pas.
+    public mutating func giveUniqueNames() {
+        /// Un nom dans son répertoire, comparé sans la casse des lettres ASCII.
+        /// L'empreinte est calculée une fois, en un seul passage sur les
+        /// octets : hacher la chaîne à chaque insertion et à chaque suppression
+        /// coûtait près d'une seconde sur les millions de fichiers de
+        /// `dev-2007`.
+        struct Key: Hashable {
+            let directory: UInt32
+            let name: String
+            let fingerprint: UInt64
+
+            init(directory: UInt32, name: String) {
+                var hash: UInt64 = 0xCBF2_9CE4_8422_2325 ^ UInt64(directory)
+                for byte in name.utf8 {
+                    hash = (hash ^ UInt64(Self.folded(byte))) &* 0x0000_0100_0000_01B3
+                }
+                self.directory = directory
+                self.name = name
+                self.fingerprint = hash
+            }
+
+            private static func folded(_ byte: UInt8) -> UInt8 {
+                (0x61...0x7A).contains(byte) ? byte - 0x20 : byte
+            }
+
+            static func == (a: Key, b: Key) -> Bool {
+                a.fingerprint == b.fingerprint && a.directory == b.directory
+                    && a.name.utf8.elementsEqual(b.name.utf8) { folded($0) == folded($1) }
+            }
+
+            func hash(into hasher: inout Hasher) {
+                hasher.combine(fingerprint)
+            }
+        }
+        func key(_ name: String, in directory: UInt32) -> Key {
+            Key(directory: directory, name: name)
+        }
+
+        var live = Set<Key>()
+        live.reserveCapacity(1 << 16)
+        /// Le nom accordé à chaque fichier présent, rangé par identifiant : ceux
+        /// du compilateur sont denses, un tableau évite un hachage par
+        /// événement.
+        var keyOfFile: [Key?] = []
+        /// Prochain numéro d'alias à essayer, par nom demandé. Il ne repart à
+        /// un que lorsque le nom lui-même se libère.
+        var nextAlias: [Key: Int] = [:]
+
+        for index in events.indices {
+            switch events[index].event {
+            case var .create(spec):
+                let requested = key(spec.name, in: spec.directory)
+                var granted = requested
+                if !live.insert(requested).inserted {
+                    let dot = spec.name.lastIndex(of: ".")
+                    let stem = dot.map { spec.name[..<$0] } ?? spec.name[...]
+                    let suffix = dot.map { spec.name[$0...] } ?? ""
+                    var number = nextAlias[requested, default: 1]
+                    repeat {
+                        let tilde = "~\(number)"
+                        spec.name = stem.prefix(max(1, 8 - tilde.count)) + tilde + suffix
+                        granted = key(spec.name, in: spec.directory)
+                        number += 1
+                    } while !live.insert(granted).inserted
+                    nextAlias[requested] = number
+                    events[index].event = .create(spec)
+                } else if !nextAlias.isEmpty {
+                    nextAlias.removeValue(forKey: requested)
+                }
+                let slot = Int(spec.id)
+                if slot >= keyOfFile.count { keyOfFile.append(contentsOf: repeatElement(nil, count: slot + 1 - keyOfFile.count)) }
+                keyOfFile[slot] = granted
+
+            case let .delete(id):
+                let slot = Int(id)
+                if slot < keyOfFile.count, let freed = keyOfFile[slot] {
+                    live.remove(freed)
+                    keyOfFile[slot] = nil
+                }
+
+            default:
+                break
+            }
+        }
+    }
 }
 
 // MARK: - Traduction des motifs d'écriture en événements

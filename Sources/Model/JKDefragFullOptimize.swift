@@ -271,14 +271,10 @@ extension JKDefragStrategy.Pass {
     /// L'original cherche le fichier suivant en reparcourant tout l'arbre à
     /// chaque fois : le plus petit de ceux qui sont plus grands que le
     /// précédent. Ici l'ordre est calculé une fois. C'est le même tant que
-    /// `CompareItems` départage avant d'en arriver au LCN, qui bouge — donc sur
-    /// tout volume réel, où un chemin est unique.
-    ///
-    /// Le générateur, lui, réutilise des noms : `\projets\src\module.c` existe
-    /// 6 812 fois sur `dev-2003`. La taille et les dates les départagent
-    /// presque toujours. Quand tout coïncide, l'ordre retenu est celui des LCN
-    /// **au départ** ; l'original lirait les LCN du moment, et sauterait pour
-    /// de bon ceux qui seraient passés sous le précédent.
+    /// `CompareItems` départage avant d'en arriver au LCN, qui bouge — donc
+    /// dès qu'un chemin est unique : sur tout volume réel, et sur ceux de la
+    /// galerie, que `EventTimeline.giveUniqueNames` renomme à la manière de
+    /// Windows.
     ///
     /// - Parameter phases: la phase de chaque zone.
     mutating func optimizeSort(field: JKDefragStrategy.SortField, phases: [Int]) {

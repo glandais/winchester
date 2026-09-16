@@ -932,6 +932,8 @@ est commenté dans le source.
   toujours. Restent **dix fichiers** sur toute la galerie, sur quatre volumes
   `dev-`, où tout coïncide jusqu'au LCN : ils sont pris dans l'ordre des LCN de
   départ, là où l'original lirait ceux du moment.
+  *(Chantier 10 : le générateur ne fait plus coexister deux chemins
+  identiques, la réserve est levée.)*
 - **Deux primitives nouvelles.** `ClusterBitmap.previousFreeRun(before:)` descend
   l'index des trous dans l'autre sens : `OptimizeUp` et `Vacate` cherchent le
   **dernier** trou sous une borne, qu'il fallait sinon énumérer depuis le début
@@ -2003,3 +2005,103 @@ près** : la retenue ne s'applique qu'à NTFS, et seulement dans UltraDefrag.
   jouée, et la doc de `n < 2`.
 - **Le nombre de tours** de chaque séquence n'est pas compté. La retenue en
   ajoute probablement, et le bilan ne le dit pas.
+
+---
+
+## Chantier 10 — un chemin, un fichier
+
+**Fait** · branche `noms-uniques`
+
+### Le problème
+
+Le compilateur de scénarios nomme les fichiers d'après ce qu'ils sont, sans
+savoir ce qui existe encore au jour où ils sont écrits. `MODULE.C`, `BUILD.ZIP`,
+`SAVE.DAT`, `EXTRAIT` ou `DL` ont un nom fixe. `M\(index).OBJ` et
+`C\(index).TMP` renumérotent à partir de zéro à chaque build ou à chaque
+session. FAT comme NTFS refusent pourtant deux fois le même nom dans un
+répertoire, et les défragmenteurs s'appuient dessus. Le tri par nom de JkDefrag
+est calculé une seule fois, ce qui suppose des chemins uniques (chantier « Les
+autres modes de JkDefrag »). Windows XP et UltraDefrag départagent aussi par
+chemin, et `Volume.fileID(atPath:)` rend le premier fichier trouvé.
+
+Nombre de fichiers créés sur un chemin **déjà occupé** au moment de leur
+création, en rejouant la timeline triée :
+
+| volume | coexistences | volume | coexistences |
+|---|---:|---|---:|
+| `dev-1993` | 10 029 | `famille-2003` | 245 250 |
+| `dev-1996` | 42 425 | `gamer-2003` | 6 |
+| `dev-1999` | 127 112 | `secretaire-2003` | 64 610 |
+| `dev-2003` | 350 343 | `dev-2007` | 550 466 |
+| `famille-1996` | 20 627 | `famille-2007` | 327 425 |
+| `famille-1999` | 75 818 | `gamer-2007` | 176 030 |
+| `gamer-1999` | 38 088 | `secretaire-2007` | 129 939 |
+| `secretaire-1999` | 14 091 | `poweruser-1993` | 2 638 |
+| `gamer-1993`, `gamer-1996` | 1 097 chacun | | |
+
+Dix-huit volumes sur vingt. Compter sur tout l'historique, suppressions
+ignorées, donnait jusqu'à 1,3 million de doublons sur `dev-2007`. La plupart ne
+sont pas des collisions : ce sont des noms repris après une suppression, ce que
+fait Windows.
+
+### Les décisions
+
+- **Une passe unique, après le tri de la timeline**, plutôt qu'un nom corrigé à
+  chacune des vingt-deux écritures du compilateur. `EventTimeline.giveUniqueNames`
+  rejoue les créations et les suppressions dans l'ordre où le simulateur les
+  verra. Un nom déjà porté par un fichier présent est remplacé. Un site de
+  nommage ajouté plus tard sera couvert d'office.
+- **Seuls les fichiers présents en même temps sont en conflit.** Un nom libéré
+  est repris tel quel. Rendre les noms uniques sur tout l'historique aurait été
+  plus simple, mais aurait produit des alias à six chiffres pour des fichiers qui
+  ne se sont jamais croisés.
+- **L'alias suit les noms courts de Windows** : `MODULE~1.C`, `EXTRAI~1`,
+  radical ramené à huit caractères, extension gardée. Les requêtes du démarrage
+  (`BootQuery.accepts`) et les masques de JkDefrag ne lisent que l'extension et
+  le répertoire. La comparaison ignore la casse ASCII, comme `_wcsicmp`. Le
+  numéro repart à un quand le nom demandé se libère.
+- **Aucun tirage aléatoire n'est consommé**, et aucune génération ne trie par
+  nom : la disposition sur le disque ne change pas.
+- **Une empreinte FNV, calculée une fois par nom.** La première version passait
+  les noms en majuscules et laissait `Set<String>` hacher : 1,05 s sur
+  `dev-2007` en release, soit 2,7 millions d'événements. Hacher octet par octet
+  était pire (1,6 s). Avec une empreinte insensible à la casse, calculée en un
+  seul passage et seule à entrer dans le `Hasher`, la passe tombe à **0,42 s**.
+
+### Ce qui valide
+
+`FileNameTests` vérifie les alias, la reprise d'un nom libéré et le saut d'un
+alias déjà porté. Il compile aussi les vingt scénarios et vérifie qu'aucune
+création ne tombe sur un chemin occupé. Ce dernier test échoue sur `develop`
+avec les nombres du tableau ci-dessus. Les 233 tests passent.
+
+`RenderTrace`, `PLAN_ONLY`, sur `develop` puis sur la branche : onze stratégies
+sur `dev-1996`, `dev-1999`, `dev-2003`, `famille-2003` et `secretaire-2003`, soit
+55 bilans. **43 sont identiques à l'octet**, dont Windows 95, Windows XP,
+UltraDefrag, le mode 2 de JkDefrag, `ForcedFill`, `MoveUp` et le tri par taille
+partout, et tous les bilans de `famille-2003` et `secretaire-2003`. Les douze
+autres sont les tris de JkDefrag par nom et par date sur les volumes `dev-`,
+où le chemin départage :
+
+| volume | tri par nom, seeks | évacuations | durée |
+|---|---|---|---|
+| `dev-1996` | 23 585 → 23 766 | 1 593 → 1 667 | 1 064,7 → 1 070,9 s |
+| `dev-1999` | 143 128 → 142 796 | 18 984 → 18 956 | 2 518,1 → 2 515,8 s |
+| `dev-2003` | 92 245 → 92 689 | 10 684 → 10 806 | 1 920,5 → 1 927,8 s |
+
+Les tris par date ne bougent que sur les repères audio et le dixième de
+seconde, sauf `dev-1999` par dernier accès (166 757 → 166 739 seeks). Aucun
+écart ne dépasse 1 %.
+
+### Laissé ouvert
+
+- **Les autres volumes et `dev-2007` n'ont pas été rejoués.** L'invariant est
+  testé sur les vingt, mais les bilans ne sont comparés que sur cinq.
+- **UltraDefrag départage toujours en tenant compte de la casse**
+  (chantier 9). Deux chemins qui ne diffèrent que par la casse ne peuvent plus
+  coexister, mais leur ordre relatif reste celui de `<`, pas de `winx_wcsicmp`.
+- **Un fichier dont la création échoue** (volume plein) garde son nom réservé
+  jusqu'à sa suppression. Le simulateur ne l'insère pas, et un autre fichier
+  prend un alias sans nécessité. Sans effet sur l'unicité.
+- Le radical peut passer sous un caractère au-delà de `~9999999`. Aucun volume
+  n'en approche.
