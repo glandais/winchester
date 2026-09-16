@@ -213,22 +213,69 @@ ne rappelait qu'une passe jouait quand on retournait à la galerie.
 
 ## Chantier U1 — la galerie des disques prédéfinis
 
-**À faire** · prompt §1
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-- Les vingt profils en cartes : nom, année, capacité, régime, système de
-  fichiers, OS, résumé (`ProfileSpec.summary`).
-- Frise d'époques 1993 → 2007 et personas (Secrétaire, Développeur, Famille,
-  Gamer, Power user) ; filtre par l'un ou l'autre.
-- Les deux scénarios livrés (démarrage Barracuda 2001, défragmentation
-  Fireball 1996) en tête, comme démos clés en main.
+La galerie était une grille de puces « Développeur », « Joueur »… rangées par
+année, sans rien d'autre que le profil : ni capacité, ni système, ni résumé
+avant d'avoir généré le disque. Le premier disque se générait tout seul à
+l'ouverture, et depuis U0 dès le lancement de l'app. Carte, métriques et
+boutons s'empilaient sous les puces, sur le même écran.
 
-### Ce que le code offre
+### Les décisions
 
-`DiskLibraryModel.byEpoch`, `ScenarioLibrary`, `ProfileSpec` décodé des vingt
-JSON. Le persona n'est pas un champ : il se lit du préfixe de l'`id` ou de
-`displayName` — à rendre explicite si le filtre en dépend.
+- **Une carte par disque** (`DiskGallery`) : nom, système de fichiers, ligne
+  matérielle « IDE 850 Mo · 5 400 tr/min · Windows 95 », résumé. Rien qui ne
+  soit connu **avant** génération.
+- **« Déjà généré · 12 % fragmentés »** n'apparaît que pour un disque fabriqué
+  dans la session. `DiskLibraryModel.fragmentedRatios` le retient par profil,
+  avec le même taux que la tuile de la fiche (parmi les fichiers
+  fragmentables).
+- **Deux rangées de filtres**, par année et par profil, combinables ; un
+  second appui sur un filtre actif le retire.
+- **Le profil se lit du préfixe de l'identifiant** (`Persona`) et garde les noms
+  des `displayName` — Secrétariat, Développeur, Famille, Joueur, Bidouilleur —
+  plutôt que ceux des maquettes, pour que filtre et titre de carte disent le
+  même mot. Rien n'est ajouté à `ProfileSpec` ni aux JSON.
+- **Le nom du système** vient de `BootScript.Era`, celui que dit déjà le
+  démarrage : une seule table, pas deux orthographes.
+- **La capacité est commerciale** : gigaoctets de mille mégaoctets, jusqu'à deux
+  décimales (« 1,08 Go », « 6,4 Go », « 40 Go »), comme sur les maquettes.
+- **Ouvrir une carte ouvre la fiche** (`DiskDetailScreen`, dans une pile de
+  navigation) et c'est là, et seulement là, que la génération part
+  (`DiskLibraryModel.open`). `selectFirstIfNeeded` disparaît.
+- **La fiche garde la vue d'avant** (`DiskLibraryView`) sans ses puces. Ses
+  deux états d'échec sont ceux des maquettes : « Génération annulée » avec
+  **Générer depuis le début**, « Génération impossible » avec **Réessayer**.
+
+### Ce qui valide
+
+- Construit en Debug pour le simulateur iPhone 17 Pro, sans erreur. Rien dans
+  `Sources/Model` n'est touché hors `DiskLibraryModel.swift`, que ni
+  `swift test` ni le rendu hors-ligne ne compilent.
+- Sur le simulateur :
+  - la galerie liste les vingt disques avec leur ligne matérielle, relue dans
+    l'arbre d'accessibilité (« IDE 1,08 Go », « IDE 6,4 Go ») ;
+  - le filtre 1996 ne laisse que les quatre disques de 1996 ;
+  - ouvrir « Développeur, 1996 » génère le volume et montre carte, boutons et
+    métriques (11,5 % fragmentés) ; au retour, la carte porte « déjà généré ·
+    12 % fragmentés » ;
+  - **au lancement, rien ne se génère** : 0,06 s de CPU en 10 s, contre une
+    génération complète auparavant.
+
+### Laissé ouvert
+
+- **Deux typographies de capacité.** La carte dit « 1,08 Go » (commercial),
+  l'en-tête de la passe dit ce que calcule `GeneratedVolume` en gigaoctets de
+  1 024 Mo (« 1,1 Go », et « 39,1 Go » pour un 40 Go). À unifier, sans doute
+  du côté de la passe.
+- **Le titre du disque apparaît deux fois** sur la fiche, dans la barre de
+  navigation et en tête de la carte : c'est la mise en page de U2.
+- Quitter la fiche pendant une génération ne l'annule pas ; ouvrir un autre
+  disque, si.
+- Pas de frise illustrée des époques ni de filtre du profil « Power user » sous
+  ce nom : le mot des scénarios a été préféré.
 
 ---
 

@@ -248,7 +248,9 @@ MFT qui cède ne laisse donc pas croire que la MFT est un trou.
 
 L'onglet **Disques** de l'application : les deux scénarios livrés, prêts à
 écouter, puis une galerie de volumes vieillis, cinq époques et quatre profils
-chacune, générés à la demande sur l'appareil. Les trois autres onglets sont la
+chacune, en cartes qu'on filtre par année et par profil. Un disque se génère
+sur l'appareil quand on ouvre sa fiche, pas avant : la galerie ne connaît sa
+fragmentation qu'une fois qu'il a été fabriqué. Les trois autres onglets sont la
 **Passe** en cours, ses **Instruments** et les **Réglages** du son ; hors de
 l'onglet Passe, un bandeau garde la passe sous la main.
 

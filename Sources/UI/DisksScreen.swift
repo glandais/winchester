@@ -2,7 +2,7 @@ import SwiftUI
 import DiskCore
 
 /// L'onglet d'accueil : les deux scénarios livrés, prêts à écouter, puis la
-/// galerie des disques d'époque.
+/// galerie des disques d'époque, dont chaque carte ouvre la fiche du disque.
 ///
 /// Lancer quoi que ce soit d'ici bascule sur l'onglet **Passe** et démarre la
 /// lecture : on a choisi quoi écouter, il n'y a plus à appuyer sur lecture.
@@ -14,23 +14,31 @@ struct DisksScreen: View {
     /// Montre l'onglet de la passe.
     let onOpenPass: () -> Void
 
+    @State private var path: [String] = []
+
     var body: some View {
-        ZStack {
-            Theme.background.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ScreenTitle("Disques", subtitle: "Écouter tout de suite, ou choisir un disque d'époque")
-                    demos
-                    Text("DISQUES D'ÉPOQUE")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Theme.dim)
-                        .padding(.top, 6)
-                    DiskLibraryView(model: library) { disk, activity in
-                        try model.load(generated: disk, as: activity)
-                        play()
+        NavigationStack(path: $path) {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ScreenTitle("Disques", subtitle: "Écouter tout de suite, ou choisir un disque d'époque")
+                        demos
+                        Text("DISQUES D'ÉPOQUE")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.dim)
+                            .padding(.top, 6)
+                        DiskGallery(model: library)
                     }
+                    .padding(16)
                 }
-                .padding(16)
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: String.self) { id in
+                DiskDetailScreen(library: library, id: id) { disk, activity in
+                    try model.load(generated: disk, as: activity)
+                    play()
+                }
             }
         }
     }

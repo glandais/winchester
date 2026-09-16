@@ -1,13 +1,12 @@
 import SwiftUI
 import DiskCore
 
-/// La galerie de disques d'époque : on choisit une année et un profil, le
-/// disque se fabrique, et on regarde ce que vingt ans d'usage donnent.
+/// Le disque ouvert depuis la galerie : il se fabrique, et on regarde ce que
+/// des années d'usage lui ont fait — carte, métriques, et les deux façons de
+/// l'écouter.
 ///
-/// L'intérêt de l'écran est la comparaison : passer de `gamer-2003` à
-/// `secretaire-1993` change la carte du tout au tout, et c'est le seul endroit
-/// où l'on voit d'un coup d'œil que la fragmentation n'est pas une valeur mais
-/// une texture.
+/// La fragmentation n'y est pas une valeur mais une texture : passer de
+/// `gamer-2003` à `secretaire-1993` change la carte du tout au tout.
 struct DiskLibraryView: View {
 
     @ObservedObject var model: DiskLibraryModel
@@ -22,10 +21,9 @@ struct DiskLibraryView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            picker
             switch model.state {
             case .idle:
-                placeholder
+                cancelled
             case let .running(fraction, day, fileCount, fill):
                 progress(fraction: fraction, day: day, fileCount: fileCount, fill: fill)
             case let .ready(disk):
@@ -33,68 +31,51 @@ struct DiskLibraryView: View {
                 handover(for: disk)
                 metrics(of: disk)
             case let .failed(message):
-                Text(message)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(Theme.read)
-                    .panel()
+                failure(message)
             }
         }
-        .onAppear { model.selectFirstIfNeeded() }
     }
 
-    // MARK: - Choix du scénario
+    // MARK: - États
 
-    private var picker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(model.byEpoch, id: \.year) { epoch in
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(String(epoch.year))
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Theme.dim)
-                    FlowRow(spacing: 6) {
-                        ForEach(epoch.scenarios) { spec in
-                            scenarioChip(spec)
-                        }
-                    }
-                }
-            }
+    /// Une génération annulée ne reprend pas où elle s'était arrêtée : elle
+    /// repart du premier jour de l'histoire.
+    private var cancelled: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Génération annulée")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.text)
+            Text("L'histoire du disque est conservée ; le volume, lui, se refabrique depuis le premier jour.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.dim)
+                .fixedSize(horizontal: false, vertical: true)
+            regenerateButton("Générer depuis le début")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
     }
 
-    private func scenarioChip(_ spec: ProfileSpec) -> some View {
-        let isSelected = model.selectedID == spec.id
-        return Button {
-            model.selectedID = spec.id
-        } label: {
-            Text(profileName(of: spec))
-                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Theme.background : Theme.text)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isSelected ? Theme.read : Color.white.opacity(0.06))
-                )
+    private func failure(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Génération impossible")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.text)
+            Text(message)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(Theme.read)
+                .fixedSize(horizontal: false, vertical: true)
+            regenerateButton("Réessayer")
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel()
     }
 
-    /// « Développeur, 1996 » devient « Développeur » : l'année est déjà le titre
-    /// de la ligne.
-    private func profileName(of spec: ProfileSpec) -> String {
-        spec.displayName.split(separator: ",").first.map(String.init) ?? spec.displayName
-    }
-
-    // MARK: - États
-
-    private var placeholder: some View {
-        Text("Choisissez une époque et un profil.")
-            .font(.system(size: 12))
-            .foregroundStyle(Theme.dim)
-            .frame(maxWidth: .infinity, minHeight: 120)
-            .panel()
+    private func regenerateButton(_ title: String) -> some View {
+        Button(title) {
+            if let id = model.selectedID { model.open(id) }
+        }
+        .font(.system(size: 13, weight: .semibold))
+        .buttonStyle(.bordered)
     }
 
     private func progress(fraction: Double, day: UInt32, fileCount: Int, fill: Double) -> some View {

@@ -45,6 +45,11 @@ final class DiskLibraryModel: ObservableObject {
     /// l'agrégation d'un volume de 320 Go n'est pas gratuite.
     @Published private(set) var shades: [ClusterShade] = []
 
+    /// Taux de fichiers fragmentés des disques déjà générés dans la session,
+    /// par identifiant de profil. C'est tout ce que la galerie peut en dire :
+    /// la fragmentation n'existe qu'une fois le disque fabriqué.
+    @Published private(set) var fragmentedRatios: [String: Double] = [:]
+
     /// Grille sur laquelle ces cellules sont agrégées. La galerie la porte pour
     /// son compte : elle n'affiche pas la carte d'une passe, mais celle d'un
     /// volume au repos, et les deux vues n'ont aucune raison de partager leur
@@ -90,9 +95,17 @@ final class DiskLibraryModel: ObservableObject {
         return grouped.keys.sorted().map { ($0, grouped[$0] ?? []) }
     }
 
-    func selectFirstIfNeeded() {
-        guard selectedID == nil, let first = scenarios.first else { return }
-        selectedID = first.id
+    /// Ouvre un disque de la galerie : le génère s'il n'est pas déjà affiché,
+    /// ou si sa génération a été annulée ou a échoué.
+    func open(_ id: String) {
+        guard selectedID == id else {
+            selectedID = id
+            return
+        }
+        switch state {
+        case .idle, .failed: generate(id)
+        case .running, .ready: break
+        }
     }
 
     func generate(_ id: String) {
@@ -136,6 +149,7 @@ final class DiskLibraryModel: ObservableObject {
                     guard self.selectedID == id else { return }
                     self.shades = shades
                     self.state = .ready(disk)
+                    self.fragmentedRatios[id] = disk.metrics.fragmentedRatioAmongFragmentable
                 }
             } catch is CancellationError {
                 // Un scénario abandonné au profit d'un autre : rien à signaler.
