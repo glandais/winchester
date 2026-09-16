@@ -2,58 +2,46 @@ import SwiftUI
 import DiskCore
 import Combine
 
-/// Deux écrans : la simulation sonore, et la galerie de disques d'époque.
+/// Les quatre onglets des maquettes.
 ///
-/// Ils ne partagent rien d'autre que le thème — le premier fait du bruit à
-/// partir d'un scénario figé, le second fabrique des volumes et les montre. La
-/// jonction entre les deux se fait par deux boutons : **démarrer** le disque
-/// qu'on vient de générer, ou le **défragmenter**. Le premier marche sur les
-/// vingt profils, le second n'a de sens que sur les volumes qu'un
-/// défragmenteur de 1995 pourrait ouvrir.
-enum Workspace: String, CaseIterable, Identifiable {
-    case simulator
-    case library
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .simulator: return "Simulation"
-        case .library:   return "Disques d'époque"
-        }
-    }
+/// La barre d'onglets tient lieu de mini-lecteur : une passe ne s'arrête pas
+/// quand on retourne choisir un disque, et l'onglet **Passe** la retrouve d'un
+/// geste. Il n'y a qu'un moteur audio, donc qu'une passe à la fois.
+enum AppTab: Hashable {
+    case disks
+    case pass
+    case instruments
+    case settings
 }
 
 struct ContentView: View {
     @StateObject private var model = SimulationModel()
     @StateObject private var library = DiskLibraryModel()
-    @State private var workspace: Workspace = .simulator
+    @State private var tab: AppTab = .disks
 
     var body: some View {
-        ZStack {
-            Theme.background.ignoresSafeArea()
-            VStack(spacing: 0) {
-                Picker("Espace", selection: $workspace) {
-                    ForEach(Workspace.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
+        TabView(selection: $tab) {
+            DisksScreen(model: model, library: library) { tab = .pass }
+                .passMiniPlayer(model: model, isShown: tab != .pass) { tab = .pass }
+                .tabItem { Label("Disques", systemImage: "internaldrive") }
+                .tag(AppTab.disks)
 
-                switch workspace {
-                case .simulator:
-                    SimulatorScreen(model: model, engine: model.engine)
-                case .library:
-                    ScrollView {
-                        DiskLibraryView(model: library) { disk, activity in
-                            try model.load(generated: disk, as: activity)
-                            workspace = .simulator
-                        }
-                        .padding(16)
-                    }
-                }
-            }
+            SimulatorScreen(model: model, engine: model.engine, isVisible: tab == .pass)
+                .tabItem { Label("Passe", systemImage: "waveform") }
+                .tag(AppTab.pass)
+
+            InstrumentsScreen(model: model, engine: model.engine, isVisible: tab == .instruments)
+                .passMiniPlayer(model: model, isShown: tab != .pass) { tab = .pass }
+                .tabItem { Label("Instruments", systemImage: "gauge.with.dots.needle.33percent") }
+                .tag(AppTab.instruments)
+
+            SettingsScreen(model: model, engine: model.engine)
+                .passMiniPlayer(model: model, isShown: tab != .pass) { tab = .pass }
+                .tabItem { Label("Réglages", systemImage: "slider.horizontal.3") }
+                .tag(AppTab.settings)
         }
+        .toolbarBackground(Theme.panel, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .tint(Theme.read)
     }
 }
@@ -64,12 +52,16 @@ struct SimulatorScreen: View {
 
     @ObservedObject var model: SimulationModel
     @StateObject private var clock: ClockRelay
-    @State private var showsModelNotes = false
     @State private var showsFullScreenMap = false
 
-    init(model: SimulationModel, engine: DiskNoiseEngine) {
+    /// Un onglet caché reste en vie : sans cela, il suivrait l'horloge soixante
+    /// fois par seconde sans que personne le voie.
+    let isVisible: Bool
+
+    init(model: SimulationModel, engine: DiskNoiseEngine, isVisible: Bool) {
         _model = ObservedObject(wrappedValue: model)
         _clock = StateObject(wrappedValue: ClockRelay(engine: engine))
+        self.isVisible = isVisible
     }
 
     private var engine: DiskNoiseEngine { clock.engine }
@@ -86,7 +78,6 @@ struct SimulatorScreen: View {
             ScrollView {
                 VStack(spacing: 14) {
                     header
-                    scenarioPicker
                     if model.defrag != nil { defragPanel }
                     if let boot = model.boot { bootPanel(boot) }
                     PlatterView(track: model.platter, frame: platter)
@@ -96,14 +87,15 @@ struct SimulatorScreen: View {
                     phaseBanner
                     timeline
                     transport
-                    stats
-                    mixer
-                    notes
                 }
                 .padding(16)
             }
         }
         .tint(Theme.read)
+        .onAppear { clock.isRelaying = isVisible && !showsFullScreenMap }
+        .onChange(of: isVisible) { _, visible in
+            clock.isRelaying = visible && !showsFullScreenMap
+        }
     }
 
     // MARK: - Sections
@@ -122,16 +114,6 @@ struct SimulatorScreen: View {
             Spacer()
             activityLED
         }
-    }
-
-    private var scenarioPicker: some View {
-        Picker("Scénario", selection: Binding(get: { model.selection },
-                                              set: { model.select($0) })) {
-            ForEach(model.selections) { selection in
-                Text(model.title(of: selection)).tag(selection)
-            }
-        }
-        .pickerStyle(.segmented)
     }
 
     /// Carte du volume, rejouée sur l'horloge du moteur audio : ce sont les
@@ -212,7 +194,7 @@ struct SimulatorScreen: View {
             // plateau et bandeau que personne ne voit —, et doublait le coût de
             // la lecture. Il se remet à l'heure dès que le plein écran se ferme.
             .onChange(of: showsFullScreenMap) { _, covered in
-                clock.isRelaying = !covered
+                clock.isRelaying = isVisible && !covered
             }
         }
     }
@@ -384,104 +366,6 @@ struct SimulatorScreen: View {
         .foregroundStyle(Theme.text)
         .panel()
     }
-
-    private var stats: some View {
-        let requestRate = model.requestRate
-        let throughput = model.throughputMBs
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
-            StatTile(label: "Requêtes / s", value: String(format: "%.0f", requestRate), unit: "IOPS")
-            StatTile(label: "Débit", value: String(format: "%.1f", throughput), unit: "Mo/s")
-            StatTile(label: "Seek moyen", value: "\(model.totals.averageSeekDistance)", unit: "cyl.")
-            StatTile(label: "Seeks simulés", value: "\(model.totals.seeks)", unit: "jusqu'ici")
-        }
-    }
-
-    private var mixer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Mixage des couches")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.text)
-
-            LevelSlider(label: "Rotation (procédurale)", value: engineBinding(\.spindleLevel))
-            LevelSlider(label: "Tête (banc de résonateurs)", value: engineBinding(\.transientLevel))
-            LevelSlider(label: "Général", value: engineBinding(\.masterLevel))
-
-            Divider().overlay(Theme.stroke).padding(.vertical, 4)
-
-            if engine.supportsHaptics {
-                Toggle(isOn: engineBinding(\.hapticsEnabled)) {
-                    Text("Retour haptique")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.text)
-                }
-                if engine.hapticsEnabled {
-                    LevelSlider(label: "Intensité des transitoires", value: engineBinding(\.hapticIntensity))
-                    Toggle(isOn: engineBinding(\.spindleHaptics)) {
-                        Text("Grondement de rotation")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.dim)
-                    }
-                    if engine.spindleHaptics {
-                        LevelSlider(label: "Niveau du grondement", value: engineBinding(\.spindleHapticLevel))
-                    }
-                    Text(engine.hapticReport)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Theme.dim)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } else {
-                Text("Retour haptique indisponible sur cet appareil")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.dim)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panel()
-    }
-
-    /// Un réglage du moteur. Le relais ne fournit pas de `Binding` : on le
-    /// fabrique, et la vue se redessine par le relais comme pour l'horloge.
-    private func engineBinding<Value>(_ keyPath: ReferenceWritableKeyPath<DiskNoiseEngine, Value>) -> Binding<Value> {
-        let engine = engine
-        return Binding(get: { engine[keyPath: keyPath] },
-                       set: { engine[keyPath: keyPath] = $0 })
-    }
-
-    /// La géométrie change d'un scénario à l'autre — et d'un disque généré à
-    /// l'autre : la note la lit plutôt que de la réciter.
-    private var geometryNote: String {
-        let g = model.geometry
-        let rpm = String(format: "%d\u{202F}%03d", Int(g.rpm) / 1_000, Int(g.rpm) % 1_000)
-        return "\(g.cylinders) cylindres, \(g.heads) têtes, \(g.zones.count) "
-            + "zone\(g.zones.count > 1 ? "s" : "") ZBR, \(rpm) tr/min. La latence "
-            + "rotationnelle et les pas de piste sont simulés secteur par secteur."
-    }
-
-    private var notes: some View {
-        DisclosureGroup(isExpanded: $showsModelNotes) {
-            VStack(alignment: .leading, spacing: 9) {
-                if model.defrag != nil {
-                    NoteRow("Volume", model.label.volumeNote)
-                    NoteRow("Passe", "« Défragmentation complète » de Windows 95 : chaque fichier rendu contigu et tassé contre le début du volume, dans l'ordre du parcours de l'arborescence — le seul ordre dont l'outil disposait.")
-                    NoteRow("Évacuations", "La destination d'un fichier est presque toujours occupée : l'occupant part d'abord vers la fin du volume, et sera redéplacé quand viendra son tour. C'est ce va-et-vient, pas le volume de données, qui fait durer une passe.")
-                    NoteRow("Retours FAT", "Chaque déplacement validé réécrit les deux copies de la FAT et l'entrée de répertoire, au tout début de la partition. D'où le retour du bras vers le bord, environ une fois par fichier.")
-                    NoteRow("Fichier d'échange", "Windows l'a ouvert : le défragmenteur ne peut pas le déplacer et tasse tout autour. C'est le bloc rouge qui ne bouge jamais.")
-                }
-                NoteRow("Seek", "Durée en deux régimes, a + b·√d puis c + e·d (Ruemmler & Wilkes 1994), découpée en speedup / coast / slowdown / settle.")
-                NoteRow("Timbre", "Banc de résonateurs à fréquences fixes (modes ~4,5 et ~5,5 kHz). Seule l'excitation varie avec la distance : les résonances de l'actionneur ne se transposent pas avec la vitesse de seek.")
-                NoteRow("Trains", "Deux seeks rapprochés ne relancent jamais deux one-shots : un seul rendu continu, transitoire terminal en fin de train (règle issue de l'émulation de disquette de MAME).")
-                NoteRow("Rotation", "Procédurale faute d'échantillon. C'est le maillon faible : la littérature et tous les projets qui fonctionnent bouclent un enregistrement plutôt que de synthétiser le ronronnement à partir du régime.")
-                NoteRow("Haptique", "Le Taptic Engine reçoit les mêmes repères que l'audio : choc à la mise en mouvement, grondement pendant le coast, choc à la décélération, tic d'asservissement. Les trains rapprochés passent en texture continue modulée plutôt qu'en salve de transitoires.")
-                NoteRow("Géométrie", geometryNote)
-            }
-            .padding(.top, 10)
-        } label: {
-            Text("Ce que modélise le spike")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.text)
-        }
-        .panel()
-    }
 }
 
 // MARK: - Relais d'horloge
@@ -552,48 +436,5 @@ struct StatTile: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(Theme.stroke, lineWidth: 1))
         )
-    }
-}
-
-private struct LevelSlider: View {
-    let label: String
-    @Binding var value: Float
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.dim)
-                Spacer()
-                Text(String(format: "%.0f %%", value * 100))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Theme.dim)
-                    .monospacedDigit()
-            }
-            Slider(value: $value, in: 0...1)
-        }
-    }
-}
-
-private struct NoteRow: View {
-    let title: String
-    let body_: String
-
-    init(_ title: String, _ body: String) {
-        self.title = title
-        self.body_ = body
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Theme.read)
-            Text(body_)
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.dim)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 }

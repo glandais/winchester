@@ -132,27 +132,82 @@ Commit `fbbcfd3` sur `develop`.
 
 ## Chantier U0 — la charpente
 
-**À faire**
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-- Remplacer le sélecteur segmenté par une vraie navigation : galerie →
-  fiche du disque → choix de l'action → passe → bilan.
-- **Mini-lecteur persistant** : une passe continue quand on retourne à la
-  galerie, et se retrouve d'un geste.
-- Jetons de thème nommés dans `Theme` (fond `#0E0F12`, panneau `#191B20`, texte
-  `#EBEBEB`, secondaire `#858585`, ambre `#FFB347`, turquoise `#5CD1D1`, bras
-  `#C7CCDB`), panneaux à 14 pt, chiffres en monospace.
+L'application tenait en deux espaces derrière un sélecteur segmenté. La passe
+était un seul long défilement où s'empilaient carte, plateau, transport, stats,
+mixeur et notes. On y choisissait le scénario par un second sélecteur
+segmenté, qui ne pouvait montrer qu'un disque de la galerie à la fois. Rien
+ne rappelait qu'une passe jouait quand on retournait à la galerie.
 
-### Ce que le code offre
+### Les décisions
 
-`SimulationModel` et `DiskLibraryModel` sont déjà deux `@MainActor` séparés,
-créés une fois dans `ContentView` : la passe survit à un changement d'écran.
+- **Quatre onglets, comme les maquettes** : Disques, Passe, Instruments,
+  Réglages (`AppTab`). `SimulationModel` et `DiskLibraryModel` restent créés
+  une fois dans `ContentView` : une passe survit au changement d'onglet, et il
+  n'y en a qu'une, puisqu'il n'y a qu'un moteur audio.
+- **Disques** (`DisksScreen`) : les deux scénarios livrés en tête, avec
+  **Lancer**, puis la galerie telle qu'elle était. Le sélecteur de scénario
+  de la passe disparaît : on choisit quoi écouter à un seul endroit.
+- **Choisir, c'est lancer.** Lancer une démo, **Démarrer cet OS** et
+  **Défragmenter ce disque** démarrent la lecture et ouvrent l'onglet Passe.
+  Relancer une démo déjà entendue jusqu'au bout la reprend du début.
+- **Passe** garde carte, plateau, phase, frise et transport. Les quatre tuiles
+  vont dans **Instruments** (`InstrumentsScreen`), le mixage, l'haptique et les
+  notes du modèle dans **Réglages** (`SettingsScreen`).
+- **Un bandeau de passe** (`passMiniPlayer`) au-dessus de la barre d'onglets,
+  hors de l'onglet Passe : titre, phase, temps écouté, lecture/pause, et un
+  appui ouvre la passe. Il ne suit pas l'horloge du moteur mais un
+  `TimelineView` à deux images par seconde : l'écran qu'il recouvre n'a pas à
+  se redessiner soixante fois par seconde pour un chronomètre au dixième.
+- **Un onglet caché ne suit pas l'horloge.** Passe et Instruments passent par
+  leur `ClockRelay`, coupé quand leur onglet n'est pas affiché. C'est le
+  contrat du chantier 8 étendu aux onglets : un écran que personne ne voit ne
+  se redessine pas.
+- **Réglages n'observe pas le moteur du tout** : rien n'y dépend de l'instant
+  écouté. Il se redessine quand on touche un réglage, par un compteur local
+  que l'écriture incrémente.
+- **Les jetons de thème existaient déjà** : `Theme` porte exactement les
+  couleurs des maquettes (fond, panneau, texte, secondaire, ambre, turquoise).
+  Seul `ScreenTitle`, le titre d'onglet, est ajouté.
 
-### Questions
+### Ce qui valide
 
-- Une passe à la fois, ou une par disque ? Le moteur audio est unique :
-  une seule.
+- Construit en Debug pour le simulateur iPhone 17 Pro Max, sans erreur.
+  Aucun fichier de `Sources/Model` n'est touché : `swift test` et le rendu
+  hors-ligne ne sont pas concernés.
+- Sur le simulateur : **Lancer** la démo de défragmentation ouvre la passe en
+  lecture ; revenir sur Disques, Instruments ou Réglages montre le bandeau, dont
+  le temps et la phase avancent ; les tuiles d'Instruments suivent la passe.
+- **CPU de l'app pendant la démo de défragmentation**, sur 20 s, par onglet
+  affiché. Un seul essai par onglet, à des moments différents de la passe : ces
+  chiffres disent un ordre de grandeur, pas un écart.
+
+  | onglet affiché | CPU |
+  |---|---:|
+  | Passe | 28 à 43 % |
+  | Instruments | 27 à 31 % |
+  | Réglages | 29 % |
+  | Disques | 24 à 27 % |
+
+  Aucun onglet caché n'ajoute le coût de la passe à celui de l'écran visible.
+
+### Laissé ouvert
+
+- **Pas de mesure avant/après.** Le CPU de `develop` sur les mêmes instants
+  n'a pas été relevé ; le bénéfice de la coupure des onglets cachés est
+  raisonné, pas mesuré. Pour le mesurer : un `worktree --detach` de `develop`,
+  même démo, même instant.
+- **Rien n'a été écouté** sur l'appareil ; le haptique ne se vérifie pas sur le
+  simulateur (« indisponible »).
+- **L'écran Passe est encore le long défilement d'avant**, sans onglets Carte
+  et Plateau ni bouton Arrêter : c'est U4.
+- La galerie génère toujours son premier disque à l'ouverture
+  (`selectFirstIfNeeded`), désormais sur l'onglet d'accueil, donc dès le
+  lancement de l'app. À revoir avec U1 et U2.
+- `SimulationModel.selections` et `title(of:)` ne servent plus à aucun écran.
 
 ---
 

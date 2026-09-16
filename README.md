@@ -237,7 +237,7 @@ plages, et un volume de 320 Go coûte 2,6 Mo au lieu de 78.
 Une image ne recalcule que les blocs qu'une mutation a touchés depuis la
 précédente, et rend le même tableau quand aucune n'est tombée : la vue ne refait
 alors pas son image. L'écran recouvert par le plein écran cesse de suivre
-l'horloge, et se remet à l'heure quand on en sort.
+l'horloge, et se remet à l'heure quand on en sort ; un onglet caché aussi.
 
 Sur NTFS, `$Boot`, la MFT et `$MFTMirr` n'appartiennent à aucun fichier du
 catalogue, mais occupent le volume : la carte les peint de la couleur des tables
@@ -246,8 +246,11 @@ MFT qui cède ne laisse donc pas croire que la MFT est un trou.
 
 ## Les disques d'époque
 
-Second écran de l'application : une galerie de volumes vieillis, cinq époques
-et quatre profils chacune, générés à la demande sur l'appareil.
+L'onglet **Disques** de l'application : les deux scénarios livrés, prêts à
+écouter, puis une galerie de volumes vieillis, cinq époques et quatre profils
+chacune, générés à la demande sur l'appareil. Les trois autres onglets sont la
+**Passe** en cours, ses **Instruments** et les **Réglages** du son ; hors de
+l'onglet Passe, un bandeau garde la passe sous la main.
 
 **La fragmentation n'est pas un paramètre, c'est un résidu.** On ne demande
 jamais « un disque à 23 % de fragmentation ». On écrit une histoire — une
@@ -312,8 +315,9 @@ scénario en route.
 
 ### Démarrer un disque généré
 
-Les deux écrans se rejoignent par deux boutons. Le premier, **Démarrer cet
-OS**, confie le disque affiché au simulateur, qui en joue le démarrage.
+La galerie mène à la passe par deux boutons, qui lancent la lecture et
+ouvrent l'onglet **Passe**. Le premier, **Démarrer cet OS**, confie le disque
+affiché au simulateur, qui en joue le démarrage.
 
 **Le démarrage livré décrit le disque en fractions ; celui-ci le décrit en
 fichiers.** Le premier dit « les pilotes sont à 7,5 % du plateau, la base de

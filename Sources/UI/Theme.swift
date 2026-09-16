@@ -69,3 +69,27 @@ struct PanelBackground: ViewModifier {
 extension View {
     func panel() -> some View { modifier(PanelBackground()) }
 }
+
+/// Le titre d'un onglet, comme en tête de chaque écran des maquettes.
+struct ScreenTitle: View {
+    let title: String
+    let subtitle: String
+
+    init(_ title: String, subtitle: String) {
+        self.title = title
+        self.subtitle = subtitle
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 28, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.text)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(Theme.dim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
