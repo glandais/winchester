@@ -318,6 +318,7 @@ func describe(_ plan: DefragPlan) -> String {
     \(plan.partition.capacityBytes / 1_000_000) Mo
     fragmentés    : \(plan.before.fragmentedFiles) avant, \(plan.after.fragmentedFiles) après
     morceaux      : \(plan.before.fragments) avant, \(plan.after.fragments) après
+    trous libres  : \(plan.before.freeHoles) avant, \(plan.after.freeHoles) après
     """
 }
 

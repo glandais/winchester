@@ -412,7 +412,7 @@ rien : le planificateur travaille en extents, et un volume de 320 Go ne lui
 coûte pas plus cher qu'un de 180 Mo. Ce qui change avec le format, c'est
 l'**outil** — parce que c'est lui que le format datait.
 
-#### Quatre défragmenteurs, dont deux d'époque
+#### Cinq défragmenteurs, dont deux d'époque
 
 Sur un volume FAT, c'est la passe livrée avec Windows 95 puis 98 : tasser tous
 les fichiers contre le début du volume, dans l'ordre du parcours de
@@ -430,6 +430,10 @@ gros fichiers. **JkDefrag 3.36**, de 2008, est le seul qui range le volume sans
 évacuer personne. On les demande explicitement (`STRATEGY=ultraDefrag`,
 `STRATEGY=jkDefrag`) pour comparer des passes sur exactement le même volume.
 JkDefrag s'obtient aussi dans ses autres modes, décrits plus bas.
+
+Le cinquième n'imite aucun outil : le **tassage à la frontière**
+(`STRATEGY=frontierCompaction`) a été écrit ici, pour FAT, à partir de ce que
+les quatre autres y font mal. Il est décrit en dernier.
 
 L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
 `famille-2007` tassait trois cents gigaoctets par tampons de 256 Ko : vingt-huit
@@ -589,6 +593,61 @@ contenu, en 23 284 évacuations. C'est ce va-et-vient que l'on entend, et c'est
 pour cela que l'outil d'époque demandait de faire de la place avant de le
 lancer.
 
+#### Tasser sans changer l'ordre
+
+Sur FAT, les outils simulés se partagent deux défauts. Windows 95 range
+parfaitement, mais dans un autre ordre que celui du volume : il déplace jusqu'à
+sept fois le contenu du disque. JkDefrag et UltraDefrag ne délogent personne, et
+n'ont plus rien à faire quand les trous manquent — à 99 %, ils ne touchent pas
+un des 440 fichiers cassés de `gamer-1996`.
+
+Le **tassage à la frontière** part d'une règle : l'ordre d'arrivée est l'ordre
+actuel. Une frontière balaie le volume depuis son début, et tout ce qui est
+sous elle est rangé. Un fichier d'un seul tenant qui y commence reste où il est
+; un petit trou est comblé au cluster près par des fichiers qui devaient bouger
+de toute façon ; sinon, le fichier qui suit le trou **glisse**, par tronçons de
+la taille du trou, chacun écrit dans la place que le précédent vient de quitter.
+Deux clusters libres suffisent à tasser un volume entier, et le trou grossit en
+montant, de tous ceux qu'il absorbe.
+
+Autour de ce geste : les fichiers en morceaux qui tiennent dans un trou y sont
+recopiés d'un tenant avant le balayage ; un morceau qui barre la frontière est
+poussé au fond du volume, où elle ne le recroisera qu'à la fin ; un gros fichier
+qui ne trouvera plus de fenêtre à sa taille entre les morceaux du fichier
+d'échange passe avant les autres ; et les tables ne sont écrites qu'une fois
+par lot de déplacements, dont aucun n'écrit sur un cluster que le lot vient de
+quitter. D'où une garantie qu'aucun outil d'époque n'offrait : **aucune écriture
+ne tombe sur une donnée encore référencée**. Une coupure de courant pendant la
+passe laisse un volume cohérent.
+
+| scénario | plein | durée, 95 → JkDefrag → frontière | morceaux restants, 95 / JkDefrag / frontière | trous libres, 95 / JkDefrag / frontière |
+|---|---:|---:|---:|---:|
+| `dev-1993` | 74 % | 30 min 35 → 4 min 30 → **5 min 22** | 0 / 0 / **0** | 2 / 8 / **1** |
+| `secretaire-1993` | 90 % | 1 h 05 → 8 min 15 → **14 min 25** | 0 / 0 / **0** | 2 / 104 / **1** |
+| `poweruser-1993` | 86 % | 40 min 51 → 6 min 07 → **12 min 04** | 0 / 65 / **0** | 2 / 55 / **1** |
+| `gamer-1993` | 99 % | 32 min 36 → 9 s → **26 min 30** | 0 / 941 / **0** | 241 / 7 / **1** |
+| `dev-1996` | 87 % | 36 min 21 → 5 min 03 → **9 min 06** | 290 / 334 / **290** | 239 / 285 / **157** |
+| `famille-1996` | 89 % | 1 h 01 → 6 min 54 → **10 min 01** | 176 / 193 / **176** | 176 / 312 / **60** |
+| `secretaire-1996` | 75 % | 46 min 12 → 7 min 21 → **5 min 46** | 2 / 2 / **2** | 2 / 113 / **1** |
+| `gamer-1996` | 99 % | 59 min 18 → 8 s → **53 min 45** | 14 / 1 622 / **5** | 286 / 2 / **1** |
+| `dev-1999` | 93 % | 5 h 04 → 17 min 40 → **49 min 45** | 3 / 707 / **3** | 248 / 612 / **1** |
+| `famille-1999` | 97 % | 4 h 28 → 12 min 09 → **35 min 29** | 8 / 2 739 / **8** | 312 / 1 563 / **7** |
+| `secretaire-1999` | 87 % | 3 h 07 → 10 min 19 → **19 min 00** | 3 / 1 057 / **3** | 4 / 1 067 / **1** |
+| `gamer-1999` | 97 % | 4 h 14 → 8 min 55 → **46 min 45** | 89 / 1 394 / **46** | 884 / 915 / **41** |
+
+Les morceaux qui restent sont **tous ceux du fichier d'échange**, que personne
+ne déplace : aucun fichier déplaçable ne sort de la passe en morceaux. Les trous
+qui restent sont entre ces morceaux — sur `dev-1996`, 290 morceaux laissent 157
+trous que la passe n'a pas su combler.
+
+Sur les douze volumes, la passe dure 4 h 47 au total contre 23 h 07 pour
+Windows 95, et elle déplace de deux à sept fois moins de données. Elle reste
+trois fois plus longue que JkDefrag (1 h 27), qui ne fait pas le même travail :
+sur les quatre volumes de 1999, il laisse entre 700 et 2 700 morceaux et plus de
+600 trous. Sur les deux volumes pleins à 99 %, l'écart avec Windows 95 se
+resserre à 10–20 % : tout passe par une navette de deux clusters, et chaque
+tronçon se paie d'une écriture des tables.
+
 Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
 démarrage :
 
@@ -731,11 +790,11 @@ STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace ud.wav  # un autre o
 ```
 
 `STRATEGY` force le défragmenteur simulé au lieu de laisser le format le dater :
-`windows95`, `windowsXP`, `jkDefrag`, `ultraDefrag`, et les autres modes de
+`windows95`, `windowsXP`, `jkDefrag`, `ultraDefrag`, les autres modes de
 JkDefrag : `jkDefragForcedFill`, `jkDefragMoveUp`, `jkDefragSortName`,
 `jkDefragSortSize`, `jkDefragSortAccess`, `jkDefragSortChange`,
-`jkDefragSortCreation`. C'est ainsi que se comparent deux passes sur exactement
-le même volume.
+`jkDefragSortCreation`, et `frontierCompaction`. C'est ainsi que se comparent
+deux passes sur exactement le même volume.
 
 Le rendu est **au fil de l'eau**, comme l'écoute : le son est mixé à mesure
 que la passe se planifie, écrit dans un fichier brut dès qu'il est définitif,
@@ -745,7 +804,7 @@ gigaoctet — et le mixage garde l'ordre des additions du rendu d'un bloc, d'où
 un WAV identique au bit près.
 
 `PLAN_ONLY` s'arrête au bilan de la passe — volume, déplacements, évacuations,
-octets déplacés — sans rendre une note. C'est ce qu'il faut pour juger d'un
+octets déplacés, morceaux et trous libres restants — sans rendre une note. C'est ce qu'il faut pour juger d'un
 planificateur : une passe d'époque sur un volume d'époque dure des heures, et
 son rendu pèse des gigaoctets.
 
@@ -811,6 +870,9 @@ Sources/Model/
                            la fin, trier en évacuant ; sur demande
     UltraDefragStrategy.swift  recoller les petits morceaux des gros fichiers,
                            sur demande et quel que soit le format
+    FrontierCompactionStrategy.swift  tasser un volume FAT dans l'ordre où
+                           il est, par glissement, sans écrire sur une donnée
+                           encore référencée ; sur demande
     DiskSimulator.swift    mécanique du disque, une requête après l'autre
     AudioCue.swift         chronologie mécanique → repères audio, au fil des
                            événements
@@ -858,7 +920,7 @@ journal dit pourquoi il est ainsi.
    déclaratif.
 4. Ajouter d'autres géométries (15 000 tr/min SCSI, disquette) : seules la table
    de zones et les constantes de seek changent.
-5. Écouter les quatre stratégies sur le même volume. `STRATEGY` les rend déjà
+5. Écouter les cinq stratégies sur le même volume. `STRATEGY` les rend déjà
    comparables au rendu hors-ligne, et tout ce qui les sépare est mesuré ; rien
    de tout cela n'a encore été confronté à l'oreille, et l'écran de
    l'application ne propose toujours que l'outil d'époque.

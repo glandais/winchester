@@ -167,11 +167,13 @@ enum DefragPlanner {
     /// de comparaison, pas l'outil que la machine avait sous la main.
     ///
     /// JkDefrag y figure une fois par mode : le mode par défaut, puis les deux
-    /// tassements et les cinq tris complets.
+    /// tassements et les cinq tris complets. Le tassage à la frontière vient
+    /// en dernier : il n'imite aucun outil, il a été écrit ici pour FAT.
     static let all: [any DefragStrategy] = [
         Windows95Strategy(), WindowsXPStrategy(), JKDefragStrategy(), UltraDefragStrategy(),
         JKDefragStrategy(mode: .forcedFill), JKDefragStrategy(mode: .moveUp),
     ] + JKDefragStrategy.SortField.allCases.map { JKDefragStrategy(mode: .sort($0)) }
+      + [FrontierCompactionStrategy()]
 
     static func strategy(named id: String) -> (any DefragStrategy)? {
         all.first { $0.id == id }

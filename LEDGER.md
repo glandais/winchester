@@ -2372,3 +2372,122 @@ fragmentation, et encore, pas pour un fichier resté sur place en morceaux.
   de départ.
 - La nuance d'un bloc à 17 000 cellules sur un gros volume se joue à la
   majorité : un bloc à moitié rangé bascule d'un cluster à l'autre.
+
+## Chantier 14 — tasser un volume FAT sans changer son ordre
+
+**Fait** · branche `defrag-fat-econome`
+
+### Le problème
+
+Sur les douze volumes FAT de la galerie, aucun des outils simulés ne tient à
+la fois la durée, la qualité et le manque de place. Mesures `PLAN_ONLY` de
+départ, avec le compte des trous libres ajouté au bilan de `RenderTrace` :
+
+| scénario | plein | durée 95 / JkDefrag / UltraDefrag | morceaux restants 95 / JK / UD | trous 95 / JK / UD |
+|---|---:|---:|---:|---:|
+| `gamer-1993` | 99 % | 1 956 / 8 / 8 s | 0 / 941 / 929 | 241 / 7 / 12 |
+| `gamer-1996` | 99 % | 3 558 / 7 / 7 s | 14 / 1 622 / 1 620 | 286 / 2 / 2 |
+| `dev-1999` | 93 % | 18 256 / 1 060 / 382 s | 3 / 707 / 8 130 | 248 / 612 / 4 785 |
+| `famille-1999` | 97 % | 16 130 / 729 / 234 s | 8 / 2 739 / 14 523 | 312 / 1 563 / 4 751 |
+| **douze volumes** | | **83 247 / 5 250 / 2 002 s** | | |
+
+Windows 95 range tout, mais dans l'ordre du parcours de l'arborescence : il
+déplace jusqu'à sept fois le contenu du volume. JkDefrag et UltraDefrag
+n'évacuent personne et ne font rien quand les trous manquent — deux clusters
+libres sur `gamer-1996`, douze sur `gamer-1993`. Et le fichier d'échange,
+immobile, est souvent en centaines de morceaux (290 sur `dev-1996`), qui
+découpent le volume en fenêtres.
+
+### Les décisions
+
+- **L'ordre d'arrivée est l'ordre actuel.** Une frontière balaie le volume ; un
+  fichier d'un seul tenant qui y commence ne bouge pas. C'est ce qui supprime
+  la cascade d'évacuations de Windows 95 : ce qu'on range n'a presque jamais
+  une destination occupée par quelqu'un qui repartira.
+- **Le glissement par tronçons de la taille du trou.** Le fichier qui suit un
+  trou descend tronçon par tronçon, chacun écrit dans la place que le
+  précédent vient de quitter. C'est le seul geste qui marche avec deux clusters
+  libres, et il n'écrit jamais sur une donnée encore référencée.
+- **Aucune écriture sur un cluster quitté mais pas encore validé.** Les
+  déplacements vers des clusters déjà libres sont validés par lots — une
+  écriture des tables, triée et fusionnée — et les clusters qu'ils quittent
+  restent retenus jusque-là (`relocateHoldingReleased`, écrit pour UltraDefrag
+  sur NTFS). Un test rejoue chaque plan et compte les écritures fautives ; il
+  en trouve 17 171 sur le volume vieilli quand on retire la rétention.
+- **Les refuges.** Un trou qu'aucun fichier ne peut combler devant un obstacle
+  reste libre à l'arrivée, mais sert d'abri pendant la passe. Sans eux, le
+  premier trou laissé sur `gamer-1996` avalait ses deux clusters libres, et
+  194 fichiers étaient abandonnés.
+- **La navette.** Quand tout l'espace libre est le trou de la frontière et que
+  le fichier suivant ne tient pas avant l'obstacle, un fichier qui y tient est
+  rangé pièce à pièce, le trou servant de va-et-vient. S'il n'en reste aucun,
+  la zone est laissée en refuge. Ce sont ces deux cas, et non un défaut de la
+  bitmap que j'ai d'abord cru voir, qui faisaient abandonner des fichiers.
+- **Le plus gros d'abord, fenêtre par fenêtre.** Un fichier qui ne trouvera
+  plus de fenêtre à sa taille entre les obstacles à venir, une fois celles-ci
+  partagées entre les plus gros, passe avant les autres. Sans cette règle, un
+  fichier de 73 243 clusters restait en 2 300 morceaux sur `gamer-1999`.
+
+Les réglages qui suivent ont été choisis à la mesure, un par un :
+
+| version | durée, douze volumes | fichiers déplaçables restés en morceaux |
+|---|---:|---:|
+| glissement seul, morceaux évacués juste au-dessus | 37 016 s | 300 |
+| morceaux évacués au fond du volume | 30 081 s | 325 |
+| + comblement exact seulement, parcage, refuges, navette, fenêtres | 21 575 s | 0 |
+| + réparation préalable, validations groupées, plafond de 16 clusters | **17 275 s** | **0** |
+
+- **Évacuer au fond du volume.** Posé juste au-dessus, le morceau d'un gros
+  fichier était retrouvé et repoussé à chaque avancée de la frontière : 70 092
+  évacuations sur `famille-1999`, 16 712 au fond.
+- **Ne combler qu'au cluster près, et que les petits trous.** Chaque fichier
+  tiré dans le trou le consommait, et tout ce qui glissait ensuite le faisait
+  par tronçons de 18 clusters en moyenne sur `famille-1999` (62 000 tronçons).
+  Plafonné à 16 clusters : 2 929 → 2 129 s sur ce volume, 1 305 → 1 140 s sur
+  `secretaire-1999`, et +2 % sur `dev-1999`.
+- **Pousser au fond un fichier qui glisserait en plus de 8 tronçons.** Le seuil
+  compte peu : de 2 à 16, le total varie de moins de 2 %.
+- **Réparer d'abord ce qui tient dans un trou.** 4 à 22 % selon le volume.
+- **Valider par lots.** 4 à 8 % de moins sur les gros volumes. Garder le lot
+  ouvert quand la frontière n'a plus de trou devant elle allonge `gamer-1996`
+  de 10 % : sur un volume plein, les clusters retenus sont ceux qui manquent.
+  Le lot est alors validé tout de suite.
+- **Le tampon reste de 256 Ko**, celui de Windows 95, pour que l'écart vienne de
+  l'algorithme. Mesuré avant les deux derniers réglages, 4 Mo gagnaient 11 à
+  15 % sur les gros volumes de 1999, et rien sur `gamer-1996`.
+
+### Ce qui valide
+
+- Sur les douze volumes, **aucun fichier déplaçable ne reste en morceaux** ; ce
+  qui reste est le fichier d'échange (290 morceaux sur `dev-1996`, 46 sur
+  `gamer-1999` contre 89 pour Windows 95). Trous libres : 1 sur huit volumes,
+  273 au total contre 2 398 pour Windows 95 et 5 043 pour JkDefrag.
+- **4 h 47 de passe au total contre 23 h 07** pour Windows 95 ; de deux à sept
+  fois moins de données déplacées. Planification et simulation en une seconde
+  de CPU au plus par volume, comme les autres outils.
+- **246 tests passent**, dont sept nouveaux : conservation du volume, écritures
+  jamais faites sur un cluster non validé, deux clusters libres, fichiers en
+  place ni lus ni écrits, trou devant le fichier d'échange, fenêtres, lots. Ils
+  mordent : retirer la rétention des clusters en fait échouer trois, retirer
+  la règle des fenêtres en fait échouer un.
+- Les bilans de Windows 95, JkDefrag et UltraDefrag sur `gamer-1996` sont
+  identiques à ceux d'avant le chantier.
+- Le rendu complet de `dev-1993` passe par la chaîne au fil de l'eau : 5 min 22,
+  62 Mo de WAV.
+
+### Laissé ouvert
+
+- **Rien n'a été écouté**, ni vu dans l'application, qui ne propose toujours
+  que l'outil d'époque. `xcodegen generate` sera nécessaire pour que le fichier
+  entre dans le projet Xcode.
+- **JkDefrag reste trois fois plus rapide** (1 h 27), au prix de milliers de
+  morceaux sur les volumes de 1999. Sur les volumes pleins à 99 %, le gain sur
+  Windows 95 n'est que de 10 à 20 % : chaque tronçon de la navette se paie
+  d'une écriture des tables.
+- **Les trous entre les morceaux du fichier d'échange** : 157 sur `dev-1996`, 60
+  sur `famille-1996`. Les combler demanderait de chercher des combinaisons de
+  fichiers à leur taille, comme `FindBestItem`.
+- **Les seuils sont calés sur ces douze volumes**, et nulle part ailleurs.
+- **La garantie de cohérence est celle du modèle** : l'ordre des écritures à
+  l'intérieur d'un lot — les deux copies de la table, puis les entrées de
+  répertoire — n'est pas simulé, pas plus qu'il ne l'est pour les autres outils.

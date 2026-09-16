@@ -91,7 +91,8 @@ struct ClusterMapTests {
           arguments: DefragPlanner.all.map(\.id))
     func contiguityAfterPass(strategyID: String) throws {
         let strategy = try #require(DefragPlanner.strategy(named: strategyID))
-        let format: VolumeFormat = strategyID == Windows95Strategy().id ? .fat16 : .ntfs
+        let fat = [Windows95Strategy().id, FrontierCompactionStrategy().id]
+        let format: VolumeFormat = fat.contains(strategyID) ? .fat16 : .ntfs
         let partition = PartitionGeometry(startLBA: 0, clusterCount: 4_000,
                                           clusterSectors: 8, format: format)
         let categories: [ClusterCategory] = [.system, .application, .document, .archive, .churn]
