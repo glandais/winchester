@@ -410,6 +410,7 @@ extension JKDefragStrategy.Pass {
             if move(bigger.position, vcn: bigger.vcn, length: UInt32(size),
                     to: UInt32(moveGapBegin), phase: phase, pass: 1) {
                 report.evacuations += 1
+                sink.moves.evacuations = report.evacuations
                 if moveGapBegin < moveTo { moveTo = moveGapBegin }
                 moveGapBegin += size
             } else {

@@ -136,6 +136,7 @@ struct Windows95Strategy: DefragStrategy {
                 volume.relocate(occupantPosition, to: refuge)
                 movedClusters += Int(occupant.clusterCount)
                 evacuations += 1
+                sink.moves.evacuations = evacuations
             }
 
             // 2. Déplacer le fichier vers sa destination définitive.
@@ -148,6 +149,7 @@ struct Windows95Strategy: DefragStrategy {
             volume.relocate(position, to: [target])
             movedClusters += Int(need)
             filesMoved += 1
+            sink.moves.filesMoved = filesMoved
 
             frontier = target.end
         }

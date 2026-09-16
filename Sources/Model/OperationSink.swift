@@ -1,6 +1,12 @@
 import Foundation
 import DiskCore
 
+/// Ce qu'une stratégie a déplacé jusqu'ici.
+struct MoveCount: Sendable, Equatable {
+    var filesMoved = 0
+    var evacuations = 0
+}
+
 /// Là où une stratégie pose ses opérations, une à une.
 ///
 /// Une passe de défragmentation se comptait en tableaux : toutes les
@@ -24,7 +30,8 @@ import DiskCore
 /// ses copies doivent alimenter.
 final class OperationSink {
 
-    typealias Downstream = (DiskOperation, ArraySlice<MapMutation>, _ progress: Double) -> Void
+    typealias Downstream = (DiskOperation, ArraySlice<MapMutation>,
+                            _ progress: Double, _ moves: MoveCount) -> Void
 
     private(set) var operations: [DiskOperation] = []
     private(set) var mutations: [MapMutation] = []
@@ -38,6 +45,15 @@ final class OperationSink {
     /// d'une passe, elle, n'est plus connue d'avance — l'avancement est la
     /// seule mesure qui reste.
     var progress: Double = 0
+
+    /// Fichiers déplacés et évacuations comptés jusqu'ici, tels que la
+    /// stratégie les compte pour son plan.
+    ///
+    /// Comme l'avancement, c'est la stratégie qui les tient : « un fichier
+    /// déplacé » n'a pas le même sens pour un outil qui recopie les fichiers
+    /// entiers et pour un autre qui n'en déplace que des morceaux. Ils partent
+    /// avec l'opération suivante, et le plan final fait foi.
+    var moves = MoveCount()
 
     /// Un récepteur qui garde tout.
     init() {
@@ -70,7 +86,7 @@ final class OperationSink {
         }
         let start = Int(operation.mutationStart)
         let end = start + Int(operation.mutationCount)
-        downstream(operation, mutations[start..<end], progress)
+        downstream(operation, mutations[start..<end], progress, moves)
         // Les mutations d'une opération sont enregistrées juste avant elle :
         // une fois l'opération partie, plus personne ne les désignera.
         mutations.removeAll(keepingCapacity: true)

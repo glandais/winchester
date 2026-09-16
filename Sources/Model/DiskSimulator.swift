@@ -58,6 +58,15 @@ struct TraceStats {
     var bytesRead = 0
     var bytesWritten = 0
     var busySeconds = 0.0
+    /// Où passe le temps d'une passe, requête par requête : bras en
+    /// mouvement (commutations de tête comprises), attente du secteur, pas de
+    /// piste pendant un transfert, calcul de la machine entre deux lectures,
+    /// et disque au repos. Avec `busySeconds`, ils recomposent l'horloge.
+    var seekSeconds = 0.0
+    var rotationSeconds = 0.0
+    var stepSeconds = 0.0
+    var thinkSeconds = 0.0
+    var waitSeconds = 0.0
 
     var averageSeekDistance: Int {
         seekCount > 0 ? totalSeekDistance / seekCount : 0
@@ -235,6 +244,11 @@ struct DiskMechanics {
         // la machine a peut-être quelque chose à faire de ce qu'elle vient
         // de lire. `thinkTime` est nul partout sauf pour un démarrage.
         let issued = max(clock + request.thinkTime, request.issueTime)
+        // Le calcul ne compte que ce qui s'est écoulé avant la prise en charge ;
+        // le reste de l'écart est un disque qui attend qu'on lui demande.
+        let thought = max(min(issued, clock + request.thinkTime) - clock, 0)
+        stats.thinkSeconds += thought
+        stats.waitSeconds += max(issued - clock - thought, 0)
         var t = issued
         let target = geometry.position(ofLBA: request.lba)
 
@@ -247,10 +261,12 @@ struct DiskMechanics {
             stats.totalSeekDistance += distance
             if distance > geometry.cylinders / 2 { stats.fullStrokeSeeks += 1 }
             t += profile.total
+            stats.seekSeconds += profile.total
             headCylinder = target.cylinder
         } else if target.head != headIndex {
             events.append(DiskEvent(time: t, kind: .headSwitch))
             t += seekModel.headSwitchDuration
+            stats.seekSeconds += seekModel.headSwitchDuration
         }
         headIndex = target.head
 
@@ -262,6 +278,7 @@ struct DiskMechanics {
         var delta = targetAngle - currentAngle
         if delta < 0 { delta += 1 }
         t += delta * revolution
+        stats.rotationSeconds += delta * revolution
 
         // L'échantillon d'affichage est refermé après le transfert, une fois
         // connu le cylindre d'arrivée : c'est lui qui fait avancer le bras
@@ -295,11 +312,13 @@ struct DiskMechanics {
                 headIndex += 1
                 events.append(DiskEvent(time: t, kind: .headSwitch))
                 t += seekModel.headSwitchDuration
+                stats.stepSeconds += seekModel.headSwitchDuration
             } else if headCylinder + 1 < geometry.cylinders {
                 headIndex = 0
                 headCylinder += 1
                 events.append(DiskEvent(time: t, kind: .trackStep))
                 t += seekModel.duration(distance: 1)
+                stats.stepSeconds += seekModel.duration(distance: 1)
             } else {
                 // Plus de piste suivante : la requête déborde du disque. La
                 // tronquer, parce que c'est ce qu'un disque répond. Bloquer

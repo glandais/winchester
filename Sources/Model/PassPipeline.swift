@@ -20,6 +20,9 @@ struct ActivityBucket: Sendable, Equatable {
     var seeks = 0
     var seekDistance = 0
     var movedBytes = 0
+    /// Ce que les instruments en disent de plus. Hors de la comparaison avec le
+    /// calcul d'un bloc, qui ne les a jamais produits.
+    var detail = ActivityDetail()
 
     init(index: Int) {
         self.index = index
@@ -30,6 +33,82 @@ struct ActivityBucket: Sendable, Equatable {
     }
 
     var start: Double { Double(index) * Self.duration }
+}
+
+/// Le détail d'une tranche, pour les instruments.
+struct ActivityDetail: Sendable, Equatable {
+    var readRequests = 0
+    var readBytes = 0
+    var writeBytes = 0
+    /// Le temps des requêtes prises en charge dans la tranche, par composante.
+    /// Le transfert comprend les pas de piste d'une lecture séquentielle.
+    var seekSeconds = 0.0
+    var rotationSeconds = 0.0
+    var transferSeconds = 0.0
+    var thinkSeconds = 0.0
+    var waitSeconds = 0.0
+    /// Seeks par classe de distance (`SeekClass`).
+    var seekClasses = [Int](repeating: 0, count: SeekClass.allCases.count)
+    /// Requêtes par bande de cylindres, du bord (bande 0) vers le moyeu.
+    var cylinderBands = [Int](repeating: 0, count: ActivityDetail.bandCount)
+
+    static let bandCount = 24
+
+    static func band(cylinder: Int, of cylinders: Int) -> Int {
+        guard cylinders > 0 else { return 0 }
+        return min(max(cylinder * bandCount / cylinders, 0), bandCount - 1)
+    }
+
+    mutating func add(_ other: ActivityDetail) {
+        readRequests += other.readRequests
+        readBytes += other.readBytes
+        writeBytes += other.writeBytes
+        seekSeconds += other.seekSeconds
+        rotationSeconds += other.rotationSeconds
+        transferSeconds += other.transferSeconds
+        thinkSeconds += other.thinkSeconds
+        waitSeconds += other.waitSeconds
+        for i in seekClasses.indices { seekClasses[i] += other.seekClasses[i] }
+        for i in cylinderBands.indices { cylinderBands[i] += other.cylinderBands[i] }
+    }
+}
+
+/// La distance d'un seek, rapportée à la course du bras.
+enum SeekClass: Int, CaseIterable, Sendable {
+    /// Une piste : le pas d'une lecture qui continue ailleurs.
+    case adjacent
+    /// Au plus 1 % de la course.
+    case short
+    /// Au plus 10 %.
+    case medium
+    /// Au plus la moitié.
+    case long
+    /// Plus de la moitié : ce que `TraceStats.fullStrokeSeeks` compte.
+    case full
+
+    init(distance: Int, cylinders: Int) {
+        if distance <= 1 { self = .adjacent }
+        else if distance * 100 <= cylinders { self = .short }
+        else if distance * 10 <= cylinders { self = .medium }
+        else if distance <= cylinders / 2 { self = .long }
+        else { self = .full }
+    }
+
+    var label: String {
+        switch self {
+        case .adjacent: return "piste voisine"
+        case .short:    return "courts"
+        case .medium:   return "moyens"
+        case .long:     return "longs"
+        case .full:     return "pleine course"
+        }
+    }
+}
+
+/// Les compteurs de la stratégie, datés.
+struct MoveMark: Sendable, Equatable {
+    let time: Double
+    let moves: MoveCount
 }
 
 /// Une phase commence.
@@ -85,6 +164,7 @@ struct PassBatch: Sendable {
     var buckets: [ActivityBucket] = []
     var phases: [PhaseMark] = []
     var progress: [ProgressMark] = []
+    var moves: [MoveMark] = []
     /// Fin de la dernière requête simulée.
     var clock = 0.0
     var end: PassEnd?
@@ -99,6 +179,7 @@ struct PassBatch: Sendable {
         buckets.append(contentsOf: next.buckets)
         phases.append(contentsOf: next.phases)
         progress.append(contentsOf: next.progress)
+        moves.append(contentsOf: next.moves)
         clock = max(clock, next.clock)
         if let end = next.end { self.end = end }
     }
@@ -183,8 +264,9 @@ final class PassPipeline {
     /// Une opération de défragmentation, et ce qu'elle change à la carte.
     func serve(_ operation: DiskOperation,
                mutations: ArraySlice<MapMutation>,
-               progress: Double) {
-        chain.serve(operation, mutations: mutations, progress: progress)
+               progress: Double,
+               moves: MoveCount = MoveCount()) {
+        chain.serve(operation, mutations: mutations, progress: progress, moves: moves)
         if chain.isDue { deliver(chain.flush()) }
     }
 
@@ -225,6 +307,7 @@ private struct Chain {
     private var lastPhase: Int?
     private var currentPhase: Int?
     private var lastProgress = -1.0
+    private var lastMoves = MoveCount()
     private var eventCount = 0
     private var workEnd = 0.0
 
@@ -274,18 +357,39 @@ private struct Chain {
         let index = ActivityBucket.index(at: timing.start)
         closeBuckets(before: index)
         let after = mechanics.stats
+        let cylinders = setup.geometry.cylinders
+        let distance = after.totalSeekDistance - before.totalSeekDistance
         updateBucket(index) {
             $0.requests += 1
             $0.bytes += request.sectorCount * DriveGeometry.bytesPerSector
             $0.seeks += after.seekCount - before.seekCount
-            $0.seekDistance += after.totalSeekDistance - before.totalSeekDistance
+            $0.seekDistance += distance
+            let bytes = request.sectorCount * DriveGeometry.bytesPerSector
+            if request.isWrite {
+                $0.detail.writeBytes += bytes
+            } else {
+                $0.detail.readRequests += 1
+                $0.detail.readBytes += bytes
+            }
+            $0.detail.seekSeconds += after.seekSeconds - before.seekSeconds
+            $0.detail.rotationSeconds += after.rotationSeconds - before.rotationSeconds
+            $0.detail.transferSeconds += (after.busySeconds - before.busySeconds)
+                + (after.stepSeconds - before.stepSeconds)
+            $0.detail.thinkSeconds += after.thinkSeconds - before.thinkSeconds
+            $0.detail.waitSeconds += after.waitSeconds - before.waitSeconds
+            if after.seekCount > before.seekCount {
+                $0.detail.seekClasses[SeekClass(distance: distance, cylinders: cylinders).rawValue] += 1
+            }
+            $0.detail.cylinderBands[ActivityDetail.band(cylinder: Int(sample.cylinder),
+                                                        of: cylinders)] += 1
         }
         return timing
     }
 
     mutating func serve(_ operation: DiskOperation,
                         mutations: ArraySlice<MapMutation>,
-                        progress: Double) {
+                        progress: Double,
+                        moves: MoveCount) {
         let timing = simulate(BlockRequest(issueTime: operation.issueTime,
                                         lba: operation.lba,
                                         sectorCount: operation.sectors,
@@ -295,6 +399,10 @@ private struct Chain {
         if abs(progress - lastProgress) >= 0.001 {
             batch.progress.append(ProgressMark(time: timing.start, value: progress))
             lastProgress = progress
+        }
+        if moves != lastMoves {
+            batch.moves.append(MoveMark(time: timing.end, moves: moves))
+            lastMoves = moves
         }
         for mutation in mutations {
             batch.mutations.append(TimedMutation(time: timing.end,
@@ -320,6 +428,16 @@ private struct Chain {
         ingestEvents()
         cueStream.finish()
         closeBuckets(before: .max)
+
+        // Les derniers comptes d'une stratégie peuvent suivre sa dernière
+        // opération : le plan fait foi, à la fin du travail.
+        if let plan {
+            let final = MoveCount(filesMoved: plan.filesMoved, evacuations: plan.evacuations)
+            if final != lastMoves {
+                batch.moves.append(MoveMark(time: workEnd, moves: final))
+                lastMoves = final
+            }
+        }
 
         let duration = setup.tail.map { workEnd + $0 }
             ?? max(max(setup.minimumDuration, mechanics.clock), parkAt ?? 0)

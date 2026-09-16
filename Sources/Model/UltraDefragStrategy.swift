@@ -260,6 +260,7 @@ struct UltraDefragStrategy: DefragStrategy {
                 moved.clusters += Int(file.clusterCount)
                 moved.clustersThisPass += Int(file.clusterCount)
                 moved.entirely.insert(position)
+                sink.moves.filesMoved = moved.entirely.union(moved.partially).count
             } else if let threshold {
                 eliminateLittleFragments(of: position, threshold: threshold, phase: phase,
                                          bufferBytes: bufferBytes, volume: &volume,
@@ -423,7 +424,10 @@ struct UltraDefragStrategy: DefragStrategy {
             minVCN = nextMinVCN
         }
 
-        if succeeded { moved.partially.insert(position) }
+        if succeeded {
+            moved.partially.insert(position)
+            sink.moves.filesMoved = moved.entirely.union(moved.partially).count
+        }
     }
 
     /// Valide un déplacement dans le volume de travail.

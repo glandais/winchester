@@ -685,6 +685,7 @@ extension JKDefragStrategy {
             volume.relocateChanges(index, to: extents)
             order.move(position, to: extents[0].start)
             touched.insert(position)
+            sink.moves.filesMoved = touched.count
             report.movedClusters += Int(length)
             report.moves[pass] += 1
             return true

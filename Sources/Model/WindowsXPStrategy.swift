@@ -185,6 +185,7 @@ struct WindowsXPStrategy: DefragStrategy {
             volume.relocate(position, to: [target])
             movedClusters += Int(file.clusterCount)
             filesMoved += 1
+            sink.moves.filesMoved = filesMoved
         }
 
         // MARK: Phase 2 — la MFT et la bitmap, une dernière fois

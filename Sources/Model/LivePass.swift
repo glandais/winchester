@@ -20,6 +20,7 @@ struct ActivityTotals: Sendable, Equatable {
     var seeks = 0
     var seekDistance = 0
     var movedBytes = 0
+    var detail = ActivityDetail()
 
     var averageSeekDistance: Int { seeks > 0 ? seekDistance / seeks : 0 }
 }
@@ -84,6 +85,7 @@ final class LivePass: PassFeed {
     /// Jusqu'où le cumul est fait.
     private var phaseClock = 0.0
     private var progressMarks: [ProgressMark] = []
+    private var moveMarks: [MoveMark] = []
 
     /// Fin de la dernière requête produite : jusqu'où la passe est connue.
     private(set) var producedThrough = 0.0
@@ -141,6 +143,7 @@ final class LivePass: PassFeed {
         buckets.append(contentsOf: batch.buckets)
         phaseMarks.append(contentsOf: batch.phases)
         progressMarks.append(contentsOf: batch.progress)
+        moveMarks.append(contentsOf: batch.moves)
         producedThrough = max(producedThrough, batch.clock)
         if let end = batch.end {
             self.end = end
@@ -163,6 +166,7 @@ final class LivePass: PassFeed {
             totals.seeks += bucket.seeks
             totals.seekDistance += bucket.seekDistance
             totals.movedBytes += bucket.movedBytes
+            totals.detail.add(bucket.detail)
             totalledThrough = bucket.index
         }
 
@@ -236,6 +240,10 @@ final class LivePass: PassFeed {
         drop = 0
         while drop + 1 < progressMarks.count && progressMarks[drop + 1].time <= now { drop += 1 }
         if drop > 0 { progressMarks.removeFirst(drop) }
+
+        drop = 0
+        while drop + 1 < moveMarks.count && moveMarks[drop + 1].time <= now { drop += 1 }
+        if drop > 0 { moveMarks.removeFirst(drop) }
     }
 
     // MARK: - Lectures à l'instant écouté
@@ -247,6 +255,13 @@ final class LivePass: PassFeed {
 
     var phase: PhaseDescriptor? {
         phases.indices.contains(phaseIndex) ? phases[phaseIndex] : phases.first
+    }
+
+    /// Fichiers déplacés et évacuations comptés par la stratégie jusqu'à
+    /// l'instant écouté ; `nil` tant qu'elle n'a rien compté, ou pour un
+    /// démarrage.
+    var moves: MoveCount? {
+        moveMarks.last { $0.time <= now }?.moves
     }
 
     /// L'avancement annoncé par l'outil, s'il en annonce un.

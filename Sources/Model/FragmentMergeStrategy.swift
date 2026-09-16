@@ -599,6 +599,7 @@ extension FragmentMergeStrategy {
             pendingFiles.insert(position)
             volume.relocateHoldingReleased(position, to: extents)
             touched.insert(position)
+            sink.moves.filesMoved = touched.count
             report.movedClusters += Int(length)
 
             movesSinceCheckpoint += 1

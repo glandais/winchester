@@ -472,6 +472,7 @@ extension FrontierCompactionStrategy {
                                     far: true, whole: true, phase: phase) {
                             report.evacuations -= 1
                             report.parked += 1
+                            sink.moves.evacuations = report.evacuations + report.parked
                             continue
                         }
                     }
@@ -746,6 +747,7 @@ extension FrontierCompactionStrategy {
             }
             move(file, vcn: pieceVcn, to: destinations, phase: phase)
             report.evacuations += 1
+            sink.moves.evacuations = report.evacuations + report.parked
             report.evacuatedClusters += Int(found)
             return true
         }
@@ -877,6 +879,7 @@ extension FrontierCompactionStrategy {
                 insertKey(SizeKey(size: before.clusterCount, end: highestEnd[file], position: Int32(file)))
             }
             touched.insert(file)
+            sink.moves.filesMoved = touched.count
             report.movedClusters += Int(length)
         }
 

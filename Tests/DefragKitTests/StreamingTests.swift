@@ -105,8 +105,8 @@ struct StreamingTests {
         let recorder = PassRecorder()
         let pipeline = PassPipeline(setup: setup, batchRequests: batchRequests,
                                     batchSeconds: 0.5, deliver: recorder.receive)
-        let sink = OperationSink { operation, mutations, progress in
-            pipeline.serve(operation, mutations: mutations, progress: progress)
+        let sink = OperationSink { operation, mutations, progress, moves in
+            pipeline.serve(operation, mutations: mutations, progress: progress, moves: moves)
         }
         let plan = strategy.plan(volume: volume, into: sink)
         pipeline.finish(plan: plan)
@@ -233,6 +233,7 @@ struct StreamingTests {
             var copy = bucket
             copy.seeks = 0
             copy.seekDistance = 0
+            copy.detail = ActivityDetail()
             return copy
         }
         #expect(buckets == reference.buckets)
@@ -273,8 +274,8 @@ struct StreamingTests {
         // quelques secondes d'avance, pas plus.
         var batches: [PassBatch] = []
         let pipeline = PassPipeline(setup: Self.setup, deliver: { batches.append($0) })
-        let sink = OperationSink { operation, mutations, progress in
-            pipeline.serve(operation, mutations: mutations, progress: progress)
+        let sink = OperationSink { operation, mutations, progress, moves in
+            pipeline.serve(operation, mutations: mutations, progress: progress, moves: moves)
         }
         let plan = strategy.plan(volume: volume, into: sink)
         pipeline.finish(plan: plan)
@@ -329,9 +330,9 @@ struct StreamingTests {
         let finished = Locked(false)
         let session = PassSession(horizon: 5) { outlet in
             let pipeline = PassPipeline(setup: Self.setup, deliver: outlet.deliver)
-            let sink = OperationSink { operation, mutations, progress in
+            let sink = OperationSink { operation, mutations, progress, moves in
                 guard !outlet.isCancelled else { return }
-                pipeline.serve(operation, mutations: mutations, progress: progress)
+                pipeline.serve(operation, mutations: mutations, progress: progress, moves: moves)
             }
             let plan = Windows95Strategy().plan(volume: volume, into: sink)
             if !outlet.isCancelled { pipeline.finish(plan: plan) }

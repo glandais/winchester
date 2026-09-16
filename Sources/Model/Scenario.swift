@@ -460,9 +460,9 @@ enum ScenarioBuilder {
                 // Une passe abandonnée ne s'interrompt pas — les stratégies
                 // n'ont pas de point d'arrêt — mais elle cesse de simuler : le
                 // planificateur finit son calcul à vide.
-                let sink = OperationSink { operation, mutations, progress in
+                let sink = OperationSink { operation, mutations, progress, moves in
                     guard !isCancelled() else { return }
-                    pipeline.serve(operation, mutations: mutations, progress: progress)
+                    pipeline.serve(operation, mutations: mutations, progress: progress, moves: moves)
                 }
                 return strategy.plan(volume: volume, into: sink)
             }
