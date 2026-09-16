@@ -868,18 +868,202 @@ bloc de `dev-2003` vaut des milliers de clusters : la MFT n'y gagne la couleur
 d'un bloc que là où elle domine, et le nombre de blocs concernés n'a pas été
 compté.
 
+### Les autres modes de JkDefrag
+
+**Fait** · branche `chantier-2`
+
+#### Le problème
+
+Seul le mode par défaut était transposé (`-a 3`, le « mode 2 » interne). La ligne
+de commande en propose d'autres, aiguillés par `DefragOnePath`
+(`JkDefragLib.cpp:5412-5459`), et chacun est **une seule routine**, sans
+`Defragment` devant :
+
+| option | routine | ce qu'elle fait |
+|---|---|---|
+| `-a 5` | `ForcedFill` | chaque trou, en montant, rempli par la fin du fragment le plus haut |
+| `-a 6` | `OptimizeUp` | chaque trou, du fond vers le début, rempli par des fichiers pris dessous |
+| `-a 7` à `-a 11` | `OptimizeSort` | chaque zone reconstruite dans l'ordre du nom, de la taille, du dernier accès, de la dernière modification ou de la création |
+
+`OptimizeSort` est le seul qui évacue, par `Vacate`. Le journal disait que
+`ForcedFill` et `OptimizeUp` évacuaient aussi : c'était faux, eux ne posent
+jamais que dans un trou.
+
+`-a 2` (défragmenter seul) n'a pas été ajouté. `-a 12`, qui déplacerait la MFT,
+est commenté dans le source.
+
+#### Les décisions
+
+- **Une stratégie par mode**, sous un identifiant à elle
+  (`jkDefragForcedFill`, `jkDefragMoveUp`, `jkDefragSortName`, `…Size`,
+  `…Access`, `…Change`, `…Creation`). `JKDefragStrategy` prend un `mode`, et le
+  mode 2 garde `jkDefrag`. Les nouvelles routines vivent dans
+  `JKDefragFullOptimize.swift`.
+- **La transposition reste littérale.** Trois défauts de l'original fixent
+  l'ordre des déplacements, et sont gardés :
+  - avec `Direction = 0`, `FindHighestItem` parcourt le disque **depuis le
+    début** : `OptimizeUp` monte le fichier le plus **bas** qui tient, pas le
+    plus haut ;
+  - `FindBestItem` en montant s'arrête au premier fichier *au-delà* de la fin
+    du trou (`ItemLcn > ClusterEnd`) : celui qui commence pile à sa fin reste
+    candidat, et s'il est retenu, il descend ;
+  - le dernier accès est trié du plus récent au plus ancien, alors que le
+    commentaire de `CompareItems` annonce l'inverse. Le code fait foi.
+
+  S'y ajoutent les constantes de `OptimizeSort` : un déplacement partiel
+  arrondi au multiple de 8 (« il semble qu'un déplacement partiel ne réussisse
+  que si… »), 16 clusters de marge avant d'appeler `Vacate`, `Vacate` qui libère
+  un demi-pour-cent du volume en plus. Un fichier est « déjà en place » dès que
+  son **premier** fragment est au curseur, sans regarder la suite.
+- **Le dernier accès est la dernière écriture.** Le catalogue ne date pas les
+  lectures, et une écriture est un accès : c'est une borne basse, pas une
+  mesure. La dernière modification est la même date, ce qui vaut sur FAT
+  (`DIR_WrtDate`) comme sur NTFS (`MftChangeTime` change à chaque écriture). Les
+  dates sont au **jour** près, là où l'original les a à la centaine de
+  nanosecondes : à jour égal, c'est le chemin qui départage. `DefragFile` porte
+  désormais la taille logique et les deux jours.
+- **L'ordre d'un tri est calculé une fois.** L'original cherche le suivant en
+  reparcourant tout l'arbre : le plus petit de ceux qui sont plus grands que le
+  précédent. C'est le même ordre tant que `CompareItems` départage avant le LCN,
+  qui bouge. Sur un vrai volume, un chemin est unique et c'est toujours le cas.
+  **Pas dans la galerie** : le générateur réutilise des noms
+  (`\projets\src\module.c` existe 6 812 fois sur `dev-2003`, quatorze volumes
+  sur vingt ont des doublons). La taille et les dates les départagent presque
+  toujours. Restent **dix fichiers** sur toute la galerie, sur quatre volumes
+  `dev-`, où tout coïncide jusqu'au LCN : ils sont pris dans l'ordre des LCN de
+  départ, là où l'original lirait ceux du moment.
+- **Deux primitives nouvelles.** `ClusterBitmap.previousFreeRun(before:)` descend
+  l'index des trous dans l'autre sens : `OptimizeUp` et `Vacate` cherchent le
+  **dernier** trou sous une borne, qu'il fallait sinon énumérer depuis le début
+  du volume. `ExtentIndex` rend le fragment qui commence le plus bas au-dessus
+  d'un cluster, ou le plus haut en dessous : c'est la question que `Vacate` et
+  `ForcedFill` posent en reparcourant tous les fichiers.
+
+#### Un déplacement qui coûtait le nombre de morceaux du fichier
+
+Premier balayage : 157 s de calcul pour un tri de `famille-2007`, 12 s pour
+`famille-2003`. Un échantillonnage donne 45 % du temps dans
+`ExtentIndex.remove`. `Vacate` évacue **un fragment à la fois**, et chaque
+déplacement retirait puis réinsérait tous les extents du fichier : un fichier en
+3 439 morceaux coûte un travail quadratique.
+
+Un premier essai par ensembles d'extents n'a rien gagné (13 s), le temps passant
+dans le hachage. Ce qui marche : un déplacement ne change qu'une plage de VCN,
+donc on compare le début et la fin des deux listes et on ne touche la bitmap et
+l'index que pour le milieu. **13 s → 1,3 s** sur `famille-2003`, 157 s → 7 s sur
+`famille-2007`, génération comprise.
+
+`relocate` n'est pas remplacé : les extents inchangés y changent de rang dans
+les listes de l'index, `occupants` rend ses fichiers dans cet ordre, et
+Windows 95 évacue dans cet ordre-là. La variante `relocateChanges` ne sert qu'à
+JkDefrag, qui ne lit de l'index que des minimums et des maximums.
+
+#### Ce qui valide
+
+- **Le mode 2 est identique à la requête près** sur les vingt volumes, avant et
+  après la refonte, et de nouveau après l'optimisation.
+- **Le balayage des sept modes redonne les mêmes 140 bilans** avant et après
+  l'optimisation.
+- Sur les 140 passes : aucun déplacement refusé, aucune recherche de
+  combinaison à court de visites (la plus longue en fait 134 296), et la garde
+  anti-ver de `Vacate` **ne s'est jamais déclenchée**.
+- Dix tests : chaque critère de tri sur un volume fait à la main, dont
+  l'insensibilité à la casse et le départage par le chemin ; un fichier coupé
+  par un immobile, posé en morceaux multiples de 8 ; le comblement forcé qui
+  tasse contre le début ; `OptimizeUp` qui monte d'abord le plus bas ; la
+  conservation des clusters pour les sept modes ; aucune écriture sur la MFT,
+  désormais vérifiée pour les onze stratégies. La recherche descendante est
+  confrontée au balayage naïf du test de l'index des trous. 221 tests.
+
+#### Effets mesurés
+
+Le tri par nom, face au mode 2 :
+
+| scénario | plein | mode 2 | tri par nom | évacuations | Go déplacés | morceaux restants, mode 2 → nom |
+|---|---:|---:|---:|---:|---:|---:|
+| `dev-1996` | 87 % | 5 min 03 | 17 min 45 | 1 593 | 1,4 | 330 → 326 |
+| `secretaire-1999` | 87 % | 10 min 19 | 30 min 43 | 8 415 | 6,4 | 1 032 → 14 |
+| `dev-1999` | 93 % | 17 min 40 | 41 min 58 | 18 984 | 5,2 | 658 → 6 401 |
+| `famille-1999` | 97 % | 12 min 09 | 51 min 46 | 22 911 | 8,7 | 2 707 → 4 776 |
+| `secretaire-2003` | 94 % | 21 min 25 | 22 min 09 | 12 768 | 9,7 | 5 118 → 22 328 |
+| `famille-2003` | 93 % | 28 min 24 | 1 h 30 | 46 578 | 45,1 | 1 786 → 8 964 |
+| `dev-2007` | 86 % | 1 h 54 | 6 h 03 | 81 571 | 346,2 | 0 → 10 |
+| `famille-2007` | 93 % | 2 h 02 | 7 h 21 | 156 563 | 447,7 | 1 911 → 15 235 |
+| `gamer-2007` | 90 % | 1 h 15 | 4 h 49 | 82 013 | 328,6 | 1 437 → 30 095 |
+
+Un tri déplace **plus que le volume** : 448 Go sur les 320 de `famille-2007`,
+parce que ce que `Vacate` évacue redescend quand vient son tour. Et il ne répare
+pas toujours : sur un volume plein, `Vacate` ne trouve pas de quoi loger ce
+qu'il évacue, le curseur tombe sur des trous trop petits, et le fichier est posé
+par morceaux multiples de 8. `gamer-2007` en ressort avec 30 095 morceaux, pour
+124 fichiers posés en plusieurs fois. Sur les volumes moins pleins ou plus
+petits, le tri fait mieux que le mode 2 (`secretaire-1999` : 14 morceaux).
+
+Le critère change la durée du simple au double, sans règle :
+
+| scénario | nom | taille | accès | modification | création |
+|---|---:|---:|---:|---:|---:|
+| `dev-1996` | 17 min 45 | 14 min 02 | 19 min 18 | 17 min 51 | 17 min 39 |
+| `secretaire-1999` | 30 min 43 | 26 min 09 | 28 min 48 | 26 min 52 | 26 min 10 |
+| `dev-1999` | 41 min 58 | 41 min 12 | 55 min 20 | 38 min 42 | 38 min 51 |
+| `famille-1999` | 51 min 46 | 13 min 46 | 36 min 25 | 25 min 06 | 38 min 40 |
+| `secretaire-2003` | 22 min 09 | 33 min 28 | 19 min 50 | 31 min 18 | 31 min 52 |
+| `famille-2003` | 1 h 30 | 1 h 39 | 1 h 21 | 1 h 32 | 1 h 31 |
+| `dev-2007` | 6 h 03 | 4 h 13 | 5 h 47 | 8 h 14 | 8 h 16 |
+| `famille-2007` | 7 h 21 | 4 h 52 | 7 h 18 | 7 h 33 | 7 h 43 |
+| `gamer-2007` | 4 h 49 | 2 h 32 | 5 h 00 | 4 h 27 | 4 h 26 |
+
+Modification et création donnent des passes presque identiques : dans le
+catalogue, la plupart des fichiers ne sont écrits qu'une fois.
+
+Les deux tassements sont courts, et ne réparent pas :
+
+| scénario | fragmentés au départ | après mode 2 | comblement forcé | vers la fin | durée, forcé / fin |
+|---|---:|---:|---:|---:|---:|
+| `dev-1996` | 133 | 5 | 138 | 57 | 2 min 08 / 2 min 36 |
+| `secretaire-1999` | 739 | 35 | 775 | 168 | 2 min 17 / 5 min 22 |
+| `dev-1999` | 682 | 54 | 686 | 127 | 2 min 52 / 6 min 20 |
+| `famille-1999` | 898 | 549 | 914 | 651 | 2 min 37 / 2 min 52 |
+| `secretaire-2003` | 178 | 124 | 237 | 143 | 2 min 06 / 3 min 52 |
+| `famille-2003` | 68 | 45 | 119 | 42 | 4 min 30 / 7 min 06 |
+| `dev-2007` | 176 | 0 | 242 | 101 | 26 min 23 / 48 min 59 |
+| `famille-2007` | 268 | 159 | 306 | 186 | 21 min 05 / 33 min 01 |
+| `gamer-2007` | 175 | 110 | 229 | 116 | 17 min 02 / 32 min 40 |
+
+Le comblement forcé **casse** des fichiers sur tous les volumes : il détache la
+fin d'un fragment pour remplir un trou trop petit pour lui. `OptimizeUp` en
+répare, par effet de bord, parce qu'il déplace des fichiers entiers. Sur les
+volumes qui n'ont pas de trou (`gamer-1996`, deux clusters libres) ou dont
+l'espace libre est déjà tout au fond (`secretaire-1993`), les deux s'arrêtent
+après un fichier ou deux : il n'y a rien à tasser.
+
+#### Laissé ouvert
+
+- **Le mode 2 ne réessaie pas un trou.** En relisant `OptimizeVolume` pour
+  écrire `OptimizeUp`, qui en est le miroir : après un déplacement refusé,
+  l'original remet `GapEnd = GapBegin`, relit **le même trou** et essaie
+  jusqu'à cinq fichiers (`Retry`). La transposition du mode 2 saute le trou au
+  premier refus. `OptimizeUp` a le `Retry`, le mode 2 non. Sans effet tant
+  qu'aucun refus n'a lieu dans `OptimizeVolume`, ce qui n'a pas été vérifié
+  volume par volume. Le corriger changerait peut-être des bilans publiés, et ce
+  n'est pas fait ici.
+- **Les passes dépassent le million de requêtes** : 1 115 079 pour le tri par
+  nom de `famille-2007`, plus que la passe de Windows 95 sur `dev-1999` qui
+  motive le chantier 3.
+- **Les doublons de noms du générateur** faussent un peu le tri par nom
+  lui-même : 6 812 `module.c` sont triés par taille, pas par nom. C'est au
+  générateur de nommer ses fichiers, pas à la passe de le deviner.
+- **Le dernier accès n'est qu'une borne basse**, faute de lectures datées.
+
 ### Ce qui reste
 
 - **La loi de la zone MFT n'a pas de source Microsoft.** La division par deux
   vient de descriptions tierces, et rien ne dit si la zone se reconstitue au
   montage suivant. Le modèle la suppose définitive.
-- **Les tris complets de JkDefrag** : `OptimizeSort` sur les cinq critères, avec
-  `Vacate` et sa protection anti-ver, plus `ForcedFill` et `OptimizeUp`. Ce sont
-  les seuls modes qui évacuent. Les zones, elles, sont faites.
 - **`SlowDown`** reste un réglage de tempo historique et audible (`-s 1..5`).
   Non transposé : la vitesse par défaut n'endort rien.
-- **Rien n'a été écouté.** JkDefrag comme l'ordre de passage sont mesurés en
-  `PLAN_ONLY`. La signature attendue (prendre au fond, poser dans le trou en
+- **Rien n'a été écouté.** JkDefrag, ses tris et l'ordre de passage sont mesurés
+  en `PLAN_ONLY`. La signature attendue (prendre au fond, poser dans le trou en
   cours, un trou après l'autre en remontant) est déduite, pas entendue.
 
 ### Deux petits points, et une mise au point de vocabulaire

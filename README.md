@@ -394,6 +394,7 @@ Les deux autres ne sont d'aucune époque, et ne se choisissent jamais tout seuls
 gros fichiers. **JkDefrag 3.36**, de 2008, est le seul qui range le volume sans
 évacuer personne. On les demande explicitement (`STRATEGY=ultraDefrag`,
 `STRATEGY=jkDefrag`) pour comparer des passes sur exactement le même volume.
+JkDefrag s'obtient aussi dans ses autres modes, décrits plus bas.
 
 L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
 `famille-2007` tassait trois cents gigaoctets par tampons de 256 Ko : vingt-huit
@@ -505,6 +506,31 @@ une réserve publiée entière faisait passer à JkDefrag l'essentiel de son tem
 au bout d'une demi-seconde de temps réel. Elle est bornée ici en visites, pour
 que le plan ne dépende pas de la machine ; la borne ne mord sur aucun des vingt
 volumes.
+
+#### Tasser, trier
+
+Les autres modes de la ligne de commande de JkDefrag sont là aussi, chacun sous
+son identifiant. Ce ne sont pas des variantes du mode 2 mais **une seule
+routine**, sans défragmentation devant :
+
+- `jkDefragForcedFill` (`-a 5`) tasse le volume contre son début : chaque trou
+  est rempli par la fin du fragment le plus haut. Quelques minutes, et il casse
+  plus de fichiers qu'il n'en répare ;
+- `jkDefragMoveUp` (`-a 6`) le tasse contre sa fin : chaque trou, du fond vers
+  le début, reçoit les fichiers pris **dessous**, en commençant par le plus bas ;
+- `jkDefragSortName`, `…Size`, `…Access`, `…Change` et `…Creation` (`-a 7` à
+  `-a 11`) reposent chaque fichier à son rang, zone par zone, en **évacuant** ce
+  qui occupe la place du suivant. C'est le seul mode de JkDefrag qui déloge.
+
+Un tri est long, et il déplace plus que le volume : ce qu'on évacue redescend
+quand vient son tour. Sur `famille-2007`, 448 Go déplacés pour 320, 156 563
+évacuations, 7 h 21 de passe contre 2 h 02 pour le mode 2. Sur un volume plein,
+ce qui ne trouve pas de place est posé en morceaux : `gamer-2007` en sort avec
+30 095 morceaux contre 1 437. Sur `secretaire-1999`, il en laisse 14 contre
+1 032.
+
+Le catalogue ne date que les écritures, au jour près : le dernier accès y est la
+dernière écriture, et à jour égal c'est le chemin qui départage.
 
 Ces passes FAT-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`),
 contre 3 min 24 pour le scénario livré, dont le volume est délibérément réduit.
@@ -653,8 +679,11 @@ STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace ud.wav  # un autre o
 ```
 
 `STRATEGY` force le défragmenteur simulé au lieu de laisser le format le dater :
-`windows95`, `windowsXP`, `jkDefrag`, `ultraDefrag`. C'est ainsi que se
-comparent deux passes sur exactement le même volume.
+`windows95`, `windowsXP`, `jkDefrag`, `ultraDefrag`, et les autres modes de
+JkDefrag : `jkDefragForcedFill`, `jkDefragMoveUp`, `jkDefragSortName`,
+`jkDefragSortSize`, `jkDefragSortAccess`, `jkDefragSortChange`,
+`jkDefragSortCreation`. C'est ainsi que se comparent deux passes sur exactement
+le même volume.
 
 `PLAN_ONLY` s'arrête au bilan de la passe — volume, déplacements, évacuations,
 octets déplacés — sans rendre une note. C'est ce qu'il faut pour juger d'un
@@ -718,6 +747,8 @@ Sources/Model/
                            l'ordre de la MFT ou d'un autre outil
     JKDefragStrategy.swift  ranger en trois zones et combler les trous par le
                            haut, sans évacuer personne ; sur demande
+    JKDefragFullOptimize.swift  ses autres modes : tasser contre le début ou
+                           la fin, trier en évacuant ; sur demande
     UltraDefragStrategy.swift  recoller les petits morceaux des gros fichiers,
                            sur demande et quel que soit le format
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
