@@ -709,14 +709,104 @@ MFT), qu'elle cède plusieurs fois à 96 % de remplissage, et que la MFT finit
 malgré tout par se fragmenter. Un test vérifie que les quatre défragmenteurs
 n'écrivent pas sur des extents système posés hors de toute zone. 209 tests.
 
+### Un index des trous libres
+
+**Fait** · branche `chantier-2`
+
+#### Le problème
+
+La zone MFT qui cède de moitié avait fait passer la génération de `dev-2007` de
+1,8 à 5,1 s. La mesure, par compteurs posés dans `ClusterBitmap` :
+`nextFreeCluster` lisait **8,86 milliards de mots** de bitmap pendant la
+génération de ce volume. 8,3 milliards venaient de `scatter`, en 26 889 appels :
+chacun traversait en moyenne 309 000 mots pleins, un tiers du volume, pour
+rassembler quelques trous. `freeRunLength`, qui mesure les trous une fois
+trouvés, ne pesait que 64 millions de mots.
+
+Le coût n'était donc pas de **choisir** un trou, mais de **sauter les régions
+pleines** pour l'atteindre.
+
+#### Ce qui a été écarté
+
+- **Un ensemble ordonné des plages libres**, un arbre des trous par adresse.
+  Il répond aussi exactement, mais chaque allocation et chaque libération y
+  scinde ou fusionne des plages : beaucoup de code et de mises à jour pour
+  accélérer une seule question.
+- **Un index des trous par taille.** Il ferait du best-fit en temps
+  logarithmique, mais le best-fit du modèle est volontairement **fenêtré** (au
+  plus 64 trous examinés, 65 536 clusters parcourus) : un index par taille
+  trouverait de meilleurs trous, donc d'autres volumes, donc d'autres chiffres
+  partout.
+- **Faire partir `scatter` du curseur de recherche** plutôt que du début de la
+  plage. Plus rapide, mais c'est changer le placement.
+- **Compter les clusters libres de la zone** pour renoncer plus tôt (essayé à
+  la section précédente) : le temps est dans les écritures qui réussissent.
+
+#### La décision
+
+**Deux niveaux de résumé au-dessus de la bitmap.** Un bit par mot, posé quand ce
+mot a au moins un cluster libre ; un bit par mot de ce résumé, posé quand il
+n'est pas nul. `nextFreeCluster` lit le premier mot comme avant, puis descend
+dans les résumés pour trouver le prochain mot qui a un trou : il saute 64 puis
+4 096 mots pleins d'un coup. Les résumés se tiennent dans `setRange`, seulement
+quand un mot devient plein ou cesse de l'être.
+
+L'index **ne décide de rien** : la réponse est exactement celle du balayage.
+C'est la condition qui permettait de ne rien remesurer d'autre. Il coûte un bit
+tous les 64 clusters, 125 Ko sur le 250 Go de `dev-2007`.
+
+#### Ce qui valide
+
+- **Empreinte exacte des vingt disques générés** (tous les extents du
+  catalogue, tous les trous de la bitmap, la zone MFT et les extents système) :
+  identique à celle d'avant l'index, volume par volume.
+- **Les 56 bilans en aval** (vingt passes d'époque, vingt démarrages, huit
+  passes UltraDefrag, huit JkDefrag) : identiques à la requête près.
+- **Un test confronte l'index à un balayage naïf** sur deux volumes de 300 001
+  et un million de clusters, assez grands pour que les deux niveaux servent,
+  avec des plages allant du cluster isolé à 300 000 clusters. Il est
+  discriminant : un résumé qui oublie de retirer un mot devenu plein le fait
+  échouer 3 934 fois.
+
+#### Effets mesurés
+
+Génération, meilleur de trois :
+
+| scénario | sans index | avec |
+|---|---:|---:|
+| `dev-2007` | 5,07 s | **0,82 s** |
+| `famille-2007` | 1,19 s | 0,39 s |
+| `secretaire-2007` | 0,87 s | 0,16 s |
+| `gamer-2007` | 0,36 s | 0,12 s |
+| `dev-2003` | 0,72 s | 0,65 s |
+| `famille-2003` | 0,57 s | 0,44 s |
+
+`dev-2007` passe sous les 1,8 s de l'ancien générateur. Les volumes FAT, trop
+petits pour avoir de longues régions pleines, ne bougent pas au-delà du bruit de
+mesure.
+
+Les passes en profitent aussi, parce que les recherches de trou des
+défragmenteurs passent par la même primitive. De bout en bout, génération
+comprise : UltraDefrag sur `famille-2007` de 3,0 à 1,3 s, JkDefrag sur
+`dev-2007` de 7,1 à 2,8 s. Windows 95 sur `dev-1999` ne bouge pas (0,84 s).
+
+Ce qui domine maintenant la génération de `dev-2007` est le best-fit fenêtré de
+`preferredRun` : c'est sa sémantique, pas un balayage, et il n'y a plus de gain
+facile.
+
+#### Un piège de build
+
+Ajouter deux propriétés stockées à `ClusterBitmap` a laissé le build debug
+incrémental de `swift test` incohérent : la suite complète **plantait** (signal
+11, dans la destruction d'un `GeneratedDisk` compilée dans `DefragKitTests`),
+alors que chaque suite passait seule. Ce n'était pas le code : un
+`rm -rf .build/arm64-apple-macosx/debug` et la suite passe, 210 tests.
+
 ### Ce qui reste
 
 - **La loi de la zone MFT n'a pas de source Microsoft.** La division par deux
   vient de descriptions tierces, et rien ne dit si la zone se reconstitue au
   montage suivant. Le modèle la suppose définitive.
-- **Un volume plein hors zone coûte cher à générer** : 5,1 s pour `dev-2007`.
-  Un index des trous libres le réglerait, au prix d'une structure de plus à
-  tenir dans la bitmap.
 - **La carte du volume ne montre pas la MFT.** Ses clusters sont désormais
   occupés pour les défragmenteurs, mais pas décrits comme plages : l'écran les
   affiche libres.

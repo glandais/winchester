@@ -263,9 +263,10 @@ plafonne — alors que les fichiers de sortie sont bel et bien en 290 morceaux.
 Le second vient de NTFS lui-même, qui place encore bien à 93 % de remplissage.
 
 **Coût.** Le volume le plus lourd — un Vista de 250 Go, trois ans d'historique,
-2,7 millions d'événements — se génère en 5,1 s en release. C'est aussi le plus
-lent : il passe de longues périodes plein hors de sa zone MFT, où chaque
-écriture va chercher des trous épars sur tout le volume. La génération tourne
+2,7 millions d'événements — se génère en 0,8 s en release. Il passe de longues
+périodes plein hors de sa zone MFT, où chaque écriture va chercher des trous
+épars sur tout le volume : c'est un index à deux niveaux au-dessus de la bitmap
+qui saute les régions pleines, sans rien changer à la place trouvée. La génération tourne
 hors du fil principal, rapporte son avancement et s'annule si l'on change de
 scénario en route.
 
@@ -675,6 +676,7 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     SeededGenerator.swift  SplitMix64, tirages stables entre plateformes
     Extent.swift           suite de clusters contigus, huit octets
     ClusterBitmap.swift    occupation des clusters, recherche de place libre
+                           accélérée par un index des mots qui ont un trou
     AccessCost.swift       temps de lecture d'une liste d'extents
     FileSystemProfile.swift  contraintes d'un format : cluster, résidence, slack
     Allocator.swift        protocole de placement, indices, entrée de fichier
