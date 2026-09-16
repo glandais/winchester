@@ -160,4 +160,56 @@ struct ClusterBitmapTests {
         #expect(seen[0] == Extent(start: 10, length: 3))
         #expect(seen[3] == Extent(start: 70, length: 3))
     }
+
+    /// L'index des trous ne doit jamais rien changer à la réponse : le
+    /// prochain cluster libre est celui qu'un balayage naïf trouverait.
+    ///
+    /// Le volume dépasse 262 144 clusters — 4 096 mots — pour que les deux
+    /// niveaux de résumé servent, et les plages vont du cluster isolé à la
+    /// moitié du volume, pour que des mots, puis des blocs de mots entiers,
+    /// deviennent pleins et se libèrent.
+    @Test("L'index des trous rend la même réponse qu'un balayage",
+          arguments: [300_001, 1_000_000] as [UInt32])
+    func indexMatchesLinearScan(clusterCount: UInt32) {
+        var rng = SeededGenerator(seed: UInt64(clusterCount))
+        var bitmap = ClusterBitmap(clusterCount: clusterCount)
+        var reference = [Bool](repeating: false, count: Int(clusterCount))
+
+        func naiveNextFree(from start: Int, before stop: Int) -> UInt32? {
+            var cluster = start
+            while cluster < stop {
+                if !reference[cluster] { return UInt32(cluster) }
+                cluster += 1
+            }
+            return nil
+        }
+
+        for round in 0..<400 {
+            let maxLength = [1, 70, 5_000, 300_000][round % 4]
+            let length = rng.uniform(1...min(maxLength, Int(clusterCount)))
+            let start = rng.uniform(0...(Int(clusterCount) - length))
+            // Plus d'allocations que de libérations : le volume se remplit, et
+            // les longues traversées de mots pleins apparaissent.
+            let allocate = rng.uniform(0...9) < 7
+            if allocate {
+                bitmap.allocate(start: UInt32(start), length: UInt32(length))
+            } else {
+                bitmap.free(start: UInt32(start), length: UInt32(length))
+            }
+            for cluster in start..<(start + length) { reference[cluster] = allocate }
+
+            for _ in 0..<8 {
+                let from = rng.uniform(0...(Int(clusterCount) - 1))
+                let before = rng.uniform(0...3) == 0
+                    ? rng.uniform(from...Int(clusterCount))
+                    : Int(clusterCount)
+                let expected = naiveNextFree(from: from, before: before)
+                let found = before == Int(clusterCount)
+                    ? bitmap.nextFreeCluster(from: UInt32(from))
+                    : bitmap.nextFreeCluster(from: UInt32(from), before: UInt32(before))
+                #expect(found == expected, "tour \(round), depuis \(from) avant \(before)")
+            }
+        }
+        #expect(bitmap.freeCount == UInt32(reference.lazy.filter { !$0 }.count))
+    }
 }

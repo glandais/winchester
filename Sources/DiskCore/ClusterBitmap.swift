@@ -15,11 +15,25 @@ import Foundation
 /// sont posés à 1 dès la construction. Toutes les recherches de place libre
 /// travaillent alors sur les mots entiers sans avoir à tester les bornes à
 /// chaque tour : un cluster hors du volume n'est jamais libre.
+///
+/// **Deux niveaux de résumé** servent d'index des trous. `partial` porte un bit
+/// par mot de la bitmap, posé quand ce mot a au moins un cluster libre ;
+/// `partialSummary` porte un bit par mot de `partial`, posé quand ce mot-là
+/// n'est pas nul. Chercher le prochain cluster libre saute ainsi 64 puis 4 096
+/// mots pleins d'un coup, au lieu de les lire un à un. C'est ce qui manquait à
+/// un volume plein : sur le 250 Go de `dev-2007`, les écritures traversaient
+/// huit milliards de mots pleins pour rassembler des trous épars.
+///
+/// L'index ne décide de rien : la réponse est exactement celle du balayage,
+/// seulement plus tôt. Il coûte un bit tous les 64 clusters, 125 Ko sur ce
+/// même volume.
 public struct ClusterBitmap: Sendable {
 
     public let clusterCount: UInt32
 
     private var words: [UInt64]
+    private var partial: [UInt64]
+    private var partialSummary: [UInt64]
     private var allocatedCount: UInt32
 
     public init(clusterCount: UInt32) {
@@ -34,6 +48,20 @@ public struct ClusterBitmap: Sendable {
             // Bourrage : tout ce qui dépasse le dernier cluster est « occupé ».
             words[wordCount - 1] = ~UInt64(0) << UInt64(remainder)
         }
+
+        // Tous les mots ont un cluster libre, le dernier compris : son
+        // bourrage laisse au moins un vrai cluster. Les bits de résumé au-delà
+        // du dernier mot restent à zéro — « rien de libre ».
+        self.partial = Self.fullMask(bits: wordCount)
+        self.partialSummary = Self.fullMask(bits: partial.count)
+    }
+
+    /// `bits` bits à un, rangés par mots de 64.
+    private static func fullMask(bits: Int) -> [UInt64] {
+        var mask = [UInt64](repeating: ~UInt64(0), count: (bits + 63) / 64)
+        let remainder = bits % 64
+        if remainder != 0 { mask[mask.count - 1] = (UInt64(1) << UInt64(remainder)) - 1 }
+        return mask
     }
 
     // MARK: - État
@@ -125,12 +153,55 @@ public struct ClusterBitmap: Sendable {
             if before != after {
                 changed &+= UInt32((before ^ after).nonzeroBitCount)
                 words[firstWord] = after
+                if (before == ~0) != (after == ~0) {
+                    markWord(firstWord, hasFree: after != ~0)
+                }
             }
             firstWord += 1
         }
 
         allocatedCount = allocated ? allocatedCount &+ changed : allocatedCount &- changed
         return changed
+    }
+
+    /// Tient les deux niveaux de résumé quand un mot devient plein, ou cesse
+    /// de l'être.
+    private mutating func markWord(_ word: Int, hasFree: Bool) {
+        let index = word >> 6
+        let bit = UInt64(1) << UInt64(word & 63)
+        let before = partial[index]
+        let after = hasFree ? (before | bit) : (before & ~bit)
+        partial[index] = after
+        if (before == 0) != (after == 0) {
+            let summaryBit = UInt64(1) << UInt64(index & 63)
+            if after == 0 {
+                partialSummary[index >> 6] &= ~summaryBit
+            } else {
+                partialSummary[index >> 6] |= summaryBit
+            }
+        }
+    }
+
+    /// Le premier mot d'indice au moins `word` qui a un cluster libre, lu dans
+    /// les résumés plutôt que dans la bitmap.
+    private func nextWordWithFree(from word: Int) -> Int? {
+        guard word < words.count else { return nil }
+        var index = word >> 6
+        var bits = partial[index] & (~UInt64(0) << UInt64(word & 63))
+        if bits != 0 { return (index << 6) + bits.trailingZeroBitCount }
+
+        index += 1
+        guard index < partial.count else { return nil }
+        var summary = index >> 6
+        var summaryBits = partialSummary[summary] & (~UInt64(0) << UInt64(index & 63))
+        while summaryBits == 0 {
+            summary += 1
+            guard summary < partialSummary.count else { return nil }
+            summaryBits = partialSummary[summary]
+        }
+        index = (summary << 6) + summaryBits.trailingZeroBitCount
+        bits = partial[index]
+        return (index << 6) + bits.trailingZeroBitCount
     }
 
     private func countAllocated(start: UInt32, length: UInt32) -> UInt32 {
@@ -170,21 +241,19 @@ public struct ClusterBitmap: Sendable {
         let stop = min(limit ?? clusterCount, clusterCount)
         guard cluster < stop else { return nil }
 
-        var word = Int(cluster >> 6)
+        let firstWord = Int(cluster >> 6)
         let lastWord = Int((stop - 1) >> 6)
         // Les bits déjà dépassés dans le premier mot sont vus comme occupés.
-        var value = words[word] | ((1 << UInt64(cluster & 63)) - 1)
-
-        while true {
-            let free = ~value
-            if free != 0 {
-                let candidate = UInt32(word << 6) &+ UInt32(free.trailingZeroBitCount)
-                return candidate < stop ? candidate : nil
-            }
-            word += 1
-            guard word <= lastWord, word < words.count else { return nil }
-            value = words[word]
+        let first = ~(words[firstWord] | ((1 << UInt64(cluster & 63)) - 1))
+        if first != 0 {
+            let candidate = UInt32(firstWord << 6) &+ UInt32(first.trailingZeroBitCount)
+            return candidate < stop ? candidate : nil
         }
+
+        // Les mots pleins qui suivent sont sautés par l'index.
+        guard let word = nextWordWithFree(from: firstWord + 1), word <= lastWord else { return nil }
+        let candidate = UInt32(word << 6) &+ UInt32((~words[word]).trailingZeroBitCount)
+        return candidate < stop ? candidate : nil
     }
 
     /// Run libre **maximal** commençant au premier cluster libre trouvé à partir
