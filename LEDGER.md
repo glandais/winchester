@@ -2160,3 +2160,98 @@ publiés ») est levée.
   n'a pas été ajoutée pour un chemin que le modèle ne visite pas.
 - `gapsVisited` compterait deux fois un trou relu, comme l'original l'annonçait
   deux fois à l'écran. Sans objet tant que `gapRetries` reste nul.
+
+---
+
+## Chantier 12 — le calcul au fil de l'eau, allégé
+
+**Fait** · branche `fil-de-l-eau-plus-leger`
+
+### Le problème
+
+Le chantier 3 laissait ouvert un calcul **plus cher de 20 %** : 1,04 s au lieu
+de 0,86 s pour le bilan de `dev-1999`, sans que rien n'ait été optimisé.
+Remesuré ici (`PLAN_ONLY=1`, temps CPU utilisateur + système, médiane de cinq
+essais) : 0,83 s avant le flux (`13203f0`), 1,02 s sur `develop`.
+
+Un profil (`xctrace`, Time Profiler) des deux versions donne deux choses
+distinctes :
+
+- **l'écart lui-même venait des vérifications d'exclusivité.** `PassPipeline`
+  tenait son état dans des propriétés de classe : la mécanique, le flux des
+  repères, le paquet en cours, les tranches ouvertes. Chaque accès en écriture,
+  et chaque `inout` comme `mechanics.serve(request, events: &events)`, passait
+  par `swift_beginAccess` à l'exécution : une dizaine par requête, soit 15 %
+  des échantillons. Le calcul d'un bloc, fait de valeurs locales, n'en payait
+  aucune ;
+- **le plus gros poste était plus ancien que le flux.** `DefragOperations.move`
+  pesait la moitié des échantillons, dans les deux versions. Pour chaque
+  tronçon déplacé, `freed` allouait trois tableaux (`filter`, `map`, le
+  résultat), et parcourait deux fois tous les extents de la destination. Un
+  refuge d'évacuation peut compter des centaines de morceaux, et chaque tronçon
+  de l'occupant évacué le reparcourait.
+
+### Les décisions
+
+- **L'état de la chaîne tient dans une valeur.** Une structure privée `Chain`
+  porte tout ce que `PassPipeline` modifiait, avec les méthodes qui le font
+  avancer. La classe ne garde que la livraison : un seul accès par requête, et
+  le paquet part après, hors de l'accès. Le rendre `@exclusivity(unchecked)`
+  aurait coûté moins de lignes, mais c'est un attribut non documenté qui
+  désarme une garantie au lieu de la rendre inutile.
+- **La première date d'une phase n'est cherchée qu'au changement de phase.**
+  Les requêtes partent dans l'ordre : la première d'une phase est aussi la plus
+  précoce. Le dictionnaire `firstStarts` n'est plus consulté à chaque requête.
+- **Les clusters libérés sont écrits directement dans le récepteur**, sans
+  tableau intermédiaire. `OperationSink.record(contentsOf:)`, qui ne servait
+  qu'à cela, disparaît.
+- **La destination est triée une fois par déplacement, puis cherchée par
+  dichotomie.** C'est juste parce que les extents d'un fichier ne se
+  chevauchent pas : au plus un couvre le curseur, et le suivant est le premier
+  qui commence après. Les extents vides sont écartés au tri, puisque l'ancien
+  calcul ne pouvait pas les voir couvrir quoi que ce soit. Une destination d'un
+  seul extent, le cas du fichier posé à sa place, n'est ni copiée ni triée.
+
+### Ce qui valide
+
+**Temps CPU**, médiane de cinq essais en `PLAN_ONLY`, génération du disque
+comprise :
+
+| | avant le flux | `develop` | exclusivité | + sans allocation | + dichotomie |
+|---|---:|---:|---:|---:|---:|
+| `dev-1999`, Windows 95 | 0,83 s | 1,02 s | 0,91 s | 0,65 s | **0,46 s** |
+| `famille-2007`, tri par nom | 7,01 s | 7,22 s | 7,27 s | 7,06 s | **6,98 s** |
+| `dev-2007` | 0,97 s | 1,01 s | 1,01 s | 0,97 s | 1,01 s |
+
+Le calcul de `dev-1999` coûte **deux fois moins** que sur `develop`, et
+45 % de moins qu'avant le flux. Sur les deux autres, c'est la génération du
+disque et le planificateur de JkDefrag qui dominent : l'écart y reste dans le
+bruit. Le pic mémoire n'a pas bougé (220 Mo sur `dev-1999`).
+
+**Non-régression, 113 exécutions du rendu hors-ligne** comparées à `develop` :
+les 20 bilans `PLAN_ONLY`, les onze stratégies forcées sur `famille-2007`,
+`dev-1993` et `dev-2003`, les 20 démarrages rendus en WAV, les deux scénarios
+livrés, les passes complètes de `dev-1993`, `gamer-1993`, `secretaire-1993` et
+`dev-1996`, et quatre stratégies forcées sur `gamer-1993`. **Tous les bilans
+sont identiques et les 30 WAV ont la même empreinte MD5.**
+
+Le son et les bilans ne voient pas les mutations de la carte. Un test,
+`MoveTests`, compare donc les mutations de `move` à celles de l'ancien calcul
+recopié tel quel, sur 200 tirages de sources et de destinations morcelées,
+dans le désordre et qui se recouvrent. **Il a été éprouvé par deux mutations
+volontaires** : ne pas trier la destination (160 écarts), ignorer l'extent
+suivant (122 écarts). Une troisième, `>=` au lieu de `>` pour la couverture,
+ne fait pas échouer le test : elle le fait boucler sans fin.
+
+Les 230 tests passent.
+
+### Laissé ouvert
+
+- **La génération du disque est désormais le premier poste** de `dev-1999` :
+  environ 0,16 s sur 0,46 s au profil. Elle n'a pas été regardée.
+- **Mesuré sur le rendu hors-ligne, compilé en `-O` sur le Mac**, pas dans
+  l'application ni sur l'appareil. Le fil producteur fait le même calcul, mais
+  personne n'a regardé son CPU au simulateur.
+- **`OperationSink` paie encore ses vérifications d'exclusivité**, moins de 3 %
+  des échantillons. Le même regroupement l'en débarrasserait, mais toutes les
+  stratégies l'appellent, et le gain ne justifiait pas de les toucher.
