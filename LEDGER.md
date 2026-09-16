@@ -2105,3 +2105,58 @@ seconde, sauf `dev-1999` par dernier accès (166 757 → 166 739 seeks). Aucun
   prend un alias sans nécessité. Sans effet sur l'unicité.
 - Le radical peut passer sous un caractère au-delà de `~9999999`. Aucun volume
   n'en approche.
+
+---
+
+## Chantier 11 — le mode 2 réessaie un trou
+
+**Fait** · branche `mode-2-reessaie-le-trou`
+
+### Le problème
+
+Laissé ouvert par « Les autres modes de JkDefrag » : après un déplacement
+refusé, `OptimizeVolume` (`JkDefragLib.cpp:4818`) ne saute pas le trou. Il
+remet `GapEnd = GapBegin`, sort de la boucle de remplissage, et `FindGap`
+retrouve **le même trou** au tour suivant. Le fichier refusé est devenu
+immobile entre-temps (`MoveItem`), un autre est donc choisi. Le compteur
+`Retry` borne l'obstination à cinq refus d'affilée ; il revient à zéro à chaque
+déplacement réussi et à chaque trou sauté. La transposition du mode 2, elle,
+sortait de la boucle au premier refus et comptait le trou comme sauté.
+`OptimizeUp` avait déjà le `Retry`.
+
+### La décision
+
+Recopier la boucle de l'original telle quelle, comme dans `optimizeUp` :
+`retry < 5` dans la condition, `end = begin` et un essai de plus sur un refus,
+remise à zéro sur un succès et sur un trou sauté. Un compteur,
+`Report.gapRetries`, dit combien de fois un trou a été relu.
+
+### Ce qui valide
+
+Le bilan du mode 2 sur les vingt profils de la galerie, avant et après, en
+release (nombre de fichiers déplacés, déplacements par passe, refus, trous
+visités et sautés, fichiers fragmentés à l'arrivée, nombre d'opérations, et
+une empreinte de toutes les mutations du plan) : **identique sur les vingt**,
+et `gapRetries` vaut 0 partout. Les 229 tests passent.
+
+Ce n'est pas une surprise, et c'est le point à retenir : dans le modèle, un
+refus **ne peut pas** survenir dans `OptimizeVolume`. `move` ne refuse qu'une
+destination occupée ou dans la zone MFT ; or la destination est prise dans un
+trou que `gap` vient de lire hors de la zone MFT, bornée à la taille qui reste,
+et les fichiers candidats commencent tous au-dessus de ce trou. Les deux refus
+observés (`famille-1996`, `secretaire-2007`) viennent d'ailleurs — `Fixup`,
+dont le trou mémorisé n'est pas relu. Sous Windows, un refus pouvait venir du
+système de fichiers lui-même (fichier ouvert, verrouillé) ; ce modèle n'en
+simule aucun.
+
+La correction est donc une **fidélité à l'original** sans effet sur les bilans
+publiés : l'inquiétude du chantier précédent (« changerait peut-être des bilans
+publiés ») est levée.
+
+### Laissé ouvert
+
+- **Pas de test qui exerce la relecture** : aucun volume ne peut provoquer un
+  refus dans cette passe sans injecter une panne dans `move`, et l'injection
+  n'a pas été ajoutée pour un chemin que le modèle ne visite pas.
+- `gapsVisited` compterait deux fois un trou relu, comme l'original l'annonçait
+  deux fois à l'écran. Sans objet tant que `gapRetries` reste nul.
