@@ -251,6 +251,15 @@ L'histoire est écrite **avant** toute allocation et ne connaît rien du format 
 la même journée de développeur, rejouée sur les trois allocateurs, donne trois
 volumes qui n'ont rien à voir, et toute la différence vient du placement.
 
+**Un chemin ne désigne qu'un fichier présent.** L'histoire nomme les fichiers
+d'après ce qu'ils sont — `MODULE.C`, `SAVE.DAT`, `M0.OBJ` — sans savoir ce qui
+existe encore le jour où ils sont écrits. Une passe sur la chronologie triée
+rejoue créations et suppressions, et donne à chaque nom déjà porté un alias à
+la manière de Windows (`MODULE~1.C`), sans distinction de casse. Un nom libéré
+par une suppression est repris tel quel. Aucun tirage n'est consommé : la
+disposition sur le disque ne change pas, mais les tris et les départages par
+chemin des défragmenteurs redeviennent un ordre unique.
+
 |                | FAT16 32 Ko | FAT32 4 Ko | NTFS 4 Ko |
 |---|---|---|---|
 | fichiers fragmentés | 14,5 % | 3,1 % | 1,4 % |
@@ -285,7 +294,7 @@ plafonne — alors que les fichiers de sortie sont bel et bien en 290 morceaux.
 Le second vient de NTFS lui-même, qui place encore bien à 93 % de remplissage.
 
 **Coût.** Le volume le plus lourd — un Vista de 250 Go, trois ans d'historique,
-2,7 millions d'événements — se génère en 0,8 s en release. Il passe de longues
+2,7 millions d'événements — se génère en 1,3 s en release, dont 0,4 s pour les noms uniques. Il passe de longues
 périodes plein hors de sa zone MFT, où chaque écriture va chercher des trous
 épars sur tout le volume : c'est un index à deux niveaux au-dessus de la bitmap
 qui saute les régions pleines, sans rien changer à la place trouvée. La génération tourne
@@ -547,14 +556,15 @@ routine**, sans défragmentation devant :
   qui occupe la place du suivant. C'est le seul mode de JkDefrag qui déloge.
 
 Un tri est long, et il déplace plus que le volume : ce qu'on évacue redescend
-quand vient son tour. Sur `famille-2007`, 448 Go déplacés pour 320, 156 563
-évacuations, 7 h 21 de passe contre 2 h 02 pour le mode 2. Sur un volume plein,
+quand vient son tour. Sur `famille-2007`, 447 Go déplacés pour 320, 160 570
+évacuations, 7 h 24 de passe contre 2 h 02 pour le mode 2. Sur un volume plein,
 ce qui ne trouve pas de place est posé en morceaux : `gamer-2007` en sort avec
-30 441 morceaux contre 1 439. Sur `secretaire-1999`, il en laisse 14 contre
+30 383 morceaux contre 1 439. Sur `secretaire-1999`, il en laisse 14 contre
 1 057.
 
 Le catalogue ne date que les écritures, au jour près : le dernier accès y est la
-dernière écriture, et à jour égal c'est le chemin qui départage.
+dernière écriture, et à jour égal c'est le chemin qui départage — unique, puisque
+le générateur ne fait jamais coexister deux fichiers au même chemin.
 
 Ces passes FAT-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`),
 contre 3 min 24 pour le scénario livré, dont le volume est délibérément réduit.
@@ -757,7 +767,8 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     Allocators/            FAT (scan depuis le début ou next-free) et NTFS
     FileCatalog.swift      arborescence, extents, métadonnées
     WritePattern.swift     motifs d'écriture
-    EventTimeline.swift    suite datée d'événements, indépendante du format
+    EventTimeline.swift    suite datée d'événements, indépendante du format ;
+                           un chemin, un fichier présent
     Simulator.swift        rejeu de la timeline, progression, annulation
     AllocationMetrics.swift  mesures de sortie
     SizeModel.swift        distributions de tailles, par catégorie

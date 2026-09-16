@@ -2255,3 +2255,67 @@ Les 230 tests passent.
 - **`OperationSink` paie encore ses vérifications d'exclusivité**, moins de 3 %
   des échantillons. Le même regroupement l'en débarrasserait, mais toutes les
   stratégies l'appellent, et le gain ne justifiait pas de les toucher.
+
+---
+
+## Intégration des chantiers 9 à 12
+
+**Fait** · sur `develop`, par reprise des commits des quatre branches
+
+### Ce qui se recouvrait
+
+Les quatre branches ne modifient jamais le même fichier de code :
+`ultradefrag-fidele` touche `DefragVolume` et `UltraDefragStrategy`,
+`noms-uniques` `EventTimeline`, `ScenarioCompiler` et un commentaire de
+`JKDefragFullOptimize`, `mode-2-reessaie-le-trou` `JKDefragStrategy`,
+`fil-de-l-eau-plus-leger` `DefragStrategy`, `OperationSink` et `PassPipeline`.
+`OperationSink.record(contentsOf:)`, que le dernier supprime, n'était appelé
+nulle part ailleurs.
+
+Les conflits étaient tous dans ce journal : chacune ajoutait son chapitre à la
+fin, et deux branches parties d'avant le relevé d'UltraDefrag s'étaient
+numérotées « chantier 9 ». Ordre retenu : la correction d'UltraDefrag complète
+le chapitre 9, puis viennent les noms uniques (10, qui cite déjà le 9), le mode
+2 (11) et le calcul allégé (12). Les textes des chapitres sont repris tels
+quels ; les nombres de tests qu'ils citent sont ceux de leur branche.
+
+Le recouvrement réel est **dans les résultats** : chaque branche avait mesuré
+ses bilans sans les trois autres. `fragmentCount` suit maintenant l'ordre du
+fichier, ce qui change le tri et les morceaux restants. Les noms uniques
+changent le départage par chemin de JkDefrag, de XP et d'UltraDefrag.
+
+### Ce qui valide
+
+- **Les 235 tests passent** après reconstruction complète du build debug, et
+  l'application se construit.
+- **`RenderTrace`, `PLAN_ONLY`**, sur le binaire de `ultradefrag-fidele` (d'où
+  venaient les chiffres du README) puis sur `develop` intégré, soit 41 bilans :
+  XP, UltraDefrag et JkDefrag mode 2 sur les huit volumes NTFS de 2003 et 2007,
+  Windows 95 et JkDefrag mode 2 sur sept volumes FAT, le tri par nom sur
+  `famille-2007`, `gamer-2007` et `secretaire-1999`. **39 sont identiques à
+  l'octet.** Le mode 2, relecture du trou comprise, ne change nulle part sous
+  le nouveau `fragmentCount`.
+- **Les deux écarts** sont des tris par nom sur des volumes que le chantier 10
+  n'avait pas rejoués :
+
+| tri par nom | requêtes | évacuations | durée | morceaux restants |
+|---|---:|---:|---:|---:|
+| `famille-2007` | 1 115 079 → 1 128 727 | 156 563 → 160 570 | 7 h 21 → 7 h 24 | 17 165 → 18 200 |
+| `gamer-2007` | 581 347 → 578 477 | 82 013 → 81 315 | 4 h 50 → 4 h 49 | 30 441 → 30 383 |
+
+  C'est plus que le « moins de 1 % » des volumes `dev-` : 6 % de morceaux en
+  plus sur `famille-2007`. Le README est corrigé.
+- **Les huit démarrages du README**, rendus en WAV : même empreinte MD5 des
+  deux côtés. Les requêtes du démarrage ne lisent que l'extension et le
+  répertoire, que les alias gardent.
+- **Coût de génération** : `dev-2007` passe de 0,95 s à 1,43 s de temps CPU
+  pour un bilan XP, soit le 0,4 s de `giveUniqueNames`. Le README disait 0,8 s
+  pour le volume le plus lourd, il dit maintenant 1,3 s.
+
+### Laissé ouvert
+
+- **Les autres tris** (taille, dates) et les modes 5 et 6 n'ont pas été
+  rejoués sur les volumes de 2007.
+- **Rien n'a été écouté**, et les passes complètes ne sont pas comparées en
+  WAV : le seul effet du calcul allégé sur le son est garanti par le
+  chapitre 12, mesuré sans les trois autres branches.
