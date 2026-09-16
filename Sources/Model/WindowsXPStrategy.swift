@@ -97,7 +97,7 @@ struct WindowsXPStrategy: DefragStrategy {
         var volume = input
         let partition = volume.partition
         let before = volume.stats
-        let initialMap = volume.categoryMap()
+        let initialRuns = volume.categoryRuns()
 
         var operations: [DiskOperation] = []
         var mutations: [MapMutation] = []
@@ -164,7 +164,7 @@ struct WindowsXPStrategy: DefragStrategy {
         return DefragPlan(
             strategy: self,
             partition: partition,
-            initialMap: initialMap,
+            initialRuns: initialRuns,
             operations: operations,
             mutations: mutations,
             phases: phases,

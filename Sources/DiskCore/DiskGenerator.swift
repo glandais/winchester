@@ -40,6 +40,22 @@ public struct GeneratedDisk: Sendable {
     /// la carte complète — c'est ce qui permet d'afficher un volume de 320 Go
     /// sans allouer quatre-vingt-quatre mégaoctets.
     public func cells(count cellCount: Int, free: UInt8 = .max) -> [UInt8] {
+        shaded(count: cellCount, free: free).categories
+    }
+
+    /// La même agrégation, mais qui rend aussi **le taux d'occupation** de
+    /// chaque bloc.
+    ///
+    /// C'est ce que le plein écran demande : à 17 000 blocs sur un volume de
+    /// 320 Go, un bloc vaut encore des milliers de clusters, et la seule
+    /// catégorie dominante ferait passer pour plein un bloc rempli au quart.
+    /// Le décompte est déjà là — il ne manquait que son total — donc le taux
+    /// ne coûte rien de plus qu'une division par bloc.
+    ///
+    /// - Returns: la catégorie dominante de chaque bloc, et sa part de clusters
+    ///   occupés ramenée à 0…255. Un octet plutôt qu'un `Double` : on en garde
+    ///   un par bloc, et l'œil ne distingue pas le deux-centcinquantième.
+    public func shaded(count cellCount: Int, free: UInt8 = .max) -> (categories: [UInt8], fill: [UInt8]) {
         precondition(cellCount > 0)
         let categoryCount = FileCategory.allCases.count
         var tally = [UInt32](repeating: 0, count: cellCount * categoryCount)
@@ -62,16 +78,24 @@ public struct GeneratedDisk: Sendable {
         }
 
         var result = [UInt8](repeating: free, count: cellCount)
+        var fill = [UInt8](repeating: 0, count: cellCount)
         for cell in 0..<cellCount {
             var best = -1
             var bestCount: UInt32 = 0
+            var occupied: UInt32 = 0
             for category in 0..<categoryCount {
                 let value = tally[cell * categoryCount + category]
+                occupied += value
                 if value > bestCount { bestCount = value; best = category }
             }
             if best >= 0 { result[cell] = UInt8(best) }
+            // Le décompte majore d'un cluster les extents qui n'effleurent la
+            // cellule que d'une fraction ; la borne à 255 évite qu'un bloc
+            // débordé se retrouve « plus que plein ».
+            let ratio = Double(occupied) / clustersPerCell
+            fill[cell] = UInt8(min(max(ratio, 0), 1) * 255)
         }
-        return result
+        return (result, fill)
     }
 }
 

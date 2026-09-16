@@ -24,6 +24,8 @@ swiftc -O -swift-version 6 -o "${1:-/tmp/rendertrace}" \
     Sources/Model/WindowsXPStrategy.swift \
     Sources/Model/UltraDefragStrategy.swift \
     Sources/Model/GeneratedVolume.swift \
+    Sources/Model/ClusterMap.swift \
+    Sources/Model/ClusterPalette.swift \
     Sources/Model/Scenario.swift \
     Sources/Audio/Biquad.swift \
     Sources/Audio/SeekSynth.swift \

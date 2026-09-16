@@ -200,6 +200,19 @@ phases affichées sur la chronologie ne sont donc datées qu'*après* la simulat
 change de couleur exactement quand son écriture s'entend. Comme sur l'original,
 un bloc affiché vaut plusieurs clusters — 35 ici, soit 140 Ko.
 
+Elle s'ouvre **en plein écran**, et la grille se dérive alors de la surface
+disponible plutôt que d'être figée : le repliement en lignes n'a aucune
+signification physique — la carte est une suite linéaire de clusters — donc on
+prend le découpage qui remplit l'écran, soit 16 808 blocs sur un iPhone 17 Pro
+Max en paysage. À cette finesse un bloc vaut encore des milliers de clusters sur
+un volume de 320 Go, et sa couleur ne peut plus être celle d'une catégorie
+majoritaire : elle est **modulée par le taux de remplissage** du bloc, de sorte
+qu'un bloc à moitié occupé n'ait pas l'air plein. Les accès y laissent une
+rémanence de 0,34 s, fondue sur l'âge comme la traînée du plateau.
+
+Rien de tout cela n'est tenu cluster par cluster : la carte est une suite de
+plages, et un volume de 320 Go coûte 2,6 Mo au lieu de 78.
+
 ## Les disques d'époque
 
 Second écran de l'application : une galerie de volumes vieillis, cinq époques
@@ -653,6 +666,9 @@ Sources/Model/
     DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
     Platter.swift          position du bras et rotation du plateau à l'image,
                            interpolées depuis la trace
+    ClusterMap.swift       carte du volume par plages, rejeu daté, grille
+                           d'affichage dérivée de la surface, rémanence
+    ClusterPalette.swift   couleurs des catégories et teinte proportionnelle
     Scenario.swift         construction des scénarios, séries d'affichage
     SimulationModel.swift  assemblage + interrogation pour l'UI
     GeneratedVolume.swift  passerelle disque généré → volume et matériel

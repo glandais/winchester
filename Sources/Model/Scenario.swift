@@ -104,22 +104,6 @@ struct ScenarioLabel {
     let volumeNote: String
 }
 
-/// Mutation de la carte des clusters, datée par la simulation.
-struct TimedMutation {
-    let time: Double
-    let start: Int
-    let count: Int
-    let category: UInt8
-}
-
-/// Cluster touché à un instant donné, pour surligner la carte.
-struct ClusterActivity {
-    let start: Double
-    let end: Double
-    let cluster: Int
-    let isWrite: Bool
-}
-
 /// Tout ce qu'il faut pour rejouer visuellement une défragmentation.
 struct DefragPlayback {
     let partition: PartitionGeometry
@@ -129,6 +113,17 @@ struct DefragPlayback {
     /// Octets déplacés cumulés, par tranche de `SimulationModel.bucketDuration`.
     let movedBytes: [Double]
     let workEndTime: Double
+}
+
+extension DefragPlayback {
+    /// Ce que le rejeu de la carte retient d'une passe. Le reste — chronologie
+    /// mécanique, repères audio, compteurs — ne le regarde pas, et l'en tenir à
+    /// l'écart est ce qui rend `ClusterMapPlayer` testable hors application.
+    var clusterTimeline: ClusterMapTimeline {
+        ClusterMapTimeline(clusterCount: partition.clusterCount,
+                           initialRuns: plan.initialRuns,
+                           mutations: mutations)
+    }
 }
 
 /// Ce qu'un démarrage a lu, une fois la passe simulée. C'est le bilan que

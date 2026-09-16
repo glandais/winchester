@@ -113,7 +113,7 @@ struct UltraDefragStrategy: DefragStrategy {
         var volume = input
         let partition = volume.partition
         let before = volume.stats
-        let initialMap = volume.categoryMap()
+        let initialRuns = volume.categoryRuns()
         let buffer = bufferBytes ?? Self.moveAtOnce(capacityBytes: partition.capacityBytes)
 
         var operations: [DiskOperation] = []
@@ -160,7 +160,7 @@ struct UltraDefragStrategy: DefragStrategy {
         return DefragPlan(
             strategy: self,
             partition: partition,
-            initialMap: initialMap,
+            initialRuns: initialRuns,
             operations: operations,
             mutations: mutations,
             phases: phases,

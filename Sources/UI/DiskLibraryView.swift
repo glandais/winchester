@@ -18,6 +18,7 @@ struct DiskLibraryView: View {
     let onHandover: (GeneratedDisk, GeneratedActivity) throws -> Void
 
     @State private var handoverFailure: String?
+    @State private var showsFullScreenMap = false
 
     var body: some View {
         VStack(spacing: 14) {
@@ -194,23 +195,29 @@ struct DiskLibraryView: View {
 
     private var map: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let spec = model.selected {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(spec.displayName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.text)
-                    if let summary = spec.summary {
-                        Text(summary)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.dim)
-                            .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top) {
+                if let spec = model.selected {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(spec.displayName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                        if let summary = spec.summary {
+                            Text(summary)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.dim)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
+                Spacer(minLength: 8)
+                // Le plein écran vaut ici autant que pour une passe : c'est
+                // même le seul endroit où l'on regarde un volume de 320 Go, et
+                // donc le seul où un bloc vaut des milliers de clusters.
+                FullScreenMapButton { showsFullScreenMap = true }
             }
-            ClusterMapView(cells: model.displayCells,
-                           clustersPerCell: model.clustersPerCell,
-                           activeCell: nil,
-                           activeIsWrite: false)
+            ClusterMapView(grid: model.grid, shades: model.shades)
+                .contentShape(Rectangle())
+                .onTapGesture { showsFullScreenMap = true }
             if let disk = model.state.disk {
                 ClusterLegend(categories: model.presentCategories,
                               clustersPerCell: model.clustersPerCell,
@@ -218,6 +225,11 @@ struct DiskLibraryView: View {
             }
         }
         .panel()
+        .fullScreenCover(isPresented: $showsFullScreenMap) {
+            LibraryFullScreenMap(model: model,
+                                 title: model.selected?.displayName ?? "Volume",
+                                 clusterBytes: Int(model.state.disk?.clusterBytes ?? 0))
+        }
     }
 
     private func metrics(of disk: GeneratedDisk) -> some View {

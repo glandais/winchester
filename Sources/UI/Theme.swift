@@ -13,20 +13,15 @@ enum Theme {
     static let write = Color(red: 0.36, green: 0.82, blue: 0.82)
     static let arm = Color(red: 0.78, green: 0.80, blue: 0.86)
 
-    /// Couleurs de la carte des clusters. Le défragmenteur d'époque n'en avait
-    /// que deux ; ici chaque famille de fichiers a la sienne, pour qu'on voie
-    /// l'arborescence se reconstituer bloc par bloc.
+    /// Couleurs de la carte des clusters, telles que le modèle les définit.
+    ///
+    /// La palette elle-même vit dans `ClusterPalette` : le rendu de la carte
+    /// écrit des pixels et ne peut rien faire d'une `Color`. Ici on ne fait que
+    /// la traduire pour SwiftUI, de sorte que la légende et la carte ne
+    /// puissent pas diverger.
     static func categoryColor(_ category: ClusterCategory) -> Color {
-        switch category {
-        case .free:        return Color(white: 0.16)
-        case .system:      return Color(red: 0.36, green: 0.55, blue: 0.86)
-        case .application: return Color(red: 0.62, green: 0.48, blue: 0.86)
-        case .document:    return Color(red: 0.42, green: 0.76, blue: 0.52)
-        case .archive:     return Color(red: 0.38, green: 0.60, blue: 0.62)
-        case .churn:       return Color(red: 0.86, green: 0.58, blue: 0.30)
-        case .swap:        return Color(red: 0.84, green: 0.36, blue: 0.40)
-        case .reserved:    return Color(white: 0.72)
-        }
+        let c = ClusterPalette.color(category)
+        return Color(red: c.red, green: c.green, blue: c.blue)
     }
 
     static func phaseColor(_ index: Int) -> Color {

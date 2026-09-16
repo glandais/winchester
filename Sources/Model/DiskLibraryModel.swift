@@ -40,9 +40,35 @@ final class DiskLibraryModel: ObservableObject {
         }
     }
 
-    /// Cellules de la grille, recalculées à chaque disque généré plutôt qu'à
-    /// chaque image : l'agrégation d'un volume de 320 Go n'est pas gratuite.
-    @Published private(set) var cells: [UInt8] = []
+    /// Blocs de la grille — catégorie dominante et taux d'occupation —
+    /// recalculés à chaque disque généré plutôt qu'à chaque image :
+    /// l'agrégation d'un volume de 320 Go n'est pas gratuite.
+    @Published private(set) var shades: [ClusterShade] = []
+
+    /// Grille sur laquelle ces cellules sont agrégées. La galerie la porte pour
+    /// son compte : elle n'affiche pas la carte d'une passe, mais celle d'un
+    /// volume au repos, et les deux vues n'ont aucune raison de partager leur
+    /// place à l'écran.
+    @Published private(set) var grid: MapGrid = .standard
+
+    /// Change la grille et réagrège le volume affiché, s'il y en a un.
+    ///
+    /// La réagrégation repart du catalogue et non des cellules : passer d'une
+    /// grille à une autre n'est pas un redimensionnement d'image, c'est un
+    /// autre découpage des extents.
+    func setGrid(_ grid: MapGrid) {
+        guard grid != self.grid else { return }
+        self.grid = grid
+        guard let disk = state.disk else { return }
+        let cellCount = grid.cellCount
+        Task { [weak self] in
+            let shades = await Task.detached(priority: .userInitiated) {
+                Self.shades(of: disk, count: cellCount)
+            }.value
+            guard let self, self.grid.cellCount == cellCount else { return }
+            self.shades = shades
+        }
+    }
 
     private var task: Task<Void, Never>?
 
@@ -74,7 +100,7 @@ final class DiskLibraryModel: ObservableObject {
 
         task?.cancel()
         state = .running(fraction: 0, day: 0, fileCount: 0, fill: 0)
-        cells = []
+        shades = []
 
         // Le rapport arrive depuis le fil de génération : il est renvoyé sur le
         // fil principal, et seulement lui. La fermeture est construite ici,
@@ -91,20 +117,24 @@ final class DiskLibraryModel: ObservableObject {
             }
         }
 
+        // La grille est lue ici, sur le fil principal, et non dans la tâche :
+        // elle appartient au modèle isolé, et la tâche ne capture `self` que
+        // faiblement.
+        let cellCount = grid.cellCount
+
         task = Task { [weak self] in
-            let cellCount = ClusterMapPlayer.cellCount
             do {
                 let disk = try await DiskGenerator.generate(spec, progress: report)
                 // L'agrégation de la grille est faite hors du fil principal,
                 // elle aussi : elle parcourt tous les extents du catalogue.
-                let cells = await Task.detached(priority: .userInitiated) {
-                    disk.cells(count: cellCount)
+                let shades = await Task.detached(priority: .userInitiated) {
+                    Self.shades(of: disk, count: cellCount)
                 }.value
 
                 guard let self, !Task.isCancelled else { return }
                 await MainActor.run {
                     guard self.selectedID == id else { return }
-                    self.cells = cells
+                    self.shades = shades
                     self.state = .ready(disk)
                 }
             } catch is CancellationError {
@@ -129,27 +159,33 @@ final class DiskLibraryModel: ObservableObject {
 
     var clustersPerCell: Int {
         guard let disk = state.disk else { return 1 }
-        return max(Int(disk.clusterCount) / ClusterMapPlayer.cellCount, 1)
+        return max(Int(disk.clusterCount) / grid.cellCount, 1)
     }
 
     /// Catégories réellement présentes, pour ne légender que ce qu'on voit.
     var presentCategories: [ClusterCategory] {
         var seen: [ClusterCategory] = []
-        for raw in cells {
-            guard let category = FileCategory(rawValue: raw) else { continue }
-            let projected = ClusterCategory(category)
-            if !seen.contains(projected) { seen.append(projected) }
+        for shade in shades {
+            guard let category = ClusterCategory(rawValue: shade.category),
+                  category != .free else { continue }
+            if !seen.contains(category) { seen.append(category) }
         }
         return seen.sorted { $0.rawValue < $1.rawValue }
     }
 
-    /// Cellules projetées sur la palette de la carte des clusters.
-    var displayCells: [UInt8] {
-        cells.map { raw in
-            guard let category = FileCategory(rawValue: raw) else {
-                return ClusterCategory.free.rawValue
-            }
-            return ClusterCategory(category).rawValue
+    /// Agrégation d'un disque sur une grille, projetée sur la palette de la
+    /// carte des clusters.
+    ///
+    /// Le taux d'occupation vient du même parcours d'extents que la catégorie :
+    /// c'est ce qui permet au plein écran de montrer qu'un bloc de quatre mille
+    /// clusters n'est pas plein pour autant, sans repasser sur le catalogue.
+    /// La fonction est `nonisolated static` parce qu'elle tourne hors du fil
+    /// principal, sur une tâche détachée.
+    private nonisolated static func shades(of disk: GeneratedDisk, count: Int) -> [ClusterShade] {
+        let aggregate = disk.shaded(count: count)
+        return zip(aggregate.categories, aggregate.fill).map { raw, fill in
+            guard let category = FileCategory(rawValue: raw) else { return .empty }
+            return ClusterShade(category: ClusterCategory(category).rawValue, fill: fill)
         }
     }
 }

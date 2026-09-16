@@ -155,6 +155,22 @@ private func volume(clusterCount: Int, files: [TestFile]) -> DefragVolume {
     return DefragVolume(partition: partition, files: records)
 }
 
+/// La carte par cluster que le plan portait autrefois en clair, reconstruite
+/// depuis les plages qu'il publie désormais.
+///
+/// Sur ces volumes de quelques milliers de clusters, c'est encore la façon la
+/// plus directe de vérifier qu'aucun cluster ne se perd ni ne se recouvre — et
+/// la dérouler ici plutôt que dans le modèle est précisément ce que le
+/// changement visait : elle n'existe plus que pour les tests.
+private func materialized(_ plan: DefragPlan) -> [UInt8] {
+    var map = [UInt8](repeating: ClusterCategory.free.rawValue,
+                      count: plan.partition.clusterCount)
+    for run in plan.initialRuns {
+        for cluster in Int(run.start)..<min(Int(run.end), map.count) { map[cluster] = run.category }
+    }
+    return map
+}
+
 @Suite("Planificateur de défragmentation")
 struct DefragPlannerTests {
 
@@ -231,7 +247,7 @@ struct DefragPlannerTests {
         let occupiedBefore = 40 * 7
 
         let plan = DefragPlanner.plan(volume: input)
-        var map = plan.initialMap
+        var map = materialized(plan)
         #expect(map.filter { $0 != ClusterCategory.free.rawValue }.count == occupiedBefore)
 
         for operation in plan.operations {
@@ -761,7 +777,7 @@ struct WindowsXPStrategyTests {
         let occupied = 50 * 11
 
         let plan = DefragPlanner.plan(volume: input)
-        var map = plan.initialMap
+        var map = materialized(plan)
         #expect(map.filter { $0 != ClusterCategory.free.rawValue }.count == occupied)
 
         for operation in plan.operations {

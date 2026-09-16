@@ -92,7 +92,13 @@ struct DefragPlan {
     /// l'autre — et c'est la stratégie, et elle seule, qui sait les commenter.
     let strategy: any DefragStrategy
     let partition: PartitionGeometry
-    let initialMap: [UInt8]
+    /// L'état de départ de la carte, décrit par ses plages occupées.
+    ///
+    /// Une valeur par cluster pesait 78 Mo sur le NTFS de 320 Go de la
+    /// galerie, que `summarized()` gardait ensuite pour toute la passe. Les
+    /// plages en coûtent le nombre d'extents, et le rejeu n'a jamais eu besoin
+    /// d'autre chose.
+    let initialRuns: [MapRun]
     let operations: [DiskOperation]
     /// Toutes les mutations de la carte, à plat. Chaque opération en désigne
     /// une tranche.
@@ -107,11 +113,11 @@ struct DefragPlan {
 
     /// Le même plan, sans les opérations ni les mutations.
     ///
-    /// Une fois la passe simulée et datée, l'écran n'a plus besoin que de la
-    /// carte de départ et des compteurs. Les opérations, elles, se comptent en
+    /// Une fois la passe simulée et datée, l'écran n'a plus besoin que de l'état
+    /// de départ et des compteurs. Les opérations, elles, se comptent en
     /// millions sur un volume d'époque réellement dimensionné.
     func summarized() -> DefragPlan {
-        DefragPlan(strategy: strategy, partition: partition, initialMap: initialMap,
+        DefragPlan(strategy: strategy, partition: partition, initialRuns: initialRuns,
                    operations: [], mutations: [], phases: phases,
                    before: before, after: after, movedBytes: movedBytes,
                    filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,

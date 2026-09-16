@@ -205,10 +205,31 @@ struct DefragVolume {
                            freeHoles: bitmap.freeRunCount())
     }
 
+    /// Les plages occupées, avec leur catégorie, triées par cluster de début.
+    ///
+    /// C'est la description que le rejeu de la carte attend : ce qui n'y figure
+    /// pas est libre. Elle coûte le nombre d'extents — cent soixante-dix-huit
+    /// mille sur le plus gros volume de la galerie — là où `categoryMap()`
+    /// coûte le nombre de clusters, soit quatre cent quarante fois plus.
+    func categoryRuns() -> [MapRun] {
+        var runs: [MapRun] = []
+        runs.reserveCapacity(files.reduce(0) { $0 + $1.extents.count })
+        for file in files {
+            let raw = file.category.rawValue
+            for extent in file.extents where !extent.isEmpty {
+                runs.append(MapRun(start: extent.start, count: extent.length, category: raw))
+            }
+        }
+        runs.sort { $0.start < $1.start }
+        return runs
+    }
+
     /// Carte des catégories, une valeur par cluster.
     ///
     /// Ne la demander que pour un volume dont la carte sera réellement affichée
-    /// cluster par cluster : sur un volume de 320 Go elle pèse 80 Mo.
+    /// cluster par cluster : sur un volume de 320 Go elle pèse 80 Mo. Depuis
+    /// que le rejeu travaille par plages, plus personne ne l'appelle en dehors
+    /// des tests, qui s'en servent de référence sur de petits volumes.
     func categoryMap() -> [UInt8] {
         var map = [UInt8](repeating: ClusterCategory.free.rawValue, count: partition.clusterCount)
         for file in files {

@@ -496,22 +496,139 @@ ni les opérations du plan ne sont conservées, personne ne les relisant.
 
 ## Chantier 4 — afficher des millions de blocs
 
-**Partiellement fait**
+**Fait**
 
-Fait : le rejeu de la carte tient un décompte par bloc mis à jour par mutation,
-au lieu de reparcourir tous les clusters à chaque image.
+### Le problème
 
-Reste :
+Trois choses tenaient ensemble, et une seule était visible.
 
-- passer de `Canvas` et d'un `Path` par cellule à un buffer de pixels transformé
-  en `CGImage` — au-delà de ~3 000 rectangles, SwiftUI plie ;
-- le **plein écran**, avec une grille plus fine (192 × 108 en paysage, soit
-  20 736 cellules) ; sur un 320 Go cela fait encore ~4 000 clusters par bloc, et
-  une écriture isolée ne change plus un bloc entier de couleur — il faudra une
-  teinte proportionnelle plutôt qu'une catégorie majoritaire ;
-- la carte par cluster (`initialMap`) pèse 80 Mo sur un volume de 320 Go : à ne
-  jamais matérialiser pour ces volumes-là. `GeneratedDisk.cells` montre déjà
-  comment agréger sans la construire.
+`ClusterMapView` construisait un `Path(roundedRect:)` par cellule dans un
+`Canvas`. À 1 248 blocs (48 × 26) cela passait ; au-delà de ~3 000 rectangles
+SwiftUI plie, et le plein écran en demande vingt fois plus. C'était le symptôme.
+
+La grille était figée en `static` sur `ClusterMapPlayer`, lue par la vue, par la
+galerie et par le player lui-même. Un plein écran a besoin d'une grille dérivée
+de la surface, donc variable à l'exécution : c'était ce contrat-là, et non le
+dessin, qui interdisait le chantier.
+
+Et la carte était tenue **par cluster**. `DefragVolume.categoryMap()` alloue un
+octet par cluster, le plan le gardait dans `initialMap`, et le player en prenait
+une copie qui devenait réelle à la première mutation. Sur `famille-2007` —
+82 millions de clusters — cela faisait deux fois 78 Mo résidents pendant toute la
+passe, à côté du pic du chantier 3.
+
+Ce que coûtait chaque partie, mesuré sur ce volume :
+
+| | avant | après |
+|---|---:|---:|
+| `reset()` + décompte, grille 48 × 26 | 194,0 ms | **3,5 ms** |
+| `reset()` + décompte, grille 192 × 108 | 194,6 ms | **3,9 ms** |
+| rejeu des 78 602 mutations | 137,6 ms | 19,7 ms |
+| carte portée par le plan | 81 920 000 o | **2 133 480 o** |
+| empreinte du player après rejeu | +78,2 Mo | **+2,6 Mo** |
+
+Les 194 ms étaient payés à **chaque retour en arrière** dans le transport, et
+l'auraient été une seconde fois à chaque entrée en plein écran.
+
+### Les décisions
+
+- **Le rendu n'était pas le problème, et Metal n'y aurait rien changé.** Mesuré
+  à 192 × 108 : réduire le décompte en cellules coûte 0,1 ms, fabriquer le
+  buffer de pixels et le `CGImage` 0,1 ms — pour un budget d'image de 16 ms. Ce
+  qui coûtait, c'était un `Path` par cellule. Un `MTKView` aurait accéléré ce
+  qui ne consomme rien, au prix d'une sortie de SwiftUI, d'une seconde horloge à
+  accorder avec celle du moteur audio — qui est aujourd'hui la seule, et c'est
+  ce qui fait qu'un bloc change de couleur quand il s'entend — et d'une couche
+  que `DefragKit` ne compilerait pas, donc intestable. La carte est **un
+  `CGImage` d'un pixel par bloc**, agrandi sans interpolation.
+- **Ce qui disparaît en route, ce sont les jours entre les blocs.** Un rendu par
+  pixel ne porte ni marge ni coin arrondi : la carte devient un aplat au lieu
+  d'une mosaïque. Un chemin de secours par seuil a été écarté — il aurait laissé
+  le seul chemin qui compte, celui du plein écran, sans jamais être regardé par
+  personne. C'est aussi ce que faisait la carte d'origine quand les blocs
+  devenaient fins, et le contraste suffit à détacher un bloc isolé.
+- **La carte est une suite de plages, jamais un tableau de clusters.** C'est la
+  bascule que le chantier 2 avait faite pour le défragmenteur, appliquée au
+  dernier endroit qui y échappait. `ClusterRunMap` est une carte d'intervalles
+  **découpée en blocs**, exactement comme l'`ExtentIndex` du volume et pour la
+  même raison : dans un tableau plat de 356 000 plages, une insertion au milieu
+  déplacerait la moitié du tableau, et le coût d'une écriture dépendrait encore
+  de la taille du volume. Le prix assumé est que deux plages identiques de part
+  et d'autre d'une frontière de bloc restent deux plages.
+- **Une mutation rend ce qu'elle recouvre.** `replace` restitue chaque morceau
+  écrasé avec sa catégorie d'avant : c'était la seule chose que le rejeu
+  demandait à la carte par cluster, et le décompte s'en décrémente exactement.
+- **La grille se dérive de la surface, elle ne se fige pas.** 192 × 108 est du
+  16:9 ; un iPhone 17 Pro Max en paysage est en 19,5:9 et y aurait gagné des
+  bandes noires. Le repliement en lignes n'a aucune signification physique — la
+  carte est une suite linéaire de clusters, et l'endroit où elle revient à la
+  ligne est arbitraire. On prend donc le découpage qui remplit l'écran :
+  **191 × 88 = 16 808 blocs**. Le plafond de 24 000 blocs est une contrainte de
+  surface, et il vient de la reconstruction du décompte, pas du rendu.
+- **La couleur d'un bloc porte son remplissage.** À 6 579 clusters par bloc sur
+  un 320 Go, une catégorie majoritaire ne dit plus rien : la teinte est celle de
+  la catégorie dominante, mélangée vers le fond selon la part occupée, avec un
+  plancher — sans lui, huit clusters écrits dans un bloc de quatre mille
+  seraient strictement invisibles. C'est calculé dans la boucle de réduction,
+  celle qui coûte 0,1 ms. **La carte 48 × 26 n'y touche pas** : à 35 clusters
+  par bloc le taux n'apprend rien et délaverait une carte déjà petite.
+- **La rémanence se fonde sur l'âge, pas sur le rang** — la décision du
+  chantier 5 pour la traînée du plateau, reprise telle quelle : un train de mille
+  accès en dix millisecondes ne doit pas manger tout le dégradé. Fenêtre de
+  0,34 s, plafond de 512 points qui coupe la queue de la liste sans toucher au
+  fondu. Elle se dessine en `Canvas` par-dessus l'image, et non dans le buffer :
+  refaire le `CGImage` soixante fois par seconde pour quelques dizaines de blocs
+  serait payer la carte entière pour une trace.
+- **La géométrie d'affichage descend dans `Sources/Model`**, où `DefragKit` la
+  compile — c'est ce qui la rend testable. Même partage qu'au chantier 5 : la
+  vue ne fait plus que dessiner.
+
+### Ce qui valide
+
+Vingt-six tests, dont celui qui porte tout le changement de structure : sur un
+volume assez petit pour que la carte par cluster tienne, le décompte par plages
+est comparé à celui qu'aurait donné l'ancien algorithme — **treize instants,
+quatre grilles, égalité stricte**. Les autres : la somme des décomptes vaut le
+nombre de clusters ; un retour en arrière suivi d'un ravancement redonne la même
+carte qu'un player neuf ; changer de grille puis revenir est réversible, et ne
+rembobine pas le rejeu ; un bloc entièrement libre rend exactement la couleur du
+fond, un bloc plein exactement celle de sa catégorie, un bloc à moitié rempli
+strictement entre les deux ; 191 × 88 tombe sur les 956 × 440 de l'appareil visé.
+
+Non-régression : passe livrée **inchangée à 204,7 s**, 390 fichiers déplacés,
+921 évacuations. `dev-1996` à 2 181,1 s et `secretaire-2003` à 142,1 s de même.
+La sortie du rendu hors-ligne est restée **bit à bit identique** après l'étape de
+rendu, et les captures d'écran de la carte 48 × 26 sont pixel pour pixel celles
+d'avant le passage aux plages.
+
+Deux erreurs ont été prises par la capture d'écran et non par les tests : la
+première carte rendue était rouge et jaune, un `UInt32` se rangeant à l'envers
+en mémoire là où Core Graphics attendait l'ordre réseau ; et c'est en regardant
+`famille-2007` en plein écran que la teinte proportionnelle a montré ce qu'elle
+vaut — la zone réservée à la MFT s'y lit enfin, là où la carte en pouce n'était
+qu'un aplat violet.
+
+### Ce qui reste ouvert
+
+- **Le paysage n'a été vérifié que par les tests.** Faire pivoter le simulateur
+  demande des autorisations d'accessibilité dont la session ne disposait pas, et
+  la préférence d'orientation est réécrite au redémarrage de l'appareil. Toute la
+  mise en page passe par `GeometryReader` et la dérivation de grille est testée
+  sur 956 × 440, mais **aucune capture ne le montre**, et c'est exactement le cas
+  d'usage que le plein écran vise.
+- **Le rétablissement de la veille** après sortie du plein écran est écrit et lu,
+  pas observé à l'exécution.
+- **Une mutation coûte maintenant un remaniement de plages** là où elle ne
+  touchait que deux clusters : sur `dev-1996`, 34 560 clusters et 60 375
+  mutations, le rejeu complet passe de 3,2 à 15,1 ms. C'est le prix du
+  changement, il ne se paie qu'au rembobinage total d'une passe de 2 181 s, et
+  il est très inférieur aux 194 ms qu'il remplace sur les gros volumes — mais
+  c'est bien une régression sur les petits, et elle est écrite comme telle.
+- **Tous les chiffres sont ceux d'un Mac.** Rien n'a été mesuré sur l'appareil,
+  où il faut compter un facteur deux.
+- `GeneratedDisk.categoryMap()` et `Volume.categoryMap()` n'ont plus aucun
+  appelant hors des tests. Elles étaient déjà sans emploi avant ce chantier ;
+  elles restent, faute d'avoir tranché si elles gardent une valeur de référence.
 
 ---
 

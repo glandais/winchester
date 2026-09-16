@@ -64,6 +64,7 @@ struct SimulatorScreen: View {
     @ObservedObject var model: SimulationModel
     @ObservedObject var engine: DiskNoiseEngine
     @State private var showsModelNotes = false
+    @State private var showsFullScreenMap = false
 
     private var time: Double { engine.currentTime }
     private var span: PhaseSpan? { model.span(at: time) }
@@ -143,6 +144,10 @@ struct SimulatorScreen: View {
                     Text("\(playback.partition.capacityDescription) · \(playback.partition.format.label) · clusters de \(playback.partition.clusterBytes / 1024) Ko")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.dim)
+                    // Le plein écran est à côté du titre du volume, là où l'œil
+                    // passe déjà, plutôt qu'en surimpression sur la carte où il
+                    // masquerait des blocs.
+                    FullScreenMapButton { showsFullScreenMap = true }
                 }
 
                 // L'outil qu'on écoute. Sans lui, deux passes aux signatures
@@ -152,10 +157,14 @@ struct SimulatorScreen: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.text)
 
-                ClusterMapView(cells: model.clusterCells(at: time),
-                               clustersPerCell: model.clustersPerCell,
+                ClusterMapView(grid: model.mapGrid,
+                               shades: model.clusterShades(at: time),
                                activeCell: active?.cell,
                                activeIsWrite: active?.isWrite ?? false)
+                    // La carte entière ouvre le plein écran : c'est le geste
+                    // qu'on essaie d'abord, et il ne coûte rien de le servir.
+                    .contentShape(Rectangle())
+                    .onTapGesture { showsFullScreenMap = true }
 
                 progressBar(playback: playback)
 
@@ -181,6 +190,9 @@ struct SimulatorScreen: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
+            .fullScreenCover(isPresented: $showsFullScreenMap) {
+                DefragFullScreenMap(model: model, engine: engine)
+            }
         }
     }
 
@@ -210,7 +222,7 @@ struct SimulatorScreen: View {
     /// Le fichier d'échange et les répertoires ne pèsent que quelques blocs :
     /// inutile de leur réserver une entrée de légende s'ils sont absents.
     private func presentCategories(in plan: DefragPlan) -> [ClusterCategory] {
-        var seen = Set<UInt8>(plan.initialMap)
+        var seen = Set<UInt8>(plan.initialRuns.lazy.map(\.category))
         seen.insert(ClusterCategory.free.rawValue)
         return ClusterCategory.allCases.filter { seen.contains($0.rawValue) }
     }

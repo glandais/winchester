@@ -2,109 +2,6 @@ import Foundation
 import DiskCore
 import Combine
 
-/// Rejoue la carte des clusters à un instant donné.
-///
-/// Les mutations sont appliquées dans l'ordre et l'état courant est conservé :
-/// avancer d'une image ne coûte que les quelques mutations écoulées. Un saut en
-/// arrière repart de la carte initiale — c'est rare et c'est le seul cas où le
-/// coût est celui de la passe entière.
-final class ClusterMapPlayer {
-
-    /// Taille de la grille d'affichage. Elle est fixée ici et non dans la vue :
-    /// c'est le modèle qui agrège les clusters en blocs.
-    static let columns = 48
-    static let rows = 26
-    static var cellCount: Int { columns * rows }
-
-    private static let categoryCount = ClusterCategory.allCases.count
-
-    private var playback: DefragPlayback?
-    private var map: [UInt8] = []
-    /// Combien de clusters de chaque catégorie porte chaque bloc.
-    ///
-    /// C'est ce décompte qui rend la carte tenable sur un gros volume : sans
-    /// lui, afficher une image demandait de reparcourir tous les clusters —
-    /// 1,6 million sur un FAT32 de 1999, soixante fois par seconde. Ici une
-    /// image ne coûte que les blocs affichés, et une mutation que les clusters
-    /// qu'elle touche.
-    private var tally: [UInt32] = []
-    private var index = 0
-    private var time: Double = 0
-
-    var clustersPerCell: Int {
-        guard let playback else { return 1 }
-        return max(playback.partition.clusterCount / Self.cellCount, 1)
-    }
-
-    func load(_ playback: DefragPlayback?) {
-        self.playback = playback
-        reset()
-    }
-
-    private func reset() {
-        map = playback?.plan.initialMap ?? []
-        index = 0
-        time = 0
-        rebuildTally()
-    }
-
-    private func rebuildTally() {
-        tally = [UInt32](repeating: 0, count: Self.cellCount * Self.categoryCount)
-        guard !map.isEmpty else { return }
-        let perCell = clustersPerCell
-        for cluster in 0..<map.count {
-            let cell = min(cluster / perCell, Self.cellCount - 1)
-            tally[cell * Self.categoryCount + Int(map[cluster])] += 1
-        }
-    }
-
-    /// Carte agrégée en blocs d'affichage. Un bloc prend la couleur de la
-    /// catégorie la plus représentée parmi ses clusters occupés : un bloc qui
-    /// contient ne serait-ce qu'un fichier n'a pas l'air vide.
-    func cells(at requestedTime: Double) -> [UInt8] {
-        guard let playback else { return [] }
-        advance(to: requestedTime, playback: playback)
-
-        var cells = [UInt8](repeating: 0, count: Self.cellCount)
-        for cell in 0..<Self.cellCount {
-            let base = cell * Self.categoryCount
-            var best = 0
-            var bestCount: UInt32 = 0
-            for category in 1..<Self.categoryCount where tally[base + category] > bestCount {
-                best = category
-                bestCount = tally[base + category]
-            }
-            cells[cell] = UInt8(best)
-        }
-        return cells
-    }
-
-    func cell(ofCluster cluster: Int) -> Int {
-        min(cluster / clustersPerCell, Self.cellCount - 1)
-    }
-
-    private func advance(to requestedTime: Double, playback: DefragPlayback) {
-        if requestedTime < time { reset() }
-        time = requestedTime
-        let mutations = playback.mutations
-        let perCell = clustersPerCell
-        while index < mutations.count && mutations[index].time <= requestedTime {
-            let mutation = mutations[index]
-            let end = min(mutation.start + mutation.count, map.count)
-            if mutation.start < end {
-                for cluster in mutation.start..<end {
-                    let cell = min(cluster / perCell, Self.cellCount - 1)
-                    let base = cell * Self.categoryCount
-                    tally[base + Int(map[cluster])] -= 1
-                    tally[base + Int(mutation.category)] += 1
-                    map[cluster] = mutation.category
-                }
-            }
-            index += 1
-        }
-    }
-}
-
 /// Assemble la chaîne complète : scénario → requêtes bloc → chronologie
 /// mécanique → repères audio, et expose au rendu ce qu'il faut pour afficher
 /// l'état du disque à un instant donné.
@@ -141,7 +38,7 @@ final class SimulationModel: ObservableObject {
         self.scenario = scenario
         self.cache = [.builtin(.windowsBoot): scenario]
         self.engine = DiskNoiseEngine(rpm: scenario.geometry.rpm)
-        mapPlayer.load(scenario.defrag)
+        mapPlayer.load(scenario.defrag?.clusterTimeline)
         engine.load(cues: scenario.cues, duration: scenario.duration, rpm: scenario.geometry.rpm)
     }
 
@@ -209,7 +106,7 @@ final class SimulationModel: ObservableObject {
     private func adopt(_ scenario: Scenario, as selection: ScenarioSelection) {
         self.selection = selection
         self.scenario = scenario
-        mapPlayer.load(scenario.defrag)
+        mapPlayer.load(scenario.defrag?.clusterTimeline)
         engine.seekTo(0)
         engine.load(cues: scenario.cues, duration: scenario.duration, rpm: scenario.geometry.rpm)
     }
@@ -248,7 +145,36 @@ final class SimulationModel: ObservableObject {
 
     func clusterCells(at time: Double) -> [UInt8] { mapPlayer.cells(at: time) }
 
+    /// La carte avec le taux d'occupation de chaque bloc, dont le plein écran
+    /// fait sa teinte proportionnelle.
+    func clusterShades(at time: Double) -> [ClusterShade] { mapPlayer.shades(at: time) }
+
+    /// Les accès encore visibles sur la carte, en plein écran.
+    ///
+    /// La projection d'un cluster sur la grille passe par le rejeu, seul à
+    /// savoir combien de clusters vaut un bloc à cet instant — la grille change
+    /// quand on ouvre le plein écran.
+    func mapTrail(at time: Double) -> [MapTrailPoint] {
+        guard let playback = defrag else { return [] }
+        return MapTrail.points(in: playback.activity, at: time) { [mapPlayer] cluster in
+            mapPlayer.cell(ofCluster: cluster)
+        }
+    }
+
     var clustersPerCell: Int { mapPlayer.clustersPerCell }
+
+    /// Grille sur laquelle la carte est agrégée. La vue la lit ici plutôt que
+    /// de la deviner : c'est le modèle qui décide combien de blocs il produit,
+    /// et la vue n'en dessine jamais d'autres.
+    var mapGrid: MapGrid { mapPlayer.grid }
+
+    /// Change la grille d'affichage — le plein écran la dérive de la surface
+    /// disponible. Le rejeu garde sa position ; seule l'agrégation est refaite.
+    func setMapGrid(_ grid: MapGrid) {
+        guard grid != mapPlayer.grid else { return }
+        mapPlayer.setGrid(grid)
+        objectWillChange.send()
+    }
 
     /// Cellule en cours d'accès, s'il y en a une à cet instant.
     func activeCell(at time: Double) -> (cell: Int, isWrite: Bool)? {

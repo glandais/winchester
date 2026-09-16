@@ -63,7 +63,7 @@ struct Windows95Strategy: DefragStrategy {
         let partition = volume.partition
         let total = UInt32(partition.clusterCount)
         let before = volume.stats
-        let initialMap = volume.categoryMap()
+        let initialRuns = volume.categoryRuns()
 
         // Trois opérations par fichier au minimum — une lecture, une écriture,
         // une validation — et bien plus dès que les fichiers sont éclatés.
@@ -158,7 +158,7 @@ struct Windows95Strategy: DefragStrategy {
         return DefragPlan(
             strategy: self,
             partition: partition,
-            initialMap: initialMap,
+            initialRuns: initialRuns,
             operations: operations,
             mutations: mutations,
             phases: phases,
