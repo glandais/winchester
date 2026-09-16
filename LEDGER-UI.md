@@ -416,33 +416,78 @@ comparaison des chantiers 2, 9 et 11 — ne s'entendaient que par
 
 ## Chantier U4 — l'écran de la passe
 
-**À faire** · prompt §4
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-- **Carte des clusters** : lecture ambre, écriture turquoise, rémanence ;
-  légende « plus sombre = rangé » ; « 1 bloc = N clusters = X Ko ».
-- **Plateau** : rotation ralentie ×100, bras sur le cylindre visé, traînée,
-  cylindre courant, LED HDD.
-- **Phase en cours** et frise des phases passées, sans projection des phases
-  à venir.
-- **Compteurs** : % avancé, Mo déplacés, fichiers déplacés, évacuations, temps
-  écoulé.
-- **Transport** : lecture/pause, relancer, arrêter.
-- Hiérarchie en portrait : carte et plateau ne tiennent pas ensemble avec les
-  compteurs — onglets ou piles repliables, à décider sur les maquettes.
+L'onglet Passe était resté le long défilement d'avant, moins ce que U0 avait
+déménagé : titre « DiskNoise », panneau du volume avec sa carte et un
+paragraphe de chiffres, plateau, bandeau de phase, frise, transport. Le
+pourcentage était une ligne sous la carte, le temps écoulé au fond de la
+frise, et seuls **Relancer** et lecture/pause existaient.
 
-### Ce que le code offre
+### Les décisions
 
-`ClusterMapView`, `PlatterView`, `ActivityTimeline`, `PhaseDescriptor`,
-`model.restart()`, `engine.toggle()`. **Arrêter** n'existe pas en tant que
-tel : relancer puis pause, ou un vrai arrêt qui libère la passe.
+- **Un bandeau de passe en tête** (maquettes 09 et 10) : titre du scénario,
+  outil ou système, « PHASE 2 · FICHIERS SYSTÈME » et son détail, puis
+  l'avancement en grand, le temps écouté dessous et la barre de progression.
+  La LED d'activité passe dans le bandeau.
+- **Deux vues, Carte et Plateau**, par un sélecteur segmenté. Une passe de
+  démarrage n'a pas de carte : elle ne montre que le plateau, sans sélecteur.
+- **Carte** : la carte, une légende lecture ambre / écriture turquoise, la
+  légende des catégories, le plein écran, puis quatre compteurs et la phrase
+  « Au départ… À l'arrivée… » en chiffres français.
+- **Plateau** : le plateau, « CYLINDRE 141 / 3 835 » et le modèle de disque, le
+  bilan du démarrage s'il y a lieu, les **phases écoutées** avec leur durée, et
+  la frise de la dernière minute.
+- **Transport fixe en bas** : **Arrêter**, lecture/pause, **Relancer**. Arrêter
+  revient au début sans rejouer : pause puis relance de la passe, qui ne
+  reprend la lecture que si elle jouait.
+- **Le temps passé par phase est cumulé dans `LivePass`** (`phaseTimes`).
+  Les repères de phase ne suffisaient pas : ils sont oubliés au-delà d'une
+  minute, et une passe de Windows 95 alterne sans arrêt entre les fichiers et
+  la réécriture des tables. Le cumul est tenu à l'avance de l'écoute, une
+  entrée par phase, dans l'ordre d'apparition, reprises comprises. Il ne
+  touche à rien de ce qui est produit : ni repères, ni son, ni carte.
+- **Fichiers déplacés et évacuations s'affichent au bilan**, « — au bilan »
+  jusque-là. Ces compteurs vivent dans la stratégie, qui ne les publie qu'avec
+  son plan ; les donner en direct demande de les faire passer par la chaîne de
+  datation, pour onze stratégies. C'est un chantier du moteur, pas de l'écran.
+- `FrenchFormat.duration` : « 42 s », « 12 min 41 », « 1 h 07 ».
 
-### À ajouter côté moteur
+### Ce qui valide
 
-Fichiers déplacés et évacuations **en cours de passe** : `ActivityTotals` ne
-compte que requêtes, seeks, distance et octets déplacés ; les autres
-compteurs n'arrivent qu'avec le plan final.
+- **`swift test` : 96 tests `DiskCore` et 145 `DefragKit` passent**, dont deux
+  nouveaux (`PhaseTimeTests`) : une phase reprise cumule ses durées dans
+  l'ordre d'apparition, et le cumul tient au-delà de la minute où les repères
+  sont oubliés.
+- Construit en Debug pour le simulateur iPhone 17 Pro, sans erreur.
+- **Le son ne change pas.** Rendu hors-ligne de la base de la branche
+  (`fbbcfd3`) et de la branche, sur `windowsBoot`, `defrag`,
+  `boot:dev-1993`, `boot:famille-2007`, `gamer-2003` et `secretaire-2003` :
+  six WAV identiques à l'octet (`md5`).
+- Sur le simulateur, démo de défragmentation : bandeau « PHASE 2 · FICHIERS
+  SYSTÈME », 39 % à 25 s ; vue Carte avec légende et compteurs ; vue Plateau
+  avec « CYLINDRE 141 / 3 835 » et « Analyse du volume 4 s », « Fichiers
+  système en cours » ; **Arrêter** ramène à 0 %, 0 s, « Rien encore », lecture
+  en pause.
+
+### Laissé ouvert
+
+- **Fichiers déplacés et évacuations en direct** : compter dans les
+  stratégies, dater avec la requête qui valide le déplacement, et vérifier que
+  les WAV restent identiques. À faire avant U6, qui en a aussi besoin.
+- **`Tools/build-render.sh` ne compile plus sous Xcode 27.** SwiftPM 6.4 range
+  `DiskCore` directement dans `.build/release` (`DiskCore.o`,
+  `DiskCore.swiftmodule`), sans `Modules/` ni `DiskCore.build/`. La
+  vérification ci-dessus a appelé `swiftc` avec ces chemins-là, et posé le
+  paquet de ressources `DiskCore_DiskCore.bundle` à côté de l'exécutable. Le
+  script lui-même n'est pas corrigé ici : il appartient au modèle.
+- **L'effet de bord de défilement d'iOS 26** laisse deviner le contenu sous la
+  barre de transport et sous la barre d'onglets flottante : comportement du
+  système, laissé tel quel.
+- La vue choisie (Carte ou Plateau) n'est pas retenue d'une passe à l'autre.
+- Le démarrage garde l'ancien panneau de témoin : c'est U7.
 
 ---
 

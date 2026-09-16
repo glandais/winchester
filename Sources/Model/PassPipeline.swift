@@ -38,6 +38,12 @@ struct PhaseMark: Sendable, Equatable {
     let time: Double
 }
 
+/// Le temps écouté dans une phase, toutes ses reprises confondues.
+struct PhaseTime: Sendable, Equatable {
+    let index: Int
+    var seconds: Double
+}
+
 /// L'avancement annoncé par l'outil, à un instant donné.
 struct ProgressMark: Sendable, Equatable {
     let time: Double

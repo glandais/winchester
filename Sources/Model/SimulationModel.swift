@@ -138,6 +138,10 @@ final class SimulationModel: ObservableObject {
     /// dont se contente HDDSynth pour déclencher ses sons.
     var activityLED: Bool { live.requestRate > 0.5 }
 
+    /// Le temps écouté dans chaque phase, dans l'ordre où elles sont apparues.
+    var phaseTimes: [PhaseTime] { live.phaseTimes }
+    var phases: [PhaseDescriptor] { live.phases }
+
     var requestRate: Double { live.requestRate }
     var throughputMBs: Double { live.throughputMBs }
     var totals: ActivityTotals { live.totals }

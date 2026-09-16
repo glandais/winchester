@@ -74,6 +74,15 @@ final class LivePass: PassFeed {
     private(set) var totals = ActivityTotals()
     private var totalledThrough = -1
     private(set) var phaseMarks: [PhaseMark] = []
+    /// Le temps écouté dans chaque phase, dans l'ordre où elles sont apparues.
+    ///
+    /// Les repères, eux, sont oubliés au bout d'une minute, et une passe alterne
+    /// sans cesse entre deux phases — les fichiers d'une catégorie, puis la
+    /// réécriture des tables, fichier après fichier. Ce cumul est la seule trace
+    /// qui reste de tout ce qui a été écouté : quelques entrées, une par phase.
+    private(set) var phaseTimes: [PhaseTime] = []
+    /// Jusqu'où le cumul est fait.
+    private var phaseClock = 0.0
     private var progressMarks: [ProgressMark] = []
 
     /// Fin de la dernière requête produite : jusqu'où la passe est connue.
@@ -157,7 +166,32 @@ final class LivePass: PassFeed {
             totalledThrough = bucket.index
         }
 
+        accountPhases(until: time)
         forget()
+    }
+
+    /// Ajoute au cumul par phase le temps écouté depuis le dernier appel. Les
+    /// repères utiles sont encore là : l'oubli garde la dernière phase entamée,
+    /// et l'écoute n'avance jamais d'une minute d'un coup.
+    private func accountPhases(until time: Double) {
+        guard time > phaseClock else { return }
+        var cursor = phaseClock
+        var current = phaseMarks.last { $0.time <= cursor }?.index ?? 0
+        for mark in phaseMarks where mark.time > cursor && mark.time <= time {
+            addPhaseTime(current, mark.time - cursor)
+            cursor = mark.time
+            current = mark.index
+        }
+        addPhaseTime(current, time - cursor)
+        phaseClock = time
+    }
+
+    private func addPhaseTime(_ index: Int, _ seconds: Double) {
+        if let slot = phaseTimes.firstIndex(where: { $0.index == index }) {
+            phaseTimes[slot].seconds += seconds
+        } else if seconds > 0 {
+            phaseTimes.append(PhaseTime(index: index, seconds: seconds))
+        }
     }
 
     func takeCues(before time: Double) -> [AudioCue] {
