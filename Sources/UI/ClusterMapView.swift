@@ -36,6 +36,11 @@ struct ClusterMapView: View {
     /// liseré de la carte en pouce ; en plein écran, la rémanence le remplace.
     var activeCell: Int? = nil
     var activeIsWrite: Bool = false
+    /// Le bloc qu'on a touché, entouré en blanc.
+    var selectedCell: Int? = nil
+    /// Appelé avec le bloc touché. Sans lui, la carte ne réagit pas au doigt
+    /// et laisse le geste à ce qui l'entoure.
+    var onCellTap: ((Int) -> Void)? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -80,11 +85,49 @@ struct ClusterMapView: View {
                                        lineWidth: 1.5)
                     }
                 }
+
+                if let selected = selectedCell, selected < grid.cellCount {
+                    Canvas { context, _ in
+                        let column = selected % grid.columns
+                        let row = selected / grid.columns
+                        let inset = max(side, 6)
+                        let rect = CGRect(x: CGFloat(column) * side + side / 2 - inset,
+                                          y: CGFloat(row) * side + side / 2 - inset,
+                                          width: inset * 2, height: inset * 2)
+                        context.stroke(Path(roundedRect: rect, cornerRadius: 2),
+                                       with: .color(Theme.text), lineWidth: 1.5)
+                    }
+                    .allowsHitTesting(false)
+                }
             }
             .frame(width: side * CGFloat(grid.columns), height: side * CGFloat(grid.rows))
+            .modifier(CellTap(grid: grid, side: side, onCellTap: onCellTap))
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .aspectRatio(CGFloat(grid.columns) / CGFloat(grid.rows), contentMode: .fit)
+    }
+}
+
+/// Le toucher d'un bloc. Posé seulement quand quelqu'un l'attend : sinon la
+/// carte ne capte rien, et le geste qui l'entoure — ouvrir le plein écran —
+/// reste le sien.
+private struct CellTap: ViewModifier {
+    let grid: MapGrid
+    let side: CGFloat
+    let onCellTap: ((Int) -> Void)?
+
+    func body(content: Content) -> some View {
+        if let onCellTap, side > 0 {
+            content
+                .contentShape(Rectangle())
+                .onTapGesture(coordinateSpace: .local) { location in
+                    let column = min(max(Int(location.x / side), 0), grid.columns - 1)
+                    let row = min(max(Int(location.y / side), 0), grid.rows - 1)
+                    onCellTap(row * grid.columns + column)
+                }
+        } else {
+            content
+        }
     }
 }
 

@@ -493,19 +493,67 @@ frise, et seuls **Relancer** et lecture/pause existaient.
 
 ## Chantier U5 — la carte en plein écran, touchée
 
-**À faire** · prompt §4
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-Paysage, grille pleine surface (≈ 16 800 blocs sur un 17 Pro Max). Un appui
-sur un bloc dit sa catégorie, sa plage de clusters, et le ou les fichiers
-qu'il contient.
+La carte en plein écran montrait jusqu'à seize mille blocs, et aucun ne disait
+ce qu'il était. Un bloc vaut quelques clusters sur un volume de 1996, des
+milliers sur un 320 Go : sa couleur dit une catégorie dominante et un
+remplissage, pas quels fichiers il porte.
 
-### À ajouter côté moteur
+### Les décisions
 
-La carte est une suite de plages sans nom de fichier (chantier 4). Retrouver
-un fichier depuis un cluster demande un index extent → fichier sur le volume
-courant — qui bouge pendant la passe.
+- **Toucher un bloc l'entoure** et ouvre un panneau : sa catégorie, son numéro,
+  sa plage de clusters, son remplissage. Toucher le même bloc, ou la croix,
+  referme. `ClusterMapView` n'écoute le doigt que si on lui passe `onCellTap`
+  : la carte en pouce garde son geste, ouvrir le plein écran.
+- **Pour un disque de la galerie, les fichiers du bloc**, les trois plus
+  présents : chemin, taille, « d'un seul tenant » ou nombre de morceaux, puis
+  « Et N autres fichiers » et les clusters réservés par le système.
+- **La recherche vit dans `DiskCore`** (`GeneratedDisk.contents(ofCell:cellCount:limit:)`)
+  et reprend **exactement le découpage de la carte** (`clusterRange(ofCell:cellCount:)`,
+  la même part fractionnaire de clusters par bloc que `shaded(count:)`). Elle
+  parcourt le catalogue à chaque toucher : un geste, pas une image.
+- **Pendant une passe, pas de fichiers.** La carte rejouée n'est qu'une suite de
+  plages colorées, et les fichiers changent de place : le panneau donne la
+  catégorie et le remplissage à l'instant écouté, et le dit (« Les fichiers ne
+  sont pas suivis pendant une passe »).
+- **Le panneau se pose sur la carte, pas à la place du transport.** La première
+  version remplaçait la légende : la surface de la carte changeait de hauteur,
+  la grille se redécoupait, et le changement de grille — qui doit effacer la
+  sélection, puisqu'un même numéro ne désigne plus les mêmes clusters — la
+  refermait aussitôt. Rien ne se passait au toucher.
+
+### Ce qui valide
+
+- **`swift test` : 99 tests `DiskCore` et 145 `DefragKit` passent**, dont trois
+  nouveaux (`CellContentsTests`) :
+  - les plages de 1, 7, 1 248 et 16 808 blocs couvrent le volume sans trou ni
+    recouvrement ;
+  - sur `gamer-1993` et `gamer-2003`, les clusters des fichiers et du système de
+    chaque bloc, additionnés, redonnent **exactement** l'occupation de la
+    bitmap ;
+  - les fichiers listés sont rangés du plus au moins présent.
+- Sur le simulateur, en portrait :
+  - `secretaire-1996` : bloc 703, « Système », clusters 3 799 à 3 804, 100 %
+    occupé, `…SYSTEM\WIN9155.DLL`, 3,5 Mo, d'un seul tenant ;
+  - démo de défragmentation à 37 % : bloc 1 453, « Système », clusters 5 808 à
+    5 811, 100 % occupé, et la mention des fichiers non suivis.
+
+### Laissé ouvert
+
+- **Les fichiers d'un bloc pendant une passe** demandent de tenir, dans le
+  rejeu, qui occupe chaque plage : les mutations de la carte ne portent qu'une
+  catégorie. C'est un chantier du moteur.
+- **Le plein écran n'a été vu qu'en portrait** : `axe` ne sait pas faire pivoter
+  le simulateur. La grille se dérive de la surface, le panneau est posé sur la
+  carte ; rien de propre au paysage, mais rien de regardé.
+- Pas de glisser pour parcourir les blocs, pas de zoom.
+- La plage d'un bloc de la passe suit le découpage entier du rejeu
+  (`ClusterMapPlayer.clustersPerCell`), celle d'un disque de la galerie le
+  découpage fractionnaire de `shaded(count:)` : deux découpages qui existaient
+  déjà, chacun fidèle à la carte qu'il décrit.
 
 ---
 
