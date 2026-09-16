@@ -23,17 +23,29 @@ scénario de phases      catalogue d'un volume généré      volume à ranger
     │ rafales                │ calcul entre deux lectures       │ évacuations, FAT
     └────────────────────────┴────────────┬─────────────────────┘
                                           ▼
-requêtes bloc                     (date, LBA, nb secteurs, R/W)
-        │  DiskSimulator          LBA→CHS zoné, seek, latence rotationnelle, transfert
+requêtes bloc, une à une         (date, LBA, nb secteurs, R/W) — OperationSink
+        │  DiskMechanics          LBA→CHS zoné, seek, latence rotationnelle, transfert
         ▼
 chronologie mécanique             seek / commutation de tête / pas de piste / transfert
-        │  AudioCueBuilder        regroupement des seeks rapprochés, filtrage des tics
+        │  CueStream              regroupement des seeks rapprochés, filtrage des tics
         ▼
-repères audio
-        │  SeekSynth · SpindleVoice
+paquets datés                     repères, échantillons du plateau, mutations de la
+        │  PassPipeline           carte, tranches d'activité — PassSession les tamponne
+        ▼                         quelques secondes devant l'écoute
+LivePass (l'instant présent)
+        │  SeekSynth · SpindleVoice · DiskHaptics · SwiftUI
         ▼
 AVAudioEngine
 ```
+
+**Rien n'est calculé d'avance.** Le planificateur tourne sur son propre fil et
+émet ses opérations au lieu de les empiler ; chacune traverse aussitôt le
+simulateur, la construction des repères et la datation, et le résultat attend
+l'écoute dans un tampon. Le fil s'endort dès qu'il a huit secondes d'avance.
+L'écran, le son et l'haptique ne lisent que l'instant présent : il n'y a plus ni
+durée connue à l'avance ni retour en arrière, et revenir au début, c'est relancer
+la passe. Le calcul est **identique** à celui d'un bloc : même chronologie, mêmes
+repères, même WAV à l'échantillon près sur les 48 scénarios de référence.
 
 ## Ce qui est modélisé
 
@@ -575,14 +587,16 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   autant d'accès courts que ce modèle ne pose pas, parce qu'aucun d'eux ne
   correspond à un fichier du catalogue. Le crépitement est donc un peu plus
   clairsemé qu'il ne devrait.
-- **Tout est calculé avant que le premier son ne sorte.** La passe entière —
-  requêtes, chronologie mécanique, repères audio — est matérialisée en mémoire :
-  1,1 million de requêtes et 780 Mo de pic pour `dev-1999`, un FAT32 de 6,4 Go
-  rempli à 93 %. Tenable sur un Mac, à la limite sur un téléphone, et c'est ce
-  qui plafonne la taille des volumes bien avant le planificateur, qui lui ne
-  connaît que des extents. Une passe rendue **au fil de l'eau**, sur une fenêtre
-  de quelques secondes d'avance, lèverait cette limite ; c'est le chantier
-  suivant.
+- **On ne navigue plus dans une passe.** Ni tête de lecture à traîner, ni saut
+  de cinq secondes, ni durée totale : la passe se calcule pendant qu'on
+  l'écoute, et seul son présent est gardé. Le bilan — état d'arrivée, temps
+  perdu au démarrage — ne s'affiche qu'une fois la passe entendue jusqu'au bout.
+- **Abandonner une passe n'interrompt pas son planificateur**, qui n'a aucun
+  point d'arrêt : il cesse de simuler et finit son calcul à vide, quelques
+  secondes de processeur au pire.
+- **La mémoire d'un gros disque est désormais celle de sa génération**, pas de
+  sa passe : `dev-1999` tient à 220 Mo au rendu hors-ligne comme à son
+  démarrage, et un NTFS de 2007 reste au-dessus de 700 Mo pour la même raison.
 - **La passe de défragmentation est raccourcie par la taille du volume, pas par
   une accélération.** 180 Mo se défragmentent en 3 min 24 ; un
   volume de l'époque réellement dimensionné (500 Mo à 1 Go) en prend vingt-sept
@@ -621,7 +635,14 @@ Le découpage qui rend cela tenable :
   `@MainActor` : ils pilotent des objets AVFoundation, Core Haptics et l'état
   publié de l'interface.
 - Les allers-retours entre les deux se font par valeurs `Sendable` et retours
-  explicites sur l'acteur principal, jamais par `@unchecked Sendable`.
+  explicites sur l'acteur principal.
+- **Une exception, bornée à `PassSession.swift`** : le fil producteur d'une
+  passe est un `Thread` qui s'endort sur une `NSCondition`, et les trois
+  classes qui partagent cet état — la session, sa sortie côté producteur et un
+  petit verrou `Locked` — sont `@unchecked Sendable`, tout accès passant par le
+  verrou. Les paquets qui traversent sont, eux, de vraies valeurs `Sendable`.
+  Un fil plutôt qu'une tâche : le producteur *bloque* quand il a assez d'avance,
+  ce qu'une tâche du pool coopératif ne doit pas faire.
 
 ## Lancer
 
@@ -684,6 +705,13 @@ JkDefrag : `jkDefragForcedFill`, `jkDefragMoveUp`, `jkDefragSortName`,
 `jkDefragSortSize`, `jkDefragSortAccess`, `jkDefragSortChange`,
 `jkDefragSortCreation`. C'est ainsi que se comparent deux passes sur exactement
 le même volume.
+
+Le rendu est **au fil de l'eau**, comme l'écoute : le son est mixé à mesure
+que la passe se planifie, écrit dans un fichier brut dès qu'il est définitif,
+puis converti en WAV. Seules quelques secondes restent en mémoire — la passe
+livrée se rend en 38 Mo au lieu de 97, `dev-1996` en 154 au lieu d'un
+gigaoctet — et le mixage garde l'ordre des additions du rendu d'un bloc, d'où
+un WAV identique au bit près.
 
 `PLAN_ONLY` s'arrête au bilan de la passe — volume, déplacements, évacuations,
 octets déplacés — sans rendre une note. C'est ce qu'il faut pour juger d'un
@@ -751,21 +779,29 @@ Sources/Model/
                            la fin, trier en évacuant ; sur demande
     UltraDefragStrategy.swift  recoller les petits morceaux des gros fichiers,
                            sur demande et quel que soit le format
-    DiskSimulator.swift    rejeu des requêtes → chronologie mécanique
+    DiskSimulator.swift    mécanique du disque, une requête après l'autre
+    AudioCue.swift         chronologie mécanique → repères audio, au fil des
+                           événements
+    OperationSink.swift    là où une stratégie émet ses opérations
+    PassPipeline.swift     planificateur → simulateur → repères → paquets datés
+    PassSession.swift      le fil producteur, tenu à quelques secondes d'avance
+    LivePass.swift         l'instant écouté : fenêtres du plateau, de la carte
+                           et de l'activité, file des repères
     Platter.swift          position du bras et rotation du plateau à l'image,
                            interpolées depuis la trace
-    ClusterMap.swift       carte du volume par plages, rejeu daté, grille
+    ClusterMap.swift       carte du volume par plages, rejeu vers l'avant, grille
                            d'affichage dérivée de la surface, rémanence
     ClusterPalette.swift   couleurs des catégories et teinte proportionnelle
-    Scenario.swift         construction des scénarios, séries d'affichage
+    Scenario.swift         description des scénarios : disque, chronologie,
+                           source des requêtes
     SimulationModel.swift  assemblage + interrogation pour l'UI
     GeneratedVolume.swift  passerelle disque généré → volume et matériel
 Sources/Audio/
     Biquad.swift           filtres RBJ, bruit xorshift
     SeekSynth.swift        banc de résonateurs, excitation, trains
     SpindleVoice.swift     couche continue procédurale
-    AudioCue.swift         chronologie mécanique → repères audio
-    DiskNoiseEngine.swift  graphe AVAudioEngine, transport, programmation
+    DiskNoiseEngine.swift  graphe AVAudioEngine, transport, programmation des
+                           repères tirés de la passe, attente du producteur
 Sources/Haptics/
     DiskHaptics.swift      Core Haptics : motifs de seek, texture des trains
 Sources/UI/                SwiftUI : plateau, carte des clusters, chronologie,

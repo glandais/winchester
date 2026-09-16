@@ -1118,32 +1118,145 @@ une hypothèse, pas assez pour en faire un chiffre.
 
 ## Chantier 3 — rendre la passe au fil de l'eau
 
-**À venir**
+**Fait** · branche `passe-au-fil-de-l-eau`
 
-Tout est calculé avant que le premier son ne sorte : requêtes, chronologie
-mécanique, repères audio. Mesure sur `dev-1999`, un FAT32 de 6,4 Go rempli à
-93 % : **1,1 million de requêtes, 780 Mo de pic**. Tenable sur un Mac, à la
-limite sur un téléphone. C'est cela qui plafonne la taille des volumes, pas le
-planificateur, qui ne connaît que des extents.
+### Le problème
 
-Ce qui rend le passage en flux possible : le simulateur est déjà causal, chaque
-opération partant quand le disque se libère. Planificateur → simulateur → repères
-deviennent un pipeline tiré par une fenêtre de quelques secondes d'avance.
+Tout était calculé avant que le premier son ne sorte : plan complet, requêtes,
+chronologie mécanique, repères audio, séries d'affichage. Sur `dev-1999`, un
+FAT32 de 6,4 Go rempli à 93 %, cela faisait **1 092 121 requêtes et 781 Mo de
+pic** pour une passe de cinq heures dont on n'écoute jamais que la seconde en
+cours. C'est ce pic, et non le planificateur, qui plafonnait la taille des
+volumes.
 
-Ce qui casse, et qu'il faudra trancher :
+La consigne de départ tranchait les trois questions que ce journal laissait
+ouvertes : **on renonce à la navigation dans le temps**, seul l'état à
+l'instant écouté est gardé ; **la durée n'a pas à être connue d'avance** ; et
+l'historique complet, s'il sert, se reconstitue par un récepteur branché sur le
+flux, pour les tests.
 
-- la **durée totale n'est plus connue d'avance** — donc plus de transport absolu,
-  et l'avancement s'exprime en fichiers traités, ce qu'affichait d'ailleurs
-  l'outil d'époque ;
-- le **retour en arrière** demande des points de reprise périodiques ;
-- les phases se datent au fil de l'eau.
+### Les décisions
 
-Tentatives déjà faites pour réduire le pic, sans effet notable : aplatir les
-mutations dans un tableau unique, réserver la capacité des gros tableaux,
-supprimer les tableaux temporaires de la boucle chaude. Le pic est structurel —
-c'est le prix du « tout calculer d'avance ». En revanche, l'empreinte qui
-**reste** après construction a été réduite : ni les requêtes, ni la trace brute,
-ni les opérations du plan ne sont conservées, personne ne les relisant.
+- **Les stratégies émettent au lieu d'empiler.** Un `OperationSink` remplace les
+  deux tableaux `operations` et `mutations` : sans aval il empile (c'est ce que
+  lisent les tests, `plan(volume:)` n'a pas changé), avec un aval chaque
+  opération part aussitôt avec ses mutations, et rien n'est retenu. Le
+  changement dans les cinq stratégies est mécanique ; aucun algorithme n'a
+  bougé.
+- **Le planificateur n'est pas interruptible, et c'est assumé.** Le rendre
+  annulable demandait de faire remonter `throws` à travers toute la
+  transposition de JkDefrag. Mesuré, le pire planificateur de la galerie
+  calcule en sept secondes (tri par nom de `famille-2007`, simulation
+  comprise). Une passe abandonnée cesse donc de simuler et finit son calcul à
+  vide.
+- **La mécanique devient pas à pas.** `DiskMechanics` sert une requête à la fois
+  : elle était déjà causale, il suffisait de sortir son état de la boucle.
+  `DiskSimulator.run` n'est plus qu'une boucle dessus.
+- **Les repères sont décidés au fil des événements, à l'identique.** Un train de
+  seeks se referme au plus tard une seconde après son début, et un
+  micro-transitoire ne dépend que des trains commencés avant lui. `CueStream`
+  retient le train ouvert et les tics tombés dedans, relâche le reste sous une
+  garde (`watermark`) et rend **exactement** la liste du calcul d'un bloc, dans
+  le même ordre. Le fichier a quitté `Sources/Audio` pour `Sources/Model`, où il
+  se teste ; le type des tics (`HeadTick`) l'a suivi.
+- **Un producteur tenu en laisse, pas une file.** `PassSession` fait tourner
+  planificateur, mécanique et repères sur un `Thread`, et le fil s'endort dès
+  qu'il a **huit secondes** d'avance sur l'écoute. C'est un fil et non une
+  tâche parce qu'il *bloque*. L'avance n'est pas là pour la mémoire, mais pour
+  absorber un planificateur qui calcule longtemps sans rien émettre. Si
+  l'audio rattrape malgré tout la garde des repères, le moteur suspend la
+  lecture plutôt que de jouer un trou.
+- **L'écoute ne garde que des fenêtres.** `LivePass` oublie ce qu'aucune image ne
+  montrera plus : 2,5 s d'échantillons pour la traînée du plateau, 1 s d'accès
+  pour la carte, 60 s de tranches pour le bandeau. La carte applique ses
+  mutations à leur date puis les jette, et ne rembobine plus. Les compteurs
+  affichés sont des cumuls jusqu'à l'instant écouté.
+- **Ce qui disparaît de l'écran**, faute de passé ou d'avenir connus : la tête
+  de lecture et le saut de cinq secondes (le bouton de retour relance la
+  passe), le total « Mo déplacés sur X », l'état d'arrivée et le commentaire de
+  la stratégie, ainsi que le temps disque d'un démarrage, qui n'apparaissent
+  qu'une fois la passe entendue jusqu'au bout. La barre de progression affiche
+  l'avancement **annoncé par l'outil** : un rang dans le parcours pour Windows
+  95 et XP, une position sur le disque pour JkDefrag, un rang par tour pour
+  UltraDefrag.
+- **Pause par `stop`, pas par `pause`.** Le moteur arrête désormais le player
+  et reprogramme à la reprise les transitoires déjà retirés du flux. Avec
+  `pause`, l'horloge du player reprend là où elle s'était arrêtée alors que
+  `timelineOffset` avait déjà avancé : un saut dans le temps à chaque reprise.
+  Ce saut est déduit de la lecture du code, il n'a pas été observé sur
+  l'ancienne version.
+- **Le rendu hors-ligne passe au flux, au bit près.** Il mixe à mesure, écrit
+  le définitif dans un fichier brut, puis le convertit en WAV. Il garde l'ordre
+  des additions du rendu d'un bloc : toute la rotation d'un échantillon avant
+  ses transitoires, et les transitoires dans l'ordre des repères.
+
+### Ce qui valide
+
+**Non-régression, 48 exécutions du rendu hors-ligne** comparées à `develop` :
+les 20 démarrages de la galerie, les deux scénarios livrés, les passes
+complètes de `dev-1993`, `gamer-1993` et `dev-1996`, les 20 bilans `PLAN_ONLY`
+et trois stratégies forcées sur `famille-2007`. **Tous les bilans sont
+identiques et les 25 WAV ont la même empreinte MD5.** Seule la ligne
+`événements` change : elle affichait 0, parce que la trace était résumée avant
+impression, et donne maintenant le vrai compte.
+
+**Six tests dans `StreamingTests`** comparent le flux à un calcul d'un bloc
+refait à l'ancienne, avec pour oracle l'ancien constructeur de repères recopié
+tel quel :
+
+- les repères de quatre stratégies et du démarrage livré ;
+- une trace synthétique de 20 000 événements coupée par la durée maximale ;
+- les échantillons, mutations, accès et tranches d'activité ;
+- une écoute image par image qui ne garde jamais plus d'un dixième des
+  échantillons de la passe ;
+- une session qui respecte son horizon et se libère à l'abandon.
+
+Ces tests ont été éprouvés par deux mutations volontaires : allonger la durée
+maximale d'un train, et décider les tics sans attendre le train. Chacune fait
+échouer trois tests.
+
+**Mémoire, pic RSS au rendu hors-ligne :**
+
+| | avant | après |
+|---|---|---|
+| passe livrée, son compris | 97 Mo | **38 Mo** |
+| `dev-1993`, son compris | 763 Mo | **54 Mo** |
+| `dev-1996`, son compris (36 min) | 1 019 Mo | **154 Mo** |
+| `dev-1999`, `PLAN_ONLY` | 781 Mo | **220 Mo** |
+| `famille-1999`, `PLAN_ONLY` | 796 Mo | **70 Mo** |
+| `famille-2007`, tri par nom | 892 Mo | **273 Mo** |
+| `dev-2007`, `PLAN_ONLY` | 957 Mo | 875 Mo |
+
+Ce qui reste est **la génération du disque**, pas la passe : le démarrage de
+`dev-1999` pèse les mêmes 220 Mo, celui de `dev-2007` 719 Mo.
+
+**À l'écran**, sur le simulateur démarré (voir plus bas) : le démarrage livré
+s'arrête seul à 1:05.0 avec ses 4 716 requêtes, bras parqué. La passe livrée
+s'arrête à 3:24.7. Une pause fige le compteur de seeks et la reprise ne saute
+pas. Carte, plein écran, bandeau défilant et plateau suivent l'écoute. La passe
+de cinq heures de `dev-1999` tient à **95 Mo** en lecture, disque généré
+compris.
+
+### Laissé ouvert
+
+- **Le calcul coûte 20 % de plus** : 1,04 s au lieu de 0,86 s pour le bilan de
+  `dev-1999` au repos, ce qui fait des centaines de milliers de requêtes par
+  seconde. C'est le prix des paquets et des tranches. Rien n'a été optimisé.
+- **L'attente du producteur n'a jamais été déclenchée.** Elle est écrite, mais
+  aucune passe de la galerie ne prend huit secondes de retard.
+- **La barre de progression ne suit pas le temps** : à 40 s d'une passe de
+  205 s, Windows 95 annonce 49 %, parce que les premiers fichiers du parcours
+  sont souvent déjà en place. C'est ce que l'outil affichait, et c'est trompeur.
+- **Vu sur l'iPhone SE (3ᵉ génération) démarré par une autre session**, pas sur
+  le 17 Pro Max du projet, et toujours pas en paysage. L'haptique n'a pas été
+  éprouvée : le simulateur n'en a pas.
+- **Le plein écran consomme 120 % de CPU au simulateur**, en redessinant la carte
+  deux fois (plein écran et panneau dessous). C'était déjà le cas avant ce
+  chantier, mais cela rend `axe describe-ui` inutilisable pendant la lecture.
+- **Le témoin d'un démarrage reste calculé d'un bloc** avant l'écoute : quelques
+  milliers de requêtes, rien à gagner.
+- **La session sans fin devient possible** (laisser le disque travailler en fond,
+  cf. chantier 6), mais elle n'est pas faite.
 
 ---
 
