@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>
+  body { margin:0; background:#08090B; -webkit-font-smoothing:antialiased; }
+  a { color:#FFB347; text-decoration:none; }
+  a:hover { color:#FFD59E; }
+</style>
+</helmet>
+
+<section id="1a" style="display:flex;flex-direction:column;gap:64px;padding:72px 80px 120px;background:#08090B;font-family:ui-sans-serif,-apple-system,'Helvetica Neue',Helvetica,sans-serif;color:#EBEBEB">
+
+  <header style="display:flex;align-items:flex-end;justify-content:space-between;gap:40px;max-width:1500px">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.14em;color:#0E0F12;background:#FFB347;padding:4px 9px;border-radius:6px">1A</div>
+        <div style="font:500 12px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585;text-transform:uppercase">DiskNoise · iOS 26 · mode sombre · 25 écrans</div>
+      </div>
+      <h1 style="margin:0;font:600 42px/1.05 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.02em">Entendre un disque à plateaux</h1>
+      <p style="margin:0;max-width:720px;font:400 16px/1.55 ui-sans-serif,-apple-system,sans-serif;color:#858585;text-wrap:pretty">Maquettes haute fidélité et parcours. Aucun écran ne propose de timeline, de durée totale ni de réglage de fragmentation : on lance, on écoute, on regarde la carte se ranger.</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;max-width:420px">
+      <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:12px 14px;min-width:120px">
+        <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">FOND</div>
+        <div style="font:500 13px ui-monospace,Menlo,monospace;color:#EBEBEB;margin-top:4px">#0E0F12</div>
+      </div>
+      <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:12px 14px;min-width:120px">
+        <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">LECTURE</div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:4px"><div style="width:10px;height:10px;border-radius:3px;background:#FFB347"></div><div style="font:500 13px ui-monospace,Menlo,monospace">#FFB347</div></div>
+      </div>
+      <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:12px 14px;min-width:120px">
+        <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">ÉCRITURE</div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:4px"><div style="width:10px;height:10px;border-radius:3px;background:#5CD1D1"></div><div style="font:500 13px ui-monospace,Menlo,monospace">#5CD1D1</div></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= GROUPE 1 : PREMIÈRE OUVERTURE ================= -->
+  <div style="display:flex;flex-direction:column;gap:22px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font:600 13px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#FFB347">FLUX 1 — PREMIÈRE OUVERTURE</div>
+      <div style="height:1px;flex:1;background:rgba(255,255,255,0.08)"></div>
+    </div>
+    <div style="display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+
+      <!-- 01 Onboarding -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">01 · Onboarding 1/3</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <div style="width:16px;height:9px;border-radius:2px;background:#EBEBEB"></div>
+              <div style="width:13px;height:9px;border-radius:2px;background:#858585"></div>
+              <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+            </div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;padding:22px 26px 0;gap:26px;overflow:hidden">
+            <div style="align-self:center;width:210px;height:210px;border-radius:50%;background:radial-gradient(circle at 50% 50%, #1D2026 0 17%, #2A2E36 17.5% 34%, #23262D 34.5% 62%, #2C3038 62.5% 92%, #171A1F 92.5% 100%);border:1px solid rgba(255,255,255,0.1);position:relative;box-shadow:inset 0 0 40px rgba(0,0,0,0.6)">
+              <div style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 200deg, rgba(255,255,255,0.09), rgba(255,255,255,0) 40%, rgba(255,255,255,0.06) 75%, rgba(255,255,255,0) 100%)"></div>
+              <div style="position:absolute;top:50%;left:52%;width:132px;height:7px;background:linear-gradient(90deg,#C7CCDB,#8A90A0);border-radius:4px;transform-origin:6px 50%;transform:rotate(-24deg);box-shadow:0 2px 10px rgba(0,0,0,0.6)"></div>
+              <div style="position:absolute;top:calc(50% - 7px);left:calc(52% - 9px);width:18px;height:18px;border-radius:50%;background:#3A3F49;border:1px solid rgba(255,255,255,0.15)"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="font:600 30px/1.1 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.02em">Ce qu’on entend</div>
+              <div style="font:400 16px/1.5 ui-sans-serif,-apple-system,sans-serif;color:#858585;text-wrap:pretty">Trois sons, produits en direct par la mécanique simulée.</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;gap:14px;align-items:center">
+                <div style="display:flex;align-items:flex-end;gap:2px;height:28px;width:44px">
+                  <div style="flex:1;height:40%;background:#FFB347;border-radius:1px"></div><div style="flex:1;height:100%;background:#FFB347;border-radius:1px"></div><div style="flex:1;height:65%;background:#FFB347;border-radius:1px"></div><div style="flex:1;height:22%;background:#5A4326;border-radius:1px"></div><div style="flex:1;height:48%;background:#FFB347;border-radius:1px"></div>
+                </div>
+                <div><div style="font:600 15px ui-sans-serif,-apple-system,sans-serif">Le seek</div><div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#858585">Le bras saute d’un cylindre à l’autre.</div></div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;gap:14px;align-items:center">
+                <div style="display:flex;align-items:flex-end;gap:2px;height:28px;width:44px">
+                  <div style="flex:1;height:14%;background:#3A3F49;border-radius:1px"></div><div style="flex:1;height:100%;background:#EBEBEB;border-radius:1px"></div><div style="flex:1;height:18%;background:#3A3F49;border-radius:1px"></div><div style="flex:1;height:12%;background:#3A3F49;border-radius:1px"></div><div style="flex:1;height:10%;background:#3A3F49;border-radius:1px"></div>
+                </div>
+                <div><div style="font:600 15px ui-sans-serif,-apple-system,sans-serif">Le retour au bord</div><div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#858585">Un « clac » franc : le bras revient au début de la partition réécrire la FAT, à chaque fichier.</div></div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;gap:14px;align-items:center">
+                <div style="display:flex;align-items:flex-end;gap:2px;height:28px;width:44px">
+                  <div style="flex:1;height:52%;background:#5CD1D1;border-radius:1px"></div><div style="flex:1;height:58%;background:#5CD1D1;border-radius:1px"></div><div style="flex:1;height:54%;background:#5CD1D1;border-radius:1px"></div><div style="flex:1;height:60%;background:#5CD1D1;border-radius:1px"></div><div style="flex:1;height:56%;background:#5CD1D1;border-radius:1px"></div>
+                </div>
+                <div><div style="font:600 15px ui-sans-serif,-apple-system,sans-serif">Le ronronnement</div><div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#858585">La rotation, en continu, sous tout le reste.</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:0 26px 34px;display:flex;flex-direction:column;gap:18px;flex:none">
+            <div style="display:flex;gap:7px;justify-content:center;padding-top:6px">
+              <div style="width:22px;height:6px;border-radius:3px;background:#FFB347"></div>
+              <div style="width:6px;height:6px;border-radius:3px;background:#3A3F49"></div>
+              <div style="width:6px;height:6px;border-radius:3px;background:#3A3F49"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Continuer</div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:center;font:500 16px ui-sans-serif,-apple-system,sans-serif;color:#858585">Passer</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 01b Onboarding 2/3 -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">01 · Onboarding 2/3</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;padding:22px 26px 0;gap:22px;overflow:hidden">
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:10px">
+              <div style="display:grid;grid-template-columns:repeat(24,1fr);gap:1px;background:#0E0F12;padding:6px;border-radius:8px">
+                <sc-for list="{{ onbMap }}" as="c" hint-placeholder-count="360">
+                  <div style="aspect-ratio:1;background:{{ c }}"></div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="font:600 30px/1.1 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.02em">Ce que montre la carte</div>
+              <div style="font:400 16px/1.5 ui-sans-serif,-apple-system,sans-serif;color:#858585;text-wrap:pretty">Un bloc vaut quelques dizaines de clusters. Il change de couleur à l’instant où son écriture s’entend.</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:13px">
+                <div style="display:flex;gap:3px;flex:none"><div style="width:16px;height:16px;background:#569B6A"></div><div style="width:16px;height:16px;background:#6BC285"></div></div>
+                <div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8">Même couleur, deux teintes : <span style="color:#EBEBEB">plus sombre = rangé d’un seul tenant</span>, plus clair = en morceaux.</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:13px">
+                <div style="display:flex;gap:3px;flex:none"><div style="width:16px;height:16px;background:#FFB347"></div><div style="width:16px;height:16px;background:#5CD1D1"></div></div>
+                <div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8">Ambre quand on lit, turquoise quand on écrit. La trace s’efface en un tiers de seconde.</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:13px">
+                <div style="width:16px;height:16px;background:#292929;outline:1px solid rgba(255,255,255,0.14);flex:none"></div>
+                <div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8">Gris foncé : libre. Les trous entre les fichiers sont ce qui fragmente les suivants.</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:0 26px 34px;display:flex;flex-direction:column;gap:18px;flex:none">
+            <div style="display:flex;gap:7px;justify-content:center;padding-top:6px">
+              <div style="width:6px;height:6px;border-radius:3px;background:#3A3F49"></div>
+              <div style="width:22px;height:6px;border-radius:3px;background:#FFB347"></div>
+              <div style="width:6px;height:6px;border-radius:3px;background:#3A3F49"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Continuer</div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:center;font:500 16px ui-sans-serif,-apple-system,sans-serif;color:#858585">Passer</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 01c Onboarding 3/3 -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">01 · Onboarding 3/3</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;padding:34px 26px 0;gap:30px;overflow:hidden;align-items:center">
+            <div style="width:190px;height:190px;border-radius:50%;border:1px solid rgba(255,179,71,0.25);background:radial-gradient(circle,rgba(255,179,71,0.14),rgba(255,179,71,0) 70%);display:flex;align-items:center;justify-content:center">
+              <div style="width:118px;height:118px;border-radius:50%;border:2px solid #FFB347;display:flex;align-items:center;justify-content:center">
+                <div style="width:62px;height:62px;border-radius:50%;background:rgba(255,179,71,0.18);border:1px solid rgba(255,179,71,0.4)"></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">
+              <div style="font:600 30px/1.1 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.02em">Mettez un casque</div>
+              <div style="font:400 16px/1.5 ui-sans-serif,-apple-system,sans-serif;color:#858585;text-wrap:pretty;max-width:290px">Le haut-parleur de l’iPhone efface le grave de la rotation et les transitoires du bras. Au casque, un seek court et une pleine course ne sonnent pas pareil.</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;width:100%">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;flex-direction:column;gap:2px"><div style="font:600 15px ui-sans-serif,sans-serif">Vibrations</div><div style="font:400 12px ui-sans-serif,sans-serif;color:#858585">Les transitoires du bras dans la main</div></div>
+                <div style="width:50px;height:30px;border-radius:15px;background:#5CD1D1;padding:2px;display:flex;justify-content:flex-end"><div style="width:26px;height:26px;border-radius:50%;background:#FFFFFF"></div></div>
+              </div>
+              <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:12px;font:400 12.5px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585">Tout se règle plus tard dans « Son et vibrations ».</div>
+            </div>
+          </div>
+          <div style="padding:0 26px 34px;display:flex;flex-direction:column;gap:18px;flex:none">
+            <div style="display:flex;gap:7px;justify-content:center;padding-top:6px">
+              <div style="width:6px;height:6px;border-radius:3px;background:#3A3F49"></div>
+              <div style="width:6px;height:6px;border-radius:3px;background:#3A3F49"></div>
+              <div style="width:22px;height:6px;border-radius:3px;background:#FFB347"></div>
+            </div>
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Écouter un disque</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 02 Scénarios démo -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">02 · Scénarios démo</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <div style="width:16px;height:9px;border-radius:2px;background:#EBEBEB"></div>
+              <div style="width:13px;height:9px;border-radius:2px;background:#858585"></div>
+              <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+            </div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;padding:16px 22px 0;gap:18px;overflow:hidden">
+            <div style="display:flex;flex-direction:column;gap:8px;padding:0 4px">
+              <div style="font:600 32px/1.05 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.02em">Écouter tout de suite</div>
+              <div style="font:400 15px/1.5 ui-sans-serif,-apple-system,sans-serif;color:#858585;text-wrap:pretty">Deux passes prêtes à lancer. Le disque est déjà fabriqué.</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:hidden">
+              <div style="height:104px;background:linear-gradient(135deg,#1F2330,#15171C);border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;gap:16px;padding:0 18px">
+                <div style="width:74px;height:74px;border-radius:50%;background:radial-gradient(circle,#2A2E36 0 20%,#22252B 21% 60%,#2C3038 61% 92%,#171A1F 93%);border:1px solid rgba(255,255,255,0.1);position:relative">
+                  <div style="position:absolute;top:50%;left:50%;width:46px;height:4px;background:#C7CCDB;border-radius:3px;transform-origin:4px 50%;transform:rotate(-30deg)"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#5CD1D1">DÉMARRAGE</div>
+                  <div style="font:600 17px/1.2 ui-sans-serif,-apple-system,sans-serif">Windows + suite bureautique</div>
+                  <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">Seagate Barracuda ATA IV · 2001</div>
+                </div>
+              </div>
+              <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+                <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585;max-width:200px">Noyau, pilotes, Office. Environ 1 min.</div>
+                <div style="background:#FFB347;color:#0E0F12;border-radius:11px;padding:10px 18px;font:600 15px ui-sans-serif,-apple-system,sans-serif">Lancer</div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:hidden">
+              <div style="height:104px;background:linear-gradient(135deg,#231F19,#15171C);border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;gap:14px;padding:0 18px">
+                <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:1.5px;width:80px;align-content:start">
+                  <sc-for list="{{ genThumb }}" as="c" hint-placeholder-count="80">
+                    <div style="aspect-ratio:1;border-radius:1px;background:{{ c }}"></div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#FFB347">DÉFRAGMENTATION</div>
+                  <div style="font:600 17px/1.2 ui-sans-serif,-apple-system,sans-serif">Défragmenteur Windows 95</div>
+                  <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">Quantum Fireball 1080AT · 1996</div>
+                </div>
+              </div>
+              <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+                <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585;max-width:200px">Allers-retours et clacs. Environ 3 min 24.</div>
+                <div style="border:1px solid rgba(255,255,255,0.16);border-radius:11px;padding:10px 18px;font:600 15px ui-sans-serif,-apple-system,sans-serif;color:#EBEBEB">Lancer</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:0 4px">
+              <div style="height:1px;flex:1;background:rgba(255,255,255,0.08)"></div>
+              <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">OU</div>
+              <div style="height:1px;flex:1;background:rgba(255,255,255,0.08)"></div>
+            </div>
+            <div style="border:1px solid rgba(255,255,255,0.16);border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 16px ui-sans-serif,-apple-system,sans-serif">Choisir un disque d’époque</div>
+            <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(92,209,209,0.08);border:1px solid rgba(92,209,209,0.22);border-radius:14px;padding:13px 15px">
+              <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #5CD1D1;color:#5CD1D1;display:flex;align-items:center;justify-content:center;font:600 11px ui-sans-serif,sans-serif;flex:none">i</div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#9FD9D9">Au casque, on entend la différence entre un seek court et une pleine course.</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 03 Accueil galerie -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">03 · Accueil — galerie de 20 disques</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <div style="width:16px;height:9px;border-radius:2px;background:#EBEBEB"></div>
+              <div style="width:13px;height:9px;border-radius:2px;background:#858585"></div>
+              <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+            </div>
+          </div>
+          <div style="padding:6px 22px 10px;display:flex;align-items:flex-end;justify-content:space-between;flex:none">
+            <div style="font:700 32px/1.1 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.02em">Disques</div>
+            <div style="display:flex;gap:8px">
+              <div style="width:34px;height:34px;border-radius:50%;background:#191B20;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font:600 18px ui-sans-serif,sans-serif;color:#FFB347">+</div>
+            </div>
+          </div>
+          <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;gap:10px;padding:0 22px;align-items:flex-end">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:22px;height:22px;border-radius:50%;background:#2A2E36;border:1px solid rgba(255,255,255,0.14)"></div>
+                <div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">1993</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:28px;height:28px;border-radius:50%;background:#2A2E36;border:1px solid rgba(255,255,255,0.14)"></div>
+                <div style="font:500 11px ui-monospace,Menlo,monospace;color:#EBEBEB;border-bottom:2px solid #FFB347;padding-bottom:2px">1996</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:34px;height:34px;border-radius:50%;background:#2A2E36;border:1px solid rgba(255,255,255,0.14)"></div>
+                <div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">1999</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:40px;height:40px;border-radius:50%;background:#2A2E36;border:1px solid rgba(255,255,255,0.14)"></div>
+                <div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">2003</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+                <div style="width:46px;height:46px;border-radius:50%;background:#2A2E36;border:1px solid rgba(255,255,255,0.14)"></div>
+                <div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">2007</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;padding:0 22px;flex-wrap:wrap">
+              <div style="background:#EBEBEB;color:#0E0F12;border-radius:20px;padding:7px 14px;font:600 13px ui-sans-serif,sans-serif">Tous</div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:7px 14px;font:500 13px ui-sans-serif,sans-serif;color:#858585">Secrétaire</div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:7px 14px;font:500 13px ui-sans-serif,sans-serif;color:#858585">Développeur</div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:7px 14px;font:500 13px ui-sans-serif,sans-serif;color:#858585">Famille</div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:7px 14px;font:500 13px ui-sans-serif,sans-serif;color:#858585">Gamer</div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:7px 14px;font:500 13px ui-sans-serif,sans-serif;color:#858585">Power user</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;padding:0 22px">
+              <sc-for list="{{ disks }}" as="d" hint-placeholder-count="4">
+                <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:15px 16px;display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                    <div style="display:flex;flex-direction:column;gap:3px">
+                      <div style="font:600 16px/1.2 ui-sans-serif,-apple-system,sans-serif">{{ d.nom }}</div>
+                      <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">{{ d.sub }}</div>
+                    </div>
+                    <div style="border:1px solid rgba(255,255,255,0.14);border-radius:8px;padding:4px 8px;font:600 11px ui-monospace,Menlo,monospace;color:#858585;flex:none">{{ d.an }}</div>
+                  </div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <div style="background:rgba(92,140,219,0.14);color:#9BBBEB;border-radius:6px;padding:3px 7px;font:600 11px ui-monospace,Menlo,monospace">{{ d.fs }}</div>
+                    <div style="background:rgba(255,255,255,0.06);color:#B8B8B8;border-radius:6px;padding:3px 7px;font:500 11px ui-monospace,Menlo,monospace">{{ d.os }}</div>
+                    <div style="background:rgba(255,255,255,0.06);color:#B8B8B8;border-radius:6px;padding:3px 7px;font:500 11px ui-monospace,Menlo,monospace">{{ d.persona }}</div>
+                  </div>
+                  <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585;text-wrap:pretty">{{ d.resume }}</div>
+                  <sc-if value="{{ d.etat }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;align-items:center;gap:7px"><div style="width:6px;height:6px;border-radius:50%;background:#5CD1D1"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#5CD1D1">{{ d.etat }}</div></div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:none;height:78px;border-top:1px solid rgba(255,255,255,0.08);background:rgba(20,22,26,0.9);backdrop-filter:blur(20px);display:flex;align-items:flex-start;padding-top:10px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+              <div style="width:20px;height:20px;border-radius:50%;border:2px solid #FFB347"></div>
+              <div style="font:600 10px ui-sans-serif,sans-serif;color:#FFB347">Disques</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+              <div style="width:20px;height:20px;border-radius:5px;border:2px solid #858585"></div>
+              <div style="font:600 10px ui-sans-serif,sans-serif;color:#858585">Passe</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:20px"><div style="width:4px;height:9px;background:#858585"></div><div style="width:4px;height:17px;background:#858585"></div><div style="width:4px;height:13px;background:#858585"></div></div>
+              <div style="font:600 10px ui-sans-serif,sans-serif;color:#858585">Instruments</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+              <div style="width:20px;height:20px;border-radius:50%;border:2px solid #858585;position:relative"><div style="position:absolute;top:50%;left:50%;width:2px;height:8px;background:#858585;transform:translate(-50%,-90%)"></div></div>
+              <div style="font:600 10px ui-sans-serif,sans-serif;color:#858585">Réglages</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 04 Génération -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">04 · Génération du volume</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="position:absolute;inset:0;background:#0E0F12;opacity:0.55"></div>
+          <div style="padding:14px 28px 4px;display:flex;align-items:center;justify-content:space-between;opacity:0.4;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585"></div>
+          </div>
+          <div style="flex:1;padding:16px 22px;opacity:0.22;display:flex;flex-direction:column;gap:12px">
+            <div style="font:700 30px ui-sans-serif,sans-serif">Disques</div>
+            <div style="height:108px;background:#191B20;border-radius:14px"></div>
+            <div style="height:108px;background:#191B20;border-radius:14px"></div>
+            <div style="height:108px;background:#191B20;border-radius:14px"></div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#191B20;border-top:1px solid rgba(255,255,255,0.1);border-radius:22px 22px 0 0;padding:12px 22px 34px;display:flex;flex-direction:column;gap:18px;box-shadow:0 -20px 50px rgba(0,0,0,0.6)">
+            <div style="align-self:center;width:38px;height:5px;border-radius:3px;background:#3A3F49"></div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="font:600 22px/1.2 ui-sans-serif,-apple-system,sans-serif">Fabrication du volume</div>
+              <div style="font:400 14px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585">On rejoue l’histoire du disque, mois par mois. L’allocateur fait le reste.</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(26,1fr);gap:1.5px;padding:12px;background:#0E0F12;border:1px solid rgba(255,255,255,0.07);border-radius:10px">
+              <sc-for list="{{ gen }}" as="c" hint-placeholder-count="312">
+                <div style="aspect-ratio:1;border-radius:1px;background:{{ c }}"></div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <div style="font:500 12px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">JOUR SIMULÉ</div>
+                <div style="font:600 15px ui-monospace,Menlo,monospace;color:#EBEBEB">14 mars 1997</div>
+              </div>
+              <div style="height:6px;border-radius:3px;background:#292929;overflow:hidden"><div style="width:58%;height:100%;background:#FFB347"></div></div>
+              <div style="display:flex;justify-content:space-between">
+                <div style="font:500 13px ui-monospace,Menlo,monospace;color:#858585">3 184 fichiers</div>
+                <div style="font:500 13px ui-monospace,Menlo,monospace;color:#858585">61 % occupé</div>
+              </div>
+            </div>
+            <div style="border:1px solid rgba(255,255,255,0.16);border-radius:14px;height:50px;display:flex;align-items:center;justify-content:center;font:600 16px ui-sans-serif,-apple-system,sans-serif;color:#EBEBEB">Annuler</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 05 Fiche disque -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">05 · Fiche du disque généré</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <div style="width:16px;height:9px;border-radius:2px;background:#EBEBEB"></div>
+              <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+            </div>
+          </div>
+          <div style="padding:8px 22px 12px;display:flex;align-items:center;gap:12px;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">‹ Disques</div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:0 22px;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div style="font:700 25px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">Secrétaire, 1996</div>
+              <div style="font:500 13px ui-monospace,Menlo,monospace;color:#858585">1996 · 850 Mo · 5 400 tr/min · VFAT 16 Ko · Windows 95</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:10px">
+              <div style="display:grid;grid-template-columns:repeat(36,1fr);gap:1px;background:#0E0F12;padding:5px;border-radius:8px">
+                <sc-for list="{{ mapMain }}" as="c" hint-placeholder-count="792">
+                  <div style="aspect-ratio:1;background:{{ c }}"></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:7px 12px;padding:10px 4px 2px">
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#4A70AF"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">système</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#7E62AF"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">applications</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#569B6A"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">documents</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#4E7A7E"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">archives</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#AF763E"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">temporaires</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#D65C66"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">échange</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#B8B8B8"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">réservé</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#292929;outline:1px solid rgba(255,255,255,0.12)"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">libre</div></div>
+              </div>
+              <div style="border-top:1px solid rgba(255,255,255,0.07);margin-top:7px;padding-top:8px;display:flex;justify-content:space-between;align-items:center">
+                <div style="font:400 12px ui-monospace,Menlo,monospace;color:#858585">1 bloc = 69 clusters = 1,1 Mo</div>
+                <div style="font:400 12px ui-monospace,Menlo,monospace;color:#B8B8B8">plus sombre = rangé</div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px">
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">FICHIERS</div>
+                <div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px">7 412</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">FRAGMENTÉS</div>
+                <div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px;color:#FFB347">41 %</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">MORCEAUX/F.</div>
+                <div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px">6,3</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">TROUS</div>
+                <div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px">38</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">SLACK</div>
+                <div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px">15 %</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">REMPLI</div>
+                <div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px">78 %</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(255,179,71,0.08);border:1px solid rgba(255,179,71,0.22);border-radius:12px;padding:11px 13px">
+              <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #FFB347;color:#FFB347;display:flex;align-items:center;justify-content:center;font:600 11px ui-sans-serif,sans-serif;flex:none">i</div>
+              <div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#F0C892;text-wrap:pretty">Les clusters de 16 Ko perdent 15 % du disque : un petit fichier occupe un cluster entier.</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:14px 22px 34px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,rgba(14,15,18,0),#0E0F12 30%)">
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Défragmenter ce disque</div>
+            <div style="border:1px solid rgba(255,255,255,0.16);border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif;color:#EBEBEB">Démarrer cet OS</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= GROUPE 2 : ÉDITEUR ================= -->
+  <div style="display:flex;flex-direction:column;gap:22px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font:600 13px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#5CD1D1">FLUX 2 — CONSTRUIRE UN DISQUE USAGÉ (ON RÈGLE L’HISTOIRE, JAMAIS LE RÉSULTAT)</div>
+      <div style="height:1px;flex:1;background:rgba(255,255,255,0.08)"></div>
+    </div>
+    <div style="display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+
+      <!-- 06 Editeur matériel -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">06 · Assistant 1/6 — le matériel</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px;display:flex;align-items:center;justify-content:space-between;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#858585">Annuler</div>
+            <div style="font:600 15px ui-sans-serif,sans-serif">Nouveau disque</div>
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">🎲</div>
+          </div>
+          <div style="padding:8px 22px 0;display:flex;gap:5px;flex:none">
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:18px 22px 0;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">ÉTAPE 1 SUR 6</div>
+              <div style="font:600 26px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">Le matériel</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 14px ui-sans-serif,sans-serif">Année d’achat</div><div style="font:500 15px ui-monospace,Menlo,monospace;color:#FFB347">1996</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:26%;height:100%;border-radius:2px;background:#FFB347"></div><div style="position:absolute;left:26%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#EBEBEB;box-shadow:0 2px 8px rgba(0,0,0,0.6)"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 14px ui-sans-serif,sans-serif">Capacité</div><div style="font:500 15px ui-monospace,Menlo,monospace;color:#FFB347">1,08 Go</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:44%;height:100%;border-radius:2px;background:#FFB347"></div><div style="position:absolute;left:44%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#EBEBEB;box-shadow:0 2px 8px rgba(0,0,0,0.6)"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="font:500 14px ui-sans-serif,sans-serif">Régime</div>
+                <div style="display:flex;background:#0E0F12;border-radius:10px;padding:3px;gap:3px">
+                  <div style="flex:1;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-monospace,Menlo,monospace;color:#858585">3 600</div>
+                  <div style="flex:1;height:36px;border-radius:8px;background:#3A3F49;display:flex;align-items:center;justify-content:center;font:600 13px ui-monospace,Menlo,monospace;color:#EBEBEB">5 400</div>
+                  <div style="flex:1;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-monospace,Menlo,monospace;color:#858585">7 200</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 14px ui-sans-serif,sans-serif">Seek moyen</div><div style="font:500 15px ui-monospace,Menlo,monospace;color:#FFB347">12,0 ms</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:52%;height:100%;border-radius:2px;background:#FFB347"></div><div style="position:absolute;left:52%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#EBEBEB;box-shadow:0 2px 8px rgba(0,0,0,0.6)"></div></div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">GÉOMÉTRIE DÉDUITE</div>
+              <div style="display:flex;justify-content:space-between"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Plateaux</div><div style="font:500 13px ui-monospace,Menlo,monospace">2 (4 têtes)</div></div>
+              <div style="display:flex;justify-content:space-between"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Cylindres</div><div style="font:500 13px ui-monospace,Menlo,monospace">3 835</div></div>
+              <div style="display:flex;justify-content:space-between"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Débit bord → moyeu</div><div style="font:500 13px ui-monospace,Menlo,monospace">7,6 → 5,1 Mo/s</div></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(255,179,71,0.08);border:1px solid rgba(255,179,71,0.22);border-radius:12px;padding:12px 14px">
+              <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #FFB347;color:#FFB347;display:flex;align-items:center;justify-content:center;font:600 11px ui-sans-serif,sans-serif;flex:none">!</div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#F0C892;text-wrap:pretty">Une capacité en avance sur son époque ajoute des plateaux : en 1996, 6,4 Go demanderaient 7 plateaux.</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:14px 22px 34px">
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Le format →</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 06b Assistant 2/6 format -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">06 · Assistant 2/6 — le format</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px;display:flex;align-items:center;justify-content:space-between;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">‹ Retour</div>
+            <div style="font:600 15px ui-sans-serif,sans-serif">Nouveau disque</div>
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">🎲</div>
+          </div>
+          <div style="padding:8px 22px 0;display:flex;gap:5px;flex:none">
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:18px 22px 0;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">ÉTAPE 2 SUR 6 · 1996 · 1,08 GO</div>
+              <div style="font:600 26px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">Le format</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">SYSTÈME DE FICHIERS</div>
+              <div style="display:flex;background:#0E0F12;border-radius:10px;padding:3px;gap:3px">
+                <div style="flex:1;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-monospace,Menlo,monospace;color:#858585">FAT16</div>
+                <div style="flex:1;height:38px;border-radius:8px;background:#3A3F49;display:flex;align-items:center;justify-content:center;font:600 13px ui-monospace,Menlo,monospace">VFAT</div>
+                <div style="flex:1;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-monospace,Menlo,monospace;color:#858585">FAT32</div>
+                <div style="flex:1;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-monospace,Menlo,monospace;color:#5A5A5A">NTFS</div>
+              </div>
+              <div style="font:400 12.5px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#858585">NTFS est grisé : il n’arrive sur les machines grand public qu’avec XP.</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">TAILLE DE CLUSTER</div><div style="font:500 15px ui-monospace,Menlo,monospace;color:#FFB347">16 Ko</div></div>
+              <div style="display:flex;gap:7px">
+                <div style="flex:1;height:36px;border-radius:9px;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font:500 12px ui-monospace,Menlo,monospace;color:#858585">4 Ko</div>
+                <div style="flex:1;height:36px;border-radius:9px;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font:500 12px ui-monospace,Menlo,monospace;color:#858585">8 Ko</div>
+                <div style="flex:1;height:36px;border-radius:9px;background:#FFB347;color:#0E0F12;display:flex;align-items:center;justify-content:center;font:600 12px ui-monospace,Menlo,monospace">16 Ko</div>
+                <div style="flex:1;height:36px;border-radius:9px;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font:500 12px ui-monospace,Menlo,monospace;color:#858585">32 Ko</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.07);padding-top:11px"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Clusters sur le volume</div><div style="font:500 13px ui-monospace,Menlo,monospace">69 120</div></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(255,179,71,0.08);border:1px solid rgba(255,179,71,0.22);border-radius:12px;padding:12px 14px">
+              <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #FFB347;color:#FFB347;display:flex;align-items:center;justify-content:center;font:600 11px ui-sans-serif,sans-serif;flex:none">i</div>
+              <div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#F0C892;text-wrap:pretty">VFAT en 16 Ko, c’est ce que Windows 95 imposait à cette capacité. La perte en fin de cluster se verra dans le slack.</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:14px 22px 34px">
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Le système →</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 06c Assistant 3/6 OS et logiciels -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">06 · Assistant 3/6 — système et logiciels</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px;display:flex;align-items:center;justify-content:space-between;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">‹ Retour</div>
+            <div style="font:600 15px ui-sans-serif,sans-serif">Nouveau disque</div>
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">🎲</div>
+          </div>
+          <div style="padding:8px 22px 0;display:flex;gap:5px;flex:none">
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:18px 22px 0;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">ÉTAPE 3 SUR 6</div>
+              <div style="font:600 26px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">Le système et les logiciels</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;flex-direction:column;gap:2px"><div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">SYSTÈME</div><div style="font:600 16px ui-sans-serif,sans-serif;margin-top:3px">Windows 95 OSR1</div></div>
+              <div style="font:500 20px ui-sans-serif,sans-serif;color:#858585">›</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">INSTALLATIONS</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#FFB347">+ ajouter</div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:500 14px ui-sans-serif,sans-serif">Office 95</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">mars 1996 · 88 Mo</div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:500 14px ui-sans-serif,sans-serif">Netscape 3</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">oct. 1996 · 12 Mo</div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:500 14px ui-sans-serif,sans-serif">Winamp</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">mai 1998 · 3 Mo</div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;opacity:0.55"><div style="font:500 14px ui-sans-serif,sans-serif;text-decoration:line-through">Works 3</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">désinstallé juin 1997</div></div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:9px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">CATALOGUE D’ÉPOQUE</div>
+              <div style="display:flex;flex-wrap:wrap;gap:7px">
+                <div style="border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:6px 12px;font:500 12.5px ui-sans-serif,sans-serif;color:#B8B8B8">Office 97</div>
+                <div style="border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:6px 12px;font:500 12.5px ui-sans-serif,sans-serif;color:#B8B8B8">IE5</div>
+                <div style="border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:6px 12px;font:500 12.5px ui-sans-serif,sans-serif;color:#B8B8B8">Visual C++ 4.2</div>
+                <div style="border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:6px 12px;font:500 12.5px ui-sans-serif,sans-serif;color:#B8B8B8">Quake</div>
+                <div style="border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:6px 12px;font:500 12.5px ui-sans-serif,sans-serif;color:#B8B8B8">Doom II</div>
+                <div style="border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:6px 12px;font:500 12.5px ui-sans-serif,sans-serif;color:#B8B8B8">Nero</div>
+                <div style="border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:6px 12px;font:500 12.5px ui-sans-serif,sans-serif;color:#5A5A5A">iTunes 7 · trop récent</div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:none;padding:14px 22px 34px">
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">La période d’usage →</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 06d Assistant 4/6 periode -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">06 · Assistant 4/6 — la période d’usage</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px;display:flex;align-items:center;justify-content:space-between;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">‹ Retour</div>
+            <div style="font:600 15px ui-sans-serif,sans-serif">Nouveau disque</div>
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">🎲</div>
+          </div>
+          <div style="padding:8px 22px 0;display:flex;gap:5px;flex:none">
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:18px 22px 0;display:flex;flex-direction:column;gap:15px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">ÉTAPE 4 SUR 6</div>
+              <div style="font:600 26px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">La période d’usage</div>
+              <div style="font:400 14px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585">Combien de temps ce disque a servi, du formatage au jour où on l’écoute.</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:500 14px ui-sans-serif,sans-serif">Début</div><div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.1);border-radius:9px;padding:8px 13px;font:500 14px ui-monospace,Menlo,monospace">mars 1996</div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:500 14px ui-sans-serif,sans-serif">Fin</div><div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.1);border-radius:9px;padding:8px 13px;font:500 14px ui-monospace,Menlo,monospace">sept. 1999</div></div>
+              <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:13px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Durée simulée</div><div style="font:500 13px ui-monospace,Menlo,monospace">3 ans 6 mois</div></div>
+                <div style="display:flex;height:10px;border-radius:4px;overflow:hidden;gap:1px">
+                  <div style="flex:1;background:#4A70AF"></div>
+                  <div style="flex:2;background:#7E62AF"></div>
+                  <div style="flex:3;background:#569B6A"></div>
+                  <div style="flex:2;background:#AF763E"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between"><div style="font:400 11px ui-monospace,Menlo,monospace;color:#858585">1996</div><div style="font:400 11px ui-monospace,Menlo,monospace;color:#858585">1999</div></div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">DÉFRAGMENTATIONS PLANIFIÉES</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#FFB347">+ ajouter</div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:500 14px ui-sans-serif,sans-serif">Une fois</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">janv. 1998</div></div>
+              <div style="font:400 12.5px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#858585">Une défragmentation au milieu de l’histoire change tout ce qui est écrit ensuite.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;background:rgba(92,209,209,0.08);border:1px solid rgba(92,209,209,0.22);border-radius:12px;padding:12px 14px">
+              <div style="width:8px;height:8px;border-radius:50%;background:#5CD1D1;flex:none"></div>
+              <div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#9FD9D9">Trois ans et demi d’usage à simuler.</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:14px 22px 34px">
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Les habitudes →</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 07 Editeur habitudes -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">07 · Assistant 5/6 — les habitudes</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px;display:flex;align-items:center;justify-content:space-between;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">‹ Retour</div>
+            <div style="font:600 15px ui-sans-serif,sans-serif">Nouveau disque</div>
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">🎲</div>
+          </div>
+          <div style="padding:8px 22px 0;display:flex;gap:5px;flex:none">
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#292929"></div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:18px 22px 0;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">ÉTAPE 5 SUR 6 · 1996 → 1999</div>
+              <div style="font:600 26px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">Les habitudes</div>
+              <div style="font:400 14px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585">Ce que la personne faisait de son disque. La fragmentation en découlera.</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="font:600 15px ui-sans-serif,sans-serif">Bureautique</div>
+                <div style="width:50px;height:30px;border-radius:15px;background:#5CD1D1;padding:2px;display:flex;justify-content:flex-end"><div style="width:26px;height:26px;border-radius:50%;background:#FFFFFF"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Nouveaux documents / semaine</div><div style="font:500 14px ui-monospace,Menlo,monospace">26</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:38%;height:100%;border-radius:2px;background:#EBEBEB"></div><div style="position:absolute;left:38%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#EBEBEB"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Réenregistrements / document / semaine</div><div style="font:500 14px ui-monospace,Menlo,monospace">0,8</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:62%;height:100%;border-radius:2px;background:#EBEBEB"></div><div style="position:absolute;left:62%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#EBEBEB"></div></div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="font:600 15px ui-sans-serif,sans-serif">Accumulation</div>
+                <div style="width:50px;height:30px;border-radius:15px;background:#5CD1D1;padding:2px;display:flex;justify-content:flex-end"><div style="width:26px;height:26px;border-radius:50%;background:#FFFFFF"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Go accumulés / an</div><div style="font:500 14px ui-monospace,Menlo,monospace">0,4</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:30%;height:100%;border-radius:2px;background:#EBEBEB"></div><div style="position:absolute;left:30%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#EBEBEB"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Fait le ménage à</div><div style="font:500 14px ui-monospace,Menlo,monospace">92 % de remplissage</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:86%;height:100%;border-radius:2px;background:#EBEBEB"></div><div style="position:absolute;left:86%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#EBEBEB"></div></div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 15px ui-sans-serif,sans-serif;color:#858585">Navigation</div><div style="width:50px;height:30px;border-radius:15px;background:#292929;padding:2px;display:flex"><div style="width:26px;height:26px;border-radius:50%;background:#858585"></div></div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 15px ui-sans-serif,sans-serif;color:#858585">Développement</div><div style="width:50px;height:30px;border-radius:15px;background:#292929;padding:2px;display:flex"><div style="width:26px;height:26px;border-radius:50%;background:#858585"></div></div></div>
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 15px ui-sans-serif,sans-serif;color:#858585">Jeux · Médias · Téléchargements</div><div style="font:500 20px ui-sans-serif,sans-serif;color:#858585">›</div></div>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 22px 34px;display:flex;flex-direction:column;gap:11px;background:linear-gradient(180deg,rgba(14,15,18,0),#0E0F12 26%)">
+            <div style="display:flex;align-items:center;gap:10px;background:rgba(92,209,209,0.08);border:1px solid rgba(92,209,209,0.22);border-radius:12px;padding:11px 14px">
+              <div style="width:8px;height:8px;border-radius:50%;background:#5CD1D1;flex:none"></div>
+              <div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#9FD9D9">À ce rythme, le disque sera plein vers 2001.</div>
+            </div>
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">La graine →</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 07b Assistant 6/6 graine -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">06 · Assistant 6/6 — la graine et le résultat</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px;display:flex;align-items:center;justify-content:space-between;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">‹ Retour</div>
+            <div style="font:600 15px ui-sans-serif,sans-serif">Secrétaire, 1996 (copie)</div>
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#858585">···</div>
+          </div>
+          <div style="padding:8px 22px 0;display:flex;gap:5px;flex:none">
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:1;height:4px;border-radius:2px;background:#FFB347"></div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:18px 22px 0;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#5CD1D1">ÉTAPE 6 SUR 6 · VOLUME GÉNÉRÉ</div>
+              <div style="font:600 26px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">La graine</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:10px">
+              <div style="display:grid;grid-template-columns:repeat(30,1fr);gap:1px;background:#0E0F12;padding:5px;border-radius:8px">
+                <sc-for list="{{ seedMap }}" as="c" hint-placeholder-count="540">
+                  <div style="aspect-ratio:1;background:{{ c }}"></div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="font:600 15px ui-sans-serif,sans-serif">Graine 4 819 662</div>
+                <div style="font:400 12.5px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#858585">Même histoire, autre disque : l’ordre exact des écritures change.</div>
+              </div>
+              <div style="width:46px;height:46px;border-radius:12px;background:#0E0F12;border:1px solid rgba(255,255,255,0.14);display:flex;align-items:center;justify-content:center;font-size:20px;flex:none">🎲</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px">
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px"><div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">FICHIERS</div><div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px">7 380</div></div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px"><div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">FRAGMENTÉS</div><div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px;color:#FFB347">39 %</div></div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:9px 11px"><div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">REMPLI</div><div style="font:500 19px ui-monospace,Menlo,monospace;margin-top:4px">77 %</div></div>
+            </div>
+            <div style="border:1px solid rgba(92,209,209,0.25);background:rgba(92,209,209,0.06);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:9px">
+              <div style="font:600 15px ui-sans-serif,sans-serif;color:#9FD9D9">Refaire avec les mêmes habitudes</div>
+              <div style="font:400 12.5px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#7FB9B9">Le même vécu sur un autre format : c’est la comparaison la plus parlante.</div>
+              <div style="display:flex;gap:7px;padding-top:3px">
+                <div style="border:1px solid rgba(92,209,209,0.35);border-radius:10px;padding:8px 13px;font:600 13px ui-monospace,Menlo,monospace;color:#9FD9D9">FAT32</div>
+                <div style="border:1px solid rgba(92,209,209,0.35);border-radius:10px;padding:8px 13px;font:600 13px ui-monospace,Menlo,monospace;color:#9FD9D9">NTFS</div>
+                <div style="border:1px solid rgba(92,209,209,0.35);border-radius:10px;padding:8px 13px;font:600 13px ui-monospace,Menlo,monospace;color:#9FD9D9">32 Ko</div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 22px 34px;display:flex;flex-direction:column;gap:10px">
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Enregistrer dans Mes disques</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">→</div>
+
+      <!-- 08 Choix outil -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">08 · Méthode de défragmentation</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px 10px;display:flex;flex-direction:column;gap:4px;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">‹ Secrétaire, 1996</div>
+            <div style="font:700 27px/1.1 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em;padding-top:6px">Avec quel outil ?</div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:0 22px;display:flex;flex-direction:column;gap:9px">
+            <div style="background:#191B20;border:1.5px solid #FFB347;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <div style="font:600 17px/1.2 ui-sans-serif,-apple-system,sans-serif">Défragmenteur Windows 95/98</div>
+                  <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">1995 · FAT uniquement</div>
+                </div>
+                <div style="background:#FFB347;color:#0E0F12;border-radius:6px;padding:3px 7px;font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.06em;flex:none">D’ÉPOQUE</div>
+              </div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8;text-wrap:pretty">Tasse tout au début du disque, dans l’ordre de l’arborescence, en évacuant ce qui gêne.</div>
+              <div style="display:flex;align-items:center;gap:9px;background:rgba(255,179,71,0.07);border-radius:10px;padding:7px 11px">
+                <div style="display:flex;align-items:flex-end;gap:2px;height:16px;width:22px;flex:none"><div style="flex:1;height:100%;background:#FFB347"></div><div style="flex:1;height:30%;background:#5A4326"></div><div style="flex:1;height:85%;background:#FFB347"></div><div style="flex:1;height:25%;background:#5A4326"></div></div>
+                <div style="font:400 12.5px/1.35 ui-sans-serif,-apple-system,sans-serif;color:#F0C892">Allers-retours permanents, un « clac » à chaque fichier.</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,0.07);padding-top:8px">
+                <div style="font:400 12px ui-monospace,Menlo,monospace;color:#858585">ordre de grandeur, pas un décompte</div>
+                <div style="font:500 13px ui-monospace,Menlo,monospace;color:#EBEBEB">plusieurs heures</div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:11px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;opacity:0.45">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <div style="font:600 15px ui-sans-serif,sans-serif">Défragmenteur Windows XP</div>
+                <div style="font:400 12px ui-sans-serif,-apple-system,sans-serif;color:#858585">Réservé à NTFS · ce volume est en VFAT</div>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,0.18);border-radius:6px;padding:3px 7px;font:600 10px ui-monospace,Menlo,monospace;color:#858585;flex:none">INDISPO.</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <div style="font:600 16px/1.2 ui-sans-serif,-apple-system,sans-serif">UltraDefrag 7.1.1</div>
+                  <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">2018 · tous formats</div>
+                </div>
+                <div style="font:500 13px ui-monospace,Menlo,monospace;color:#858585;flex:none">quelques minutes</div>
+              </div>
+              <div style="font:400 13px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8">Recolle les petits éclats sans déplacer les gros blocs, et n’évacue personne. <span style="color:#9FD9D9">Beaucoup de requêtes courtes ; long seulement sur les gros volumes NTFS.</span></div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:11px 14px;display:flex;flex-direction:column;gap:5px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <div style="font:600 16px ui-sans-serif,-apple-system,sans-serif">JkDefrag 3.36</div>
+                <div style="font:500 12.5px ui-monospace,Menlo,monospace;color:#858585;flex:none">quelques minutes</div>
+              </div>
+              <div style="font:400 13px/1.35 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8">2008 · range par zones, sans jamais évacuer.</div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 14px">
+              <div style="font:500 15px ui-sans-serif,sans-serif;color:#EBEBEB">Options avancées</div>
+              <div style="display:flex;align-items:center;gap:8px"><div style="font:400 12px ui-monospace,Menlo,monospace;color:#858585">7 modes JkDefrag</div><div style="font:500 20px ui-sans-serif,sans-serif;color:#858585">›</div></div>
+            </div>
+          </div>
+          <div style="flex:none;padding:14px 22px 34px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,rgba(14,15,18,0),#0E0F12 30%)">
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Lancer la passe</div>
+            <div style="border:1px solid rgba(255,255,255,0.16);border-radius:14px;height:48px;display:flex;align-items:center;justify-content:center;font:600 15px ui-sans-serif,-apple-system,sans-serif;color:#EBEBEB">Comparer deux outils</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= GROUPE 3 : LA PASSE ================= -->
+  <div style="display:flex;flex-direction:column;gap:22px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font:600 13px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#FFB347">FLUX 3 — LA PASSE EN COURS · PAS DE TIMELINE, PAS DE DURÉE TOTALE</div>
+      <div style="height:1px;flex:1;background:rgba(255,255,255,0.08)"></div>
+    </div>
+    <div style="display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+
+      <!-- 09 Passe carte -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">09 · Passe — onglet Carte</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="display:flex;align-items:center;gap:7px"><div style="width:7px;height:7px;border-radius:50%;background:#FFB347;box-shadow:0 0 8px #FFB347"></div><div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div></div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:64%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex:none">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#FFB347">PHASE 3 · APPLICATIONS</div>
+              <div style="font:600 20px/1.2 ui-sans-serif,-apple-system,sans-serif">Office 95 recollé en un bloc</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:none">
+              <div style="font:500 20px ui-monospace,Menlo,monospace;color:#EBEBEB">38 %</div>
+              <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">19 min 54</div>
+            </div>
+          </div>
+          <div style="padding:0 22px 10px;display:flex;gap:3px;flex:none">
+            <div style="flex:1.2;height:5px;border-radius:2px;background:#4A70AF"></div>
+            <div style="flex:2;height:5px;border-radius:2px;background:#939393"></div>
+            <div style="flex:2.4;height:5px;border-radius:2px;background:#FFB347"></div>
+            <div style="flex:5;height:5px;border-radius:2px;background:#1E2126"></div>
+          </div>
+          <div style="padding:0 22px 10px;flex:none">
+            <div style="display:flex;background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:11px;padding:3px;gap:3px">
+              <div style="flex:1;height:34px;border-radius:8px;background:#3A3F49;display:flex;align-items:center;justify-content:center;font:600 13px ui-sans-serif,sans-serif">Carte</div>
+              <div style="flex:1;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-sans-serif,sans-serif;color:#858585">Plateau</div>
+              <div style="flex:1;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-sans-serif,sans-serif;color:#858585">Instruments</div>
+            </div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:0 22px;display:flex;flex-direction:column;gap:12px">
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:10px;position:relative">
+              <div style="display:grid;grid-template-columns:repeat(36,1fr);gap:1px;background:#0E0F12;padding:6px;border-radius:8px">
+                <sc-for list="{{ live }}" as="c" hint-placeholder-count="792">
+                  <div style="aspect-ratio:1;background:{{ c }}"></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 4px 2px">
+                <div style="display:flex;gap:12px">
+                  <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#FFB347"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">lecture</div></div>
+                  <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#5CD1D1"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">écriture</div></div>
+                  <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#7E62AF"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">rangé</div></div>
+                </div>
+                <div style="width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;font:500 13px ui-sans-serif,sans-serif;color:#EBEBEB">⤢</div>
+              </div>
+              <div style="font:400 11.5px ui-monospace,Menlo,monospace;color:#858585;padding:0 4px">1 bloc = 69 clusters = 1,1 Mo · plus sombre = rangé</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 13px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">MO DÉPLACÉS</div>
+                <div style="font:500 20px ui-monospace,Menlo,monospace;margin-top:3px">420</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 13px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">FICHIERS DÉPLACÉS</div>
+                <div style="font:500 20px ui-monospace,Menlo,monospace;margin-top:3px">2 190</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 13px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">ÉVACUATIONS</div>
+                <div style="font:500 20px ui-monospace,Menlo,monospace;margin-top:3px">1 520</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 13px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">SEEK MOYEN</div>
+                <div style="font:500 20px ui-monospace,Menlo,monospace;margin-top:3px">1 214 <span style="font-size:11px;color:#858585">cyl.</span></div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 22px 34px;display:flex;align-items:flex-start;gap:12px">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">
+              <div style="width:52px;height:52px;border-radius:50%;border:1px solid rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center"><div style="width:14px;height:14px;background:#EBEBEB;border-radius:2px"></div></div>
+              <div style="font:500 11px ui-sans-serif,sans-serif;color:#858585">Arrêter</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div style="width:100%;height:60px;border-radius:16px;background:#FFB347;display:flex;align-items:center;justify-content:center;gap:5px">
+                <div style="width:5px;height:20px;background:#0E0F12;border-radius:1.5px"></div>
+                <div style="width:5px;height:20px;background:#0E0F12;border-radius:1.5px"></div>
+              </div>
+              <div style="font:500 11px ui-sans-serif,sans-serif;color:#858585">Pause</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">
+              <div style="width:52px;height:52px;border-radius:50%;border:1px solid rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;font:500 19px ui-sans-serif,sans-serif;color:#EBEBEB">↻</div>
+              <div style="font:500 11px ui-sans-serif,sans-serif;color:#858585">Relancer</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:center">
+        <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">⇄</div>
+        <div style="font:500 10px ui-monospace,Menlo,monospace;color:#3A3F49">ONGLET</div>
+      </div>
+
+      <!-- 10 Passe plateau -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">10 · Passe — onglet Plateau</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="display:flex;align-items:center;gap:7px"><div style="width:7px;height:7px;border-radius:50%;background:#FFB347;box-shadow:0 0 8px #FFB347"></div><div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div></div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:64%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex:none">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#FFB347">PHASE 3 · APPLICATIONS</div>
+              <div style="font:600 20px/1.2 ui-sans-serif,-apple-system,sans-serif">Office 95 recollé en un bloc</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:none">
+              <div style="font:500 20px ui-monospace,Menlo,monospace">38 %</div>
+              <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">19 min 54</div>
+            </div>
+          </div>
+          <div style="padding:0 22px 10px;flex:none">
+            <div style="display:flex;background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:11px;padding:3px;gap:3px">
+              <div style="flex:1;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-sans-serif,sans-serif;color:#858585">Carte</div>
+              <div style="flex:1;height:34px;border-radius:8px;background:#3A3F49;display:flex;align-items:center;justify-content:center;font:600 13px ui-sans-serif,sans-serif">Plateau</div>
+              <div style="flex:1;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 13px ui-sans-serif,sans-serif;color:#858585">Instruments</div>
+            </div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:0 22px;display:flex;flex-direction:column;gap:14px">
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;align-items:center">
+              <div style="width:280px;height:280px;border-radius:50%;background:radial-gradient(circle at 50% 50%, #14171B 0 15%, #2A2E36 15.5% 30%, #24272E 30.5% 55%, #2C3038 55.5% 88%, #171A1F 88.5% 100%);border:1px solid rgba(255,255,255,0.1);position:relative;box-shadow:inset 0 0 50px rgba(0,0,0,0.7)">
+                <div style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 120deg, rgba(255,255,255,0.1), rgba(255,255,255,0) 35%, rgba(255,255,255,0.05) 70%, rgba(255,255,255,0) 100%)"></div>
+                <div style="position:absolute;inset:44px;border-radius:50%;border:1px dashed rgba(255,179,71,0.35)"></div>
+                <div style="position:absolute;inset:66px;border-radius:50%;background:conic-gradient(from 40deg, rgba(255,179,71,0.85) 0deg, rgba(255,179,71,0.12) 42deg, rgba(255,179,71,0) 90deg, rgba(255,179,71,0) 360deg);mask:radial-gradient(circle, transparent 62%, #000 63%);-webkit-mask:radial-gradient(circle, transparent 62%, #000 63%)"></div>
+                <div style="position:absolute;inset:94px;border-radius:50%;background:conic-gradient(from 150deg, rgba(92,209,209,0.8) 0deg, rgba(92,209,209,0.1) 30deg, rgba(92,209,209,0) 70deg, rgba(92,209,209,0) 360deg);mask:radial-gradient(circle, transparent 60%, #000 61%);-webkit-mask:radial-gradient(circle, transparent 60%, #000 61%)"></div>
+                <div style="position:absolute;top:50%;left:50%;width:40px;height:40px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,#3A3F49,#22252B);border:1px solid rgba(255,255,255,0.14)"></div>
+                <div style="position:absolute;top:50%;left:calc(50% + 4px);width:168px;height:8px;transform-origin:8px 50%;transform:{{ armAngle }};background:linear-gradient(90deg,#C7CCDB,#8A90A0 70%,#6E7482);border-radius:5px;box-shadow:0 3px 14px rgba(0,0,0,0.65)"></div>
+                <div style="position:absolute;top:calc(50% - 10px);left:calc(50% - 6px);width:24px;height:24px;border-radius:50%;background:#3A3F49;border:1px solid rgba(255,255,255,0.18)"></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;width:100%;border-top:1px solid rgba(255,255,255,0.07);padding-top:12px">
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">CYLINDRE</div>
+                  <div style="font:500 17px ui-monospace,Menlo,monospace">2 841 / 3 835</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:9px">
+                  <div style="width:11px;height:11px;border-radius:50%;background:#FFB347;box-shadow:0 0 12px #FFB347"></div>
+                  <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#FFB347">HDD</div>
+                </div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:11px">
+              <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">PHASES PASSÉES</div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;gap:10px"><div style="width:9px;height:9px;border-radius:2px;background:#939393"></div><div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Analyse du volume</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">1 min 12</div></div>
+                <div style="display:flex;align-items:center;gap:10px"><div style="width:9px;height:9px;border-radius:2px;background:#4A70AF"></div><div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Fichiers système</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">3 min 04</div></div>
+                <div style="display:flex;align-items:center;gap:10px"><div style="width:9px;height:9px;border-radius:2px;background:#FFB347"></div><div style="flex:1;font:500 13px ui-sans-serif,sans-serif;color:#EBEBEB">Applications</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#FFB347">en cours</div></div>
+              </div>
+              <div style="font:400 12px/1.4 ui-monospace,Menlo,monospace;color:#858585;border-top:1px solid rgba(255,255,255,0.07);padding-top:10px">{{ motionLabel }}</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 22px 34px;display:flex;align-items:flex-start;gap:12px">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">
+              <div style="width:52px;height:52px;border-radius:50%;border:1px solid rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center"><div style="width:14px;height:14px;background:#EBEBEB;border-radius:2px"></div></div>
+              <div style="font:500 11px ui-sans-serif,sans-serif;color:#858585">Arrêter</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div style="width:100%;height:60px;border-radius:16px;background:#FFB347;display:flex;align-items:center;justify-content:center;gap:5px">
+                <div style="width:5px;height:20px;background:#0E0F12;border-radius:1.5px"></div>
+                <div style="width:5px;height:20px;background:#0E0F12;border-radius:1.5px"></div>
+              </div>
+              <div style="font:500 11px ui-sans-serif,sans-serif;color:#858585">Pause</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">
+              <div style="width:52px;height:52px;border-radius:50%;border:1px solid rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;font:500 19px ui-sans-serif,sans-serif;color:#EBEBEB">↻</div>
+              <div style="font:500 11px ui-sans-serif,sans-serif;color:#858585">Relancer</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:center">
+        <div style="font:400 26px ui-sans-serif,sans-serif;color:#3A3F49">↑</div>
+        <div style="font:500 10px ui-monospace,Menlo,monospace;color:#3A3F49">TIROIR</div>
+      </div>
+
+      <!-- 11 Instruments -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">11 · Instruments (tiroir, défilable)</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 6px;flex:none">
+            <div style="display:flex;align-items:center;gap:7px"><div style="width:7px;height:7px;border-radius:50%;background:#FFB347;box-shadow:0 0 8px #FFB347"></div><div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div></div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:64%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="flex:none;align-self:center;width:38px;height:5px;border-radius:3px;background:#3A3F49;margin:4px 0 10px"></div>
+          <div style="flex:1;overflow:hidden;padding:0 20px;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div style="font:700 24px ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">Instruments</div>
+              <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">60 dernières s</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">IOPS</div><div style="width:15px;height:15px;border-radius:50%;border:1px solid #858585;color:#858585;display:flex;align-items:center;justify-content:center;font:600 9px ui-sans-serif,sans-serif">i</div></div>
+                <div style="font:500 22px ui-monospace,Menlo,monospace">64</div>
+                <div style="display:flex;align-items:flex-end;gap:1px;height:26px">
+                  <sc-for list="{{ sIops }}" as="h" hint-placeholder-count="56">
+                    <div style="flex:1;background:#FFB347;border-radius:0.5px;height:{{ h }}"></div>
+                  </sc-for>
+                </div>
+                <div style="font:400 10.5px ui-monospace,Menlo,monospace;color:#858585">71 % lecture · 29 % écriture</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">DÉBIT</div><div style="width:15px;height:15px;border-radius:50%;border:1px solid #858585;color:#858585;display:flex;align-items:center;justify-content:center;font:600 9px ui-sans-serif,sans-serif">i</div></div>
+                <div style="font:500 22px ui-monospace,Menlo,monospace">4,1 <span style="font-size:12px;color:#858585">Mo/s</span></div>
+                <div style="display:flex;align-items:flex-end;gap:1px;height:26px">
+                  <sc-for list="{{ sDebit }}" as="h" hint-placeholder-count="56">
+                    <div style="flex:1;background:#5CD1D1;border-radius:0.5px;height:{{ h }}"></div>
+                  </sc-for>
+                </div>
+                <div style="font:400 10.5px ui-monospace,Menlo,monospace;color:#858585">max 6,9 → 4,6 Mo/s</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">SEEK MOYEN</div><div style="width:15px;height:15px;border-radius:50%;border:1px solid #858585;color:#858585;display:flex;align-items:center;justify-content:center;font:600 9px ui-sans-serif,sans-serif">i</div></div>
+                <div style="font:500 22px ui-monospace,Menlo,monospace">1 214 <span style="font-size:12px;color:#858585">cyl.</span></div>
+                <div style="display:flex;align-items:flex-end;gap:1px;height:26px">
+                  <sc-for list="{{ sSeek }}" as="h" hint-placeholder-count="56">
+                    <div style="flex:1;background:#B8B8B8;border-radius:0.5px;height:{{ h }}"></div>
+                  </sc-for>
+                </div>
+                <div style="font:400 10.5px ui-monospace,Menlo,monospace;color:#858585">soit ≈ 14,2 ms</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">SEEKS</div><div style="width:15px;height:15px;border-radius:50%;border:1px solid #858585;color:#858585;display:flex;align-items:center;justify-content:center;font:600 9px ui-sans-serif,sans-serif">i</div></div>
+                <div style="font:500 22px ui-monospace,Menlo,monospace">184 026</div>
+                <div style="display:flex;align-items:flex-end;gap:1px;height:26px">
+                  <sc-for list="{{ sQueue }}" as="h" hint-placeholder-count="56">
+                    <div style="flex:1;background:#7E62AF;border-radius:0.5px;height:{{ h }}"></div>
+                  </sc-for>
+                </div>
+                <div style="font:400 10.5px ui-monospace,Menlo,monospace;color:#858585">depuis le début de la passe</div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 13px ui-sans-serif,sans-serif">Où passe le temps</div><div style="width:15px;height:15px;border-radius:50%;border:1px solid #858585;color:#858585;display:flex;align-items:center;justify-content:center;font:600 9px ui-sans-serif,sans-serif">i</div></div>
+              <div style="display:flex;height:22px;border-radius:5px;overflow:hidden;gap:1px">
+                <div style="flex:41;background:#FFB347"></div>
+                <div style="flex:23;background:#DB944D"></div>
+                <div style="flex:18;background:#5CD1D1"></div>
+                <div style="flex:6;background:#7E62AF"></div>
+                <div style="flex:12;background:#3A3F49"></div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px 12px">
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:8px;background:#FFB347"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">seek 41 %</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:8px;background:#DB944D"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">rotation 23 %</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:8px;background:#5CD1D1"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">transfert 18 %</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:8px;background:#7E62AF"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">calcul 6 %</div></div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:8px;background:#3A3F49"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">attente 12 %</div></div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 14px;display:flex;flex-direction:column;gap:10px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">DISTANCE DES SEEKS</div>
+                <div style="display:flex;align-items:flex-end;gap:5px;height:52px">
+                  <sc-for list="{{ hist }}" as="h" hint-placeholder-count="5">
+                    <div style="flex:1;background:#4A70AF;border-radius:2px 2px 0 0;height:{{ h }}"></div>
+                  </sc-for>
+                </div>
+                <div style="font:400 10.5px ui-monospace,Menlo,monospace;color:#858585">courts → pleine course</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 14px;display:flex;flex-direction:column;gap:10px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">CYLINDRES VISITÉS</div>
+                <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:2px;height:52px;align-content:start">
+                  <sc-for list="{{ heat }}" as="c" hint-placeholder-count="48">
+                    <div style="aspect-ratio:1;border-radius:1px;background:{{ c }}"></div>
+                  </sc-for>
+                </div>
+                <div style="font:400 10.5px ui-monospace,Menlo,monospace;color:#858585">moyeu → bord</div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:11px">
+              <div style="font:600 13px ui-sans-serif,sans-serif">État du volume</div>
+              <div style="display:flex;gap:9px">
+                <div style="flex:1;background:#0E0F12;border-radius:10px;padding:10px 11px">
+                  <div style="font:600 10px ui-monospace,Menlo,monospace;color:#858585">MORCEAUX</div>
+                  <div style="font:500 16px ui-monospace,Menlo,monospace;margin-top:4px;color:#5CD1D1">46 812 → 9 120</div>
+                  <div style="font:400 10.5px ui-monospace,Menlo,monospace;color:#858585;margin-top:3px">en baisse</div>
+                </div>
+                <div style="flex:1;background:#0E0F12;border-radius:10px;padding:10px 11px">
+                  <div style="font:600 10px ui-monospace,Menlo,monospace;color:#858585">FICHIERS FRAGM.</div>
+                  <div style="font:500 16px ui-monospace,Menlo,monospace;margin-top:4px;color:#5CD1D1">3 041 → 402</div>
+                  <div style="font:400 10.5px ui-monospace,Menlo,monospace;color:#858585;margin-top:3px">en baisse aussi</div>
+                </div>
+              </div>
+              <div style="font:400 12px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585;text-wrap:pretty">Windows 95 fait baisser les deux. Avec d’autres outils (UltraDefrag sur NTFS), les morceaux s’effondrent alors que le nombre de fichiers fragmentés stagne : un fichier ramené de 40 morceaux à 2 reste « fragmenté ».</div>
+              <div style="display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.07);padding-top:10px">
+                <div><div style="font:600 10px ui-monospace,Menlo,monospace;color:#858585">TROUS</div><div style="font:500 14px ui-monospace,Menlo,monospace;margin-top:3px">38 → 11</div></div>
+                <div><div style="font:600 10px ui-monospace,Menlo,monospace;color:#858585">PLUS GRAND TROU</div><div style="font:500 14px ui-monospace,Menlo,monospace;margin-top:3px">96 Mo</div></div>
+                <div><div style="font:600 10px ui-monospace,Menlo,monospace;color:#858585">DÉPLACÉ/VOL.</div><div style="font:500 14px ui-monospace,Menlo,monospace;margin-top:3px">49 %</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 12 Landscape -->
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">12 · Carte en plein écran, paysage — 3 264 blocs ici, ≈ 16 800 sur iPhone 17 Pro Max</div>
+      <div style="width:852px;height:393px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;position:relative;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+        <div style="flex:1;display:grid;grid-template-columns:repeat(96,1fr);gap:1px;padding:18px 58px 12px;align-content:start">
+          <sc-for list="{{ liveWide }}" as="c" hint-placeholder-count="3264">
+            <div style="aspect-ratio:1;background:{{ c }}"></div>
+          </sc-for>
+        </div>
+        <div style="flex:none;padding:0 58px 18px;display:flex;align-items:center;justify-content:space-between;gap:24px">
+          <div style="display:flex;align-items:center;gap:18px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:7px;height:7px;border-radius:50%;background:#FFB347;box-shadow:0 0 8px #FFB347"></div>
+              <div style="font:600 12px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#FFB347">APPLICATIONS · 38 %</div>
+            </div>
+            <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">19 min 54 · cyl. 2 841 · 1 bloc = 17 clusters = 272 Ko</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="display:flex;gap:12px">
+              <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#FFB347"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">lecture</div></div>
+              <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#5CD1D1"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">écriture</div></div>
+              <div style="display:flex;align-items:center;gap:5px"><div style="width:9px;height:9px;background:#569B6A"></div><div style="font:500 11px ui-monospace,Menlo,monospace;color:#858585">rangé</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center"><div style="width:11px;height:11px;background:#EBEBEB;border-radius:2px"></div></div>
+              <div style="width:40px;height:40px;border-radius:50%;background:#FFB347;display:flex;align-items:center;justify-content:center;gap:4px"><div style="width:4px;height:15px;background:#0E0F12;border-radius:1px"></div><div style="width:4px;height:15px;background:#0E0F12;border-radius:1px"></div></div>
+            </div>
+          </div>
+        </div>
+        <div style="position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:160px;height:5px;border-radius:3px;background:rgba(235,235,235,0.22)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= GROUPE 4 : FINS ET ANNEXES ================= -->
+  <div style="display:flex;flex-direction:column;gap:22px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font:600 13px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#5CD1D1">FLUX 4 — BILANS, DÉMARRAGE, AMBIANCE, ÉTATS</div>
+      <div style="height:1px;flex:1;background:rgba(255,255,255,0.08)"></div>
+    </div>
+    <div style="display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+
+      <!-- 13 Bilan -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">13 · Bilan de fin de passe</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:58%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px 10px;display:flex;align-items:center;justify-content:space-between;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#858585">Fermer</div>
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">Partager</div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:0 22px;display:flex;flex-direction:column;gap:13px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#5CD1D1">TERMINÉ · 52 MIN 18</div>
+              <div style="font:700 25px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">Défragmenteur Windows 95</div>
+              <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">Secrétaire, 1996 · IDE 850 Mo · VFAT</div>
+            </div>
+            <div style="display:flex;gap:10px">
+              <div style="flex:1;display:flex;flex-direction:column;gap:7px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">AVANT</div>
+                <div style="display:grid;grid-template-columns:repeat(26,1fr);gap:1px;background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:7px">
+                  <sc-for list="{{ before }}" as="c" hint-placeholder-count="468">
+                    <div style="aspect-ratio:1;background:{{ c }}"></div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:7px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#5CD1D1">APRÈS</div>
+                <div style="display:grid;grid-template-columns:repeat(26,1fr);gap:1px;background:#191B20;border:1px solid rgba(92,209,209,0.25);border-radius:10px;padding:7px">
+                  <sc-for list="{{ after }}" as="c" hint-placeholder-count="468">
+                    <div style="aspect-ratio:1;background:{{ c }}"></div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Fichiers fragmentés</div>
+                <div style="font:500 14px ui-monospace,Menlo,monospace">3 041 → <span style="color:#5CD1D1">12</span></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Morceaux au total</div>
+                <div style="font:500 14px ui-monospace,Menlo,monospace">46 812 → <span style="color:#5CD1D1">7 470</span></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Trous libres</div>
+                <div style="font:500 14px ui-monospace,Menlo,monospace">38 → <span style="color:#5CD1D1">2</span></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.07);padding-top:11px">
+                <div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Mo déplacés</div>
+                <div style="font:500 14px ui-monospace,Menlo,monospace">1 100 (130 % du volume)</div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Évacuations</div>
+                <div style="font:500 14px ui-monospace,Menlo,monospace">4 020</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(255,179,71,0.08);border:1px solid rgba(255,179,71,0.22);border-radius:12px;padding:12px 14px">
+              <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #FFB347;color:#FFB347;display:flex;align-items:center;justify-content:center;font:600 11px ui-sans-serif,sans-serif;flex:none">i</div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#F0C892;text-wrap:pretty">4 020 évacuations : cet outil tasse tout au début et déloge ses voisins au passage. C’est ce qui explique la durée.</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:14px 22px 34px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,rgba(14,15,18,0),#0E0F12 30%)">
+            <div style="background:#FFB347;color:#0E0F12;border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif">Essayer un autre outil</div>
+            <div style="border:1px solid rgba(255,255,255,0.16);border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif;color:#EBEBEB">Démarrer ce disque rangé</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <!-- 13b Comparer deux outils -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">13 · Comparer deux outils · sans verdict global</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:58%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:8px 22px 10px;display:flex;flex-direction:column;gap:4px;flex:none">
+            <div style="font:500 16px ui-sans-serif,sans-serif;color:#FFB347">‹ Secrétaire, 1996</div>
+            <div style="font:700 25px/1.12 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em;padding-top:5px">Deux outils, même volume</div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:0 22px;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;gap:10px">
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#FFB347">A · WINDOWS 95</div>
+                <div style="display:grid;grid-template-columns:repeat(22,1fr);gap:1px;background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:6px">
+                  <sc-for list="{{ cmpA }}" as="c" hint-placeholder-count="330">
+                    <div style="aspect-ratio:1;background:{{ c }}"></div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#5CD1D1">B · JKDEFRAG 3.36</div>
+                <div style="display:grid;grid-template-columns:repeat(22,1fr);gap:1px;background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:6px">
+                  <sc-for list="{{ cmpB }}" as="c" hint-placeholder-count="330">
+                    <div style="aspect-ratio:1;background:{{ c }}"></div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1"></div>
+                <div style="width:74px;text-align:right;font:600 10px ui-monospace,Menlo,monospace;color:#FFB347">A</div>
+                <div style="width:74px;text-align:right;font:600 10px ui-monospace,Menlo,monospace;color:#5CD1D1">B</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Fichiers fragmentés</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace;color:#FFB347;background:rgba(255,179,71,0.12);border-radius:5px;padding:2px 4px">12</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace">318</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Morceaux au total</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace;color:#FFB347;background:rgba(255,179,71,0.12);border-radius:5px;padding:2px 4px">7 470</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace">8 940</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Trous libres</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace;color:#FFB347;background:rgba(255,179,71,0.12);border-radius:5px;padding:2px 4px">2</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace">14</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,0.07);padding-top:11px">
+                <div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Durée</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace">52 min</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace;color:#5CD1D1;background:rgba(92,209,209,0.12);border-radius:5px;padding:2px 4px">6 min 10</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Mo déplacés</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace">1 100</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace;color:#5CD1D1;background:rgba(92,209,209,0.12);border-radius:5px;padding:2px 4px">412</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Évacuations</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace">4 020</div>
+                <div style="width:74px;text-align:right;font:500 13px ui-monospace,Menlo,monospace;color:#5CD1D1;background:rgba(92,209,209,0.12);border-radius:5px;padding:2px 4px">0</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px">
+              <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #858585;color:#858585;display:flex;align-items:center;justify-content:center;font:600 11px ui-sans-serif,sans-serif;flex:none">i</div>
+              <div style="font:400 12.5px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585;text-wrap:pretty">A range mieux, B va huit à dix fois plus vite et ne déloge personne. Aucun des deux ne gagne : ça dépend de ce qu’on veut entendre.</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 22px 34px">
+            <div style="border:1px solid rgba(255,255,255,0.16);border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 16px ui-sans-serif,-apple-system,sans-serif;color:#EBEBEB">Ouvrir les Instruments en deux colonnes</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <!-- 14 Démarrage OS -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">14 · Démarrer un OS — le témoin</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="display:flex;align-items:center;gap:7px"><div style="width:7px;height:7px;border-radius:50%;background:#5CD1D1;box-shadow:0 0 8px #5CD1D1"></div><div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div></div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:58%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:10px 22px 0;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.12em;color:#5CD1D1">DÉMARRAGE TERMINÉ · 1 MIN 06</div>
+              <div style="font:700 25px/1.15 ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.01em">Windows 98 SE, puis Office 97</div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+              <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">ÉTAPES</div>
+              <div style="display:flex;align-items:center;gap:10px"><div style="width:9px;height:9px;border-radius:2px;background:#4A70AF"></div><div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Noyau et registre</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">11,4 s</div></div>
+              <div style="display:flex;align-items:center;gap:10px"><div style="width:9px;height:9px;border-radius:2px;background:#939393"></div><div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Pilotes</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">19,2 s</div></div>
+              <div style="display:flex;align-items:center;gap:10px"><div style="width:9px;height:9px;border-radius:2px;background:#7E62AF"></div><div style="flex:1;font:400 13px ui-sans-serif,sans-serif;color:#858585">Office 97</div><div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">35,5 s</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 13px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">FICHIERS LUS</div>
+                <div style="font:500 20px ui-monospace,Menlo,monospace;margin-top:3px">620</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 13px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">MO LUS</div>
+                <div style="font:500 20px ui-monospace,Menlo,monospace;margin-top:3px">122</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 13px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">CALCUL</div>
+                <div style="font:500 20px ui-monospace,Menlo,monospace;margin-top:3px">24,1 s</div>
+              </div>
+              <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 13px">
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.08em;color:#858585">ATTENTE DISQUE</div>
+                <div style="font:500 20px ui-monospace,Menlo,monospace;margin-top:3px">42,0 s</div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(92,209,209,0.25);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:600 14px ui-sans-serif,sans-serif">Le témoin</div><div style="font:600 12px ui-monospace,Menlo,monospace;color:#5CD1D1">+3,0 %</div></div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;gap:9px"><div style="width:74px;font:400 11.5px ui-monospace,Menlo,monospace;color:#858585">ce disque</div><div style="flex:1;height:14px;border-radius:4px;background:#292929"><div style="width:100%;height:100%;border-radius:4px;background:#FFB347"></div></div><div style="font:500 12px ui-monospace,Menlo,monospace;width:46px;text-align:right">66,1 s</div></div>
+                <div style="display:flex;align-items:center;gap:9px"><div style="width:74px;font:400 11.5px ui-monospace,Menlo,monospace;color:#858585">jamais fragmenté</div><div style="flex:1;height:14px;border-radius:4px;background:#292929"><div style="width:97%;height:100%;border-radius:4px;background:#5CD1D1"></div></div><div style="font:500 12px ui-monospace,Menlo,monospace;width:46px;text-align:right">64,2 s</div></div>
+              </div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#9FD9D9;text-wrap:pretty">Sur FAT, la fragmentation ne coûte presque rien au démarrage : ces fichiers ont été écrits d’un seul tenant par l’installeur, sur un disque vide. Ce qui fait le bruit, c’est l’ordre dans lequel on les demande.</div>
+              <div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:11px;display:flex;justify-content:space-between">
+                <div><div style="font:600 10px ui-monospace,Menlo,monospace;color:#858585">SEEKS</div><div style="font:500 14px ui-monospace,Menlo,monospace;margin-top:3px">2 418</div></div>
+                <div><div style="font:600 10px ui-monospace,Menlo,monospace;color:#858585">SEEK MOYEN</div><div style="font:500 14px ui-monospace,Menlo,monospace;margin-top:3px">1 370 cyl.</div></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px">
+              <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #858585;color:#858585;display:flex;align-items:center;justify-content:center;font:600 11px ui-sans-serif,sans-serif;flex:none">i</div>
+              <div style="font:400 12.5px/1.4 ui-sans-serif,-apple-system,sans-serif;color:#858585">Pas de préchargeur sur Windows 98 : le bras suit l’ordre du registre, pas la position des fichiers.</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 22px 34px">
+            <div style="border:1px solid rgba(255,255,255,0.16);border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;font:600 17px ui-sans-serif,-apple-system,sans-serif;color:#EBEBEB">Comparer avec un disque 2003 et XP</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <!-- 14b Fiches pourquoi -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">14 · « Pourquoi ça sonne comme ça ? » depuis un ⓘ</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="position:absolute;inset:0;background:#0E0F12;opacity:0.5"></div>
+          <div style="padding:14px 28px 4px;display:flex;justify-content:space-between;opacity:0.4;flex:none"><div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div><div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585"></div></div>
+          <div style="flex:1;opacity:0.2;padding:14px 22px;display:flex;flex-direction:column;gap:10px">
+            <div style="height:60px;background:#191B20;border-radius:12px"></div>
+            <div style="height:120px;background:#191B20;border-radius:14px"></div>
+            <div style="height:120px;background:#191B20;border-radius:14px"></div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#191B20;border-top:1px solid rgba(255,255,255,0.1);border-radius:22px 22px 0 0;padding:12px 22px 34px;display:flex;flex-direction:column;gap:13px;box-shadow:0 -20px 50px rgba(0,0,0,0.6)">
+            <div style="align-self:center;width:38px;height:5px;border-radius:3px;background:#3A3F49"></div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font:600 11px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#FFB347">SEEK MOYEN · 1 214 CYL.</div>
+              <div style="font:600 22px/1.15 ui-sans-serif,-apple-system,sans-serif">Pourquoi ça sonne comme ça ?</div>
+            </div>
+            <div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:6px">
+              <div style="font:600 14px ui-sans-serif,sans-serif">La loi de seek</div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8;text-wrap:pretty">Pour les seeks courts, le temps croît comme la racine de la distance ; au-delà, il devient proportionnel. Deux seeks courts prennent donc plus longtemps qu’un seul de même distance totale, et sonnent autrement.</div>
+            </div>
+            <div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:6px">
+              <div style="font:600 14px ui-sans-serif,sans-serif">L’allocateur next-fit</div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8;text-wrap:pretty">FAT repart du dernier cluster alloué. Tant que ce curseur avance, les fichiers sont propres. Arrivé au bout du volume, il revient au début et comble les trous laissés des mois plus tôt : c’est là que les fichiers se hachent, par vagues.</div>
+            </div>
+            <div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:6px">
+              <div style="font:600 14px ui-sans-serif,sans-serif">La zone MFT</div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8;text-wrap:pretty">NTFS réserve 12,5 % du volume pour que sa table de fichiers puisse grandir, et n’y écrit qu’une fois le reste plein. Ouvrir un fichier relit sa fiche dans cette table, en tête du volume : sans préchargeur, cela fait deux courses du bras par fichier.</div>
+            </div>
+            <div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:6px">
+              <div style="font:600 14px ui-sans-serif,sans-serif">Le témoin</div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#B8B8B8;text-wrap:pretty">Les mêmes fichiers, chacun d’un seul tenant, tassés contre le début du volume. L’écart mesure ce que coûte le placement réel. Sur FAT il est presque nul ; sur NTFS, le témoin perd parfois.</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <!-- 15 Son et vibrations -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">15 · Feuille « Son et vibrations »</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="position:absolute;inset:0;background:#0E0F12;opacity:0.5"></div>
+          <div style="padding:14px 28px 4px;display:flex;justify-content:space-between;opacity:0.4;flex:none"><div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div><div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585"></div></div>
+          <div style="flex:1;opacity:0.2;padding:14px 22px;display:flex;flex-direction:column;gap:12px">
+            <div style="height:200px;background:#191B20;border-radius:14px"></div>
+            <div style="height:120px;background:#191B20;border-radius:14px"></div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#191B20;border-top:1px solid rgba(255,255,255,0.1);border-radius:22px 22px 0 0;padding:12px 22px 34px;display:flex;flex-direction:column;gap:15px;box-shadow:0 -20px 50px rgba(0,0,0,0.6)">
+            <div style="align-self:center;width:38px;height:5px;border-radius:3px;background:#3A3F49"></div>
+            <div style="font:600 22px ui-sans-serif,-apple-system,sans-serif">Son et vibrations</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <div style="background:#FFB347;color:#0E0F12;border-radius:20px;padding:8px 14px;font:600 13px ui-sans-serif,sans-serif">Casque</div>
+              <div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:8px 14px;font:500 13px ui-sans-serif,sans-serif;color:#858585">Haut-parleur</div>
+              <div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:8px 14px;font:500 13px ui-sans-serif,sans-serif;color:#858585">Vibrations seules</div>
+            </div>
+            <div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 14px ui-sans-serif,sans-serif">Rotation</div><div style="font:500 13px ui-monospace,Menlo,monospace;color:#858585">58 %</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:58%;height:100%;border-radius:2px;background:#EBEBEB"></div><div style="position:absolute;left:58%;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:#EBEBEB"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 14px ui-sans-serif,sans-serif">Tête</div><div style="font:500 13px ui-monospace,Menlo,monospace;color:#858585">84 %</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:84%;height:100%;border-radius:2px;background:#EBEBEB"></div><div style="position:absolute;left:84%;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:#EBEBEB"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 14px ui-sans-serif,sans-serif">Général</div><div style="font:500 13px ui-monospace,Menlo,monospace;color:#858585">72 %</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:72%;height:100%;border-radius:2px;background:#EBEBEB"></div><div style="position:absolute;left:72%;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:#EBEBEB"></div></div>
+              </div>
+            </div>
+            <div style="background:#0E0F12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;flex-direction:column;gap:2px"><div style="font:600 15px ui-sans-serif,sans-serif">Haptique</div><div style="font:400 12px ui-sans-serif,sans-serif;color:#858585">Taptic Engine · transitoires du bras</div></div>
+                <div style="width:50px;height:30px;border-radius:15px;background:#5CD1D1;padding:2px;display:flex;justify-content:flex-end"><div style="width:26px;height:26px;border-radius:50%;background:#FFFFFF"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Intensité des transitoires</div><div style="font:500 13px ui-monospace,Menlo,monospace">0,7</div></div>
+                <div style="height:4px;border-radius:2px;background:#292929;position:relative"><div style="width:70%;height:100%;border-radius:2px;background:#5CD1D1"></div><div style="position:absolute;left:70%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#EBEBEB"></div></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between"><div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Grondement de rotation</div><div style="width:50px;height:30px;border-radius:15px;background:#292929;padding:2px;display:flex"><div style="width:26px;height:26px;border-radius:50%;background:#858585"></div></div></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px">
+              <div style="font:500 15px ui-sans-serif,sans-serif;color:#FFB347">Réglages avancés</div>
+              <div style="font:500 20px ui-sans-serif,sans-serif;color:#858585">›</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+
+      <!-- 16 Ambiance -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">16 · Mode ambiance / veille</div>
+        <div style="width:393px;height:852px;background:#08090A;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none;opacity:0.5">
+            <div style="font:600 14px ui-monospace,Menlo,monospace;color:#6B6B6B">2:14</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #4A4A4A;padding:1.5px"><div style="width:44%;height:100%;border-radius:1.5px;background:#6B6B6B"></div></div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;padding:0 34px">
+            <div style="width:196px;height:196px;border-radius:50%;background:radial-gradient(circle,#101216 0 18%,#171A1F 19% 92%,#0C0E11 93%);border:1px solid rgba(255,255,255,0.06);position:relative">
+              <div style="position:absolute;top:50%;left:52%;width:112px;height:5px;background:#4E525C;border-radius:3px;transform-origin:5px 50%;transform:rotate(-19deg)"></div>
+              <div style="position:absolute;top:calc(50% - 6px);left:calc(52% - 7px);width:15px;height:15px;border-radius:50%;background:#22252B"></div>
+              <div style="position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:#7A5424"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+              <div style="font:500 13px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#6B6B6B">TRI PAR NOM · JKDEFRAG</div>
+              <div style="font:500 44px ui-monospace,Menlo,monospace;color:#8E8E8E;letter-spacing:-0.02em">4 h 12</div>
+              <div style="font:500 13px ui-monospace,Menlo,monospace;color:#5A5A5A">61 % · minuterie dans 1 h 48</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:0 34px 42px;display:flex;flex-direction:column;gap:12px">
+            <div style="border:1px solid rgba(255,255,255,0.08);border-radius:14px;height:50px;display:flex;align-items:center;justify-content:center;font:500 15px ui-sans-serif,sans-serif;color:#8E8E8E">Minuterie d’arrêt · 6 h</div>
+            <div style="font:400 12.5px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#5A5A5A;text-align:center">Touchez l’écran pour revenir à la passe.</div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.18)"></div>
+        </div>
+      </div>
+
+      <!-- 17 Etats -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">17 · Mes disques et états limites</div>
+        <div style="width:393px;height:852px;background:#0E0F12;border:1px solid rgba(255,255,255,0.12);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 28px 4px;flex:none">
+            <div style="font:600 14px ui-monospace,Menlo,monospace">9:41</div>
+            <div style="width:23px;height:11px;border-radius:3px;border:1px solid #858585;padding:1.5px"><div style="width:72%;height:100%;border-radius:1.5px;background:#EBEBEB"></div></div>
+          </div>
+          <div style="padding:6px 22px 12px;flex:none"><div style="font:700 30px ui-sans-serif,-apple-system,sans-serif;letter-spacing:-0.02em">Mes disques</div></div>
+          <div style="flex:1;overflow:hidden;padding:0 22px;display:flex;flex-direction:column;gap:11px">
+            <div style="background:#191B20;border:1px solid rgba(255,179,71,0.3);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <div style="width:7px;height:7px;border-radius:50%;background:#FFB347;box-shadow:0 0 8px #FFB347"></div>
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#FFB347">EN COURS · RETOUR D’ARRIÈRE-PLAN</div>
+              </div>
+              <div style="font:600 16px ui-sans-serif,sans-serif">Le disque de ma mère, 1999</div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="flex:1;height:6px;border-radius:3px;background:#292929"><div style="width:38%;height:100%;border-radius:3px;background:#FFB347"></div></div>
+                <div style="font:500 13px ui-monospace,Menlo,monospace">38 % · 19 min 54</div>
+              </div>
+              <div style="display:flex;gap:9px">
+                <div style="flex:1;background:#FFB347;color:#0E0F12;border-radius:11px;height:44px;display:flex;align-items:center;justify-content:center;font:600 15px ui-sans-serif,sans-serif">Revenir à la passe</div>
+                <div style="width:44px;height:44px;border:1px solid rgba(255,255,255,0.16);border-radius:11px;display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px;background:#EBEBEB;border-radius:2px"></div></div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:13px 16px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <div style="font:600 16px ui-sans-serif,sans-serif">Famille, 2003 (copie)</div>
+                  <div style="font:500 12px ui-monospace,Menlo,monospace;color:#858585">NTFS 4 Ko · 6 210 fichiers</div>
+                </div>
+                <div style="font:500 20px ui-sans-serif,sans-serif;color:#858585">›</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;background:rgba(255,179,71,0.08);border-radius:9px;padding:8px 10px">
+                <div style="width:6px;height:6px;border-radius:50%;background:#FFB347;flex:none"></div>
+                <div style="font:400 12px/1.35 ui-sans-serif,-apple-system,sans-serif;color:#F0C892">Le disque est plein dès 2005 : tout ce qui s’écrit ensuite sera haché.</div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(214,92,102,0.3);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <div style="width:7px;height:7px;border-radius:50%;background:#D65C66"></div>
+                <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#D65C66">GÉNÉRATION IMPOSSIBLE</div>
+              </div>
+              <div style="font:600 16px ui-sans-serif,sans-serif">Vista 320 Go · gamer</div>
+              <div style="font:400 13px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585">Ce profil ne peut pas être lu : une installation est datée avant la période d’usage.</div>
+              <div style="display:flex;gap:9px;padding-top:4px">
+                <div style="border:1px solid rgba(255,255,255,0.16);border-radius:10px;padding:9px 14px;font:600 14px ui-sans-serif,sans-serif;color:#EBEBEB">Modifier l’histoire</div>
+                <div style="border:1px solid rgba(255,255,255,0.16);border-radius:10px;padding:9px 14px;font:600 14px ui-sans-serif,sans-serif;color:#EBEBEB">Réessayer</div>
+              </div>
+            </div>
+            <div style="background:#191B20;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;opacity:0.5">
+              <div style="font:600 10px ui-monospace,Menlo,monospace;letter-spacing:0.1em;color:#858585">GÉNÉRATION ANNULÉE</div>
+              <div style="font:600 16px ui-sans-serif,sans-serif">Sans titre · 1993</div>
+              <div style="font:400 13px ui-sans-serif,sans-serif;color:#858585">Arrêtée en cours de route. L’histoire est conservée.</div>
+              <div style="align-self:flex-start;border:1px solid rgba(255,255,255,0.16);border-radius:10px;padding:8px 13px;font:600 13.5px ui-sans-serif,sans-serif;color:#EBEBEB;margin-top:2px">Générer depuis le début</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.14);border-radius:14px;padding:16px;display:flex;align-items:center;justify-content:center;gap:9px">
+              <div style="font:500 18px ui-sans-serif,sans-serif;color:#FFB347">+</div>
+              <div style="font:600 15px ui-sans-serif,sans-serif;color:#FFB347">Dupliquer un preset et le modifier</div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px">
+              <div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #858585;color:#858585;display:flex;align-items:center;justify-content:center;font:600 11px ui-sans-serif,sans-serif;flex:none">i</div>
+              <div style="font:400 12.5px/1.45 ui-sans-serif,-apple-system,sans-serif;color:#858585">VoiceOver résume la carte par zones : « début du disque, 84 % occupé, surtout des applications rangées ».</div>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:138px;height:5px;border-radius:3px;background:rgba(235,235,235,0.35)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#FFB347&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#FFB347&quot;,&quot;#F2C14E&quot;,&quot;#FF9F40&quot;,&quot;#E8A33D&quot;],&quot;section&quot;:&quot;Palette&quot;},&quot;second&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#5CD1D1&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#5CD1D1&quot;,&quot;#4FBFC9&quot;,&quot;#66D6B4&quot;,&quot;#5CB8D1&quot;],&quot;section&quot;:&quot;Palette&quot;},&quot;reduceMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Accessibilité&quot;}}">
+class Component extends DCLogic {
+  constructor(p){ super(p); this.d = this.build(); }
+
+  rng(s){ let a = s>>>0; return () => { a = (a + 0x6D2B79F5)>>>0; let t = Math.imul(a ^ (a>>>15), 1|a); t = (t + Math.imul(t ^ (t>>>7), 61|t)) ^ t; return ((t ^ (t>>>14))>>>0)/4294967296; }; }
+
+  fragMap(cols, rows, seed, frag, fill){
+    const R = this.rng(seed), n = cols*rows, out = new Array(n).fill('#292929');
+    const cats = [['#5C8CDB','#4A70AF',0.07],['#B8B8B8','#939393',0.03],['#9E7ADB','#7E62AF',0.21],['#6BC285','#569B6A',0.22],['#61999E','#4E7A7E',0.13],['#DB944D','#AF763E',0.13],['#D65C66','#AB4A52',0.04]];
+    let i = 0;
+    cats.forEach(([lt, dk, share]) => {
+      let budget = Math.round(n*fill*share);
+      while (budget > 0 && i < n) {
+        const isFrag = R() < frag;
+        const run = Math.min(budget, isFrag ? 1 + Math.floor(R()*3) : 4 + Math.floor(R()*16));
+        for (let k = 0; k < run && i < n; k++) out[i++] = isFrag ? lt : dk;
+        budget -= run;
+        if (isFrag) i += Math.floor(R()*4);
+      }
+    });
+    return out;
+  }
+
+  build(){
+    const mapMain = this.fragMap(36, 22, 7, 0.62, 0.78);
+    const live = mapMain.slice();
+    [310, 311, 312, 347, 348].forEach(i => live[i] = '#FFB347');
+    [420, 421, 422, 423, 456, 457].forEach(i => live[i] = '#5CD1D1');
+    const wide = this.fragMap(96, 34, 11, 0.6, 0.79);
+    const liveWide = wide.slice();
+    [1450,1451,1452,1546,1547].forEach(i => liveWide[i] = '#FFB347');
+    [1820,1821,1822,1823,1916,1917,1918].forEach(i => liveWide[i] = '#5CD1D1');
+    const before = this.fragMap(26, 18, 7, 0.62, 0.78);
+    const after = this.fragMap(26, 18, 19, 0.04, 0.78);
+    const gen = this.fragMap(26, 12, 3, 0.55, 0.42);
+
+    const R = this.rng(42);
+    const spark = (base, amp, n) => Array.from({length: n}, (_, i) => Math.max(8, Math.min(100, base + Math.sin(i/3.1)*amp*0.5 + (R()-0.5)*amp)));
+    const bars = a => a.map(v => Math.round(v) + '%');
+
+    const hist = [72, 41, 18, 9, 26].map(v => v + '%');
+    const heat = Array.from({length: 48}, (_, i) => {
+      const v = Math.abs(Math.sin(i/6.4)) * 0.9 + R()*0.25;
+      const a = Math.min(0.95, 0.1 + v);
+      return 'rgba(255,179,71,' + a.toFixed(2) + ')';
+    });
+
+    const disks = [
+      {id:'secretaire-1996', nom:'Secrétaire, 1996', an:'1996', sub:'IDE 850 Mo · 5 400 tr/min', fs:'VFAT', os:'Windows 95', persona:'Secrétaire', resume:'Office 95 et vingt-six documents par semaine', etat:'déjà généré · 41 %'},
+      {id:'gamer-1999', nom:'Gamer, 1999', an:'1999', sub:'IDE 8,4 Go · 5 400 tr/min', fs:'FAT32', os:'Windows 98 SE', persona:'Gamer', resume:'Half-Life, des démos installées puis effacées', etat:''},
+      {id:'famille-2003', nom:'Famille, 2003', an:'2003', sub:'IDE 40 Go · 7 200 tr/min', fs:'NTFS', os:'Windows XP', persona:'Famille', resume:'Photos et DivX jusqu’à saturation', etat:''},
+      {id:'poweruser-1993', nom:'Power user, 1993', an:'1993', sub:'IDE 340 Mo · 3 600 tr/min', fs:'FAT16', os:'MS-DOS 6.22 + Win 3.1', persona:'Power user', resume:'BBS et archives en disquettes de 1,44 Mo, extraites puis effacées', etat:''}
+    ];
+
+    return {
+      mapMain, live, wide, liveWide, before, after, gen, hist, heat, disks,
+      genThumb: gen.slice(0, 80),
+      onbMap: this.fragMap(24, 15, 5, 0.5, 0.72),
+      seedMap: this.fragMap(30, 18, 31, 0.58, 0.77),
+      cmpA: this.fragMap(22, 15, 7, 0.06, 0.78),
+      cmpB: this.fragMap(22, 15, 23, 0.22, 0.78),
+      sIops: bars(spark(58, 34, 56)),
+      sDebit: bars(spark(44, 26, 56)),
+      sSeek: bars(spark(66, 30, 56)),
+      sQueue: bars(spark(30, 40, 56))
+    };
+  }
+
+  renderVals(){
+    const p = this.props;
+    return Object.assign({}, this.d, {
+      accent: p.accent ?? '#FFB347',
+      second: p.second ?? '#5CD1D1',
+      armAngle: (p.reduceMotion ?? false) ? 'rotate(-26deg)' : 'rotate(-14deg)',
+      motionLabel: (p.reduceMotion ?? false) ? 'Animations réduites · plateau figé' : 'Plateau ×100, rémanence 0,3 s'
+    });
+  }
+}
+</script>
+</body>
+</html>

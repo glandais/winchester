@@ -16,6 +16,78 @@ le problème, les décisions, ce qui valide, ce qui reste ouvert.
 
 ---
 
+## Les maquettes, validées
+
+**Fait** · 16 septembre 2026 · copie dans [`Design/maquettes.dc.html`](Design/maquettes.dc.html)
+
+Vingt-cinq écrans, en quatre flux. Chacun renvoie au chantier qui le porte.
+
+| écran | flux | chantier |
+|---|---|---|
+| 01 · Onboarding 1/3, 2/3, 3/3 | première ouverture | U11 |
+| 02 · Scénarios démo | première ouverture | U1 |
+| 03 · Galerie de 20 disques | première ouverture | U1 |
+| 04 · Génération du volume | première ouverture | U2 |
+| 05 · Fiche du disque généré | première ouverture | U2 |
+| 06 · Assistant 1/6 à 4/6, 6/6 | disque usagé | U9 |
+| 07 · Assistant 5/6 — habitudes | disque usagé | U9 |
+| 08 · Méthode de défragmentation | passe | U3 |
+| 09 · Passe, onglet Carte | passe | U4 |
+| 10 · Passe, onglet Plateau | passe | U4 |
+| 11 · Instruments | passe | U6 |
+| 12 · Carte plein écran, paysage | passe | U5 |
+| 13 · Bilan de fin de passe | bilans | U8 |
+| 13 · Comparer deux outils | bilans | U8 |
+| 14 · Démarrage et témoin | bilans | U7 |
+| 14 · « Pourquoi ça sonne comme ça ? » | bilans | U11 |
+| 15 · Son et vibrations | réglages | U10 |
+| 16 · Mode ambiance | réglages | U10 |
+| 17 · Mes disques et états limites | réglages | U9, U12 |
+
+La navigation retenue est une **barre d'onglets** — Disques, Passe,
+Instruments, Réglages — et non une pile : c'est elle qui tient lieu de
+mini-lecteur persistant (U0).
+
+### Deux tours de corrections
+
+La première version était juste dans sa structure et fausse dans ses chiffres
+et ses explications. Relue contre le README et le code, puis corrigée en deux
+messages.
+
+**Premier tour** — ce qui contredisait le modèle :
+
+- le « clac de parking » confondait le parking du bras **au moyeu** et le
+  retour **au bord** pour réécrire la FAT ;
+- la galerie affichait un taux de fragmentation **avant** génération, et des
+  noms de disques du commerce que le modèle ne connaît pas ;
+- la géométrie d'un 1,08 Go de 1996 était inventée (4 092 cylindres,
+  9,4 Mo/s au lieu de 3 835 et 7,6) ;
+- l'assistant prédisait qu'un disque serait « très éclaté » ;
+- des durées chiffrées par outil, qu'aucun calcul ne donne ;
+- les chiffres du préchargeur de Vista sur 320 Go posés sur un démarrage de
+  Windows 98, avec une explication fausse du témoin ;
+- des états limites impossibles : « reprendre » une passe, une génération qui
+  échoue parce que le disque est plein.
+
+**Second tour** — ce qui restait :
+
+- une marque encore présente sur trois écrans ;
+- Windows 95 sur 850 Mo en 3 h 18 et 515 % du volume déplacé, ramenés à 52 min,
+  4 020 évacuations et 130 % ;
+- UltraDefrag « une heure ou plus » sur un FAT de 1996, où il est **court** ;
+- 1 906 fichiers lus au démarrage de Windows 98, ramenés à 620 ;
+- quatre fiches « Pourquoi » fausses ou approximatives (loi de seek, next-fit,
+  zone MFT, témoin).
+
+### Laissé ouvert
+
+Les chiffres du disque d'exemple — `secretaire-1996`, 850 Mo — sont des
+**estimations** interpolées entre `dev-1996` et `gamer-1996`, pas une mesure.
+Les caler par `PLAN_ONLY=1 SCENARIO=secretaire-1996` avant de s'en servir
+comme référence d'écran.
+
+---
+
 ## Ce qui ne se négocie pas
 
 Ces règles viennent du moteur, pas du goût. Une maquette qui les enfreint se
