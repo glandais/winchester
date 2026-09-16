@@ -63,10 +63,6 @@ final class OperationSink {
         mutations.append(mutation)
     }
 
-    func record(contentsOf mutations: [MapMutation]) {
-        self.mutations.append(contentsOf: mutations)
-    }
-
     func emit(_ operation: DiskOperation) {
         guard let downstream else {
             operations.append(operation)

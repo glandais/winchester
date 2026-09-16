@@ -139,7 +139,12 @@ enum DefragOperations {
 
         // Ce que la destination recouvre de la source : ces clusters-là ne
         // repassent pas en « libre », ils changent simplement de contenu.
-        let kept = destination
+        // Triés une fois pour être cherchés par dichotomie : un refuge
+        // d'évacuation peut compter des centaines de morceaux, et chaque
+        // tronçon déplacé le consulte.
+        let kept = destination.count > 1
+            ? destination.filter { !$0.isEmpty }.sorted { $0.start < $1.start }
+            : destination
 
         while sourceIndex < source.count && destinationIndex < destination.count {
             let from = source[sourceIndex]
@@ -159,7 +164,7 @@ enum DefragOperations {
             let first = sink.mutationMark
             sink.record(MapMutation(start: Int(writeStart), count: Int(length),
                                     category: category))
-            sink.record(contentsOf: freed(start: readStart, length: length, kept: kept))
+            recordFreed(start: readStart, length: length, kept: kept, into: sink)
 
             sink.emit(DiskOperation(
                 kind: .writeExtent, phase: phase,
@@ -177,28 +182,41 @@ enum DefragOperations {
 
     /// Les clusters d'une portion de source qui redeviennent libres : tout ce
     /// qui n'est pas recouvert par la destination du même fichier.
-    private static func freed(start: UInt32, length: UInt32,
-                              kept: [Extent]) -> [MapMutation] {
-        var mutations: [MapMutation] = []
+    ///
+    /// `kept` est trié par début, sans extent vide ni chevauchement — ce que
+    /// sont les extents d'un fichier : au plus un le couvre, et le suivant est
+    /// le premier qui commence après.
+    ///
+    /// Écrit directement dans le récepteur, sans tableau intermédiaire : c'est
+    /// appelé à chaque tronçon déplacé, un demi-million de fois sur une passe
+    /// de `dev-1999`, et les allocations y coûtaient plus que le calcul.
+    private static func recordFreed(start: UInt32, length: UInt32,
+                                    kept: [Extent], into sink: OperationSink) {
         var cursor = start
         let end = start + length
 
         while cursor < end {
-            // Le premier extent conservé qui couvre `cursor` ?
-            if let covering = kept.first(where: { $0.start <= cursor && $0.end > cursor }) {
-                cursor = min(covering.end, end)
+            // Premier extent conservé qui commence après `cursor`.
+            var low = 0
+            var high = kept.count
+            while low < high {
+                let middle = (low + high) / 2
+                if kept[middle].start <= cursor { low = middle + 1 } else { high = middle }
+            }
+            // Celui d'avant couvre-t-il `cursor` ?
+            if low > 0 && kept[low - 1].end > cursor {
+                cursor = min(kept[low - 1].end, end)
                 continue
             }
             // Jusqu'où peut-on libérer sans heurter un extent conservé ?
-            let next = kept.filter { $0.start > cursor }.map(\.start).min() ?? end
+            let next = low < kept.count ? kept[low].start : end
             let stop = min(next, end)
             if stop > cursor {
-                mutations.append(MapMutation(start: Int(cursor), count: Int(stop - cursor),
-                                             category: .free))
+                sink.record(MapMutation(start: Int(cursor), count: Int(stop - cursor),
+                                        category: .free))
             }
             cursor = max(stop, cursor + 1)
         }
-        return mutations
     }
 
     /// Ce qu'un déplacement partiel lit, et ce que devient la description du

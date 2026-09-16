@@ -141,11 +141,68 @@ final class PassPipeline {
 
     let setup: PassSetup
 
-    private var mechanics: DiskMechanics
+    /// Tout l'état de la chaîne tient dans une valeur, modifiée d'un seul
+    /// accès par requête. Réparti en propriétés de la classe, chaque lecture
+    /// et chaque écriture passait par une vérification d'exclusivité à
+    /// l'exécution : une dizaine par requête, 15 % du calcul d'une passe.
+    private var chain: Chain
+    private let deliver: Delivery
+    private var finished = false
+
+    init(setup: PassSetup,
+         batchRequests: Int = 256,
+         batchSeconds: Double = 0.05,
+         deliver: @escaping Delivery) {
+        self.setup = setup
+        self.deliver = deliver
+        chain = Chain(setup: setup, batchRequests: batchRequests, batchSeconds: batchSeconds)
+    }
+
+    /// La rotation du plateau : des dates, connues avant toute requête.
+    var spindle: SpindleTimeline { chain.mechanics.spindle }
+
+    /// Une phase imposée par le scénario.
+    func mark(phase index: Int, at time: Double) {
+        chain.batch.phases.append(PhaseMark(index: index, time: time))
+    }
+
+    /// Une requête sans conséquence sur la carte : un démarrage.
+    @discardableResult
+    func serve(_ request: BlockRequest) -> RequestTiming {
+        let timing = chain.serve(request)
+        if chain.isDue { deliver(chain.flush()) }
+        return timing
+    }
+
+    /// Une opération de défragmentation, et ce qu'elle change à la carte.
+    func serve(_ operation: DiskOperation,
+               mutations: ArraySlice<MapMutation>,
+               progress: Double) {
+        chain.serve(operation, mutations: mutations, progress: progress)
+        if chain.isDue { deliver(chain.flush()) }
+    }
+
+    /// Le travail est fini : le disque se parque, le moteur se coupe s'il doit
+    /// l'être, et le bilan part avec le dernier paquet.
+    @discardableResult
+    func finish(plan: DefragPlan? = nil) -> PassEnd {
+        precondition(!finished, "une passe ne se termine qu'une fois")
+        finished = true
+        let end = chain.finish(plan: plan)
+        deliver(chain.flush())
+        return end
+    }
+}
+
+/// L'état de la chaîne, et tout ce qui le fait avancer.
+private struct Chain {
+
+    let setup: PassSetup
+
+    var mechanics: DiskMechanics
     private var cueStream: CueStream
     private var events: [DiskEvent] = []
-    private var batch = PassBatch()
-    private let deliver: Delivery
+    var batch = PassBatch()
 
     /// Un paquet part dès qu'il porte autant de requêtes, ou couvre autant de
     /// temps de passe.
@@ -156,18 +213,17 @@ final class PassPipeline {
 
     private var openBuckets: [ActivityBucket] = []
     private var firstStarts: [Int: Double] = [:]
+    /// Phase de la requête précédente. Les requêtes partent dans l'ordre : la
+    /// première d'une phase est aussi la plus précoce, et le dictionnaire n'a
+    /// à être consulté qu'au changement de phase.
+    private var lastPhase: Int?
     private var currentPhase: Int?
     private var lastProgress = -1.0
     private var eventCount = 0
     private var workEnd = 0.0
-    private var finished = false
 
-    init(setup: PassSetup,
-         batchRequests: Int = 256,
-         batchSeconds: Double = 0.05,
-         deliver: @escaping Delivery) {
+    init(setup: PassSetup, batchRequests: Int, batchSeconds: Double) {
         self.setup = setup
-        self.deliver = deliver
         self.batchRequests = batchRequests
         self.batchSeconds = batchSeconds
         mechanics = DiskMechanics(geometry: setup.geometry, seekModel: setup.seekModel,
@@ -179,24 +235,17 @@ final class PassPipeline {
         ingestEvents()
     }
 
-    /// La rotation du plateau : des dates, connues avant toute requête.
-    var spindle: SpindleTimeline { mechanics.spindle }
-
-    /// Une phase imposée par le scénario.
-    func mark(phase index: Int, at time: Double) {
-        batch.phases.append(PhaseMark(index: index, time: time))
+    var isDue: Bool {
+        batchedRequests >= batchRequests || mechanics.clock - lastDelivery >= batchSeconds
     }
 
-    /// Une requête sans conséquence sur la carte : un démarrage.
-    @discardableResult
-    func serve(_ request: BlockRequest) -> RequestTiming {
+    mutating func serve(_ request: BlockRequest) -> RequestTiming {
         let timing = simulate(request)
         batchedRequests += 1
-        deliverIfDue()
         return timing
     }
 
-    private func simulate(_ request: BlockRequest) -> RequestTiming {
+    private mutating func simulate(_ request: BlockRequest) -> RequestTiming {
         let before = mechanics.stats
         let (sample, timing) = mechanics.serve(request, events: &events)
         ingestEvents()
@@ -205,10 +254,9 @@ final class PassPipeline {
 
         // Datation des phases.
         let phase = request.phaseIndex
-        if let first = firstStarts[phase] {
-            firstStarts[phase] = min(first, timing.start)
-        } else {
-            firstStarts[phase] = timing.start
+        if lastPhase != phase {
+            if firstStarts[phase] == nil { firstStarts[phase] = timing.start }
+            lastPhase = phase
         }
         if setup.datesPhases && currentPhase != phase {
             batch.phases.append(PhaseMark(index: phase, time: timing.start))
@@ -229,10 +277,9 @@ final class PassPipeline {
         return timing
     }
 
-    /// Une opération de défragmentation, et ce qu'elle change à la carte.
-    func serve(_ operation: DiskOperation,
-               mutations: ArraySlice<MapMutation>,
-               progress: Double) {
+    mutating func serve(_ operation: DiskOperation,
+                        mutations: ArraySlice<MapMutation>,
+                        progress: Double) {
         let timing = simulate(BlockRequest(issueTime: operation.issueTime,
                                         lba: operation.lba,
                                         sectorCount: operation.sectors,
@@ -259,16 +306,9 @@ final class PassPipeline {
             }
         }
         batchedRequests += 1
-        deliverIfDue()
     }
 
-    /// Le travail est fini : le disque se parque, le moteur se coupe s'il doit
-    /// l'être, et le bilan part avec le dernier paquet.
-    @discardableResult
-    func finish(plan: DefragPlan? = nil) -> PassEnd {
-        precondition(!finished, "une passe ne se termine qu'une fois")
-        finished = true
-
+    mutating func finish(plan: DefragPlan?) -> PassEnd {
         let parkAt = mechanics.finish(events: &events)
         ingestEvents()
         cueStream.finish()
@@ -285,19 +325,30 @@ final class PassPipeline {
                           firstStarts: firstStarts,
                           plan: plan)
         batch.end = end
-        flush()
         return end
+    }
+
+    /// Rend le paquet en cours, et en ouvre un neuf.
+    mutating func flush() -> PassBatch {
+        cueStream.release(into: &batch.cues)
+        batch.cueWatermark = cueStream.watermark
+        batch.clock = mechanics.clock
+        let outgoing = batch
+        batch = PassBatch()
+        batchedRequests = 0
+        lastDelivery = mechanics.clock
+        return outgoing
     }
 
     // MARK: - Détails
 
-    private func ingestEvents() {
+    private mutating func ingestEvents() {
         eventCount += events.count
         for event in events { cueStream.ingest(event) }
         events.removeAll(keepingCapacity: true)
     }
 
-    private func updateBucket(_ index: Int, _ change: (inout ActivityBucket) -> Void) {
+    private mutating func updateBucket(_ index: Int, _ change: (inout ActivityBucket) -> Void) {
         // Deux ou trois tranches ouvertes au plus : une recherche linéaire
         // depuis la fin suffit.
         var position = openBuckets.count
@@ -311,29 +362,12 @@ final class PassPipeline {
         }
     }
 
-    private func closeBuckets(before index: Int) {
+    private mutating func closeBuckets(before index: Int) {
         var count = 0
         while count < openBuckets.count && openBuckets[count].index < index { count += 1 }
         guard count > 0 else { return }
         batch.buckets.append(contentsOf: openBuckets[0..<count])
         openBuckets.removeFirst(count)
-    }
-
-    private func deliverIfDue() {
-        if batchedRequests >= batchRequests || mechanics.clock - lastDelivery >= batchSeconds {
-            flush()
-        }
-    }
-
-    private func flush() {
-        cueStream.release(into: &batch.cues)
-        batch.cueWatermark = cueStream.watermark
-        batch.clock = mechanics.clock
-        let outgoing = batch
-        batch = PassBatch()
-        batchedRequests = 0
-        lastDelivery = mechanics.clock
-        deliver(outgoing)
     }
 }
 
