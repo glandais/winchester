@@ -28,6 +28,10 @@ final class DiskNoiseEngine: ObservableObject {
     /// La passe est allée au bout : il n'y a plus qu'à la relancer.
     @Published private(set) var isFinished = false
 
+    /// Ce qui a mis la lecture en pause sans qu'on le demande. Effacé à la
+    /// reprise, et quand une autre passe est chargée.
+    @Published private(set) var interruption: PlaybackInterruption?
+
     @Published var spindleLevel: Float = 0.32 { didSet { spindleMixer.outputVolume = spindleLevel } }
     @Published var transientLevel: Float = 1.0 { didSet { transientMixer.outputVolume = transientLevel } }
     @Published var masterLevel: Float = 0.85 { didSet { engine.mainMixerNode.outputVolume = masterLevel } }
@@ -110,6 +114,7 @@ final class DiskNoiseEngine: ObservableObject {
     private var tickCache: [Int: AVAudioPCMBuffer] = [:]
 
     private let lookahead = 0.70
+    private var observers: [NSObjectProtocol] = []
 
     // MARK: - Cycle de vie
 
@@ -138,6 +143,59 @@ final class DiskNoiseEngine: ObservableObject {
         haptics.spindleEnabled = spindleHaptics
         haptics.spindleIntensity = spindleHapticLevel
         haptics.prepare()
+
+        observeInterruptions()
+    }
+
+    // MARK: - Interruptions
+
+    /// Un appel, une autre app qui prend la sortie, un casque débranché : le
+    /// système arrête le graphe audio sans rien demander. Sans suivi, `isPlaying`
+    /// restait vrai et l'horloge, faute de rendu, retombait sur l'heure de
+    /// l'hôte : le temps écouté avançait en silence.
+    private func observeInterruptions() {
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification,
+                                            object: nil, queue: .main) { [weak self] note in
+            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            let options = (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
+                .map(AVAudioSession.InterruptionOptions.init(rawValue:)) ?? []
+            MainActor.assumeIsolated {
+                switch type {
+                case .began: self?.interrupt(.otherAudio)
+                case .ended: self?.endInterruption(shouldResume: options.contains(.shouldResume))
+                default: break
+                }
+            }
+        })
+        observers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification,
+                                            object: nil, queue: .main) { [weak self] note in
+            let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt)
+                .flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            // Un casque qu'on retire met la lecture en pause, comme partout
+            // ailleurs sur iOS : sinon la passe part dans le haut-parleur.
+            guard reason == .oldDeviceUnavailable else { return }
+            MainActor.assumeIsolated { self?.interrupt(.outputRemoved) }
+        })
+        observers.append(center.addObserver(forName: .AVAudioEngineConfigurationChange,
+                                            object: engine, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.interrupt(.outputChanged) }
+        })
+    }
+
+    private func interrupt(_ reason: PlaybackInterruption.Reason) {
+        guard isPlaying || isBuffering else { return }
+        pause()
+        interruption = PlaybackInterruption(reason: reason, time: currentTime)
+    }
+
+    /// L'autre app a rendu la main. On reprend si le système le propose — la fin
+    /// d'un appel —, sinon la passe reste en pause et l'écran le dit.
+    private func endInterruption(shouldResume: Bool) {
+        guard interruption?.reason == .otherAudio, shouldResume else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
+        play()
     }
 
     static func configureSession() {
@@ -160,6 +218,7 @@ final class DiskNoiseEngine: ObservableObject {
     /// où sauter, seulement une passe qui se calcule à mesure qu'on l'écoute.
     func load(feed: PassFeed, rpm: Double) {
         stop()
+        interruption = nil
         spindle.rpm = rpm
         self.feed = feed
         isLoaded = true
@@ -179,6 +238,7 @@ final class DiskNoiseEngine: ObservableObject {
         }
         // La passe n'a pas encore assez d'avance : on attend qu'elle en ait,
         // plutôt que de jouer un début troué.
+        interruption = nil
         guard isReady(at: currentTime) else {
             waitForFeed()
             return
@@ -458,5 +518,29 @@ final class DiskNoiseEngine: ObservableObject {
         let buffer = synth.renderTick(kind, variation: UInt32(key + 1))
         tickCache[key] = buffer
         return buffer
+    }
+}
+
+/// Une pause que personne n'a demandée.
+struct PlaybackInterruption: Equatable {
+    enum Reason: Equatable {
+        /// Un appel, une alarme, une autre app qui prend la sortie audio.
+        case otherAudio
+        /// Le casque ou l'enceinte a été retiré.
+        case outputRemoved
+        /// La sortie audio a changé et le graphe s'est arrêté.
+        case outputChanged
+    }
+
+    let reason: Reason
+    /// Le temps écouté au moment de la pause.
+    let time: Double
+
+    var label: String {
+        switch reason {
+        case .otherAudio:    return "un appel ou une autre app"
+        case .outputRemoved: return "sortie audio retirée"
+        case .outputChanged: return "sortie audio changée"
+        }
     }
 }

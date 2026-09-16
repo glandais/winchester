@@ -18,6 +18,11 @@ struct PlatterView: View {
     let track: PlatterTrack
     let frame: PlatterFrame
 
+    /// « Réduire les animations » : le plateau ne tourne plus. Le bras, lui,
+    /// continue d'aller où il lit — c'est une information, pas un décor — et les
+    /// accès restent sous la tête au lieu de dériver.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var geometry: DriveGeometry { track.geometry }
 
     // MARK: - Proportions
@@ -43,7 +48,7 @@ struct PlatterView: View {
 
             drawPlatter(context: context, center: center, radius: radius)
             drawZones(context: context, center: center, radius: radius)
-            if frame.spin > 0.02 {
+            if frame.spin > 0.02 && !reduceMotion {
                 drawRotationMarks(context: context, center: center, radius: radius)
             }
             drawTrail(context: context, center: center, radius: radius)
@@ -52,6 +57,8 @@ struct PlatterView: View {
             drawHeadStack(context: context, center: center, radius: radius)
         }
         .aspectRatio(1.05, contentMode: .fit)
+        // Le cylindre est écrit juste dessous ; le dessin n'a rien à dire de plus.
+        .accessibilityHidden(true)
     }
 
     // MARK: - Repères géométriques
@@ -78,7 +85,8 @@ struct PlatterView: View {
     /// Tours apparents accomplis entre un instant et l'image courante — ce dont
     /// le plateau a tourné depuis, et donc ce dont un accès a dérivé.
     private func drift(since time: Double) -> Double {
-        (frame.turns - track.turns(at: time)) * 2 * .pi
+        guard !reduceMotion else { return 0 }
+        return (frame.turns - track.turns(at: time)) * 2 * .pi
     }
 
     // MARK: - Éléments

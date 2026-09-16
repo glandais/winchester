@@ -20,7 +20,13 @@ struct ContentView: View {
     @State private var tab: AppTab = .disks
     @State private var nowPlaying: NowPlaying?
     @AppStorage(OnboardingView.seenKey) private var onboardingSeen = false
+    /// Quand l'app est passée en arrière-plan, pour savoir au retour si l'absence
+    /// a compté.
+    @State private var backgroundedAt: Date?
+    /// Le bandeau dit où en est la passe, jusqu'à ce qu'on l'ouvre.
+    @State private var returnedFromBackground = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// En arrière-plan, aucun onglet n'est vu : la passe continue de sonner,
     /// mais aucun écran ne suit plus son horloge.
@@ -30,7 +36,8 @@ struct ContentView: View {
         TabView(selection: $tab) {
             // Le bandeau est posé par l'écran lui-même, sur la racine de sa pile :
             // autour de la pile, il recouvrait le bas des écrans poussés.
-            DisksScreen(model: model, library: library, showsMiniPlayer: tab != .pass) { tab = .pass }
+            DisksScreen(model: model, library: library, showsMiniPlayer: tab != .pass,
+                        returnedFromBackground: returnedFromBackground) { tab = .pass }
                 .tabItem { Label("Disques", systemImage: "internaldrive") }
                 .tag(AppTab.disks)
 
@@ -39,15 +46,19 @@ struct ContentView: View {
                 .tag(AppTab.pass)
 
             InstrumentsScreen(model: model, engine: model.engine, isVisible: isActive && tab == .instruments)
-                .passMiniPlayer(model: model, isShown: tab != .pass) { tab = .pass }
+                .passMiniPlayer(model: model, isShown: tab != .pass, returned: returnedFromBackground) { tab = .pass }
                 .tabItem { Label("Instruments", systemImage: "gauge.with.dots.needle.33percent") }
                 .tag(AppTab.instruments)
 
             SettingsScreen(model: model, engine: model.engine)
-                .passMiniPlayer(model: model, isShown: tab != .pass) { tab = .pass }
+                .passMiniPlayer(model: model, isShown: tab != .pass, returned: returnedFromBackground) { tab = .pass }
                 .tabItem { Label("Réglages", systemImage: "slider.horizontal.3") }
                 .tag(AppTab.settings)
         }
+        // `Font.dynamic` lit la taille de texte au moment du dessin : quand elle
+        // change, les écrans sont refaits. Les modèles, eux, vivent au-dessus.
+        .id(typeSize)
+        .dynamicTypeSize(...TypeScale.largestDynamicTypeSize)
         .toolbarBackground(Theme.panel, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .tint(Theme.read)
@@ -63,7 +74,24 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background { model.engine.suspendIfIdle() }
+            switch phase {
+            case .background:
+                model.engine.suspendIfIdle()
+                backgroundedAt = Date()
+            case .active:
+                // Un aller-retour éclair — le centre de contrôle, une
+                // notification — ne vaut pas qu'on le signale.
+                if let since = backgroundedAt, Date().timeIntervalSince(since) > 5,
+                   model.engine.currentTime > 0 {
+                    returnedFromBackground = true
+                }
+                backgroundedAt = nil
+            default:
+                break
+            }
+        }
+        .onChange(of: tab) { _, shown in
+            if shown == .pass { returnedFromBackground = false }
         }
     }
 }
@@ -120,7 +148,7 @@ struct StatTile: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 2) {
                 Text(label)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 if let why {
                     Spacer(minLength: 0)
@@ -130,11 +158,11 @@ struct StatTile: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(.system(size: 21, weight: .medium, design: .rounded))
+                    .font(.dynamic(size: 21, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.text)
                     .monospacedDigit()
                 Text(unit)
-                    .font(.system(size: 10))
+                    .font(.dynamic(size: 10))
                     .foregroundStyle(Theme.dim)
             }
         }

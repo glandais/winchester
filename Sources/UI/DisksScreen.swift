@@ -11,6 +11,8 @@ struct DisksScreen: View {
     @ObservedObject var model: SimulationModel
     @ObservedObject var library: DiskLibraryModel
     let showsMiniPlayer: Bool
+    /// L'app revient d'arrière-plan pendant une passe.
+    var returnedFromBackground = false
 
     /// Montre l'onglet de la passe.
     let onOpenPass: () -> Void
@@ -34,7 +36,7 @@ struct DisksScreen: View {
                                 wizard = .blank()
                             } label: {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 18, weight: .semibold))
+                                    .font(.dynamic(size: 18, weight: .semibold))
                                     .frame(width: 40, height: 40)
                                     .background(Circle().fill(Color.white.opacity(0.08)))
                             }
@@ -43,7 +45,7 @@ struct DisksScreen: View {
                         demos
                         myDisks
                         Text("DISQUES D'ÉPOQUE")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                             .padding(.top, 6)
                         DiskGallery(model: library)
@@ -54,7 +56,8 @@ struct DisksScreen: View {
             // Le titre ne s'affiche pas — l'écran a le sien — mais c'est lui
             // que prend le bouton de retour de la fiche.
             .navigationTitle("Disques")
-            .passMiniPlayer(model: model, isShown: showsMiniPlayer, onOpen: onOpenPass)
+            .passMiniPlayer(model: model, isShown: showsMiniPlayer, returned: returnedFromBackground,
+                            onOpen: onOpenPass)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $report) { record in
                 PassReportSheet(model: model, record: record, onLaunched: onOpenPass)
@@ -101,12 +104,12 @@ struct DisksScreen: View {
     private var myDisks: some View {
         if !library.customs.isEmpty || library.storeFailure != nil {
             Text("MES DISQUES")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
                 .padding(.top, 6)
             if let failure = library.storeFailure {
                 Text(failure)
-                    .font(.system(size: 12))
+                    .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.read)
                     .fixedSize(horizontal: false, vertical: true)
                     .panel()
@@ -143,16 +146,16 @@ struct DisksScreen: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(kind.title.uppercased())
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(kind == .windowsBoot ? Theme.write : Theme.read)
                 Text(kind.summary)
-                    .font(.system(size: 12))
+                    .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             Button("Lancer") { launch(kind) }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dynamic(size: 13, weight: .semibold))
                 .buttonStyle(.borderedProminent)
                 .foregroundStyle(Theme.background)
         }

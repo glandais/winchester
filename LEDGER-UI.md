@@ -1111,7 +1111,8 @@ qu'elles éclairent, et à moitié écrit pour qui a lu le code (« one-shots »
   de la maquette : elles reprennent les notes du code et les commentaires des
   allocateurs, pas une vérification chiffre à chiffre.
 - Le ⓘ des évacuations, du témoin et du préchargeur n'a pas été touché à
-  l'écran, seulement celui du seek moyen et vu celui de la fiche d'un disque.
+  l'écran : seul celui du seek moyen l'a été, et celui de la fiche d'un disque
+  a été vu.
 - Pas de ⓘ sur IOPS, débit ni « Où passe le temps » : aucune fiche ne leur
   correspond encore.
 - L'accueil n'a pas d'illustration animée ; la maquette n'en montrait pas.
@@ -1120,15 +1121,133 @@ qu'elles éclairent, et à moitié écrit pour qui a lu le code (« one-shots »
 
 ## Chantier U12 — états et accessibilité
 
-**À faire** · transversal
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-- États : génération en cours, annulée, échouée ; outil indisponible ; passe
-  interrompue ; retour d'arrière-plan.
-- Dynamic Type ; VoiceOver sur la carte par zones, pas par blocs ;
-  « Réduire les animations » : plateau figé, carte sans rémanence ; contraste
-  de l'ambre et du turquoise sur fond sombre.
+Des états que les maquettes 17 demandaient, la plupart existaient déjà : la
+génération en cours, annulée ou échouée a son panneau dans la fiche d'un disque
+(U2, U9), un outil indisponible est grisé avec sa raison (U3). Il manquait :
+
+- **la passe interrompue.** Un appel, une autre app qui prend la sortie, un
+  casque débranché arrêtent le graphe audio sans prévenir. Le moteur ne le
+  voyait pas : `isPlaying` restait vrai et l'horloge, faute de rendu,
+  retombait sur l'heure de l'hôte — **le temps écouté avançait en silence**, et
+  la passe sautait d'autant à la reprise ;
+- **le retour d'arrière-plan** : rien ne disait où en était la passe ;
+- **l'accessibilité** : toutes les polices étaient des tailles fixes
+  (`.system(size:)`, 180 appels au départ du chantier) que Dynamic Type ne touche pas ; VoiceOver ne
+  lisait rien de la carte ; « Réduire les animations » laissait tourner le
+  plateau ; le texte secondaire ne réagissait pas à « Augmenter le contraste ».
+
+### Les décisions — les états
+
+- **`DiskNoiseEngine` suit les interruptions** : fin de session audio
+  (`interruptionNotification`), sortie retirée (`routeChange`,
+  `oldDeviceUnavailable`), graphe reconfiguré
+  (`AVAudioEngineConfigurationChange`). Chacune **met en pause** et garde
+  `interruption` : la raison et le temps écouté. La reprise l'efface.
+- **Après un appel, la passe reprend d'elle-même** quand le système le propose
+  (`shouldResume`) — c'est ce qu'on attend d'une passe de plusieurs heures en
+  fond. Un casque retiré ne reprend jamais seul, comme partout sur iOS.
+- **L'écran de la passe** dit « Passe interrompue à 12 min 41 », la cause, et
+  **Reprendre**. Le **bandeau** des autres onglets titre « INTERROMPUE À … ».
+- **Retour d'arrière-plan** (maquette 17) : une absence de plus de cinq secondes
+  pendant une passe commencée fait titrer le bandeau **« EN COURS · RETOUR
+  D'ARRIÈRE-PLAN »** (ou en pause, ou terminée), avec l'avancement en tête ; le
+  titre s'efface dès qu'on ouvre la passe. Un aller-retour éclair — centre de
+  contrôle, notification — ne compte pas.
+- La maquette mettait cette carte **dans Mes disques** ; elle vit dans le
+  bandeau, qui est déjà sur tous les onglets sauf la passe. Deux cartes qui
+  disent la même chose l'une au-dessus de l'autre n'apportent rien.
+
+### Les décisions — l'accessibilité
+
+- **Dynamic Type.** Tous les `.font(.system(size:))` des écrans passent par
+  **`Font.dynamic`**, qui met la taille de maquette à l'échelle par
+  `UIFontMetrics` (style corps) : `Font.custom(relativeTo:)` aurait perdu le
+  monospace des chiffres et l'arrondi des titres.
+  - **Plafond à la troisième taille d'accessibilité** (AX3), et pour les polices
+    du système (`dynamicTypeSize(...accessibility3)`) : au-delà, une tuile de
+    deux colonnes ne tient plus « 3,6 Mo/s ».
+  - Ce qui fait déjà 24 pt ou plus — titres, gros chiffres, transport — ne
+    grandit que **d'un quart** : à AX3, le bouton lecture de 54 pt mangeait le
+    tiers de l'écran.
+  - La taille est lue au dessin : quand elle change, `ContentView` refait les
+    écrans (`.id(typeSize)`). Les modèles vivent au-dessus, la passe continue.
+  - Corrigé en regardant : « lectu/re » coupé en plein mot dans la légende, le
+    titre de la passe coupé en « Défragmentati/on », « 180 Mo · FAT16 » sur
+    quatre lignes.
+- **VoiceOver lit la carte par zones** (`MapZone`, `Sources/Model`, testé) :
+  quatre quarts dans l'ordre du volume, chacun en une phrase — « début du disque,
+  93 % occupé, surtout du système rangé ». La catégorie dominante l'est **au
+  poids** (remplissage des blocs), « rangé » quand la moitié au moins de ce poids
+  est d'un seul tenant, « vide » sous 2 %. Le fichier d'échange et les tables ne
+  portent pas la nuance. Le résumé n'est calculé **que si VoiceOver écoute** : il
+  parcourt tous les blocs à chaque image.
+- **Réduire les animations** : le plateau **ne tourne plus** (pas de repères de
+  rotation) et les accès ne dérivent plus, ils restent sous la tête ; **le bras
+  continue de bouger**, parce que sa position est l'information. Sur la carte en
+  plein écran, **plus de rémanence** : le dernier accès est entouré, sans trace
+  qui s'efface. Le repère du mode ambiance s'arrête aussi.
+- **Contraste.** Mesuré sur le fond `#0E0F12` et le panneau `#191B20` :
+
+  | couleur | sur le fond | sur un panneau |
+  |---|---:|---:|
+  | ambre `#FFB347` | 10,8:1 | 9,7:1 |
+  | turquoise `#5CD1D1` | 10,5:1 | 9,4:1 |
+  | texte `#EBEBEB` | 16,1:1 | 14,5:1 |
+  | secondaire `#858585` | 5,2:1 | **4,7:1** |
+  | secondaire, contraste augmenté `#ADADAD` | 8,5:1 | 7,7:1 |
+
+  Ambre et turquoise passent largement : rien à changer. Le texte secondaire
+  est juste au-dessus du seuil de 4,5:1 : **« Augmenter le contraste » le monte
+  à `#ADADAD`** (`Theme.dim` devient une couleur dynamique).
+- Le plateau est caché à VoiceOver : le cylindre est écrit juste dessous.
+
+### Ce qui valide
+
+- **`swift test` : 106 tests `DiskCore` et 184 `DefragKit` passent**, dont les
+  quatre de `MapZoneTests` — quatre zones et leurs
+  phrases, la catégorie dominante au poids, une carte plus courte que ses
+  zones, chaque catégorie se dit.
+- Construit en Debug pour le simulateur iPhone 17 Pro, sans erreur ;
+  `Tools/build-render.sh` compile toujours.
+- Sur le simulateur, démo de défragmentation :
+  - **retour d'arrière-plan** après 8 s dans les Réglages de l'iOS : le bandeau
+    de l'onglet Disques titre « EN COURS · RETOUR D'ARRIÈRE-PLAN », « 31 % ·
+    Fichiers système · 0:16.1 » ;
+  - **Dynamic Type** en « très très très grand » puis AX5 (plafonnée à AX3),
+    changée pendant la lecture : Passe, Disques, Instruments et Réglages se
+    refont sans arrêter la passe, sans troncature après les trois corrections ;
+  - **VoiceOver**, par l'arbre d'accessibilité (`axe describe-ui`) avec le
+    résumé forcé le temps de la mesure : « Carte du volume », puis « début du
+    disque, 93 % occupé, surtout du système rangé », « deuxième quart, 95 %
+    occupé, surtout des applications rangées », « troisième quart, 89 % occupé,
+    surtout des documents en morceaux », « fin du disque, 28 % occupé, surtout
+    des fichiers temporaires rangés » ;
+  - **Réduire les animations** et **Augmenter le contraste** activés, même
+    instant de la passe comparé côte à côte : plateau sans repères et sans
+    traînée en spirale, texte secondaire plus clair. La carte en plein écran
+    sans rémanence n'a pas été regardée.
+
+### Laissé ouvert
+
+- **Aucune interruption réelle n'a été déclenchée** : ni appel, ni casque retiré,
+  ni reconfiguration — le simulateur ne les produit pas sur commande. Le code
+  suit la documentation d'`AVAudioSession` ; à éprouver sur le téléphone avec
+  un appel et des écouteurs.
+- **VoiceOver lui-même n'a pas parlé** : l'arbre d'accessibilité est juste, mais
+  le parcours au doigt, l'ordre de lecture des écrans et les étiquettes des
+  autres commandes n'ont pas été passés en revue.
+- Les tailles d'accessibilité au-delà d'AX3 sont plafonnées, pas prises en
+  charge ; l'assistant (U9) et le bilan (U8) n'ont pas été regardés en grande
+  taille.
+- `Font.dynamic` lit la taille de l'application sur le fil principal
+  (`MainActor.assumeIsolated`) : une police construite ailleurs qu'en dessinant
+  une vue ferait planter l'app.
+- La carte en pouce de la passe n'avait pas de rémanence : sous « Réduire les
+  animations », elle est inchangée.
 
 ---
 

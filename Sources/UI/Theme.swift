@@ -6,7 +6,12 @@ enum Theme {
     static let panel = Color(red: 0.098, green: 0.104, blue: 0.125)
     static let stroke = Color.white.opacity(0.08)
     static let text = Color(white: 0.92)
-    static let dim = Color(white: 0.52)
+    /// Texte secondaire. #858585 fait 4,7:1 sur un panneau : juste au-dessus du
+    /// seuil pour un texte courant, et en dessous dès qu'on l'atténue encore.
+    /// « Augmenter le contraste » le remonte à 7,7:1.
+    static let dim = Color(uiColor: UIColor { traits in
+        UIColor(white: traits.accessibilityContrast == .high ? 0.68 : 0.52, alpha: 1)
+    })
 
     /// Ambre : lecture, voyant d'activité.
     static let read = Color(red: 1.0, green: 0.70, blue: 0.28)
@@ -84,7 +89,7 @@ struct ScreenTitle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
+                .font(.dynamic(size: 28, weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.text)
             Text(subtitle)
                 .font(.caption)
@@ -171,9 +176,36 @@ enum FrenchFormat {
 }
 
 extension Font {
-    /// La police des écrans : une taille fixe des maquettes, à graisse et
-    /// dessin choisis.
+    /// La police des écrans : une taille de maquette, mise à l'échelle de la
+    /// taille de texte choisie dans les réglages de l'iPhone.
+    ///
+    /// `Font.system(size:)` ne suit pas Dynamic Type, et `Font.custom(_:size:relativeTo:)`
+    /// perdrait le dessin monospace des chiffres et arrondi des titres : on passe
+    /// donc par `UIFontMetrics`, avec le style « corps » pour tout le monde — les
+    /// maquettes n'ont pas de hiérarchie de styles, seulement des tailles.
+    ///
+    /// L'agrandissement s'arrête à la troisième taille d'accessibilité : au-delà,
+    /// une tuile de deux colonnes ne tient plus un chiffre de six caractères, et
+    /// l'app deviendrait une suite de troncatures. Ce qui est déjà grand — titres,
+    /// gros chiffres, boutons du transport — grandit d'un quart au plus.
     static func dynamic(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
-        .system(size: size, weight: weight, design: design)
+        .system(size: TypeScale.scaled(size), weight: weight, design: design)
+    }
+}
+
+/// La taille de texte de l'iPhone, lue sur l'application.
+enum TypeScale {
+
+    static let largest = UIContentSizeCategory.accessibilityLarge
+    /// La même borne pour les polices du système — titres de navigation, barre
+    /// d'onglets.
+    static let largestDynamicTypeSize = DynamicTypeSize.accessibility3
+
+    static func scaled(_ size: CGFloat) -> CGFloat {
+        let category = MainActor.assumeIsolated { UIApplication.shared.preferredContentSizeCategory }
+        let clamped = category > largest ? largest : category
+        let traits = UITraitCollection(preferredContentSizeCategory: clamped)
+        let scaled = UIFontMetrics(forTextStyle: .body).scaledValue(for: size, compatibleWith: traits)
+        return size >= 24 ? min(scaled, size * 1.25) : scaled
     }
 }

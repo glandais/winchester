@@ -117,10 +117,10 @@ struct DiskWizardSheet: View {
                     VStack(alignment: .leading, spacing: 14) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("ÉTAPE \(step + 1) SUR 6")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(Theme.read)
                             Text(Self.titles[step])
-                                .font(.system(size: 26, weight: .bold, design: .rounded))
+                                .font(.dynamic(size: 26, weight: .bold, design: .rounded))
                                 .foregroundStyle(Theme.text)
                         }
                         switch step {
@@ -175,7 +175,7 @@ struct DiskWizardSheet: View {
                 }
             }
         }
-        .font(.system(size: 15, weight: .semibold))
+        .font(.dynamic(size: 15, weight: .semibold))
         .buttonStyle(.plain)
         .foregroundStyle(Theme.text)
         .padding(.horizontal, 16)
@@ -196,21 +196,21 @@ struct DiskWizardSheet: View {
                 .textFieldStyle(.roundedBorder)
             HStack {
                 Text("Graine \(FrenchFormat.integer(Int(draft.seed)))")
-                    .font(.system(size: 14, design: .monospaced))
+                    .font(.dynamic(size: 14, design: .monospaced))
                     .foregroundStyle(Theme.text)
                 Spacer()
                 Button("🎲 Autre graine") { draft.seed = UInt64.random(in: 1...9_999_999) }
                     .buttonStyle(.bordered)
             }
             Text("Même histoire, autre disque : la graine change l'ordre exact des écritures.")
-                .font(.system(size: 11))
+                .font(.dynamic(size: 11))
                 .foregroundStyle(Theme.dim)
             Button {
                 saved = false
                 library.build(draft: draft)
             } label: {
                 Text(isBuilt ? "Refabriquer le disque" : "Fabriquer le disque")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.dynamic(size: 15, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Theme.read))
@@ -236,7 +236,7 @@ struct DiskWizardSheet: View {
                 } label: {
                     Label(saved ? "Enregistré dans Mes disques" : "Enregistrer dans Mes disques",
                           systemImage: saved ? "checkmark" : "tray.and.arrow.down")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.dynamic(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.16)))
@@ -254,7 +254,7 @@ struct DiskWizardSheet: View {
     private var otherFormats: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("REFAIRE AVEC LES MÊMES HABITUDES")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             HStack(spacing: 8) {
                 ForEach([FileSystemKind.fat16, .vfat, .fat32, .ntfs], id: \.self) { kind in
@@ -265,7 +265,7 @@ struct DiskWizardSheet: View {
                             library.build(draft: draft)
                         }
                         .buttonStyle(.bordered)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .font(.dynamic(size: 13, weight: .semibold, design: .monospaced))
                     }
                 }
             }
@@ -320,7 +320,7 @@ private struct HardwareStep: View {
 
         VStack(alignment: .leading, spacing: 8) {
             Text("GÉOMÉTRIE DÉDUITE")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             labeled("Plateaux", "\(platters) (\(geometry.heads) têtes)")
             labeled("Cylindres", FrenchFormat.integer(geometry.cylinders))
@@ -329,7 +329,7 @@ private struct HardwareStep: View {
             if platters > 4 {
                 Text("Une capacité en avance sur son époque ajoute des plateaux : \(platters) ici. "
                      + "La densité d'une face est celle des disques vendus en \(draft.timeline.start.year).")
-                    .font(.system(size: 11))
+                    .font(.dynamic(size: 11))
                     .foregroundStyle(Theme.read)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -361,7 +361,7 @@ private struct FormatStep: View {
             }
             .pickerStyle(.segmented)
             Text(Self.explanation(draft.fileSystem.type))
-                .font(.system(size: 12))
+                .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -393,7 +393,7 @@ private struct SoftwareStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SYSTÈME")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             Picker("Système", selection: Binding(get: { draft.os }, set: select(system:))) {
                 ForEach(SystemOption.all) { option in
@@ -407,7 +407,7 @@ private struct SoftwareStep: View {
 
         VStack(alignment: .leading, spacing: 10) {
             Text("LOGICIELS INSTALLÉS AU DÉPART")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             ForEach(SoftwareYears.applications, id: \.id) { app in
                 let year = SoftwareYears.year[app.id]
@@ -418,7 +418,7 @@ private struct SoftwareStep: View {
                             Text(app.displayName).foregroundStyle(Theme.text)
                             if let year {
                                 Text(late ? "\(String(year)) · trop récent" : String(year))
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(.dynamic(size: 11, design: .monospaced))
                                     .foregroundStyle(late ? Theme.read : Theme.dim)
                             }
                         }
@@ -463,7 +463,7 @@ private struct SoftwareStep: View {
                     draft.uninstalls?.removeAll { $0.app == id }
                 }
             }))
-            .font(.system(size: 12))
+            .font(.dynamic(size: 12))
             .foregroundStyle(Theme.dim)
             if let index, let uninstalls = draft.uninstalls {
                 DatePicker("", selection: Binding(
@@ -485,7 +485,7 @@ private struct PeriodStep: View {
         let days = max(draft.timeline.start.days(until: draft.timeline.end), 0)
         VStack(alignment: .leading, spacing: 12) {
             Text("Combien de temps ce disque a servi, du formatage au jour où on l'écoute.")
-                .font(.system(size: 12))
+                .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
             DatePicker("Début", selection: date(\.start), displayedComponents: .date)
             DatePicker("Fin", selection: date(\.end), displayedComponents: .date)
@@ -496,7 +496,7 @@ private struct PeriodStep: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("DÉFRAGMENTATIONS PLANIFIÉES")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 Spacer()
                 Button("+ ajouter") {
@@ -504,7 +504,7 @@ private struct PeriodStep: View {
                                                             + draft.timeline.end.dayNumber) / 2)
                     draft.defragRuns = (draft.defragRuns ?? []) + [middle]
                 }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dynamic(size: 13, weight: .semibold))
             }
             ForEach(Array((draft.defragRuns ?? []).enumerated()), id: \.offset) { index, run in
                 HStack {
@@ -522,7 +522,7 @@ private struct PeriodStep: View {
                 }
             }
             Text("Une défragmentation au milieu de l'histoire change tout ce qui s'écrit ensuite.")
-                .font(.system(size: 11))
+                .font(.dynamic(size: 11))
                 .foregroundStyle(Theme.dim)
         }
         .panel()
@@ -549,7 +549,7 @@ private struct HabitsStep: View {
 
     var body: some View {
         Text("Ce que la personne faisait de son disque. La fragmentation en découlera : elle ne se règle pas.")
-            .font(.system(size: 12))
+            .font(.dynamic(size: 12))
             .foregroundStyle(Theme.dim)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -602,7 +602,7 @@ private struct HabitsStep: View {
             Toggle(isOn: Binding(get: { draft.activity[keyPath: keyPath] != nil },
                                  set: { draft.activity[keyPath: keyPath] = $0 ? defaults : nil })) {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.dynamic(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.text)
             }
             if let value = draft.activity[keyPath: keyPath] {
@@ -634,7 +634,7 @@ private struct IssuesPanel: View {
                         Image(systemName: issue.severity == .blocking ? "xmark.octagon" : "exclamationmark.triangle")
                             .foregroundStyle(issue.severity == .blocking ? Color.red : Theme.read)
                         Text(issue.message)
-                            .font(.system(size: 12))
+                            .font(.dynamic(size: 12))
                             .foregroundStyle(Theme.text.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -649,11 +649,11 @@ private struct IssuesPanel: View {
 private func labeled(_ label: String, _ value: String) -> some View {
     HStack(alignment: .firstTextBaseline) {
         Text(label)
-            .font(.system(size: 13))
+            .font(.dynamic(size: 13))
             .foregroundStyle(Theme.text)
         Spacer()
         Text(value)
-            .font(.system(size: 13, weight: .medium, design: .monospaced))
+            .font(.dynamic(size: 13, weight: .medium, design: .monospaced))
             .foregroundStyle(Theme.read)
             .monospacedDigit()
     }

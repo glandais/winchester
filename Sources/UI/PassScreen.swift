@@ -47,6 +47,9 @@ struct SimulatorScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header
+                    if let interruption = engine.interruption {
+                        interruptionCard(interruption)
+                    }
                     if let record = model.currentRecord, record.kind == .defrag {
                         finishedCard(record)
                     }
@@ -105,12 +108,12 @@ struct SimulatorScreen: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.label.title)
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.dynamic(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(Theme.text)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.6)
                     Text(model.defrag?.strategy.label ?? model.boot.map(bootTitle) ?? model.geometry.model)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.dynamic(size: 12, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .lineLimit(1)
                 }
@@ -123,11 +126,11 @@ struct SimulatorScreen: View {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("PHASE \(model.phaseIndex + 1) · \((model.phase?.label ?? "—").uppercased())")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.read)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(model.phase?.detail ?? "")
-                        .font(.system(size: 13))
+                        .font(.dynamic(size: 13))
                         .foregroundStyle(Theme.text.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -135,12 +138,12 @@ struct SimulatorScreen: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     if model.defrag != nil {
                         Text(FrenchFormat.percent(model.defragProgress ?? 0))
-                            .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                            .font(.dynamic(size: 24, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.read)
                             .monospacedDigit()
                     }
                     Text(FrenchFormat.duration(time))
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.dynamic(size: 13, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .monospacedDigit()
                 }
@@ -160,6 +163,33 @@ struct SimulatorScreen: View {
         .panel()
     }
 
+    /// La lecture s'est arrêtée sans qu'on le demande : on dit pourquoi, et où.
+    private func interruptionCard(_ interruption: PlaybackInterruption) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "pause.circle")
+                .font(.dynamic(size: 20))
+                .foregroundStyle(Theme.read)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Passe interrompue à \(FrenchFormat.duration(interruption.time))")
+                    .font(.dynamic(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                Text("Cause : \(interruption.label). Elle reprend où elle s'est arrêtée.")
+                    .font(.dynamic(size: 12))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("Reprendre") { engine.play() }
+                .font(.dynamic(size: 13, weight: .semibold))
+                .buttonStyle(.borderedProminent)
+                .foregroundStyle(Theme.background)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel()
+        .accessibilityElement(children: .contain)
+    }
+
     /// La passe est entendue jusqu'au bout : son bilan est prêt.
     private func finishedCard(_ record: PassRecord) -> some View {
         Button {
@@ -167,19 +197,19 @@ struct SimulatorScreen: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.seal")
-                    .font(.system(size: 20))
+                    .font(.dynamic(size: 20))
                     .foregroundStyle(Theme.read)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Passe terminée")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
                     Text("Avant → après, un autre outil, le disque rangé")
-                        .font(.system(size: 11))
+                        .font(.dynamic(size: 11))
                         .foregroundStyle(Theme.dim)
                 }
                 Spacer()
                 Text("Voir le bilan")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.dynamic(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.background)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
@@ -214,7 +244,7 @@ struct SimulatorScreen: View {
                 .frame(width: 11, height: 11)
                 .shadow(color: on ? Theme.read.opacity(0.9) : .clear, radius: 6)
             Text("HDD")
-                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 8, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
         }
         .accessibilityElement(children: .ignore)
@@ -234,8 +264,10 @@ struct SimulatorScreen: View {
                 legendDot(Theme.write, "écriture")
                 Spacer()
                 Text("\(playback.partition.capacityDescription) · \(playback.partition.format.label)")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                 FullScreenMapButton { showsFullScreenMap = true }
             }
             ClusterMapView(grid: model.mapGrid,
@@ -257,8 +289,10 @@ struct SimulatorScreen: View {
         HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 9, height: 9)
             Text(label)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.dynamic(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.dim)
+                .lineLimit(1)
+                .fixedSize()
         }
     }
 
@@ -298,14 +332,14 @@ struct SimulatorScreen: View {
                  + "\(FrenchFormat.integer(before.freeHoles)) trous dans l'espace libre."
                  + (plan.map { " À l'arrivée : \(FrenchFormat.integer($0.after.fragmentedFiles)) fichiers fragmentés, "
                      + "\(FrenchFormat.integer($0.after.freeHoles)) trous." } ?? ""))
-                .font(.system(size: 12))
+                .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
             // C'est la stratégie qui commente ses propres compteurs : les mêmes
             // nombres ne disent pas la même chose d'un outil à l'autre.
             if let plan {
                 Text(plan.strategy.summary(of: plan))
-                    .font(.system(size: 12))
+                    .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.text.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
                     .panel()
@@ -322,15 +356,15 @@ struct SimulatorScreen: View {
                 .frame(maxHeight: 300)
             HStack(alignment: .firstTextBaseline) {
                 Text("CYLINDRE")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 Text("\(FrenchFormat.integer(Int(frame.cylinder.rounded()))) / \(FrenchFormat.integer(model.geometry.cylinders))")
-                    .font(.system(size: 15, weight: .medium, design: .monospaced))
+                    .font(.dynamic(size: 15, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.read)
                     .monospacedDigit()
                 Spacer()
                 Text(model.geometry.model)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .lineLimit(1)
             }
@@ -346,11 +380,11 @@ struct SimulatorScreen: View {
         let current = engine.isFinished ? -1 : model.phaseIndex
         return VStack(alignment: .leading, spacing: 8) {
             Text(model.boot == nil ? "PHASES ÉCOUTÉES" : "ÉTAPES")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             if model.phaseTimes.isEmpty {
                 Text("Rien encore.")
-                    .font(.system(size: 12))
+                    .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.dim)
             }
             ForEach(model.phaseTimes, id: \.index) { entry in
@@ -359,12 +393,12 @@ struct SimulatorScreen: View {
                         .fill(Theme.phaseColor(entry.index))
                         .frame(width: 8, height: 8)
                     Text(model.phases.indices.contains(entry.index) ? model.phases[entry.index].label : "—")
-                        .font(.system(size: 13))
+                        .font(.dynamic(size: 13))
                         .foregroundStyle(Theme.text)
                     Spacer()
                     Text(entry.index == current ? "en cours · \(FrenchFormat.duration(entry.seconds))"
                                                 : FrenchFormat.duration(entry.seconds))
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.dynamic(size: 12, design: .monospaced))
                         .foregroundStyle(entry.index == current ? Theme.read : Theme.dim)
                         .monospacedDigit()
                 }
@@ -387,7 +421,7 @@ struct SimulatorScreen: View {
                 Spacer()
                 Text("\(FrenchFormat.integer(model.totals.requests)) requêtes")
             }
-            .font(.system(size: 11, design: .monospaced))
+            .font(.dynamic(size: 11, design: .monospaced))
             .foregroundStyle(Theme.dim)
         }
         .panel()
@@ -425,18 +459,18 @@ struct SimulatorScreen: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(duration.map { "DÉMARRAGE TERMINÉ · \(FrenchFormat.duration($0).uppercased())" }
                          ?? "DÉMARRAGE EN COURS · \(FrenchFormat.duration(time).uppercased())")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                     HStack(spacing: 2) {
                         Text("Le témoin")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.dynamic(size: 17, weight: .semibold))
                             .foregroundStyle(Theme.text)
                         WhyButton(topic: .witness)
                     }
                 }
                 Spacer()
                 Text(gap.map(signedPercent) ?? "…")
-                    .font(.system(size: 26, weight: .semibold, design: .monospaced))
+                    .font(.dynamic(size: 26, weight: .semibold, design: .monospaced))
                     .foregroundStyle(gap.map { $0 < 0 ? Theme.write : Theme.read } ?? Theme.dim)
                     .monospacedDigit()
             }
@@ -462,7 +496,7 @@ struct SimulatorScreen: View {
             }
 
             Text(witnessExplanation(boot, gap: gap))
-                .font(.system(size: 12))
+                .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.text.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -472,7 +506,7 @@ struct SimulatorScreen: View {
                 Text(boot.readsByPosition
                      ? "Préchargeur de \(boot.osName) : la liste de lecture est rangée par position sur le disque, et relue d'une seule course du bras."
                      : "Pas de préchargeur sur \(boot.osName) : le bras suit l'ordre dans lequel le système demande ses fichiers, pas leur position.")
-                    .font(.system(size: 11))
+                    .font(.dynamic(size: 11))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -485,14 +519,14 @@ struct SimulatorScreen: View {
                             seeks: Int, average: Int, final: Bool) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
-                .font(.system(size: 13))
+                .font(.dynamic(size: 13))
                 .foregroundStyle(Theme.text)
             Spacer()
             Text("\(FrenchFormat.integer(seeks)) seeks · \(FrenchFormat.integer(average)) cyl.")
-                .font(.system(size: 10, design: .monospaced))
+                .font(.dynamic(size: 10, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             Text(duration)
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .font(.dynamic(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(final ? Theme.text : Theme.dim)
                 .frame(minWidth: 64, alignment: .trailing)
         }
@@ -554,7 +588,7 @@ struct SimulatorScreen: View {
             } label: {
                 ZStack {
                     Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 54))
+                        .font(.dynamic(size: 54))
                         .symbolRenderingMode(.hierarchical)
                     if engine.isBuffering {
                         ProgressView().tint(Theme.text)
@@ -584,10 +618,10 @@ struct SimulatorScreen: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemImage)
-                    .font(.system(size: size, weight: .semibold))
+                    .font(.dynamic(size: size, weight: .semibold))
                     .frame(width: 44, height: 30)
                 Text(title)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
             }
         }

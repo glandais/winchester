@@ -42,8 +42,15 @@ struct ClusterMapView: View {
     /// et laisse le geste à ce qui l'entoure.
     var onCellTap: ((Int) -> Void)? = nil
 
+    /// « Réduire les animations » : pas de rémanence qui s'efface. Le dernier
+    /// accès reste montré, par le liseré de la carte en pouce.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        GeometryReader { proxy in
+        let trail = reduceMotion ? [] : self.trail
+        let activeCell = self.activeCell ?? (reduceMotion ? self.trail.last?.cell : nil)
+        let activeIsWrite = self.activeCell != nil ? self.activeIsWrite : (self.trail.last?.isWrite ?? false)
+        return GeometryReader { proxy in
             let side = floor(min(proxy.size.width / CGFloat(grid.columns),
                                  proxy.size.height / CGFloat(grid.rows)))
             ZStack(alignment: .topLeading) {
@@ -105,6 +112,31 @@ struct ClusterMapView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .aspectRatio(CGFloat(grid.columns) / CGFloat(grid.rows), contentMode: .fit)
+        .modifier(MapAccessibility(shades: shades))
+    }
+}
+
+/// VoiceOver lit la carte par zones — le début du disque, puis chaque quart —,
+/// pas bloc par bloc. Le résumé n'est calculé que si VoiceOver écoute : il
+/// parcourt tous les blocs, à chaque image.
+private struct MapAccessibility: ViewModifier {
+    let shades: [ClusterShade]
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+
+    func body(content: Content) -> some View {
+        if voiceOver {
+            let zones = MapZone.zones(of: shades)
+            content
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Carte du volume")
+                .accessibilityChildren {
+                    ForEach(zones.indices, id: \.self) { index in
+                        Color.clear.accessibilityLabel(zones[index].description)
+                    }
+                }
+        } else {
+            content
+        }
     }
 }
 
@@ -224,7 +256,7 @@ struct ClusterLegend: View {
                             .fill(Theme.categoryColor(category))
                             .frame(width: 9, height: 9)
                         Text(category.label)
-                            .font(.system(size: 10))
+                            .font(.dynamic(size: 10))
                             .foregroundStyle(Theme.dim)
                     }
                 }
@@ -236,7 +268,7 @@ struct ClusterLegend: View {
                             .fill(Theme.categoryColor(sample, contiguous: true))
                             .frame(width: 9, height: 9)
                         Text("Plus sombre : rangé d'un seul tenant")
-                            .font(.system(size: 10))
+                            .font(.dynamic(size: 10))
                             .foregroundStyle(Theme.dim)
                     }
                 }
@@ -244,7 +276,7 @@ struct ClusterLegend: View {
             Text("1 bloc \(FrenchFormat.clustersPerCell(clustersPerCell)) = "
                  + FrenchFormat.megabytes(UInt64((clustersPerCell * Double(clusterBytes)).rounded()),
                                           smallInKilobytes: true))
-                .font(.system(size: 10, design: .monospaced))
+                .font(.dynamic(size: 10, design: .monospaced))
                 .foregroundStyle(Theme.dim.opacity(0.8))
         }
     }

@@ -58,11 +58,11 @@ struct InstrumentsScreen: View {
     private func sectionTitle(_ title: String, note: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.text)
             Spacer()
             Text(note)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.dynamic(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.dim)
         }
         .padding(.top, 4)
@@ -118,7 +118,7 @@ struct InstrumentsScreen: View {
         let total = parts.reduce(0) { $0 + $1.1 }
         return VStack(alignment: .leading, spacing: 10) {
             Text("Où passe le temps")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.dynamic(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.text)
             GeometryReader { proxy in
                 HStack(spacing: 1) {
@@ -137,7 +137,7 @@ struct InstrumentsScreen: View {
                     HStack(spacing: 5) {
                         RoundedRectangle(cornerRadius: 2).fill(parts[index].2).frame(width: 9, height: 9)
                         Text("\(parts[index].0) \(FrenchFormat.percent(total > 0 ? parts[index].1 / total : 0))")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.dynamic(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                     }
                 }
@@ -153,18 +153,18 @@ struct InstrumentsScreen: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Distance des seeks")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.dynamic(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Spacer()
                 Text("rapportée à la course")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
             }
             ForEach(SeekClass.allCases, id: \.rawValue) { seekClass in
                 let count = counts[seekClass.rawValue]
                 HStack(spacing: 8) {
                     Text(seekClass.label)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.dynamic(size: 11, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .frame(width: 104, alignment: .leading)
                     GeometryReader { proxy in
@@ -174,7 +174,7 @@ struct InstrumentsScreen: View {
                     }
                     .frame(height: 10)
                     Text(FrenchFormat.integer(count))
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.dynamic(size: 11, design: .monospaced))
                         .foregroundStyle(Theme.text)
                         .frame(width: 70, alignment: .trailing)
                         .monospacedDigit()
@@ -191,11 +191,11 @@ struct InstrumentsScreen: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Cylindres visités")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.dynamic(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Spacer()
                 Text("\(FrenchFormat.integer(model.geometry.cylinders)) cylindres")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
             }
             HStack(spacing: 2) {
@@ -211,7 +211,7 @@ struct InstrumentsScreen: View {
                 Spacer()
                 Text("moyeu")
             }
-            .font(.system(size: 10, design: .monospaced))
+            .font(.dynamic(size: 10, design: .monospaced))
             .foregroundStyle(Theme.dim)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -259,17 +259,17 @@ struct InstrumentsScreen: View {
         func row(_ label: String, _ before: String, _ after: String?) -> some View {
             HStack(alignment: .firstTextBaseline) {
                 Text(label)
-                    .font(.system(size: 13))
+                    .font(.dynamic(size: 13))
                     .foregroundStyle(Theme.text)
                 Spacer()
                 Text(before)
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.dynamic(size: 13, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 Text("→")
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.dynamic(size: 13, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 Text(after ?? "…")
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(.dynamic(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(after == nil ? Theme.dim : Theme.read)
                     .frame(minWidth: 70, alignment: .trailing)
             }
@@ -291,7 +291,7 @@ struct InstrumentsScreen: View {
             HStack(alignment: .top, spacing: 4) {
                 Text("Un fichier ramené de quarante morceaux à deux reste compté comme fragmenté : "
                      + "les fichiers fragmentés et les morceaux ne racontent pas la même chose.")
-                    .font(.system(size: 11))
+                    .font(.dynamic(size: 11))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
                 WhyButton(topic: .fragmentedVsPieces)
@@ -377,7 +377,7 @@ private struct InstrumentTile: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 2) {
                 Text(label.uppercased())
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 if let why {
                     Spacer(minLength: 0)
@@ -386,13 +386,13 @@ private struct InstrumentTile: View {
                 }
             }
             Text(value)
-                .font(.system(size: 20, weight: .medium, design: .monospaced))
+                .font(.dynamic(size: 20, weight: .medium, design: .monospaced))
                 .foregroundStyle(Theme.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .monospacedDigit()
             Text(detail)
-                .font(.system(size: 10))
+                .font(.dynamic(size: 10))
                 .foregroundStyle(Theme.dim)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)

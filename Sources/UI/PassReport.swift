@@ -56,7 +56,7 @@ private struct PassReportScreen: View {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(Theme.write)
                             Text(summary)
-                                .font(.system(size: 12))
+                                .font(.dynamic(size: 12))
                                 .foregroundStyle(Theme.text.opacity(0.85))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -76,14 +76,14 @@ private struct PassReportScreen: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("TERMINÉ · \(FrenchFormat.duration(record.duration).uppercased())")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.read)
             Text(record.toolLabel)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.dynamic(size: 24, weight: .bold, design: .rounded))
                 .foregroundStyle(Theme.text)
             Text([record.title, record.disk.map { $0.spec.fileSystemLabel }].compactMap { $0 }
                     .joined(separator: " · "))
-                .font(.system(size: 12, design: .monospaced))
+                .font(.dynamic(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.dim)
         }
     }
@@ -93,13 +93,13 @@ private struct PassReportScreen: View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("AVANT")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 ClusterMapView(grid: start.grid, shades: start.shades)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("APRÈS")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 ClusterMapView(grid: end.grid, shades: end.shades)
             }
@@ -140,7 +140,7 @@ private struct PassReportScreen: View {
             if !others.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("COMPARER À UNE AUTRE PASSE")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                     ForEach(others) { other in
                         NavigationLink {
@@ -148,14 +148,14 @@ private struct PassReportScreen: View {
                         } label: {
                             HStack {
                                 Text(other.toolLabel)
-                                    .font(.system(size: 14))
+                                    .font(.dynamic(size: 14))
                                     .foregroundStyle(Theme.text)
                                 Spacer()
                                 Text(FrenchFormat.duration(other.duration))
-                                    .font(.system(size: 12, design: .monospaced))
+                                    .font(.dynamic(size: 12, design: .monospaced))
                                     .foregroundStyle(Theme.dim)
                                 Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.dynamic(size: 11, weight: .semibold))
                                     .foregroundStyle(Theme.dim)
                             }
                             .contentShape(Rectangle())
@@ -178,7 +178,7 @@ private struct PassReportScreen: View {
     private func actionLabel(_ title: String, systemImage: String, primary: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-            Text(title).font(.system(size: 15, weight: .semibold))
+            Text(title).font(.dynamic(size: 15, weight: .semibold))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 13)
@@ -238,12 +238,12 @@ private struct ReportRows: View {
 
     private func row(_ label: String, _ before: String, _ after: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).font(.system(size: 13)).foregroundStyle(Theme.text)
+            Text(label).font(.dynamic(size: 13)).foregroundStyle(Theme.text)
             Spacer()
-            Text(before).font(.system(size: 13, design: .monospaced)).foregroundStyle(Theme.dim)
-            Text("→").font(.system(size: 13, design: .monospaced)).foregroundStyle(Theme.dim)
+            Text(before).font(.dynamic(size: 13, design: .monospaced)).foregroundStyle(Theme.dim)
+            Text("→").font(.dynamic(size: 13, design: .monospaced)).foregroundStyle(Theme.dim)
             Text(after)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.read)
                 .frame(minWidth: 56, alignment: .trailing)
         }
@@ -252,10 +252,10 @@ private struct ReportRows: View {
 
     private func single(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).font(.system(size: 13)).foregroundStyle(Theme.text)
+            Text(label).font(.dynamic(size: 13)).foregroundStyle(Theme.text)
             Spacer()
             Text(value)
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .font(.dynamic(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(Theme.text)
         }
         .monospacedDigit()
@@ -278,10 +278,10 @@ struct PassComparisonScreen: View {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Deux outils, même volume")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .font(.dynamic(size: 22, weight: .bold, design: .rounded))
                             .foregroundStyle(Theme.text)
                         Text(a.title)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.dynamic(size: 12, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                     }
 
@@ -312,7 +312,7 @@ struct PassComparisonScreen: View {
                         Text("La valeur la plus basse est marquée sur chaque ligne ; aucune ligne ne l'emporte sur "
                              + "une autre. Un outil qui range mieux et un outil qui va plus vite ne font pas le même "
                              + "travail : ça dépend de ce qu'on veut entendre.")
-                            .font(.system(size: 12))
+                            .font(.dynamic(size: 12))
                             .foregroundStyle(Theme.text.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -328,7 +328,7 @@ struct PassComparisonScreen: View {
 
     private func column(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
             .foregroundStyle(Theme.dim)
             .lineLimit(2)
             .frame(width: 96, alignment: .trailing)
@@ -338,7 +338,7 @@ struct PassComparisonScreen: View {
                       format: (Double) -> String = { FrenchFormat.integer(Int($0.rounded())) }) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
-                .font(.system(size: 13))
+                .font(.dynamic(size: 13))
                 .foregroundStyle(Theme.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
             // Deux valeurs qui s'écrivent pareil ne se départagent pas à l'écran.
@@ -351,7 +351,7 @@ struct PassComparisonScreen: View {
 
     private func cell(_ text: String, best: Bool) -> some View {
         Text(text)
-            .font(.system(size: 13, weight: best ? .semibold : .regular, design: .monospaced))
+            .font(.dynamic(size: 13, weight: best ? .semibold : .regular, design: .monospaced))
             .foregroundStyle(best ? Theme.read : Theme.text)
             .frame(width: 96, alignment: .trailing)
     }

@@ -75,18 +75,18 @@ private struct FullScreenMapChrome<Map: View, Transport: View>: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dynamic(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.text)
                 .lineLimit(1)
             Text(detail)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.dynamic(size: 10, design: .monospaced))
                 .foregroundStyle(Theme.dim)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Spacer(minLength: 8)
             Button { dismiss() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 22))
+                    .font(.dynamic(size: 22))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.text)
             }
@@ -175,7 +175,7 @@ struct DefragFullScreenMap: View {
             } label: {
                 Image(systemName: engine.isPlaying || engine.isBuffering
                       ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 34))
+                    .font(.dynamic(size: 34))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.text)
             }
@@ -191,11 +191,11 @@ struct DefragFullScreenMap: View {
             .frame(height: 5)
 
             Text(String(format: "%.0f %%", progress * 100))
-                .font(.system(size: 11, design: .monospaced))
+                .font(.dynamic(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.dim)
                 .monospacedDigit()
             Text(time.clockString)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.dynamic(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.dim)
                 .monospacedDigit()
         }
@@ -306,28 +306,28 @@ private struct CellInfoBar: View {
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.dynamic(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Text(line)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(Array(files.enumerated()), id: \.offset) { _, file in
                     HStack(spacing: 6) {
                         Text(file.path)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.dynamic(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.text)
                             .lineLimit(1)
                             .truncationMode(.head)
                         Text(file.detail)
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.dynamic(size: 10, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                             .lineLimit(1)
                     }
                 }
                 if let note {
                     Text(note)
-                        .font(.system(size: 10))
+                        .font(.dynamic(size: 10))
                         .foregroundStyle(Theme.dim)
                         .lineLimit(2)
                 }
@@ -335,7 +335,7 @@ private struct CellInfoBar: View {
             Spacer(minLength: 4)
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dynamic(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.dim)
                     .padding(6)
             }
@@ -363,7 +363,7 @@ struct FullScreenMapButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.dynamic(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.text)
                 .padding(6)
                 .background(

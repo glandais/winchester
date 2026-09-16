@@ -187,10 +187,10 @@ struct DefragToolChoiceScreen: View {
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Avec quel outil ?")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .font(.dynamic(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(Theme.text)
                         Text("\(disk.spec.displayName) · \(formatLabel)")
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.dynamic(size: 12, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                     }
 
@@ -208,17 +208,17 @@ struct DefragToolChoiceScreen: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Options avancées")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.dynamic(size: 14, weight: .semibold))
                                 .foregroundStyle(Theme.text)
                             Text("7 autres modes de JkDefrag")
-                                .font(.system(size: 11))
+                                .font(.dynamic(size: 11))
                                 .foregroundStyle(Theme.dim)
                         }
                     }
                     .panel()
 
                     Text("Les durées sont celles mesurées sur les disques de la galerie : un ordre de grandeur, pas un décompte. La vraie se découvre à l'écoute.")
-                        .font(.system(size: 11))
+                        .font(.dynamic(size: 11))
                         .foregroundStyle(Theme.dim)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -243,10 +243,10 @@ struct DefragToolChoiceScreen: View {
                         .foregroundStyle(isSelected ? Theme.read : Theme.dim)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(tool.name)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.dynamic(size: 15, weight: .semibold))
                             .foregroundStyle(refusal == nil ? Theme.text : Theme.dim)
                         Text(refusal ?? tool.origin)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.dynamic(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                     }
                     Spacer()
@@ -258,16 +258,16 @@ struct DefragToolChoiceScreen: View {
                 }
                 if refusal == nil {
                     Text(tool.principle)
-                        .font(.system(size: 12))
+                        .font(.dynamic(size: 12))
                         .foregroundStyle(Theme.text.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(tool.sound)
-                        .font(.system(size: 12))
+                        .font(.dynamic(size: 12))
                         .foregroundStyle(Theme.dim)
                         .fixedSize(horizontal: false, vertical: true)
                     if let measured = tool.measured[DefragTool.FormatFamily(format)] {
                         Text("Mesuré sur la galerie : \(measured)")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.dynamic(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.write)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -290,7 +290,7 @@ struct DefragToolChoiceScreen: View {
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .font(.dynamic(size: 9, weight: .bold, design: .monospaced))
             .foregroundStyle(color)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
@@ -305,10 +305,10 @@ struct DefragToolChoiceScreen: View {
                 Toggle(isOn: $fullBlocks) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Déplacer par blocs pleins")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.dynamic(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.text)
                         Text("Pas le comportement de l'outil : pour le comparer au recollage économe. Les durées mesurées ne valent plus.")
-                            .font(.system(size: 10))
+                            .font(.dynamic(size: 10))
                             .foregroundStyle(Theme.dim)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -317,7 +317,7 @@ struct DefragToolChoiceScreen: View {
             }
             if let failure {
                 Text(failure)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.dynamic(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.read)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -334,7 +334,7 @@ struct DefragToolChoiceScreen: View {
                 }
             } label: {
                 Text("Lancer la passe")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.dynamic(size: 16, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.read))

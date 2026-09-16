@@ -121,7 +121,7 @@ struct DiskGallery: View {
 
             if shown.isEmpty {
                 Text("Aucun disque pour ce filtre.")
-                    .font(.system(size: 12))
+                    .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.dim)
                     .frame(maxWidth: .infinity, minHeight: 80)
             }
@@ -137,7 +137,7 @@ private struct FilterChip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12, weight: isOn ? .semibold : .regular))
+                .font(.dynamic(size: 12, weight: isOn ? .semibold : .regular))
                 .foregroundStyle(isOn ? Theme.background : Theme.text)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 6)
@@ -159,34 +159,34 @@ struct DiskCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(spec.displayName)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
                     Spacer()
                     Text(spec.fileSystemLabel)
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.stroke, lineWidth: 1))
                 }
                 Text("\(spec.hardwareLine) · \(spec.osName)")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.dynamic(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
                 if let summary = spec.summary {
                     Text(summary)
-                        .font(.system(size: 12))
+                        .font(.dynamic(size: 12))
                         .foregroundStyle(Theme.text.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let fragmentedRatio {
                     Text("déjà généré · \(FrenchFormat.percent(fragmentedRatio)) fragmentés")
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.dynamic(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.read)
                 }
             }
             Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.dynamic(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.dim)
                 .padding(.top, 4)
         }
@@ -249,7 +249,7 @@ struct DiskDetailScreen: View {
     private var history: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("PASSES ENTENDUES")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             ForEach(records.reversed()) { record in
                 Button {
@@ -262,21 +262,21 @@ struct DiskDetailScreen: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(record.kind == .defrag ? record.toolLabel
                                  : record.rangedBy.map { "Démarrage, rangé par \($0)" } ?? "Démarrage")
-                                .font(.system(size: 13))
+                                .font(.dynamic(size: 13))
                                 .foregroundStyle(Theme.text)
                             if let after = record.after {
                                 Text("\(FrenchFormat.integer(after.fragments)) morceaux · \(FrenchFormat.integer(after.freeHoles)) trous à la fin")
-                                    .font(.system(size: 10, design: .monospaced))
+                                    .font(.dynamic(size: 10, design: .monospaced))
                                     .foregroundStyle(Theme.dim)
                             }
                         }
                         Spacer()
                         Text(FrenchFormat.duration(record.duration))
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.dynamic(size: 12, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                         if record.kind == .defrag {
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.dynamic(size: 11, weight: .semibold))
                                 .foregroundStyle(Theme.dim)
                         }
                     }

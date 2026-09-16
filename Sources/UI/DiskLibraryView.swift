@@ -60,15 +60,15 @@ struct DiskLibraryView: View {
         if let spec = model.selected {
             VStack(alignment: .leading, spacing: 4) {
                 Text(spec.displayName)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.dynamic(size: 26, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.text)
                 Text(specLine(spec, clusterBytes: model.state.disk?.clusterBytes))
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.dynamic(size: 12, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
                 if let summary = spec.summary {
                     Text(summary)
-                        .font(.system(size: 13))
+                        .font(.dynamic(size: 13))
                         .foregroundStyle(Theme.text.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 2)
@@ -94,21 +94,21 @@ struct DiskLibraryView: View {
         return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Fabrication du volume")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.dynamic(size: 20, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Text("On rejoue l'histoire du disque, jour après jour. L'allocateur fait le reste.")
-                    .font(.system(size: 13))
+                    .font(.dynamic(size: 13))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(spacing: 9) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("JOUR SIMULÉ")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.dynamic(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                     Spacer()
                     Text(date ?? "jour \(day)")
-                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .font(.dynamic(size: 15, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.text)
                 }
                 ProgressView(value: fraction)
@@ -118,14 +118,14 @@ struct DiskLibraryView: View {
                     Spacer()
                     Text("\(Int((fill * 100).rounded())) % occupé")
                 }
-                .font(.system(size: 12, design: .monospaced))
+                .font(.dynamic(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             }
             Button {
                 model.cancel()
             } label: {
                 Text("Annuler")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.dynamic(size: 15, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -143,10 +143,10 @@ struct DiskLibraryView: View {
     private var cancelled: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Génération annulée")
-                .font(.system(size: 13, weight: .medium))
+                .font(.dynamic(size: 13, weight: .medium))
                 .foregroundStyle(Theme.text)
             Text("L'histoire du disque est conservée ; le volume, lui, se refabrique depuis le premier jour.")
-                .font(.system(size: 12))
+                .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
             regenerateButton("Générer depuis le début")
@@ -158,10 +158,10 @@ struct DiskLibraryView: View {
     private func failure(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Génération impossible")
-                .font(.system(size: 13, weight: .medium))
+                .font(.dynamic(size: 13, weight: .medium))
                 .foregroundStyle(Theme.text)
             Text(message)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.dynamic(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.read)
                 .fixedSize(horizontal: false, vertical: true)
             regenerateButton("Réessayer")
@@ -174,7 +174,7 @@ struct DiskLibraryView: View {
         Button(title) {
             if let id = model.selectedID { model.open(id) }
         }
-        .font(.system(size: 13, weight: .semibold))
+        .font(.dynamic(size: 13, weight: .semibold))
         .buttonStyle(.bordered)
     }
 
@@ -227,7 +227,7 @@ struct DiskLibraryView: View {
             WhyButton(topic: disk.spec.fileSystem.type == .ntfs ? .mftZone : .nextFit)
                 .padding(.vertical, -6)
             Text(explanation(for: disk))
-                .font(.system(size: 12))
+                .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.text.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -258,7 +258,7 @@ struct DiskLibraryView: View {
             .padding(.top, 10)
         } label: {
             Text("Plus de détails")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dynamic(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.text)
         }
         .panel()
@@ -317,12 +317,12 @@ struct DiskLibraryView: View {
 
             if let refusal {
                 Text(refusal)
-                    .font(.system(size: 11))
+                    .font(.dynamic(size: 11))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
             } else if let handoverFailure {
                 Text(handoverFailure)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.dynamic(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.read)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -351,7 +351,7 @@ struct DiskLibraryView: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                 Text(activity.action)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.dynamic(size: 15, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 13)
@@ -379,12 +379,12 @@ private struct MetricTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label.uppercased())
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Text(value)
-                .font(.system(size: 19, weight: .medium, design: .monospaced))
+                .font(.dynamic(size: 19, weight: .medium, design: .monospaced))
                 .foregroundStyle(accent ? Theme.read : Theme.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)

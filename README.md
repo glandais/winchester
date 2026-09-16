@@ -285,6 +285,17 @@ est anachronique avertit. Les disques construits sont gardés dans « Mes
 disques » — leur histoire seulement, en JSON : le volume se refait à l'identique
 depuis la graine.
 
+**Son, fond et accessibilité.** Le mixage se règle par préréglages — Casque,
+Haut-parleur, Vibrations seules — et survit à l'app (`SoundMix`). Une passe
+continue écran verrouillé, avec lecture et pause dans le centre de contrôle ; le
+mode ambiance l'assombrit et l'arrête en fondu à l'heure dite. Un appel ou un
+casque retiré met la passe en pause au lieu de laisser courir son horloge en
+silence. La première ouverture présente ce qu'on entend et ce que montre la
+carte ; les explications sont des fiches derrière un ⓘ à côté des chiffres. Les
+polices suivent la taille de texte jusqu'à AX3, VoiceOver lit la carte en quatre
+zones (`MapZone`), et « Réduire les animations » arrête le plateau et la
+rémanence de la carte.
+
 **La fragmentation n'est pas un paramètre, c'est un résidu.** On ne demande
 jamais « un disque à 23 % de fragmentation ». On écrit une histoire — une
 installation, des compilations, des enregistrements, des téléchargements, des
