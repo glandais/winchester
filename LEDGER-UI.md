@@ -842,38 +842,95 @@ de l'état d'arrivée que ses statistiques.
 
 ## Chantier U9 — construire un disque usagé
 
-**À faire** · prompt §2
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-Un assistant qui édite un `ProfileSpec`, jamais un résultat :
+Les seuls disques de l'app étaient les vingt profils du bundle. Écrire un disque
+voulait dire écrire un JSON à la main, et rien ne le relisait : une taille de
+cluster qui n'est pas une puissance de deux, un régime nul arrêtaient net le
+générateur, et un FAT16 trop grand pour ses 65 524 clusters était tronqué sans
+un mot. Aucun disque construit ne survivait à l'app.
 
-1. matériel — année, capacité, régime, seek moyen ; géométrie déduite en
-   lecture seule, avertissement si la capacité est anachronique ;
-2. format — FAT16, VFAT, FAT32, NTFS, taille de cluster ;
-3. OS et logiciels installés, désinstallations datées ;
-4. période d'usage ;
-5. habitudes — `ActivitySpec` : bureautique, navigation, développement,
-   médias, téléchargements, jeux, accumulation, maintenance, défragmentations
-   planifiées ;
-6. graine, avec un 🎲.
+### Les décisions — côté moteur
 
-Puis **Mes disques** (sauvegarder, renommer, dupliquer) et **Refaire avec les
-mêmes habitudes sur un autre format**.
+- **`ProfileSpec.issues`** (`DiskCore`) relit un profil. **Bloquant** : moins de
+  10 Mo, régime ou seek moyen nuls, cluster qui n'est pas une puissance de deux
+  ou dépasse 64 Ko, période qui finit avant de commencer. **Avertissement** :
+  FAT qui n'adresse pas tout le disque (avec la capacité réellement utilisée),
+  format arrivé après l'année d'achat, désinstallation d'un logiciel absent ou
+  hors période, défragmentation hors période, logiciel inconnu. Un avertissement
+  n'interdit rien : un disque anachronique est une question légitime.
+- **La galerie refuse de fabriquer un profil bloquant** et dit pourquoi, au lieu
+  de laisser le générateur s'arrêter.
+- **`CustomDiskStore`** garde « Mes disques » : un fichier JSON dans Application
+  Support, la liste des profils, réécrite en entier. Un fichier illisible **lève**
+  plutôt que de rendre une liste vide qu'un enregistrement écraserait ; l'écran
+  le dit. Un disque construit porte un identifiant `perso-…`.
+- **Ce qui se garde, c'est l'histoire**, pas le volume ni les bilans : le volume
+  se refait à l'identique depuis la graine, et un bilan tient le disque entier.
+  C'est la décision que U8 renvoyait ici.
+- `DiskLibraryModel` connaît les disques construits et un **brouillon** : celui
+  que l'assistant fabrique sans l'avoir enregistré.
 
-### Ce que le code offre
+### Les décisions — côté écran
 
-`ProfileSpec` est `Codable` et se génère déjà tel quel ;
-`DriveGeometry.era(model:…)` donne la géométrie d'une année et d'une capacité ;
-les logiciels et OS connus sont ceux d'`AppManifest`.
+- **L'assistant** (maquettes 06 et 07) s'ouvre par **+** dans l'onglet Disques,
+  par **Dupliquer et modifier** sur la fiche de n'importe quel disque, et par
+  **Modifier l'histoire** sur un disque construit. Six étapes, un brouillon, une
+  barre Retour / Suivant ; les remarques de `issues` sous chaque étape.
+  1. **Matériel** : année, capacité sur une échelle logarithmique arrondie à
+     deux chiffres, régime, seek moyen ; la **géométrie déduite** par
+     `DriveGeometry.era` — plateaux, cylindres, débit bord → moyeu —, et la
+     phrase des plateaux ajoutés quand la capacité devance l'époque.
+  2. **Format** : FAT16, VFAT, FAT32, NTFS, ce que fait chaque allocateur, la
+     taille de cluster (ou celle de `FORMAT`) et le nombre de clusters.
+  3. **Système et logiciels** : un système, qui pose aussi ses manifestes ; les
+     logiciels du catalogue avec leur année, « trop récent » quand ils sortent
+     après la fin de la période ; une date de désinstallation par logiciel.
+  4. **Période** : début, fin, durée, défragmentations planifiées.
+  5. **Habitudes** : les huit activités de `ActivitySpec`, chacune activable, avec
+     des valeurs ordinaires au départ.
+  6. **Graine et résultat** : nom, résumé, graine et 🎲, **Fabriquer le disque**,
+     puis la fiche du disque fabriqué — carte, métriques, défragmenter ou
+     démarrer tout de suite —, **Refaire avec les mêmes habitudes** sur les
+     trois autres formats, et **Enregistrer dans Mes disques**.
+- **Mes disques** apparaît entre les démos et la galerie dès qu'il y en a un :
+  mêmes cartes, et un menu pour modifier, renommer, dupliquer ou supprimer
+  (avec confirmation).
+- **Pas d'estimation « plein vers 2001 »** : rien ne la calcule sans fabriquer le
+  disque, et la fabrication prend une ou deux secondes. L'étape 6 fabrique.
 
-### À ajouter côté moteur
+### Ce qui valide
 
-- La liste des OS et des logiciels exposée proprement, avec leur époque.
-- La persistance des disques construits.
-- L'estimation « plein vers 2001 » : une génération rapide, ou un calcul
-  approché du volume écrit par an — à mesurer avant de promettre.
-- Valider un profil saisi à la main avant de le générer, sans planter.
+- **`swift test` : 106 tests `DiskCore` et 174 `DefragKit` passent**, dont :
+  - les vingt scénarios du bundle n'ont aucune remarque bloquante ; un cluster
+    de 12 Ko, une période vide, un régime nul bloquent ; un FAT16 de 2 Go en
+    clusters de 4 Ko, un NTFS de 1993, un logiciel inconnu avertissent ; un
+    profil anachronique mais valide se fabrique ;
+  - « Mes disques » : un fichier absent donne une liste vide, deux profils se
+    relisent octet pour octet, les identifiants ne se répètent pas, un fichier
+    illisible lève.
+- Sur le simulateur : **+**, six étapes, géométrie d'un 1,08 Go de 1996 à
+  3 835 cylindres et 2 plateaux — ceux du Fireball 1080AT ; **Fabriquer** : 5,6 %
+  de fichiers fragmentés en VFAT ; **Refaire en NTFS** : 0,1 % ; **Enregistrer** ;
+  la carte « Nouveau disque » est dans Mes disques, et y est encore **après
+  relance de l'app**. **Dupliquer et modifier** sur « Famille, 1999 » ouvre
+  l'assistant sur « Famille, 1999 (copie) » avec son histoire.
+
+### Laissé ouvert
+
+- **Les bilans ne survivent pas à l'app**, par décision : les rejouer coûte une
+  écoute, les garder coûterait le disque.
+- **Le catalogue des logiciels est figé** et leurs années sont écrites côté écran
+  (`SoftwareYears`), pas dans `AppManifest`.
+- **Renommer, supprimer et les étapes 2, 4 et 6 n'ont pas été touchés à l'écran**
+  au-delà du parcours ci-dessus ; les messages bloquants ne l'ont été que par les
+  tests.
+- La capacité se règle par curseur, pas par saisie : une valeur exacte
+  (« 850 Mo ») n'est atteignable qu'à l'arrondi près, sauf en dupliquant un
+  disque qui l'a déjà.
+- Pas d'aperçu de la fragmentation avant d'avoir fabriqué : c'est voulu.
 
 ---
 

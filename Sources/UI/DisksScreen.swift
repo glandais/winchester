@@ -17,6 +17,10 @@ struct DisksScreen: View {
 
     @State private var path: [String] = []
     @State private var report: PassRecord?
+    @State private var wizard: ProfileSpec?
+    @State private var renaming: ProfileSpec?
+    @State private var newName = ""
+    @State private var deleting: ProfileSpec?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -24,8 +28,20 @@ struct DisksScreen: View {
                 Theme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        ScreenTitle("Disques", subtitle: "Écouter tout de suite, ou choisir un disque d'époque")
+                        HStack(alignment: .top) {
+                            ScreenTitle("Disques", subtitle: "Écouter tout de suite, ou choisir un disque d'époque")
+                            Button {
+                                wizard = .blank()
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .frame(width: 40, height: 40)
+                                    .background(Circle().fill(Color.white.opacity(0.08)))
+                            }
+                            .accessibilityLabel("Construire un disque usagé")
+                        }
                         demos
+                        myDisks
                         Text("DISQUES D'ÉPOQUE")
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.dim)
@@ -43,12 +59,73 @@ struct DisksScreen: View {
             .sheet(item: $report) { record in
                 PassReportSheet(model: model, record: record, onLaunched: onOpenPass)
             }
+            .sheet(item: $wizard) { spec in
+                DiskWizardSheet(library: library, spec: spec) { disk, activity, strategy in
+                    try model.load(generated: disk, as: activity, using: strategy)
+                    play()
+                }
+            }
+            .alert("Renommer le disque", isPresented: Binding(get: { renaming != nil },
+                                                              set: { if !$0 { renaming = nil } })) {
+                TextField("Nom", text: $newName)
+                Button("Renommer") {
+                    if let renaming, !newName.isEmpty { library.rename(renaming.id, to: newName) }
+                    renaming = nil
+                }
+                Button("Annuler", role: .cancel) { renaming = nil }
+            }
+            .confirmationDialog("Supprimer ce disque ?", isPresented: Binding(get: { deleting != nil },
+                                                                             set: { if !$0 { deleting = nil } }),
+                                titleVisibility: .visible) {
+                Button("Supprimer « \(deleting?.displayName ?? "") »", role: .destructive) {
+                    if let deleting { library.delete(deleting.id) }
+                    deleting = nil
+                }
+            } message: {
+                Text("Son histoire est perdue ; les disques d'époque ne sont pas touchés.")
+            }
             .navigationDestination(for: String.self) { id in
                 DiskDetailScreen(library: library, id: id,
                                  records: model.records.filter { $0.diskID == id },
-                                 onOpenRecord: { report = $0 }) { disk, activity, strategy in
+                                 onOpenRecord: { report = $0 },
+                                 onEdit: { wizard = $0 }) { disk, activity, strategy in
                     try model.load(generated: disk, as: activity, using: strategy)
                     play()
+                }
+            }
+        }
+    }
+
+    /// Les disques construits dans l'app, enregistrés d'une session à l'autre.
+    @ViewBuilder
+    private var myDisks: some View {
+        if !library.customs.isEmpty || library.storeFailure != nil {
+            Text("MES DISQUES")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.dim)
+                .padding(.top, 6)
+            if let failure = library.storeFailure {
+                Text(failure)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.read)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .panel()
+            }
+            ForEach(library.customs) { spec in
+                NavigationLink(value: spec.id) {
+                    DiskCard(spec: spec, fragmentedRatio: library.fragmentedRatios[spec.id])
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Modifier l'histoire", systemImage: "pencil") { wizard = spec }
+                    Button("Renommer", systemImage: "character.cursor.ibeam") {
+                        newName = spec.displayName
+                        renaming = spec
+                    }
+                    Button("Dupliquer", systemImage: "plus.square.on.square") {
+                        library.save(library.duplicate(spec))
+                    }
+                    Button("Supprimer", systemImage: "trash", role: .destructive) { deleting = spec }
                 }
             }
         }

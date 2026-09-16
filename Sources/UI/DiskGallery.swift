@@ -150,7 +150,7 @@ private struct FilterChip: View {
     }
 }
 
-private struct DiskCard: View {
+struct DiskCard: View {
     let spec: ProfileSpec
     let fragmentedRatio: Double?
 
@@ -204,6 +204,9 @@ struct DiskDetailScreen: View {
     /// Les passes entendues sur ce disque, et le bilan qu'on en ouvre.
     var records: [PassRecord] = []
     var onOpenRecord: (PassRecord) -> Void = { _ in }
+    /// Ouvre l'assistant sur un profil : une copie d'un disque de la galerie,
+    /// ou le disque construit lui-même.
+    var onEdit: (ProfileSpec) -> Void = { _ in }
     let onHandover: DiskHandover
 
     var body: some View {
@@ -221,6 +224,23 @@ struct DiskDetailScreen: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
+        .toolbar {
+            if let spec = library.spec(id: id) {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        if CustomDiskStore.isCustom(id) {
+                            Button("Modifier l'histoire", systemImage: "pencil") { onEdit(spec) }
+                        }
+                        Button("Dupliquer et modifier", systemImage: "plus.square.on.square") {
+                            onEdit(library.duplicate(spec))
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Construire à partir de ce disque")
+                }
+            }
+        }
         .onAppear { library.open(id) }
     }
 

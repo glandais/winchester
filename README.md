@@ -274,6 +274,17 @@ extents dans le catalogue d'origine, refait la bitmap et les métriques : le
 démarrage lit alors les fichiers là où l'outil les a mis, et se compare au
 démarrage du même disque vieilli comme au témoin.
 
+**Construire un disque usagé.** L'assistant de l'onglet Disques écrit un
+`ProfileSpec` en six étapes — matériel, format, système et logiciels, période,
+habitudes, graine — et le fabrique comme un scénario du bundle. On y règle une
+histoire, jamais une fragmentation : elle ne se lit qu'une fois le disque
+fabriqué, et « refaire avec les mêmes habitudes » sur un autre format montre ce
+que le seul allocateur change. Un profil écrit à la main est relu avant d'être
+fabriqué (`ProfileSpec.issues`) : ce qui arrêterait le générateur bloque, ce qui
+est anachronique avertit. Les disques construits sont gardés dans « Mes
+disques » — leur histoire seulement, en JSON : le volume se refait à l'identique
+depuis la graine.
+
 **La fragmentation n'est pas un paramètre, c'est un résidu.** On ne demande
 jamais « un disque à 23 % de fragmentation ». On écrit une histoire — une
 installation, des compilations, des enregistrements, des téléchargements, des
