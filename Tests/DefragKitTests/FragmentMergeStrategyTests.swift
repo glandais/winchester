@@ -172,3 +172,56 @@ struct FragmentMergeStrategyTests {
         #expect(DefragPlanner.strategy(named: "fragmentMerge")?.label == "Recollage économe")
     }
 }
+
+@Suite("Blocs pleins sur les autres outils")
+struct FullBlocksOptionTests {
+
+    /// Un fichier en huit morceaux de deux clusters, entrelacés avec de petits
+    /// fichiers, et un trou où il tient : les mêmes lectures, mais une seule
+    /// écriture.
+    @Test("L'option regroupe les écritures sans changer le résultat",
+          arguments: ["windowsXP", "ultraDefrag", "jkDefrag"])
+    func sameResultFewerWrites(strategyID: String) throws {
+        let pieces = (0..<8).map { Extent(start: 100 + UInt32($0) * 4, length: 2) }
+        var files: [(category: ClusterCategory, extents: [Extent])] = [
+            (.system, [Extent(start: 0, length: 100)]),
+            (.archive, pieces),
+            (.application, [Extent(start: 132, length: 500)]),
+        ]
+        for index in 0..<8 {
+            files.append((.document, [Extent(start: 102 + UInt32(index) * 4, length: 2)]))
+        }
+        let volume = ntfsVolume(clusterCount: 1_000, files: files)
+        let strategy = try #require(DefragPlanner.strategy(named: strategyID))
+        let full = try #require(DefragPlanner.withFullBlocks(strategy))
+
+        let cut = DefragPlanner.plan(volume: volume, using: strategy)
+        let gathered = DefragPlanner.plan(volume: volume, using: full)
+        func count(_ plan: DefragPlan, _ kind: DiskOperation.Kind) -> Int {
+            plan.operations.filter { $0.kind == kind }.count
+        }
+
+        #expect(gathered.after.fragments == cut.after.fragments)
+        #expect(gathered.after.freeHoles == cut.after.freeHoles)
+        #expect(count(gathered, .readExtent) == count(cut, .readExtent))
+        #expect(count(gathered, .writeExtent) < count(cut, .writeExtent))
+        // JkDefrag range aussi le reste du volume ; les deux autres ne
+        // déplacent que le fichier cassé.
+        if strategyID != "jkDefrag" {
+            #expect(count(cut, .writeExtent) >= 8)
+            #expect(count(gathered, .writeExtent) == 1)
+        }
+    }
+
+    @Test("Seuls XP, UltraDefrag et JkDefrag ont l'option, et elle est éteinte par défaut")
+    func whoHasTheOption() {
+        #expect(!WindowsXPStrategy().fullBlocks)
+        #expect(!UltraDefragStrategy().fullBlocks)
+        #expect(!JKDefragStrategy().fullBlocks)
+        for strategy in DefragPlanner.all {
+            let supported = strategy is WindowsXPStrategy || strategy is UltraDefragStrategy
+                || strategy is JKDefragStrategy
+            #expect((DefragPlanner.withFullBlocks(strategy) != nil) == supported, "\(strategy.id)")
+        }
+    }
+}

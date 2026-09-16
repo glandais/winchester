@@ -77,6 +77,17 @@ struct WindowsXPStrategy: DefragStrategy {
     /// donc le nombre de seeks, donc le grain de la passe.
     var bufferBytes = 4 * 1024 * 1024
 
+    /// Déplacer par blocs pleins (`DefragOperations.gatheredMove`) au lieu de
+    /// couper chaque tampon aux bornes des extents.
+    ///
+    /// Ce n'est pas le comportement modélisé de l'outil, et c'est désactivé par
+    /// défaut : l'option sert à comparer les algorithmes à primitive égale avec
+    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Sur les huit volumes
+    /// NTFS de la galerie, elle ramène XP de 2 h 08 à 1 h 08, UltraDefrag de
+    /// 4 h 03 à 1 h 28 et JkDefrag de 7 h 09 à 4 h 49, sans rien changer à ce
+    /// qu'ils laissent.
+    var fullBlocks = false
+
     /// L'ordre dans lequel les fichiers cassés sont visités.
     ///
     /// L'outil de XP suit la MFT, et c'est le réglage par défaut. Les autres
@@ -168,7 +179,7 @@ struct WindowsXPStrategy: DefragStrategy {
             DefragOperations.move(source: file.extents, destination: [target],
                                   category: file.category, contiguous: true, phase: 1,
                                   partition: partition, bufferBytes: bufferBytes,
-                                  into: sink)
+                                  fullBlocks: fullBlocks, into: sink)
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
                                     phase: 1, partition: partition, into: sink)
             volume.relocate(position, to: [target])

@@ -2675,9 +2675,12 @@ L'avance en durée sur XP et UltraDefrag, elle, vient des blocs pleins.
 
 ### Laissé ouvert
 
-- **Les blocs pleins ne servent qu'à cette passe.** Les donner aux autres outils
-  NTFS diviserait leur durée par 1,5 à 2,8 et changerait leur son, donc la passe
-  que l'application fait entendre par défaut : c'est une décision à part.
+- **Les blocs pleins restent une option pour les autres outils NTFS**
+  (`fullBlocks`, `FULL_BLOCKS=1` au rendu hors-ligne), éteinte par défaut. Par
+  défaut, leurs bilans sont identiques à l'octet ; avec l'option, ils redonnent
+  exactement les mesures ci-dessus. L'allumer par défaut diviserait leur durée
+  par 1,5 à 2,8 et changerait le son de la passe que l'application fait
+  entendre : c'est une décision à part.
 - **`dev-2007` et `secretaire-2007` gardent des morceaux** : 844 et 54,
   quand XP et JkDefrag tombent à zéro en recopiant 10 à 78 Go dans le grand trou
   de 20 à 23 Go de ces volumes. La passe ne recopie pas de fichier entier.

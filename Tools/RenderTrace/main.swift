@@ -39,6 +39,9 @@ let profileID = wantsBoot ? String(requested.dropFirst(5)) : requested
 // d'époque sur exactement le même volume :
 //
 //   PLAN_ONLY=1 STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace /dev/null
+//
+// `FULL_BLOCKS=1` lui fait déplacer par blocs pleins, comme le recollage
+// économe : XP, UltraDefrag et JkDefrag seulement.
 let strategyID = ProcessInfo.processInfo.environment["STRATEGY"]
 let strategy: (any DefragStrategy)?
 if let strategyID {
@@ -48,7 +51,17 @@ if let strategyID {
                 .data(using: .utf8)!)
         exit(1)
     }
-    strategy = found
+    if ProcessInfo.processInfo.environment["FULL_BLOCKS"] != nil {
+        guard let full = DefragPlanner.withFullBlocks(found) else {
+            FileHandle.standardError.write(
+                "FULL_BLOCKS : \(strategyID) n'a pas l'option (windowsXP, ultraDefrag, jkDefrag…)\n"
+                    .data(using: .utf8)!)
+            exit(1)
+        }
+        strategy = full
+    } else {
+        strategy = found
+    }
 } else {
     strategy = nil
 }
@@ -307,9 +320,10 @@ throughput = throughput.map { $0 / ScenarioBuilder.bucketDuration / 1_000_000 }
 /// Ce que la passe a réellement fait : c'est le rapport entre déplacements et
 /// évacuations qui explique la durée, bien plus que le volume de données.
 func describe(_ plan: DefragPlan) -> String {
+    let fullBlocks = ProcessInfo.processInfo.environment["FULL_BLOCKS"] != nil
     let moved = Double(plan.movedBytes) / 1_000_000
     return """
-    outil         : \(plan.strategy.label)
+    outil         : \(plan.strategy.label)\(fullBlocks ? ", par blocs pleins" : "")
     volume        : \(plan.partition.clusterCount) clusters de \(plan.partition.clusterBytes / 1_024) Ko, \
     \(plan.before.fileCount) fichiers, \(Int(plan.before.fill * 100)) % plein
     déplacements  : \(plan.filesMoved) fichiers, \(plan.evacuations) évacuations, \

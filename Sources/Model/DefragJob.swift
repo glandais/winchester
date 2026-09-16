@@ -179,6 +179,18 @@ enum DefragPlanner {
         all.first { $0.id == id }
     }
 
+    /// La même stratégie, déplaçant par blocs pleins, ou `nil` si elle n'a pas
+    /// l'option : Windows 95 et le tassage à la frontière n'en ont pas l'usage,
+    /// et le recollage économe déplace toujours ainsi.
+    static func withFullBlocks(_ strategy: any DefragStrategy) -> (any DefragStrategy)? {
+        switch strategy {
+        case var xp as WindowsXPStrategy:      xp.fullBlocks = true; return xp
+        case var ultra as UltraDefragStrategy: ultra.fullBlocks = true; return ultra
+        case var jk as JKDefragStrategy:       jk.fullBlocks = true; return jk
+        default:                               return nil
+        }
+    }
+
     static func plan(volume: DefragVolume) -> DefragPlan {
         plan(volume: volume, using: strategy(for: volume.partition.format))
     }

@@ -690,8 +690,8 @@ bras par morceau. La zone MFT n'est jamais une destination.
 Sur les huit volumes, la passe dure 1 h 25, contre 2 h 08 pour XP, 4 h 03 pour
 UltraDefrag et 7 h 09 pour JkDefrag, et laisse moins de morceaux (8 864) et
 moins de trous (3 680) que chacun d'eux. L'écart de durée avec XP et UltraDefrag
-tient surtout aux blocs pleins : donnés à ces outils, ils les ramènent à 1 h 08
-et 1 h 28, sans rien changer à ce qu'ils laissent. Ce que la passe apporte en
+tient surtout aux blocs pleins : donnés à ces outils (`FULL_BLOCKS=1`), ils les
+ramènent à 1 h 08 et 1 h 28, sans rien changer à ce qu'ils laissent. Ce que la passe apporte en
 propre, c'est la qualité à durée égale. Elle ne recopie jamais un fichier
 entier : sur `dev-2007`, où un trou de 22 Go accueille tout, XP et JkDefrag
 finissent sans un morceau, et elle en laisse 844.
@@ -842,7 +842,9 @@ STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace ud.wav  # un autre o
 JkDefrag : `jkDefragForcedFill`, `jkDefragMoveUp`, `jkDefragSortName`,
 `jkDefragSortSize`, `jkDefragSortAccess`, `jkDefragSortChange`,
 `jkDefragSortCreation`, `frontierCompaction` et `fragmentMerge`. C'est ainsi que se comparent
-deux passes sur exactement le même volume.
+deux passes sur exactement le même volume. `FULL_BLOCKS=1` fait déplacer XP,
+UltraDefrag et JkDefrag par blocs pleins, comme le recollage économe : c'est
+ainsi qu'on compare les algorithmes à primitive égale.
 
 Le rendu est **au fil de l'eau**, comme l'écoute : le son est mixé à mesure
 que la passe se planifie, écrit dans un fichier brut dès qu'il est définitif,

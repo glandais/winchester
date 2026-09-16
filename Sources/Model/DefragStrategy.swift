@@ -126,6 +126,8 @@ enum DefragOperations {
     /// `bufferBytes` est ce qui fixe le rythme des allers-retours
     /// lecture/écriture, donc le tempo de la passe : c'est un réglage de l'outil
     /// simulé, pas une constante.
+    ///
+    /// `fullBlocks` remplace ce découpage par celui de `gatheredMove`.
     static func move(source: [Extent],
                      destination: [Extent],
                      category: ClusterCategory,
@@ -133,7 +135,14 @@ enum DefragOperations {
                      phase: Int,
                      partition: PartitionGeometry,
                      bufferBytes: Int,
+                     fullBlocks: Bool = false,
                      into sink: OperationSink) {
+        if fullBlocks {
+            gatheredMove(source: source, destination: destination, category: category,
+                         contiguous: contiguous, phase: phase, partition: partition,
+                         bufferBytes: bufferBytes, into: sink)
+            return
+        }
         let buffer = UInt32(max(bufferBytes / partition.clusterBytes, 1))
 
         var sourceIndex = 0

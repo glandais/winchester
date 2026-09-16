@@ -72,6 +72,17 @@ struct UltraDefragStrategy: DefragStrategy {
     /// du volume comme le fait `adjust_move_at_once_parameter`.
     var bufferBytes: Int?
 
+    /// Déplacer par blocs pleins (`DefragOperations.gatheredMove`) au lieu de
+    /// couper chaque tampon aux bornes des extents.
+    ///
+    /// Ce n'est pas le comportement modélisé de l'outil, et c'est désactivé par
+    /// défaut : l'option sert à comparer les algorithmes à primitive égale avec
+    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Sur les huit volumes
+    /// NTFS de la galerie, elle ramène XP de 2 h 08 à 1 h 08, UltraDefrag de
+    /// 4 h 03 à 1 h 28 et JkDefrag de 7 h 09 à 4 h 49, sans rien changer à ce
+    /// qu'ils laissent.
+    var fullBlocks = false
+
     /// La courbe d'`adjust_move_at_once_parameter` (`analyze.c:90-117`), qui
     /// dimensionne le bloc sur la capacité du volume et non sur ce qu'un
     /// tampon utilisateur saurait tenir.
@@ -242,7 +253,7 @@ struct UltraDefragStrategy: DefragStrategy {
                 DefragOperations.move(source: file.extents, destination: [target],
                                       category: file.category, contiguous: true, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
-                                      into: sink)
+                                      fullBlocks: fullBlocks, into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
                                         phase: phase, partition: partition, into: sink)
                 apply(position, to: [target], in: &volume)
@@ -397,7 +408,7 @@ struct UltraDefragStrategy: DefragStrategy {
                 DefragOperations.move(source: source, destination: [target],
                                       category: category, contiguous: contiguous, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
-                                      into: sink)
+                                      fullBlocks: fullBlocks, into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
                                         phase: phase, partition: partition,
                                         repaint: contiguous == volume.files[position].isContiguous

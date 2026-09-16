@@ -128,6 +128,17 @@ struct JKDefragStrategy: DefragStrategy {
     /// `WindowsXPStrategy`, et pour la même raison.
     var bufferBytes = 4 * 1024 * 1024
 
+    /// Déplacer par blocs pleins (`DefragOperations.gatheredMove`) au lieu de
+    /// couper chaque tampon aux bornes des extents.
+    ///
+    /// Ce n'est pas le comportement modélisé de l'outil, et c'est désactivé par
+    /// défaut : l'option sert à comparer les algorithmes à primitive égale avec
+    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Sur les huit volumes
+    /// NTFS de la galerie, elle ramène XP de 2 h 08 à 1 h 08, UltraDefrag de
+    /// 4 h 03 à 1 h 28 et JkDefrag de 7 h 09 à 4 h 49, sans rien changer à ce
+    /// qu'ils laissent.
+    var fullBlocks = false
+
     /// Combien d'éléments `FindBestItem` peut visiter avant de renoncer à une
     /// combinaison exacte.
     ///
@@ -663,7 +674,7 @@ extension JKDefragStrategy {
                                   category: file.category, contiguous: contiguous, phase: phase,
                                   partition: volume.partition,
                                   bufferBytes: strategy.bufferBytes,
-                                  into: sink)
+                                  fullBlocks: strategy.fullBlocks, into: sink)
             DefragOperations.commit(cluster: Int(lcn), fileIndex: index, phase: phase,
                                     partition: volume.partition,
                                     // Un fichier déplacé en entier est déjà tout
