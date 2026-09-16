@@ -1,4 +1,5 @@
 import SwiftUI
+import DiskCore
 
 enum Theme {
     static let background = Color(red: 0.055, green: 0.058, blue: 0.070)
@@ -91,5 +92,58 @@ struct ScreenTitle: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Les nombres et les dates tels qu'on les écrit en français : espace fine
+/// insécable entre les milliers, virgule décimale, mois en toutes lettres.
+enum FrenchFormat {
+
+    private static let thin = "\u{202F}"
+
+    static func integer(_ value: Int) -> String {
+        let digits = String(abs(value))
+        var groups: [Substring] = []
+        var end = digits.endIndex
+        while end > digits.startIndex {
+            let start = digits.index(end, offsetBy: -3, limitedBy: digits.startIndex) ?? digits.startIndex
+            groups.insert(digits[start..<end], at: 0)
+            end = start
+        }
+        return (value < 0 ? "−" : "") + groups.joined(separator: thin)
+    }
+
+    static func decimal(_ value: Double, digits: Int) -> String {
+        String(format: "%.\(digits)f", value).replacingOccurrences(of: ".", with: ",")
+    }
+
+    /// Un rapport entre 0 et 1, arrondi à l'unité — sauf sous 10 %, où la
+    /// décimale dit encore quelque chose.
+    static func percent(_ ratio: Double) -> String {
+        let value = ratio * 100
+        if value > 0 && value < 0.05 { return "<\u{00A0}0,1\u{00A0}%" }
+        let text = value < 10 && value > 0 ? decimal(value, digits: 1) : integer(Int(value.rounded()))
+        return text + "\u{00A0}%"
+    }
+
+    /// Une taille en Mo, en Go au-delà d'un gigaoctet, avec une décimale sous
+    /// dix mégaoctets ; en Ko sous un mégaoctet si on le demande.
+    static func megabytes(_ bytes: UInt64, smallInKilobytes: Bool = false) -> String {
+        if smallInKilobytes && bytes < 1_048_576 {
+            return integer(Int(bytes / 1_024)) + "\u{00A0}Ko"
+        }
+        let mb = Double(bytes) / 1_048_576
+        if mb >= 1_024 { return decimal(mb / 1_024, digits: 1) + "\u{00A0}Go" }
+        if mb < 10 { return decimal(mb, digits: 1) + "\u{00A0}Mo" }
+        return integer(Int(mb.rounded())) + "\u{00A0}Mo"
+    }
+
+    private static let months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+                                 "août", "septembre", "octobre", "novembre", "décembre"]
+
+    /// « 14 mars 1997 »
+    static func date(_ date: CivilDate) -> String {
+        let month = (1...12).contains(date.month) ? months[date.month - 1] : "\(date.month)"
+        return "\(date.day == 1 ? "1er" : String(date.day)) \(month) \(date.year)"
     }
 }

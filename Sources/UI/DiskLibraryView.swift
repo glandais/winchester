@@ -18,9 +18,11 @@ struct DiskLibraryView: View {
 
     @State private var handoverFailure: String?
     @State private var showsFullScreenMap = false
+    @State private var showsDetails = false
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
+            header
             switch model.state {
             case .idle:
                 cancelled
@@ -28,15 +30,103 @@ struct DiskLibraryView: View {
                 progress(fraction: fraction, day: day, fileCount: fileCount, fill: fill)
             case let .ready(disk):
                 map
-                handover(for: disk)
                 metrics(of: disk)
+                explanationCard(for: disk)
+                handover(for: disk)
+                details(of: disk)
             case let .failed(message):
                 failure(message)
             }
         }
     }
 
-    // MARK: - États
+    // MARK: - En-tête
+
+    /// Le titre du disque et sa fiche matérielle. La taille de cluster n'est
+    /// sûre qu'une fois le volume fabriqué : un profil peut la laisser au
+    /// format, qui la choisit d'après la capacité.
+    @ViewBuilder
+    private var header: some View {
+        if let spec = model.selected {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(spec.displayName)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.text)
+                Text(specLine(spec, clusterBytes: model.state.disk?.clusterBytes))
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let summary = spec.summary {
+                    Text(summary)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.text.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// « 1996 · 850 Mo · 5 400 tr/min · VFAT 16 Ko · Windows 95 »
+    private func specLine(_ spec: ProfileSpec, clusterBytes: UInt32?) -> String {
+        let cluster = clusterBytes.map { " \($0 / 1024) Ko" }
+            ?? spec.fileSystem.clusterKB.map { " \($0) Ko" }
+            ?? ""
+        return "\(spec.year) · \(spec.capacityLabel) · \(spec.rpmLabel) · "
+            + "\(spec.fileSystemLabel)\(cluster) · \(spec.osName)"
+    }
+
+    // MARK: - Fabrication
+
+    private func progress(fraction: Double, day: UInt32, fileCount: Int, fill: Double) -> some View {
+        let date = model.selected.map { FrenchFormat.date($0.timeline.start.adding(days: Int(day))) }
+        return VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Fabrication du volume")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                Text("On rejoue l'histoire du disque, jour après jour. L'allocateur fait le reste.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(spacing: 9) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("JOUR SIMULÉ")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.dim)
+                    Spacer()
+                    Text(date ?? "jour \(day)")
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Theme.text)
+                }
+                ProgressView(value: fraction)
+                    .tint(Theme.read)
+                HStack {
+                    Text("\(FrenchFormat.integer(fileCount)) fichiers")
+                    Spacer()
+                    Text("\(Int((fill * 100).rounded())) % occupé")
+                }
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(Theme.dim)
+            }
+            Button {
+                model.cancel()
+            } label: {
+                Text("Annuler")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.text)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel()
+    }
 
     /// Une génération annulée ne reprend pas où elle s'était arrêtée : elle
     /// repart du premier jour de l'histoire.
@@ -78,127 +168,20 @@ struct DiskLibraryView: View {
         .buttonStyle(.bordered)
     }
 
-    private func progress(fraction: Double, day: UInt32, fileCount: Int, fill: Double) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Vieillissement du volume")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.text)
-                Spacer()
-                Button("Annuler") { model.cancel() }
-                    .font(.system(size: 12))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.dim)
-            }
-            ProgressView(value: fraction)
-                .tint(Theme.read)
-            HStack(spacing: 14) {
-                Text("jour \(day)")
-                Text("\(fileCount) fichiers")
-                Text("\(Int(fill * 100)) % occupé")
-            }
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(Theme.dim)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panel()
-    }
-
-    // MARK: - Passage au simulateur
-
-    /// Les deux ponts entre les écrans : **démarrer** ce disque, ou le
-    /// **défragmenter** à voix haute.
-    ///
-    /// Les deux marchent sur les vingt disques : démarrer ne suppose aucune
-    /// stratégie de rangement, et chaque format a désormais le défragmenteur de
-    /// son époque — celui de Windows 95 sur les volumes FAT, celui de
-    /// Windows XP sur les NTFS. Le second bouton reste malgré tout capable de
-    /// s'éteindre, avec la raison écrite dessous : un disque décrit n'importe
-    /// comment n'a pas à faire planter l'écran suivant.
-    @ViewBuilder
-    private func handover(for disk: GeneratedDisk) -> some View {
-        let refusal = GeneratedVolumeBridge.refusal(for: disk)
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                handoverButton(.boot, icon: "power", for: disk, refusal: nil)
-                handoverButton(.defrag, icon: "waveform", for: disk, refusal: refusal)
-            }
-
-            if let refusal {
-                Text(refusal)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.dim)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if let handoverFailure {
-                Text(handoverFailure)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Theme.read)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panel()
-    }
-
-    private func handoverButton(_ activity: GeneratedActivity,
-                                icon: String,
-                                for disk: GeneratedDisk,
-                                refusal: String?) -> some View {
-        Button {
-            handoverFailure = nil
-            do {
-                try onHandover(disk, activity)
-            } catch {
-                handoverFailure = "\(error)"
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                Text(activity.action)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(refusal == nil ? Theme.read : Color.white.opacity(0.06))
-            )
-            .foregroundStyle(refusal == nil ? Theme.background : Theme.dim)
-        }
-        .buttonStyle(.plain)
-        .disabled(refusal != nil)
-    }
-
     // MARK: - Résultat
 
     private var map: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                if let spec = model.selected {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(spec.displayName)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Theme.text)
-                        if let summary = spec.summary {
-                            Text(summary)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Theme.dim)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-                Spacer(minLength: 8)
+            ZStack(alignment: .topTrailing) {
+                ClusterMapView(grid: model.grid, shades: model.shades)
+                    .contentShape(Rectangle())
+                    .onTapGesture { showsFullScreenMap = true }
                 // Le plein écran vaut ici autant que pour une passe : c'est
                 // même le seul endroit où l'on regarde un volume de 320 Go, et
                 // donc le seul où un bloc vaut des milliers de clusters.
                 FullScreenMapButton { showsFullScreenMap = true }
+                    .padding(6)
             }
-            ClusterMapView(grid: model.grid, shades: model.shades)
-                .contentShape(Rectangle())
-                .onTapGesture { showsFullScreenMap = true }
             if let disk = model.state.disk {
                 ClusterLegend(categories: model.presentCategories,
                               clustersPerCell: model.clustersPerCell,
@@ -213,43 +196,62 @@ struct DiskLibraryView: View {
         }
     }
 
+    /// Les six chiffres qui disent ce qu'est devenu le volume.
     private func metrics(of disk: GeneratedDisk) -> some View {
         let m = disk.metrics
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("\(disk.spec.fileSystem.type.rawValue.uppercased()) · clusters de "
-                 + "\(disk.clusterBytes / 1024) Ko · \(disk.spec.disk.sizeMB) Mo · "
-                 + "\(disk.dayCount) jours simulés")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(Theme.dim)
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 3),
+                         spacing: 9) {
+            MetricTile(label: "Fichiers", value: FrenchFormat.integer(m.fileCount))
+            MetricTile(label: "Fragmentés",
+                       value: FrenchFormat.percent(m.fragmentedRatioAmongFragmentable),
+                       accent: true)
+            MetricTile(label: "Morceaux/f.", value: FrenchFormat.decimal(m.meanExtentsPerFile, digits: 2))
+            MetricTile(label: "Trous", value: FrenchFormat.integer(m.freeRunCount))
+            MetricTile(label: "Slack", value: FrenchFormat.percent(m.slackRatio))
+            MetricTile(label: "Rempli", value: FrenchFormat.percent(m.fill))
+        }
+    }
 
-            FlowRow(spacing: 10) {
-                StatTile(label: "Fichiers", value: "\(m.fileCount)", unit: "total")
-                StatTile(label: "Remplissage", value: "\(Int(m.fill * 100))", unit: "%")
-                StatTile(label: "Fragmentés",
-                         value: String(format: "%.1f", m.fragmentedRatioAmongFragmentable * 100),
-                         unit: "%")
-                StatTile(label: "Extents/fichier",
-                         value: String(format: "%.2f", m.meanExtentsPerFile),
-                         unit: "p95 \(m.p95ExtentsPerFile)")
-                StatTile(label: "Pire fichier", value: "\(m.maxExtentsPerFile)", unit: "extents")
-                StatTile(label: "Trous", value: "\(m.freeRunCount)", unit: "libres")
-                StatTile(label: "Slack", value: "\(Int(m.slackRatio * 100))", unit: "% perdus")
-                if m.residentFileCount > 0 {
-                    StatTile(label: "Résidents", value: "\(m.residentFileCount)", unit: "dans la MFT")
-                }
-                if disk.mftClusters > 0 {
-                    StatTile(label: "MFT",
-                             value: "\(disk.mftClusters * disk.clusterBytes / 1_048_576)",
-                             unit: "Mo en \(disk.mftExtents) extents")
-                }
-            }
-
+    private func explanationCard(for disk: GeneratedDisk) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.write)
             Text(explanation(for: disk))
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.dim)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.text.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .panel()
+    }
+
+    /// Ce qui ne tient pas dans les six tuiles, pour qui veut regarder de près.
+    private func details(of disk: GeneratedDisk) -> some View {
+        let m = disk.metrics
+        return DisclosureGroup(isExpanded: $showsDetails) {
+            FlowRow(spacing: 10) {
+                StatTile(label: "Pire fichier", value: FrenchFormat.integer(m.maxExtentsPerFile), unit: "morceaux")
+                StatTile(label: "95ᵉ centile", value: FrenchFormat.integer(m.p95ExtentsPerFile), unit: "morceaux")
+                StatTile(label: "Plus grand trou",
+                         value: FrenchFormat.megabytes(UInt64(m.largestFreeRunClusters) * UInt64(disk.clusterBytes)),
+                         unit: "libres")
+                StatTile(label: "Histoire", value: FrenchFormat.integer(Int(disk.dayCount)), unit: "jours simulés")
+                if m.residentFileCount > 0 {
+                    StatTile(label: "Résidents", value: FrenchFormat.integer(m.residentFileCount), unit: "dans la MFT")
+                }
+                if disk.mftClusters > 0 {
+                    StatTile(label: "MFT",
+                             value: FrenchFormat.megabytes(UInt64(disk.mftClusters) * UInt64(disk.clusterBytes)),
+                             unit: "en \(disk.mftExtents) morceaux")
+                }
+            }
+            .padding(.top, 10)
+        } label: {
+            Text("Plus de détails")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.text)
+        }
         .panel()
     }
 
@@ -261,18 +263,127 @@ struct DiskLibraryView: View {
         case .fat16:
             return "MS-DOS sert le premier cluster libre à partir du début du volume, "
                 + "à chaque écriture : les trous se rebouchent aussitôt et les fichiers "
-                + "récents sont hachés. Le slack de \(Int(m.slackRatio * 100)) % vient "
+                + "récents sont hachés. Le slack de \(FrenchFormat.percent(m.slackRatio)) vient "
                 + "des clusters de \(disk.clusterBytes / 1024) Ko, que la taille du volume impose."
         case .vfat, .fat32:
             return "Le pilote reprend au dernier cluster alloué : l'écriture est propre "
                 + "tant que le curseur avance, puis il revient au début du volume et "
                 + "repasse par-dessus des trous laissés des mois plus tôt. "
-                + "\(m.freeRunCount) trous subsistent."
+                + "\(FrenchFormat.integer(m.freeRunCount)) trous subsistent."
         case .ntfs:
+            // La moyenne de morceaux se lit sur tous les fichiers : quelques
+            // gros fichiers hachés suffisent à la tirer loin au-dessus de ce
+            // que vit un fichier ordinaire. Le dire, sinon la tuile ment.
+            guard m.fragmentedFileCount > 0 else {
+                return "NTFS choisit le trou qui convient plutôt que le premier venu, et tient "
+                    + "les données à l'écart de sa zone MFT : aucun fichier de ce volume n'est "
+                    + "en morceaux."
+            }
             return "NTFS choisit le trou qui convient plutôt que le premier venu, et tient "
-                + "les données à l'écart de sa zone MFT. D'où des fichiers bien plus "
-                + "contigus — \(String(format: "%.2f", m.meanExtentsPerFile)) extents par "
-                + "fichier en moyenne — et de grands blocs libres conservés."
+                + "les données à l'écart de sa zone MFT : seuls "
+                + "\(FrenchFormat.percent(m.fragmentedRatioAmongFragmentable)) des fichiers sont en "
+                + "morceaux. Ceux-là le sont beaucoup — le pire en compte "
+                + "\(FrenchFormat.integer(m.maxExtentsPerFile)) —, et ce sont eux qui portent la "
+                + "moyenne à \(FrenchFormat.decimal(m.meanExtentsPerFile, digits: 2)) morceaux par fichier."
         }
+    }
+
+    // MARK: - Passage au simulateur
+
+    /// Les deux ponts entre les écrans : **défragmenter** ce disque, ou le
+    /// **démarrer**.
+    ///
+    /// Les deux marchent sur les vingt disques : démarrer ne suppose aucune
+    /// stratégie de rangement, et chaque format a le défragmenteur de son
+    /// époque — celui de Windows 95 sur les volumes FAT, celui de Windows XP
+    /// sur les NTFS. Le bouton de défragmentation reste malgré tout capable de
+    /// s'éteindre, avec la raison écrite dessous : un disque décrit n'importe
+    /// comment n'a pas à faire planter l'écran suivant.
+    @ViewBuilder
+    private func handover(for disk: GeneratedDisk) -> some View {
+        let refusal = GeneratedVolumeBridge.refusal(for: disk)
+        VStack(alignment: .leading, spacing: 8) {
+            handoverButton(.defrag, icon: "waveform", for: disk, refusal: refusal, primary: true)
+            handoverButton(.boot, icon: "power", for: disk, refusal: nil, primary: false)
+
+            if let refusal {
+                Text(refusal)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let handoverFailure {
+                Text(handoverFailure)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.read)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func handoverButton(_ activity: GeneratedActivity,
+                                icon: String,
+                                for disk: GeneratedDisk,
+                                refusal: String?,
+                                primary: Bool) -> some View {
+        let enabled = refusal == nil
+        return Button {
+            handoverFailure = nil
+            do {
+                try onHandover(disk, activity)
+            } catch {
+                handoverFailure = "\(error)"
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                Text(activity.action)
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(primary && enabled ? Theme.read : Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(primary ? Color.clear : Color.white.opacity(0.16), lineWidth: 1)
+            )
+            .foregroundStyle(!enabled ? Theme.dim : (primary ? Theme.background : Theme.text))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+}
+
+/// Une métrique de la fiche : libellé en capitales, valeur en chiffres fixes.
+private struct MetricTile: View {
+    let label: String
+    let value: String
+    var accent = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.dim)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(value)
+                .font(.system(size: 19, weight: .medium, design: .monospaced))
+                .foregroundStyle(accent ? Theme.read : Theme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Theme.panel)
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Theme.stroke, lineWidth: 1))
+        )
+        .accessibilityElement(children: .combine)
     }
 }

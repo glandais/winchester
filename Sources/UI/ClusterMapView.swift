@@ -192,13 +192,14 @@ struct ClusterLegend: View {
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(Theme.categoryColor(sample, contiguous: true))
                             .frame(width: 9, height: 9)
-                        Text("Plus sombre : non fragmenté")
+                        Text("Plus sombre : rangé d'un seul tenant")
                             .font(.system(size: 10))
                             .foregroundStyle(Theme.dim)
                     }
                 }
             }
-            Text("1 bloc = \(clustersPerCell) clusters = \(clustersPerCell * clusterBytes / 1024) Ko")
+            Text("1 bloc = \(FrenchFormat.integer(clustersPerCell)) clusters = "
+                 + FrenchFormat.megabytes(UInt64(clustersPerCell) * UInt64(clusterBytes), smallInKilobytes: true))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(Theme.dim.opacity(0.8))
         }

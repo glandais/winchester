@@ -38,20 +38,20 @@ extension ProfileSpec {
 
     /// « IDE 850 Mo · 5 400 tr/min » : le disque n'a pas de marque, le modèle le
     /// déduit de sa capacité, de son régime et de son année.
-    var hardwareLine: String {
-        // Capacité commerciale, en gigaoctets de mille mégaoctets : « 1,08 Go »,
-        // « 6,4 Go », « 40 Go », comme sur l'étiquette.
-        let size: String
-        if disk.sizeMB >= 1_000 {
-            var digits = String(format: "%.2f", Double(disk.sizeMB) / 1_000)
-            while digits.hasSuffix("0") { digits.removeLast() }
-            if digits.hasSuffix(".") { digits.removeLast() }
-            size = digits.replacingOccurrences(of: ".", with: ",") + " Go"
-        } else {
-            size = "\(disk.sizeMB) Mo"
-        }
-        let rpm = String(format: "%d\u{202F}%03d", disk.rpm / 1_000, disk.rpm % 1_000)
-        return "IDE \(size) · \(rpm) tr/min"
+    var hardwareLine: String { "IDE \(capacityLabel) · \(rpmLabel)" }
+
+    /// Capacité commerciale, en gigaoctets de mille mégaoctets : « 1,08 Go »,
+    /// « 6,4 Go », « 40 Go », comme sur l'étiquette.
+    var capacityLabel: String {
+        guard disk.sizeMB >= 1_000 else { return "\(disk.sizeMB) Mo" }
+        var digits = String(format: "%.2f", Double(disk.sizeMB) / 1_000)
+        while digits.hasSuffix("0") { digits.removeLast() }
+        if digits.hasSuffix(".") { digits.removeLast() }
+        return digits.replacingOccurrences(of: ".", with: ",") + " Go"
+    }
+
+    var rpmLabel: String {
+        String(format: "%d\u{202F}%03d tr/min", disk.rpm / 1_000, disk.rpm % 1_000)
     }
 
     var fileSystemLabel: String {
@@ -180,7 +180,7 @@ private struct DiskCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let fragmentedRatio {
-                    Text(String(format: "déjà généré · %.0f %% fragmentés", fragmentedRatio * 100))
+                    Text("déjà généré · \(FrenchFormat.percent(fragmentedRatio)) fragmentés")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.read)
                 }
@@ -211,7 +211,8 @@ struct DiskDetailScreen: View {
                     .padding(16)
             }
         }
-        .navigationTitle(library.scenarios.first { $0.id == id }?.displayName ?? "Disque")
+        // Le titre est dans la page, en grand : la barre ne le répète pas.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
         .onAppear { library.open(id) }

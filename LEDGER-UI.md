@@ -281,26 +281,75 @@ boutons s'empilaient sous les puces, sur le même écran.
 
 ## Chantier U2 — la génération et la fiche du disque
 
-**À faire** · prompt §1
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-- Progression vivante : jour simulé, fichiers, % occupé, bouton Annuler, et
-  si possible la carte qui se remplit.
-- Fiche : carte des clusters, métriques en langage courant (fichiers,
-  % fragmentés, morceaux par fichier, trous, slack, remplissage), une phrase
-  qui explique ce qui frappe sur ce disque.
-- Deux actions : **Démarrer cet OS**, **Défragmenter ce disque** (qui mène à U3).
+La fiche reprenait l'ancienne galerie : un panneau de carte titré en petit,
+deux boutons côte à côte, puis neuf tuiles et un en-tête technique
+(« VFAT · clusters de 32 Ko · 1080 Mo · 580 jours simulés »). Depuis U1, le nom
+du disque s'y lisait deux fois, dans la barre et sur la carte. La fabrication
+disait « jour 62 », un compteur que personne ne sait lire.
 
-### Ce que le code offre
+### Les décisions
 
-`GenerationState.running(fraction, day, fileCount, fill)`, `cancel()`,
-`AllocationMetrics` complet, `explanation(for:)` dans `DiskLibraryView`.
+- **En-tête de page** (maquette 05) : le nom en grand, une ligne matérielle
+  « 1996 · 850 Mo · 5 400 tr/min · VFAT 16 Ko · Windows 95 », le résumé. La
+  barre de navigation ne répète plus le titre ; le retour dit « Disques ».
+- **La taille de cluster vient du volume fabriqué**, et du profil tant qu'il
+  ne l'est pas : un profil peut la laisser au format, qui la choisit d'après
+  la capacité.
+- **Six métriques sur trois colonnes** : fichiers, fragmentés (en ambre),
+  morceaux par fichier, trous, slack, rempli. Le reste — pire fichier,
+  95ᵉ centile, plus grand trou, jours simulés, résidents et MFT — passe dans
+  **Plus de détails**, fermé par défaut.
+- **L'explication dans sa carte ⓘ**, entre les chiffres et les boutons.
+- **Défragmenter d'abord**, pleine largeur et en ambre ; **Démarrer cet OS**
+  dessous, en contour. C'est l'ordre des maquettes, et l'action que l'app
+  sait le mieux raconter.
+- **Fabrication** (maquette 04) : « Fabrication du volume », le **jour simulé en
+  date** (« 14 mars 1997 », tiré de `timeline.start` et du jour courant), la
+  barre, fichiers et remplissage, **Annuler** pleine largeur.
+- **Les nombres à la française partout** (`FrenchFormat`) : espace fine entre
+  les milliers, virgule, une décimale sous 10 %, « < 0,1 % » plutôt que
+  « 0,0 % ». La légende de la carte passe aux Mo au-delà d'un mégaoctet par
+  bloc, et dit « plus sombre : rangé d'un seul tenant ».
+- **L'explication NTFS ne ment plus.** Elle disait « des fichiers bien plus
+  contigus — 14,34 morceaux par fichier en moyenne » sur `famille-2007`, ce qui
+  se contredit. La moyenne se prend sur tous les fichiers, et quelques gros
+  fichiers hachés la tirent : 2,2 % des fichiers en morceaux, dont le pire en
+  compte 10 941. Le texte le dit maintenant, et dit « aucun fichier en
+  morceaux » quand c'est le cas (`gamer-2003`). Le slack cité par
+  l'explication FAT16 reprend l'arrondi de la tuile.
 
-### À ajouter côté moteur
+### Ce qui valide
 
-La carte qui se remplit pendant la génération : le générateur ne publie
-aujourd'hui que des compteurs.
+- Construit en Debug pour le simulateur iPhone 17 Pro, sans erreur. Rien dans
+  `Sources/Model` n'est touché.
+- Sur le simulateur, relu à l'écran et dans l'arbre d'accessibilité :
+  - `famille-2007` en fabrication : « 1er avril 2007 », 0 fichier, Annuler ;
+  - la fiche prête : en-tête, carte, « 1 bloc = 65 641 clusters = 256 Mo »,
+    six tuiles (12 222 fichiers, 2,2 %, 14,34, 6 382 trous, 0,0 %, 93 %) —
+    le « 0,0 % » a fait écrire « < 0,1 % », pas recapturé depuis —,
+    explication, deux boutons, détails ;
+  - `secretaire-1993` : slack de 5,3 % sur la tuile et dans la phrase ;
+  - `gamer-2003` : « aucun fichier de ce volume n'est en morceaux ».
+
+### Laissé ouvert
+
+- **La carte ne se remplit pas pendant la fabrication**, contrairement à la
+  maquette 04 : le générateur ne publie que des compteurs. Montrer une carte
+  qui se remplit par un décor serait mentir ; il faut que `GenerationProgress`
+  porte un instantané agrégé du volume, à mesurer (l'agrégation d'un 320 Go
+  n'est pas gratuite).
+- **La fabrication est une carte dans la fiche**, pas une feuille qui monte
+  sur la galerie comme sur la maquette : on arrive sur la fiche, et elle se
+  remplit. Plus simple, et Annuler laisse sur la bonne page.
+- **« Morceaux/f. » reste une moyenne** sur tous les fichiers, que
+  l'explication doit corriger sur NTFS. Une médiane parmi les fichiers
+  fragmentés serait plus honnête dans la tuile, mais n'est pas calculée par
+  `AllocationMetrics`.
+- Les deux typographies de capacité relevées en U1 sont toujours là.
 
 ---
 

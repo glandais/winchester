@@ -33,6 +33,9 @@ struct DisksScreen: View {
                     .padding(16)
                 }
             }
+            // Le titre ne s'affiche pas — l'écran a le sien — mais c'est lui
+            // que prend le bouton de retour de la fiche.
+            .navigationTitle("Disques")
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { id in
                 DiskDetailScreen(library: library, id: id) { disk, activity in
