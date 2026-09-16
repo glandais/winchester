@@ -10,11 +10,13 @@ struct DisksScreen: View {
 
     @ObservedObject var model: SimulationModel
     @ObservedObject var library: DiskLibraryModel
+    let showsMiniPlayer: Bool
 
     /// Montre l'onglet de la passe.
     let onOpenPass: () -> Void
 
     @State private var path: [String] = []
+    @State private var report: PassRecord?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -36,9 +38,15 @@ struct DisksScreen: View {
             // Le titre ne s'affiche pas — l'écran a le sien — mais c'est lui
             // que prend le bouton de retour de la fiche.
             .navigationTitle("Disques")
+            .passMiniPlayer(model: model, isShown: showsMiniPlayer, onOpen: onOpenPass)
             .toolbar(.hidden, for: .navigationBar)
+            .sheet(item: $report) { record in
+                PassReportSheet(model: model, record: record, onLaunched: onOpenPass)
+            }
             .navigationDestination(for: String.self) { id in
-                DiskDetailScreen(library: library, id: id) { disk, activity, strategy in
+                DiskDetailScreen(library: library, id: id,
+                                 records: model.records.filter { $0.diskID == id },
+                                 onOpenRecord: { report = $0 }) { disk, activity, strategy in
                     try model.load(generated: disk, as: activity, using: strategy)
                     play()
                 }

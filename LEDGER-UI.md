@@ -749,19 +749,94 @@ dit nulle part, et le témoin ne donnait que sa durée, pas ses seeks.
 
 ## Chantier U8 — le bilan
 
-**À faire** · prompt §7
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-Avant → après, cartes côte à côte, la phrase de l'outil
-(`DefragStrategy.summary(of:)`), partage, et deux suites : **Essayer un autre
-outil sur ce disque**, **Démarrer ce disque rangé**.
+Une passe finie ne laissait que la phrase « Au départ… À l'arrivée… » sous sa
+carte, jusqu'à la passe suivante. Rien ne gardait l'image du volume avant la
+passe, ni ses chiffres une fois qu'on en lançait une autre ; on ne pouvait ni
+relancer un autre outil sans repasser par la galerie, ni comparer deux passes,
+ni démarrer le volume **tel que la passe l'avait laissé** — le plan ne gardait
+de l'état d'arrivée que ses statistiques.
 
-### À ajouter côté moteur
+### Les décisions — côté moteur
 
-- Garder l'image de la carte au départ : la passe ne garde que le présent.
-- **Démarrer le disque rangé** : le volume d'arrivée existe dans le plan, mais
-  il n'y a pas de pont `DefragVolume` → `GeneratedDisk` pour le démarrage.
+- **Le plan garde l'arrangement d'arrivée** (`DefragPlan.arrangement`) : pour
+  chaque fichier, son identifiant et ses extents à la fin de la passe. Quelques
+  octets par fichier, là où garder le volume garderait sa bitmap ; les six
+  constructions de plan le remplissent, `summarized()` le conserve.
+- **Un disque se réarrange** (`GeneratedDisk.rearranged(extents:)`, dans
+  `DiskCore`) : le catalogue reçoit les nouveaux extents, la bitmap est refaite
+  des fichiers et des extents système, les métriques sont réévaluées avec le
+  profil du format. C'est ce que faisait déjà le témoin pour le seul catalogue.
+- **`ScenarioBuilder.build(boot:rangedBy:)`** titre « Joueur, 2003, rangé » et le
+  dit dans son résumé ; le témoin du disque rangé est celui du disque d'origine,
+  puisque le contenu est le même.
+
+### Les décisions — côté écran
+
+- **`SimulationModel` tient les bilans** (`PassRecord`, douze au plus) : au
+  moment où le moteur signale la fin, il garde durée, requêtes, seeks, octets
+  déplacés, état avant et après, compteurs, phrase de l'outil, arrangement,
+  **carte au départ** — prise à l'instant zéro de la passe — et carte à la fin,
+  ainsi que le disque d'origine.
+- **« Passe terminée · Voir le bilan »** apparaît en tête de l'onglet Passe, et
+  la fiche d'un disque liste ses **passes entendues** ; un appui ouvre le bilan
+  dans une feuille (maquette 13) : cartes avant et après, avant → après,
+  déplacé et part du contenu, phrase de l'outil, puis
+  **Essayer un autre outil** (l'écran de choix d'U3, dans la feuille),
+  **Démarrer ce disque rangé**, **Comparer à une autre passe** du même disque,
+  **Partager le bilan** en texte.
+- **La comparaison** met deux passes en colonnes et marque sur chaque ligne la
+  valeur la plus basse — toutes sont des coûts ou des restes —, sans rien
+  additionner. Deux valeurs qui s'écrivent pareil ne sont pas départagées : la
+  première version marquait « 8 s » contre « 8 s ».
+- **Le démarrage rangé se compare** : le témoin ajoute la ligne du même disque
+  dans l'autre état, « avant rangement » ou « rangé par … », quand elle a été
+  entendue.
+- **Le bandeau de passe est posé sur la racine de la pile** de l'onglet Disques,
+  plus autour : il recouvrait le bouton **Lancer la passe** de l'écran de choix
+  dès qu'une passe avait joué, et un appui dessus ouvrait l'onglet Passe au lieu
+  de lancer. Défaut d'U0, trouvé ici.
+
+### Ce qui valide
+
+- **`swift test` : 102 tests `DiskCore` et 170 `DefragKit` passent**, dont :
+  - pour les **treize stratégies**, l'arrangement reposé sur le volume de départ
+    redonne exactement fichiers fragmentés, morceaux, trous, remplissage et
+    morceaux par fichier du plan ; un plan résumé garde son arrangement ;
+  - un disque réarrangé sans rien déplacer garde bitmap et métriques ; tassé
+    d'un seul tenant, il occupe autant et ne compte plus de fichier en
+    morceaux ;
+  - sur `gamer-1993` rangé par Windows 95 (622 fichiers déplacés sur 623), le
+    catalogue porte les nouvelles places, le démarrage lit **d'autres adresses**
+    pour le même nombre de fichiers, et les métriques égalent l'état d'arrivée
+    du plan.
+- **Le son ne change pas** : `defrag`, `boot:dev-2003`, Windows 95 sur
+  `dev-1993`, recollage économe sur `secretaire-2003`, identiques à l'octet à
+  `develop`.
+- Sur le simulateur, `gamer-2003` : démarrage (1 min 09), passe XP (8 s), carte
+  « Passe terminée », bilan avec cartes, lignes et actions ; **Essayer un autre
+  outil** → recollage économe (8 s) ; comparaison des deux ; **Démarrer ce
+  disque rangé** → « Joueur, 2003, rangé », témoin avec « avant rangement
+  68,9 s », « rangé par Recollage économe 68,9 s », « jamais fragmenté 69,6 s » ;
+  la fiche liste la passe et rouvre son bilan.
+
+### Laissé ouvert
+
+- **Le démarrage rangé de `gamer-2003` dure exactement autant que l'autre** : le
+  recollage n'y a touché aucun fichier que le démarrage lit. Le mécanisme est
+  prouvé par le test sur `gamer-1993`, pas par une écoute où l'écart s'entend ;
+  à refaire sur un FAT de 1996 après Windows 95, une passe de plusieurs minutes.
+- **Les bilans ne survivent pas à l'app** : ils vivent dans le modèle, douze au
+  plus. « Mes disques » (U9) devra décider ce qui se garde.
+- **Ranger un disque rangé** n'est pas proposé : « Essayer un autre outil » repart
+  toujours du volume d'origine.
+- Un scénario livré (la démo Windows 95) a son bilan, mais ni autre outil ni
+  démarrage rangé : il n'a pas de disque de la galerie derrière lui.
+- Les cartes du bilan sont prises à la grille en cours : ouvrir le plein écran
+  pendant la passe change la grille de la carte d'arrivée.
 
 ---
 

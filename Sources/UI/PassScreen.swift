@@ -18,6 +18,7 @@ struct SimulatorScreen: View {
     @StateObject private var clock: ClockRelay
     @State private var showsFullScreenMap = false
     @State private var view: View_ = .map
+    @State private var report: PassRecord?
 
     /// Un onglet caché reste en vie : sans cela, il suivrait l'horloge soixante
     /// fois par seconde sans que personne le voie.
@@ -41,6 +42,9 @@ struct SimulatorScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header
+                    if let record = model.currentRecord, record.kind == .defrag {
+                        finishedCard(record)
+                    }
                     if model.defrag != nil {
                         Picker("Vue", selection: $view) {
                             Text("Carte").tag(View_.map)
@@ -68,6 +72,9 @@ struct SimulatorScreen: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { transport }
+        .sheet(item: $report) { record in
+            PassReportSheet(model: model, record: record, onLaunched: { view = .map })
+        }
         .tint(Theme.read)
         .fullScreenCover(isPresented: $showsFullScreenMap) {
             DefragFullScreenMap(model: model, engine: engine)
@@ -142,6 +149,37 @@ struct SimulatorScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
+    }
+
+    /// La passe est entendue jusqu'au bout : son bilan est prêt.
+    private func finishedCard(_ record: PassRecord) -> some View {
+        Button {
+            report = record
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.seal")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Theme.read)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Passe terminée")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                    Text("Avant → après, un autre outil, le disque rangé")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.dim)
+                }
+                Spacer()
+                Text("Voir le bilan")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.background)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(Theme.read))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .panel()
+        }
+        .buttonStyle(.plain)
     }
 
     private func bootTitle(_ boot: BootPlayback) -> String {
@@ -381,7 +419,16 @@ struct SimulatorScreen: View {
             }
 
             VStack(spacing: 6) {
-                witnessRow("ce disque",
+                if let diskID = model.disk?.spec.id,
+                   let other = model.counterpartBoot(ofDisk: diskID, rangedBy: model.rangedBy) {
+                    // Le même disque, entendu dans l'autre état : vieilli, ou
+                    // rangé par un outil.
+                    witnessRow(other.rangedBy.map { "rangé par \($0)" } ?? "avant rangement",
+                               FrenchFormat.decimal(other.duration, digits: 1) + "\u{00A0}s",
+                               seeks: other.seeks, average: other.averageSeek,
+                               final: true)
+                }
+                witnessRow(model.rangedBy.map { "rangé par \($0)" } ?? "ce disque",
                            duration.map { FrenchFormat.decimal($0, digits: 1) + "\u{00A0}s" } ?? "en cours",
                            seeks: totals.seeks, average: totals.averageSeekDistance,
                            final: duration != nil)

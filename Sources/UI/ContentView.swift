@@ -21,8 +21,9 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            DisksScreen(model: model, library: library) { tab = .pass }
-                .passMiniPlayer(model: model, isShown: tab != .pass) { tab = .pass }
+            // Le bandeau est posé par l'écran lui-même, sur la racine de sa pile :
+            // autour de la pile, il recouvrait le bas des écrans poussés.
+            DisksScreen(model: model, library: library, showsMiniPlayer: tab != .pass) { tab = .pass }
                 .tabItem { Label("Disques", systemImage: "internaldrive") }
                 .tag(AppTab.disks)
 

@@ -23,6 +23,26 @@ final class SimulationModel: ObservableObject {
     /// sa conversion en volume, qu'on ne refait pas à chaque aller-retour.
     private var cache: [ScenarioSelection: Scenario] = [:]
 
+    /// Le disque de la galerie que joue la passe, s'il en vient un : c'est lui
+    /// qu'on relance avec un autre outil, ou qu'on démarre une fois rangé.
+    private(set) var disk: GeneratedDisk?
+    /// L'outil qui a rangé `disk`, quand la passe démarre un volume rangé.
+    private(set) var rangedBy: String?
+
+    /// Les passes entendues jusqu'au bout, dans l'ordre. C'est ce que lisent
+    /// le bilan et la comparaison.
+    @Published private(set) var records: [PassRecord] = []
+    /// Numéro de la passe en cours ; un bilan le porte, pour qu'on sache qu'il
+    /// parle d'elle.
+    private(set) var passNumber = 0
+    /// La carte au départ de la passe en cours.
+    private var startShades: (grid: MapGrid, shades: [ClusterShade])?
+    private var finished: AnyCancellable?
+
+    /// Le nombre de passes gardées : un bilan garde le disque entier, et un
+    /// NTFS de 320 Go pèse quelques mégaoctets de catalogue.
+    private static let recordLimit = 12
+
     var kind: ScenarioKind { scenario.kind }
     var label: ScenarioLabel { scenario.label }
     var geometry: DriveGeometry { scenario.geometry }
@@ -38,6 +58,13 @@ final class SimulationModel: ObservableObject {
         self.cache = [.builtin(.windowsBoot): scenario]
         self.engine = DiskNoiseEngine(rpm: scenario.geometry.rpm)
         engine.load(feed: live, rpm: scenario.geometry.rpm)
+        captureStart()
+        finished = engine.$isFinished
+            .removeDuplicates()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.recordFinishedPass() }
+            }
     }
 
     /// Ce que propose le sélecteur : les scénarios livrés, puis le disque de la
@@ -89,7 +116,28 @@ final class SimulationModel: ObservableObject {
         }
         for key in cache.keys where key.isGenerated { cache[key] = nil }
         cache[selection] = scenario
+        self.disk = disk
+        self.rangedBy = nil
         adopt(scenario, as: selection)
+    }
+
+    /// Démarre le disque qu'une passe a laissé : les mêmes fichiers, là où
+    /// l'outil les a posés. Rien si la passe ne venait pas de la galerie.
+    func loadRangedBoot(from record: PassRecord) {
+        guard let original = record.disk, !record.arrangement.isEmpty else { return }
+        let places = Dictionary(record.arrangement.map { ($0.id, $0.extents) },
+                                uniquingKeysWith: { _, last in last })
+        let ranged = original.rearranged(extents: places)
+        let scenario = ScenarioBuilder.build(boot: ranged, rangedBy: record.toolLabel)
+        let selection = ScenarioSelection.generated(original.spec.id, .boot)
+        for key in cache.keys where key.isGenerated { cache[key] = nil }
+        cache[selection] = scenario
+        // Le disque d'origine reste celui qu'on relance : ranger un disque déjà
+        // rangé n'est pas ce qu'on compare.
+        self.disk = original
+        self.rangedBy = record.toolLabel
+        adopt(scenario, as: selection)
+        // Même sélection que le démarrage d'origine : `adopt` ne saute pas.
     }
 
     /// Nom d'un choix dans le sélecteur. Un disque généré porte le nom de son
@@ -120,6 +168,68 @@ final class SimulationModel: ObservableObject {
         live = scenario.startLivePass()
         live.map?.setGrid(grid)
         engine.load(feed: live, rpm: scenario.geometry.rpm)
+        passNumber += 1
+        captureStart()
+    }
+
+    /// La carte avant la première mutation : ce que le bilan montre à gauche.
+    private func captureStart() {
+        guard let map = live.map else { startShades = nil; return }
+        startShades = (map.grid, map.shades(at: 0))
+    }
+
+    /// Une passe vient d'être entendue jusqu'au bout : on garde son bilan.
+    private func recordFinishedPass() {
+        guard let end = live.end, records.last?.passNumber != passNumber else { return }
+        let totals = live.totals
+        var record = PassRecord(passNumber: passNumber,
+                                diskID: disk?.spec.id ?? label.title,
+                                title: label.title,
+                                kind: defrag != nil ? .defrag : .boot,
+                                toolLabel: defrag?.strategy.label ?? boot?.osName ?? "",
+                                toolID: defrag?.strategy.id,
+                                rangedBy: rangedBy,
+                                duration: end.duration,
+                                requests: totals.requests,
+                                seeks: totals.seeks,
+                                averageSeek: totals.averageSeekDistance,
+                                movedBytes: totals.movedBytes)
+        if let plan = end.plan, let playback = defrag {
+            record.before = playback.before
+            record.after = plan.after
+            record.filesMoved = plan.filesMoved
+            record.evacuations = plan.evacuations
+            record.summary = plan.strategy.summary(of: plan)
+            record.arrangement = plan.arrangement
+            record.contentBytes = playback.before.fill * Double(playback.partition.clusterCount)
+                * Double(playback.partition.clusterBytes)
+            if let start = startShades, let map = live.map {
+                record.startMap = start
+                record.endMap = (map.grid, map.shades(at: end.duration))
+            }
+        }
+        if let boot {
+            record.freshSeconds = boot.freshSeconds
+        }
+        record.disk = disk
+        records.append(record)
+        if records.count > Self.recordLimit { records.removeFirst(records.count - Self.recordLimit) }
+    }
+
+    /// Le bilan de la passe en cours, si elle est finie.
+    var currentRecord: PassRecord? {
+        records.last { $0.passNumber == passNumber }
+    }
+
+    /// Les autres passes de défragmentation sur le même disque.
+    func otherDefrags(than record: PassRecord) -> [PassRecord] {
+        records.filter { $0.kind == .defrag && $0.diskID == record.diskID && $0.id != record.id }
+    }
+
+    /// Le dernier démarrage du même disque dans l'autre état — vieilli si
+    /// celui-ci est rangé, rangé si celui-ci est vieilli.
+    func counterpartBoot(ofDisk diskID: String, rangedBy: String?) -> PassRecord? {
+        records.last { $0.kind == .boot && $0.diskID == diskID && ($0.rangedBy == nil) != (rangedBy == nil) }
     }
 
     // MARK: - L'instant écouté

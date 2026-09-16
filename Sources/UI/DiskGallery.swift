@@ -201,14 +201,20 @@ struct DiskDetailScreen: View {
 
     @ObservedObject var library: DiskLibraryModel
     let id: String
+    /// Les passes entendues sur ce disque, et le bilan qu'on en ouvre.
+    var records: [PassRecord] = []
+    var onOpenRecord: (PassRecord) -> Void = { _ in }
     let onHandover: DiskHandover
 
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
             ScrollView {
-                DiskLibraryView(model: library, onHandover: onHandover)
-                    .padding(16)
+                VStack(alignment: .leading, spacing: 14) {
+                    DiskLibraryView(model: library, onHandover: onHandover)
+                    if !records.isEmpty { history }
+                }
+                .padding(16)
             }
         }
         // Le titre est dans la page, en grand : la barre ne le répète pas.
@@ -216,5 +222,50 @@ struct DiskDetailScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
         .onAppear { library.open(id) }
+    }
+
+    /// Ce qu'on a déjà écouté de ce disque, de la plus récente à la plus
+    /// ancienne passe.
+    private var history: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("PASSES ENTENDUES")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.dim)
+            ForEach(records.reversed()) { record in
+                Button {
+                    if record.kind == .defrag { onOpenRecord(record) }
+                } label: {
+                    HStack {
+                        Image(systemName: record.kind == .defrag ? "waveform" : "power")
+                            .foregroundStyle(Theme.dim)
+                            .frame(width: 18)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(record.kind == .defrag ? record.toolLabel
+                                 : record.rangedBy.map { "Démarrage, rangé par \($0)" } ?? "Démarrage")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.text)
+                            if let after = record.after {
+                                Text("\(FrenchFormat.integer(after.fragments)) morceaux · \(FrenchFormat.integer(after.freeHoles)) trous à la fin")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(Theme.dim)
+                            }
+                        }
+                        Spacer()
+                        Text(FrenchFormat.duration(record.duration))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Theme.dim)
+                        if record.kind == .defrag {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.dim)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel()
     }
 }

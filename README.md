@@ -264,6 +264,16 @@ temps, les tranches d'activité en gardent le détail, et chaque stratégie publ
 ses compteurs sur le récepteur comme elle y publie son avancement. Rien de ce
 qui s'entend n'en dépend.
 
+Une passe entendue jusqu'au bout laisse un **bilan** : les cartes du volume
+avant et après, les chiffres avant → après, et la phrase de l'outil. Depuis
+lui, on relance **un autre outil** sur le même volume de départ, on **compare**
+deux passes en colonnes, sans verdict, ou on **démarre le disque rangé**. Pour
+ce dernier, le plan d'une passe garde où chaque fichier a fini
+(`DefragPlan.arrangement`), et `GeneratedDisk.rearranged(extents:)` repose ces
+extents dans le catalogue d'origine, refait la bitmap et les métriques : le
+démarrage lit alors les fichiers là où l'outil les a mis, et se compare au
+démarrage du même disque vieilli comme au témoin.
+
 **La fragmentation n'est pas un paramètre, c'est un résidu.** On ne demande
 jamais « un disque à 23 % de fragmentation ». On écrit une histoire — une
 installation, des compilations, des enregistrements, des téléchargements, des
