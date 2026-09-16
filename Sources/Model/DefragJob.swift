@@ -153,9 +153,13 @@ enum DefragPlanner {
     /// JkDefrag est de 2008 et UltraDefrag de 2018, aucun n'a tourné sur ces
     /// disques-là, et ils ne s'obtiennent que sur demande — ce sont des points
     /// de comparaison, pas l'outil que la machine avait sous la main.
+    ///
+    /// JkDefrag y figure une fois par mode : le mode par défaut, puis les deux
+    /// tassements et les cinq tris complets.
     static let all: [any DefragStrategy] = [
         Windows95Strategy(), WindowsXPStrategy(), JKDefragStrategy(), UltraDefragStrategy(),
-    ]
+        JKDefragStrategy(mode: .forcedFill), JKDefragStrategy(mode: .moveUp),
+    ] + JKDefragStrategy.SortField.allCases.map { JKDefragStrategy(mode: .sort($0)) }
 
     static func strategy(named id: String) -> (any DefragStrategy)? {
         all.first { $0.id == id }

@@ -100,7 +100,10 @@ enum GeneratedVolumeBridge {
                                     category: category,
                                     walkOrder: files.count,
                                     extents: record.extents,
-                                    isMovable: category != .swap))
+                                    isMovable: category != .swap,
+                                    bytes: record.logicalSize,
+                                    createdDay: record.createdDay,
+                                    modifiedDay: record.modifiedDay))
         }
         // La zone MFT du générateur est reprise telle quelle : c'est bien la
         // plage que l'allocateur a tenue à l'écart pendant tout le

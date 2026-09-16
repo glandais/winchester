@@ -208,6 +208,19 @@ struct ClusterBitmapTests {
                     ? bitmap.nextFreeCluster(from: UInt32(from))
                     : bitmap.nextFreeCluster(from: UInt32(from), before: UInt32(before))
                 #expect(found == expected, "tour \(round), depuis \(from) avant \(before)")
+
+                // La même question, posée en descendant.
+                var last = before - 1
+                while last >= 0 && reference[last] { last -= 1 }
+                if last < 0 {
+                    #expect(bitmap.previousFreeRun(before: UInt32(before)) == nil)
+                } else {
+                    var first = last
+                    while first > 0 && !reference[first - 1] { first -= 1 }
+                    #expect(bitmap.previousFreeRun(before: UInt32(before))
+                            == Extent(start: UInt32(first), length: UInt32(last - first + 1)),
+                            "tour \(round), en descendant avant \(before)")
+                }
             }
         }
         #expect(bitmap.freeCount == UInt32(reference.lazy.filter { !$0 }.count))

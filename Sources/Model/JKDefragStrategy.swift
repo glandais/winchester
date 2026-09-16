@@ -47,10 +47,64 @@ import DiskCore
 ///   arrive, voir `Pass.fixup`. La garde des quinze minutes, elle, n'a rien à
 ///   garder ;
 /// - **`SlowDown`.** La vitesse par défaut est 100 %, qui n'endort rien.
+///
+/// Les autres modes de la ligne de commande sont là aussi, un par valeur de
+/// `mode` : les deux tassements (`-a 5`, `-a 6`) et les cinq tris complets
+/// (`-a 7` à `-a 11`). Ils sont décrits avec leur code, dans
+/// `JKDefragFullOptimize.swift`.
 struct JKDefragStrategy: DefragStrategy {
 
-    let id = "jkDefrag"
-    let label = "JkDefrag 3.36"
+    /// Ce que fait la passe — l'option `-a` de la ligne de commande, moins un
+    /// (`JkDefrag.cpp:340`), aiguillée par `DefragOnePath`
+    /// (`JkDefragLib.cpp:5412-5459`).
+    enum Mode: Sendable, Equatable {
+        /// `-a 3`, le mode par défaut : défragmenter, mettre en zone,
+        /// optimiser rapidement, remettre en zone.
+        case fastOptimize
+        /// `-a 5`, `ForcedFill` : chaque trou rempli par la fin du fragment le
+        /// plus haut du volume, jusqu'à ce qu'il n'y ait plus rien au-dessus.
+        case forcedFill
+        /// `-a 6`, `OptimizeUp` : chaque trou, du fond vers le début, rempli
+        /// par les fichiers pris **sous** lui. Le début du volume se vide.
+        case moveUp
+        /// `-a 7` à `-a 11`, `OptimizeSort` : chaque zone reconstruite dans
+        /// l'ordre demandé, en évacuant ce qui gêne.
+        case sort(SortField)
+    }
+
+    /// Le critère d'`OptimizeSort` — le `SortField` de `CompareItems`
+    /// (`JkDefragLib.cpp:4436`).
+    enum SortField: Int, Sendable, CaseIterable {
+        case name = 0, size, lastAccess, lastChange, creation
+    }
+
+    var mode: Mode = .fastOptimize
+
+    var id: String {
+        switch mode {
+        case .fastOptimize:           return "jkDefrag"
+        case .forcedFill:             return "jkDefragForcedFill"
+        case .moveUp:                 return "jkDefragMoveUp"
+        case .sort(.name):            return "jkDefragSortName"
+        case .sort(.size):            return "jkDefragSortSize"
+        case .sort(.lastAccess):      return "jkDefragSortAccess"
+        case .sort(.lastChange):      return "jkDefragSortChange"
+        case .sort(.creation):        return "jkDefragSortCreation"
+        }
+    }
+
+    var label: String {
+        switch mode {
+        case .fastOptimize:           return "JkDefrag 3.36"
+        case .forcedFill:             return "JkDefrag 3.36, comblement forcé"
+        case .moveUp:                 return "JkDefrag 3.36, vers la fin du volume"
+        case .sort(.name):            return "JkDefrag 3.36, tri par nom"
+        case .sort(.size):            return "JkDefrag 3.36, tri par taille"
+        case .sort(.lastAccess):      return "JkDefrag 3.36, tri par dernier accès"
+        case .sort(.lastChange):      return "JkDefrag 3.36, tri par dernière modification"
+        case .sort(.creation):        return "JkDefrag 3.36, tri par création"
+        }
+    }
 
     /// L'espace libre réservé après la zone des répertoires et après celle des
     /// fichiers ordinaires, en pourcentage du volume — l'option `-f`, qui vaut
@@ -112,11 +166,39 @@ struct JKDefragStrategy: DefragStrategy {
         "*.pdf", "*.rar", "*.rpm", "*.tar", "*.wmv", "*.vob", "*.z", "*.zip",
     ]
 
+    var phases: [PhaseDescriptor] {
+        switch mode {
+        case .fastOptimize: return Self.fastOptimizePhases
+        case .forcedFill:   return Self.phases(named: "forcedFill", "Comblement forcé",
+                                               "Chaque trou rempli par la fin du fragment le plus haut du volume")
+        case .moveUp:       return Self.phases(named: "moveUp", "Vers la fin du volume",
+                                               "Chaque trou, du fond vers le début, rempli par les fichiers pris dessous")
+        case .sort(let field):
+            return [Self.analysis,
+                    PhaseDescriptor(id: "sortRegular", label: "Tri \(field.phrase)",
+                                    detail: "Les fichiers ordinaires reposés un à un, en évacuant ce qui gêne"),
+                    PhaseDescriptor(id: "sortSpaceHogs", label: "Tri \(field.phrase)",
+                                    detail: "Les gros fichiers et les archives, au fond du volume"),
+                    Self.commit, Self.done]
+        }
+    }
+
+    private static let analysis = PhaseDescriptor(id: "analyse", label: "Analyse du volume",
+                                                  detail: "Les fichiers, leur zone, et les trois bandes du volume")
+    private static let commit = PhaseDescriptor(id: "commit", label: "Écriture des métadonnées",
+                                                detail: "Les tables du volume, une dernière fois")
+    private static let done = PhaseDescriptor(id: "done", label: "Terminé",
+                                              detail: "La passe demandée est allée au bout")
+
+    private static func phases(named id: String, _ label: String, _ detail: String) -> [PhaseDescriptor] {
+        [analysis, PhaseDescriptor(id: id, label: label, detail: detail), commit, done]
+    }
+
     /// Les étapes du mode 2, dans l'ordre où l'écran de JkDefrag les annonçait.
     /// Les trois zones de `OptimizeVolume` n'en font qu'une : la zone des
     /// répertoires est vide dans la galerie, et découper le reste n'apprendrait
     /// rien à l'écran.
-    let phases: [PhaseDescriptor] = [
+    private static let fastOptimizePhases: [PhaseDescriptor] = [
         PhaseDescriptor(id: "analyse", label: "Analyse du volume",
                         detail: "Les fichiers, leur zone, et les trois bandes du volume"),
         PhaseDescriptor(id: "defrag", label: "Défragmentation",
@@ -149,13 +231,28 @@ struct JKDefragStrategy: DefragStrategy {
             partition: input.partition,
             directoryCount: DefragOperations.directoryCount(of: input)))
 
-        pass.defragment(phase: 1)
-        pass.fixup(phase: 2)
-        pass.optimize(phase: 3)
-        pass.fixup(phase: 4)
+        switch mode {
+        case .fastOptimize:
+            pass.report.moves = [0, 0, 0, 0]
+            pass.defragment(phase: 1)
+            pass.fixup(phase: 2)
+            pass.optimize(phase: 3)
+            pass.fixup(phase: 4)
+        case .forcedFill:
+            pass.report.moves = [0]
+            pass.forcedFill(phase: 1)
+        case .moveUp:
+            pass.report.moves = [0]
+            pass.optimizeUp(phase: 1)
+        case .sort(let field):
+            // Une case pour les fichiers posés à leur rang, une pour les
+            // fragments que `Vacate` a évacués.
+            pass.report.moves = [0, 0]
+            pass.optimizeSort(field: field, phases: [1, 1, 2])
+        }
 
         pass.operations.append(contentsOf: DefragOperations.final(partition: input.partition,
-                                                                  phase: 5))
+                                                                  phase: phases.count - 2))
 
         let plan = DefragPlan(
             strategy: self,
@@ -169,9 +266,9 @@ struct JKDefragStrategy: DefragStrategy {
             movedBytes: pass.report.movedClusters * input.partition.clusterBytes,
             filesMoved: pass.touched.count,
             filesAlreadyInPlace: pass.order.count - pass.touched.count,
-            // Personne n'est délogé : `Vacate` n'est appelé que par les tris
-            // complets, pas par le mode 2. Une destination est toujours un trou.
-            evacuations: 0
+            // Personne n'est délogé hors des tris : `Vacate` n'est appelé que
+            // par eux. Ailleurs, une destination est toujours un trou.
+            evacuations: pass.report.evacuations
         )
         return (plan, pass.report)
     }
@@ -183,9 +280,10 @@ struct JKDefragStrategy: DefragStrategy {
         var zones: (regular: UInt32, spaceHogs: UInt32, end: UInt32) = (0, 0, 0)
         var spaceHogs = 0
         var movedClusters = 0
-        /// Déplacements par passe : `Defragment`, `Fixup`, `OptimizeVolume`,
-        /// second `Fixup`.
-        var moves = [0, 0, 0, 0]
+        /// Déplacements par passe. Mode 2 : `Defragment`, `Fixup`,
+        /// `OptimizeVolume`, second `Fixup`. Tri : fichiers posés, fragments
+        /// évacués. Tassements : une seule case.
+        var moves: [Int] = []
         /// Tranches supplémentaires de `Defragment`, au-delà de la première,
         /// pour les fichiers qu'aucun trou ne pouvait recevoir d'un tenant.
         var slices = 0
@@ -211,6 +309,23 @@ struct JKDefragStrategy: DefragStrategy {
         /// chiffre, rapporté à `perfectFitVisits`, qui dit si la borne a mordu.
         var perfectFitPeakVisits = 0
         var highestFits = 0
+
+        // Les tris complets.
+
+        /// Fragments que `Vacate` a déplacés vers le haut pour faire de la
+        /// place. Un fichier évacué plusieurs fois compte plusieurs fois.
+        var evacuations = 0
+        var vacateCalls = 0
+        /// `Vacate` arrêté par sa garde anti-ver : une évacuation a atterri
+        /// sous l'endroit à libérer, la poursuivre ferait tourner le volume en
+        /// rond.
+        var wormStops = 0
+        /// Fichiers posés en plusieurs morceaux, faute d'un trou assez grand à
+        /// leur rang — un tri **refragmente** ce qu'il ne peut pas loger.
+        var splitPlacements = 0
+        /// Recherches de trou sous une borne, qui ne sauraient se faire en
+        /// avançant (`FindGap` avec `FindHighestGap`).
+        var highestGapSearches = 0
     }
 
     // MARK: - Ce que les compteurs veulent dire
@@ -218,6 +333,22 @@ struct JKDefragStrategy: DefragStrategy {
     /// Ce qui distingue cette passe des trois autres : elle range le volume, et
     /// pourtant n'évacue personne.
     func summary(of plan: DefragPlan) -> String {
+        switch mode {
+        case .fastOptimize: break
+        case .forcedFill:
+            return String(format: "La passe tasse le volume contre son début : %d fichiers déplacés, "
+                          + "chacun pris par la fin de son fragment le plus haut. Elle ne répare rien, "
+                          + "et peut en casser : %d fichiers fragmentés à l'arrivée contre %d au départ.",
+                          plan.filesMoved, plan.after.fragmentedFiles, plan.before.fragmentedFiles)
+        case .moveUp:
+            return String(format: "La passe vide le début du volume : %d fichiers remontés vers la fin, "
+                          + "chaque trou comblé par les fichiers pris dessous.",
+                          plan.filesMoved)
+        case .sort(let field):
+            return "La passe repose \(plan.filesMoved) fichiers un à un, \(field.phrase), et évacue "
+                + "\(plan.evacuations) fragments pour leur faire de la place — dont certains "
+                + "reviendront à leur tour."
+        }
         let repaired = plan.before.fragmentedFiles - plan.after.fragmentedFiles
         var text = String(format: "La passe déplace %d fichiers et n'évacue personne : chaque trou "
                           + "est comblé par des fichiers pris plus haut, et les gros sont "
@@ -276,7 +407,7 @@ extension JKDefragStrategy {
 
     /// Un élément de l'arbre de JkDefrag : un fichier, repéré par le premier
     /// cluster de son premier extent.
-    fileprivate struct Item {
+    struct Item {
         var lcn: UInt32
         let clusters: UInt32
         let zone: UInt8
@@ -289,7 +420,7 @@ extension JKDefragStrategy {
     /// suffit. Les fichiers se comptent en milliers, un déplacement coûte un
     /// décalage de mémoire, et les parcours — qui sont l'essentiel du travail de
     /// `FindBestItem` — restent contigus en cache.
-    fileprivate struct ItemOrder {
+    struct ItemOrder {
         private(set) var items: [Item] = []
         /// Position dans le volume → LCN courant, pour retrouver un élément ;
         /// `.max` pour un fichier qui n'est pas dans l'arbre.
@@ -345,7 +476,7 @@ extension JKDefragStrategy {
         }
     }
 
-    fileprivate struct Pass {
+    struct Pass {
         let strategy: JKDefragStrategy
         var volume: DefragVolume
         var order: ItemOrder
@@ -470,7 +601,7 @@ extension JKDefragStrategy {
             return mustFit ? nil : largest
         }
 
-        private func outsideMFT(_ run: Extent) -> [Extent] {
+        func outsideMFT(_ run: Extent) -> [Extent] {
             guard let zone = volume.mftZone,
                   run.start < zone.upperBound, run.end > zone.lowerBound else { return [run] }
             var pieces: [Extent] = []
@@ -519,7 +650,7 @@ extension JKDefragStrategy {
             DefragOperations.commit(cluster: Int(lcn), fileIndex: index, phase: phase,
                                     partition: volume.partition, into: &operations)
             let extents = result.coalesced()
-            volume.relocate(index, to: extents)
+            volume.relocateChanges(index, to: extents)
             order.move(position, to: extents[0].start)
             touched.insert(position)
             report.movedClusters += Int(length)

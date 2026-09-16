@@ -16,6 +16,15 @@ struct DefragFile {
     /// tout est tassé autour de lui.
     let isMovable: Bool
 
+    /// Taille logique, en octets, quand la source la connaît. Sans elle, la
+    /// taille allouée en tient lieu.
+    var bytes: UInt64? = nil
+    /// Jour de création et jour de la dernière écriture, comptés depuis le
+    /// début de l'histoire du volume. Les tris de JkDefrag les lisent ; aucun
+    /// autre outil ne s'en sert.
+    var createdDay: UInt32 = 0
+    var modifiedDay: UInt32 = 0
+
     var clusterCount: UInt32 { extents.reduce(0) { $0 + $1.length } }
 
     /// Nombre de morceaux **réels** du fichier sur le plateau.
@@ -61,15 +70,15 @@ struct DefragFile {
 /// 4 096 blocs, soit une quarantaine d'entrées par bloc.
 struct ExtentIndex {
 
-    private struct Entry {
+    fileprivate struct Entry {
         let start: UInt32
         let length: UInt32
         let file: Int
         var end: UInt32 { start &+ length }
     }
 
-    private let blockShift: UInt32
-    private var blocks: [[Entry]]
+    fileprivate let blockShift: UInt32
+    fileprivate var blocks: [[Entry]]
 
     init(clusterCount: UInt32, targetBlocks: Int = 4_096) {
         // Puissance de deux la plus proche qui donne à peu près le nombre de
@@ -127,6 +136,48 @@ struct ExtentIndex {
             }
         }
         return found
+    }
+}
+
+extension ExtentIndex {
+
+    /// L'extent qui commence le plus bas à partir de `from`, parmi les fichiers
+    /// que `accept` retient.
+    ///
+    /// Un extent qui traverse plusieurs blocs figure dans chacun ; on ne le
+    /// considère que dans celui où il **commence**. Le premier bloc qui en
+    /// propose un tient alors le minimum : tout ce qui commence plus loin
+    /// commence dans un bloc plus loin.
+    func firstExtent(from: UInt32, where accept: (Int) -> Bool) -> (extent: Extent, file: Int)? {
+        var block = Int(from >> blockShift)
+        while block < blocks.count {
+            var best: Entry?
+            for entry in blocks[block]
+            where entry.start >= from && Int(entry.start >> blockShift) == block && accept(entry.file) {
+                if best == nil || entry.start < best!.start { best = entry }
+            }
+            if let best { return (Extent(start: best.start, length: best.length), best.file) }
+            block += 1
+        }
+        return nil
+    }
+
+    /// L'extent qui commence le plus haut **strictement sous** `before`, parmi
+    /// les fichiers que `accept` retient. Même lecture par bloc de départ, en
+    /// descendant.
+    func lastExtent(before: UInt32, where accept: (Int) -> Bool) -> (extent: Extent, file: Int)? {
+        guard before > 0 else { return nil }
+        var block = min(Int((before - 1) >> blockShift), blocks.count - 1)
+        while block >= 0 {
+            var best: Entry?
+            for entry in blocks[block]
+            where entry.start < before && Int(entry.start >> blockShift) == block && accept(entry.file) {
+                if best == nil || entry.start > best!.start { best = entry }
+            }
+            if let best { return (Extent(start: best.start, length: best.length), best.file) }
+            block -= 1
+        }
+        return nil
     }
 }
 
@@ -199,6 +250,40 @@ struct DefragVolume {
         index.remove(old, file: position)
         for extent in extents { bitmap.allocate(extent) }
         index.insert(extents, file: position)
+        files[position].extents = extents
+    }
+
+    /// Le même déplacement, qui ne touche la bitmap et l'index que pour les
+    /// extents qui changent.
+    ///
+    /// `relocate` retire et réinsère tous les extents du fichier. Pour qui
+    /// déplace un fichier en trois mille morceaux **un morceau à la fois**,
+    /// comme le fait `Vacate`, c'est un travail quadratique : la moitié du temps
+    /// d'un tri complet. Le résultat est le même, à un détail près : les extents
+    /// inchangés gardent leur rang dans les listes de l'index. `occupants` rend
+    /// alors ses fichiers dans un autre ordre, et Windows 95 évacue dans cet
+    /// ordre-là : il garde `relocate`.
+    mutating func relocateChanges(_ position: Int, to extents: [Extent]) {
+        let old = files[position].extents
+        // Un déplacement ne change qu'une plage de VCN : ce qui la précède et
+        // ce qui la suit sont les mêmes extents, dans le même ordre.
+        var prefix = 0
+        while prefix < old.count && prefix < extents.count && old[prefix] == extents[prefix] {
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < old.count - prefix && suffix < extents.count - prefix
+                && old[old.count - 1 - suffix] == extents[extents.count - 1 - suffix] {
+            suffix += 1
+        }
+        for extent in old[prefix..<(old.count - suffix)] {
+            bitmap.free(extent)
+            index.remove(extent, file: position)
+        }
+        for extent in extents[prefix..<(extents.count - suffix)] {
+            bitmap.allocate(extent)
+            index.insert(extent, file: position)
+        }
         files[position].extents = extents
     }
 
@@ -286,7 +371,11 @@ extension Volume {
                        extents: file.extents.map {
                            Extent(start: UInt32($0.start), length: UInt32($0.count))
                        },
-                       isMovable: file.kind != .swap)
+                       isMovable: file.kind != .swap,
+                       // Le volume livré ne date pas ses fichiers : le rang de
+                       // création est la seule chronologie qu'il porte.
+                       createdDay: UInt32(file.created),
+                       modifiedDay: UInt32(file.created))
         }
         return DefragVolume(partition: partition, files: files)
     }

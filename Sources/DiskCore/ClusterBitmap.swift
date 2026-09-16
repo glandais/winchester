@@ -204,6 +204,28 @@ public struct ClusterBitmap: Sendable {
         return (index << 6) + bits.trailingZeroBitCount
     }
 
+    /// Le dernier mot d'indice au plus `word` qui a un cluster libre : la même
+    /// descente dans les résumés, dans l'autre sens.
+    private func previousWordWithFree(from word: Int) -> Int? {
+        guard word >= 0 else { return nil }
+        var index = word >> 6
+        var bits = partial[index] & (~UInt64(0) >> UInt64(63 - word & 63))
+        if bits != 0 { return (index << 6) + 63 - bits.leadingZeroBitCount }
+
+        index -= 1
+        guard index >= 0 else { return nil }
+        var summary = index >> 6
+        var summaryBits = partialSummary[summary] & (~UInt64(0) >> UInt64(63 - index & 63))
+        while summaryBits == 0 {
+            summary -= 1
+            guard summary >= 0 else { return nil }
+            summaryBits = partialSummary[summary]
+        }
+        index = (summary << 6) + 63 - summaryBits.leadingZeroBitCount
+        bits = partial[index]
+        return (index << 6) + 63 - bits.leadingZeroBitCount
+    }
+
     private func countAllocated(start: UInt32, length: UInt32) -> UInt32 {
         guard length > 0 else { return 0 }
         let end = start + length
@@ -269,6 +291,42 @@ public struct ClusterBitmap: Sendable {
     public func nextFreeRun(from cluster: UInt32, limit: UInt32 = .max, before: UInt32? = nil) -> Extent? {
         guard let start = nextFreeCluster(from: cluster, before: before) else { return nil }
         return Extent(start: start, length: freeRunLength(at: start, limit: limit))
+    }
+
+    /// Dernier cluster libre **strictement avant** `limit`.
+    public func previousFreeCluster(before limit: UInt32) -> UInt32? {
+        let stop = min(limit, clusterCount)
+        guard stop > 0 else { return nil }
+        let last = stop - 1
+        let lastWord = Int(last >> 6)
+        // Les bits au-delà de `last` dans son mot sont vus comme occupés.
+        let keep: UInt64 = last & 63 == 63 ? ~0 : (1 << UInt64((last & 63) + 1)) - 1
+        let free = ~words[lastWord] & keep
+        if free != 0 {
+            return UInt32(lastWord << 6) + 63 - UInt32(free.leadingZeroBitCount)
+        }
+        guard let word = previousWordWithFree(from: lastWord - 1) else { return nil }
+        return UInt32(word << 6) + 63 - UInt32((~words[word]).leadingZeroBitCount)
+    }
+
+    /// Run libre **maximal** qui finit au dernier cluster libre avant `limit`.
+    ///
+    /// C'est `nextFreeRun` lu du fond du disque vers le début : ce que cherche un
+    /// outil qui remplit les trous par le haut. Sans lui, trouver le dernier trou
+    /// sous une borne demandait de les énumérer tous depuis le début du volume.
+    public func previousFreeRun(before limit: UInt32) -> Extent? {
+        guard let last = previousFreeCluster(before: limit) else { return nil }
+        var word = Int(last >> 6)
+        let bit = last & 63
+        let below: UInt64 = bit == 63 ? ~0 : (1 << UInt64(bit + 1)) - 1
+        var allocated = words[word] & below
+        while allocated == 0 {
+            guard word > 0 else { return Extent(start: 0, length: last + 1) }
+            word -= 1
+            allocated = words[word]
+        }
+        let start = UInt32(word << 6) + 64 - UInt32(allocated.leadingZeroBitCount)
+        return Extent(start: start, length: last + 1 - start)
     }
 
     /// Longueur du run libre qui commence exactement à `start`, plafonnée à

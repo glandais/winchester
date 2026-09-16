@@ -286,10 +286,7 @@ struct JKDefragStrategyTests {
                               mftZone: 61..<61, systemExtents: mft)
         #expect(volume.bitmap.isFree(Extent(start: 61, length: 9)), "le trou entre deux morceaux de MFT reste un trou")
 
-        let strategies: [any DefragStrategy] = [
-            Windows95Strategy(), WindowsXPStrategy(), JKDefragStrategy(), UltraDefragStrategy(),
-        ]
-        for strategy in strategies {
+        for strategy in DefragPlanner.all {
             let plan = DefragPlanner.plan(volume: volume, using: strategy)
             for mutation in plan.mutations where mutation.category != .free {
                 for extent in mft {
@@ -315,10 +312,7 @@ struct JKDefragStrategyTests {
                               mftZone: 61..<61, systemExtents: mft)
         let reserved = ClusterCategory.reserved.rawValue
 
-        let strategies: [any DefragStrategy] = [
-            Windows95Strategy(), WindowsXPStrategy(), JKDefragStrategy(), UltraDefragStrategy(),
-        ]
-        for strategy in strategies {
+        for strategy in DefragPlanner.all {
             let plan = DefragPlanner.plan(volume: volume, using: strategy)
             var map = [UInt8](repeating: ClusterCategory.free.rawValue, count: 1_000)
             for run in plan.initialRuns {
