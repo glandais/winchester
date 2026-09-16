@@ -19,6 +19,7 @@ struct ContentView: View {
     @StateObject private var library = DiskLibraryModel()
     @State private var tab: AppTab = .disks
     @State private var nowPlaying: NowPlaying?
+    @AppStorage(OnboardingView.seenKey) private var onboardingSeen = false
     @Environment(\.scenePhase) private var scenePhase
 
     /// En arrière-plan, aucun onglet n'est vu : la passe continue de sonner,
@@ -52,6 +53,14 @@ struct ContentView: View {
         .tint(Theme.read)
         .onAppear {
             if nowPlaying == nil { nowPlaying = NowPlaying(model: model) }
+        }
+        // L'accueil ne se montre qu'une fois ; il se referme sur les disques,
+        // où sont les deux démos prêtes à écouter.
+        .fullScreenCover(isPresented: Binding(get: { !onboardingSeen }, set: { onboardingSeen = !$0 })) {
+            OnboardingView(engine: model.engine) {
+                tab = .disks
+                onboardingSeen = true
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { model.engine.suspendIfIdle() }
@@ -97,18 +106,28 @@ struct StatTile: View {
     let label: String
     let value: String
     let unit: String
+    /// La fiche qui explique ce chiffre, derrière un ⓘ.
+    let why: Explanation?
 
-    init(label: String, value: String, unit: String) {
+    init(label: String, value: String, unit: String, why: Explanation? = nil) {
         self.label = label
         self.value = value
         self.unit = unit
+        self.why = why
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(Theme.dim)
+            HStack(spacing: 2) {
+                Text(label)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.dim)
+                if let why {
+                    Spacer(minLength: 0)
+                    WhyButton(topic: why, context: "\(label) · \(value) \(unit)")
+                        .padding(-6)
+                }
+            }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(value)
                     .font(.system(size: 21, weight: .medium, design: .rounded))

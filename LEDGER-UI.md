@@ -1044,14 +1044,77 @@ projet : non, faute de mode audio d'arrière-plan déclaré.
 
 ## Chantier U11 — accueil et explications
 
-**À faire** · prompt §8
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-Onboarding en trois écrans (ce qu'on entend, ce que montre la carte, mettre un
-casque) ; fiches « Pourquoi ça sonne comme ça ? » derrière un ⓘ à côté des
-chiffres — loi de seek, next-fit, zone MFT, témoin — au lieu du long texte de
-`notes`.
+Une première ouverture tombait sur la galerie sans rien dire de ce qu'on allait
+entendre ni de ce que montre la carte. Les explications tenaient en un long
+texte replié au bas des Réglages, « Ce que modélise le spike », loin des chiffres
+qu'elles éclairent, et à moitié écrit pour qui a lu le code (« one-shots »,
+« coast / settle »).
+
+### Les décisions
+
+- **L'accueil** (maquette 01, `OnboardingView`), trois écrans en pages :
+  1. **Ce qu'on entend** : le seek, le retour au bord, le ronronnement ;
+  2. **Ce que montre la carte** : même couleur en deux teintes (échantillons
+     pris à `Theme.categoryColor`, donc à `ClusterPalette`), ambre et
+     turquoise, gris foncé libre ;
+  3. **Mettez un casque**, et l'interrupteur des vibrations — ou « indisponibles
+     sur cet appareil ».
+  « Passer » sur les deux premiers, « Écouter un disque » sur le dernier : les
+  deux referment l'accueil **sur l'onglet Disques**, où sont les deux démos. Il
+  ne se montre qu'une fois (`@AppStorage("onboardingSeen")`) ; **Revoir
+  l'accueil** dans les Réglages remet le drapeau à faux.
+- **Les fiches « Pourquoi ça sonne comme ça ? »** (maquette 14, `Explanation`) :
+  douze, en trois thèmes. Les quatre de la maquette — loi de seek, next-fit,
+  zone MFT, témoin — et huit tirées des anciennes notes, réécrites pour qui n'a
+  pas lu le code : retour au bord, préchargeur, fragmentés ou en morceaux,
+  évacuations, fichier d'échange, timbre du bras, ronronnement, haptique.
+- **La fiche next-fit de la maquette était fausse pour MS-DOS.** Elle disait
+  « FAT repart du dernier cluster alloué » ; c'est vrai de VFAT et FAT32, pas de
+  FAT16, que `FATAllocator` fait partir **du début du volume** à chaque
+  allocation — c'est même l'autre texture de fragmentation du modèle. La fiche
+  dit les deux.
+- **Le ⓘ porte sa feuille** (`WhyButton`) : un écran n'a rien à tenir pour en
+  poser un. La feuille reprend en tête le chiffre qu'on regardait
+  (« SEEK MOYEN · 66 CYL. »), montre la fiche, puis ses voisines repliées.
+  Posés à côté de :
+  - Seek moyen (passe et instruments) → loi de seek ;
+  - Évacuations (passe) → évacuations ;
+  - Le témoin (carte du démarrage, tuile des instruments) → témoin ;
+  - la ligne du préchargeur → préchargeur ;
+  - la note « quarante morceaux à deux » des instruments → fragmentés ou en
+    morceaux ;
+  - la phrase de la fiche d'un disque → next-fit sur FAT, zone MFT sur NTFS.
+- **Les Réglages** listent toutes les fiches, repliées, par thème, et « le disque
+  en cours » : géométrie lue sur le scénario et, pour une passe, la note du
+  volume. **Le long texte disparaît** ; la note « Passe » qui décrivait Windows 95
+  quel que soit l'outil choisi disparaît avec lui — c'est la phrase de l'outil,
+  au bilan, qui le dit désormais.
+
+### Ce qui valide
+
+- Construit en Debug pour le simulateur iPhone 17 Pro, sans erreur. Aucun
+  fichier de `Sources/Model` n'est touché.
+- Sur le simulateur : l'accueil s'ouvre au premier lancement, ses trois écrans
+  s'enchaînent, le troisième dit les vibrations indisponibles ; « Écouter un
+  disque » ramène sur Disques et l'accueil ne revient pas ; **Revoir l'accueil**
+  le rouvre. Sur la démo de défragmentation, le ⓘ du seek moyen ouvre « La loi de
+  seek » avec « SEEK MOYEN · 66 CYL. » en tête ; la fiche de « Bidouilleur,
+  1993 » porte le ⓘ du next-fit.
+
+### Laissé ouvert
+
+- **Les fiches ajoutées n'ont pas eu la relecture croisée** qu'ont eue les quatre
+  de la maquette : elles reprennent les notes du code et les commentaires des
+  allocateurs, pas une vérification chiffre à chiffre.
+- Le ⓘ des évacuations, du témoin et du préchargeur n'a pas été touché à
+  l'écran, seulement celui du seek moyen et vu celui de la fiche d'un disque.
+- Pas de ⓘ sur IOPS, débit ni « Où passe le temps » : aucune fiche ne leur
+  correspond encore.
+- L'accueil n'a pas d'illustration animée ; la maquette n'en montrait pas.
 
 ---
 

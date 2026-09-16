@@ -285,13 +285,13 @@ struct SimulatorScreen: View {
                          unit: "jusqu'ici")
                 StatTile(label: "Seek moyen",
                          value: FrenchFormat.integer(model.totals.averageSeekDistance),
-                         unit: "cyl.")
+                         unit: "cyl.", why: .seekLaw)
                 StatTile(label: "Fichiers déplacés",
                          value: plan.map { FrenchFormat.integer($0.filesMoved) } ?? "—",
                          unit: plan == nil ? "au bilan" : "au total")
                 StatTile(label: "Évacuations",
                          value: plan.map { FrenchFormat.integer($0.evacuations) } ?? "—",
-                         unit: plan == nil ? "au bilan" : "au total")
+                         unit: plan == nil ? "au bilan" : "au total", why: .evacuations)
             }
             Text("Au départ : \(FrenchFormat.integer(before.fileCount)) fichiers, "
                  + "\(FrenchFormat.percent(before.fragmentedRatio)) fragmentés, "
@@ -427,9 +427,12 @@ struct SimulatorScreen: View {
                          ?? "DÉMARRAGE EN COURS · \(FrenchFormat.duration(time).uppercased())")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.dim)
-                    Text("Le témoin")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Theme.text)
+                    HStack(spacing: 2) {
+                        Text("Le témoin")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                        WhyButton(topic: .witness)
+                    }
                 }
                 Spacer()
                 Text(gap.map(signedPercent) ?? "…")
@@ -463,10 +466,9 @@ struct SimulatorScreen: View {
                 .foregroundStyle(Theme.text.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.write)
+            HStack(alignment: .top, spacing: 4) {
+                WhyButton(topic: .prefetch)
+                    .padding(.vertical, -6)
                 Text(boot.readsByPosition
                      ? "Préchargeur de \(boot.osName) : la liste de lecture est rangée par position sur le disque, et relue d'une seule course du bras."
                      : "Pas de préchargeur sur \(boot.osName) : le bras suit l'ordre dans lequel le système demande ses fichiers, pas leur position.")

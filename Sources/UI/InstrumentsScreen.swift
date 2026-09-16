@@ -93,7 +93,8 @@ struct InstrumentsScreen: View {
                            value: FrenchFormat.integer(average) + "\u{00A0}cyl.",
                            detail: average > 0 ? "soit ≈ \(FrenchFormat.decimal(averageMs, digits: 1)) ms" : "aucun seek",
                            series: window.averageSeekPerSecond,
-                           color: Theme.arm)
+                           color: Theme.arm,
+                           why: .seekLaw)
             InstrumentTile(label: "Seeks",
                            value: FrenchFormat.integer(totals.seeks),
                            detail: "depuis le début de la passe",
@@ -287,11 +288,15 @@ struct InstrumentsScreen: View {
             row("Morceaux par fichier",
                 FrenchFormat.decimal(before.extentsPerFile, digits: 2),
                 after.map { FrenchFormat.decimal($0.extentsPerFile, digits: 2) })
-            Text("Un fichier ramené de quarante morceaux à deux reste compté comme fragmenté : "
-                 + "les fichiers fragmentés et les morceaux ne racontent pas la même chose.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.dim)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 4) {
+                Text("Un fichier ramené de quarante morceaux à deux reste compté comme fragmenté : "
+                     + "les fichiers fragmentés et les morceaux ne racontent pas la même chose.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+                WhyButton(topic: .fragmentedVsPieces)
+                    .padding(.vertical, -6)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
@@ -310,7 +315,8 @@ struct InstrumentsScreen: View {
                      unit: duration.map { boot.freshSeconds > 0
                          ? String(format: "%+.1f %%", ($0 / boot.freshSeconds - 1) * 100)
                              .replacingOccurrences(of: ".", with: ",")
-                         : "" } ?? "s, jamais fragmenté")
+                         : "" } ?? "s, jamais fragmenté",
+                     why: .witness)
         }
     }
 }
@@ -365,12 +371,20 @@ private struct InstrumentTile: View {
     let detail: String
     let series: [Double]
     let color: Color
+    var why: Explanation? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label.uppercased())
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Theme.dim)
+            HStack(spacing: 2) {
+                Text(label.uppercased())
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Theme.dim)
+                if let why {
+                    Spacer(minLength: 0)
+                    WhyButton(topic: why, context: "\(label) · \(value)")
+                        .padding(-6)
+                }
+            }
             Text(value)
                 .font(.system(size: 20, weight: .medium, design: .monospaced))
                 .foregroundStyle(Theme.text)

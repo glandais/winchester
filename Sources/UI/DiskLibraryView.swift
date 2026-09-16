@@ -223,10 +223,9 @@ struct DiskLibraryView: View {
     }
 
     private func explanationCard(for disk: GeneratedDisk) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle")
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.write)
+        HStack(alignment: .top, spacing: 6) {
+            WhyButton(topic: disk.spec.fileSystem.type == .ntfs ? .mftZone : .nextFit)
+                .padding(.vertical, -6)
             Text(explanation(for: disk))
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.text.opacity(0.85))
