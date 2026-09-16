@@ -254,6 +254,16 @@ fragmentation qu'une fois qu'il a été fabriqué. Les trois autres onglets sont
 **Passe** en cours, ses **Instruments** et les **Réglages** du son ; hors de
 l'onglet Passe, un bandeau garde la passe sous la main.
 
+Les **Instruments** lisent la passe à l'instant écouté : IOPS, débit et seeks de
+la dernière minute ; depuis le début, la part du temps passée à déplacer le
+bras, à attendre le secteur, à transférer, à calculer et à attendre la machine,
+la distance des seeks rapportée à la course, les cylindres visités, et les
+fichiers déplacés et évacuations tels que la stratégie les compte. Ces mesures
+sont tenues à côté de la chronologie, jamais dedans : la mécanique cumule ses
+temps, les tranches d'activité en gardent le détail, et chaque stratégie publie
+ses compteurs sur le récepteur comme elle y publie son avancement. Rien de ce
+qui s'entend n'en dépend.
+
 **La fragmentation n'est pas un paramètre, c'est un résidu.** On ne demande
 jamais « un disque à 23 % de fragmentation ». On écrit une histoire — une
 installation, des compilations, des enregistrements, des téléchargements, des

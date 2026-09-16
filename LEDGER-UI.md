@@ -579,47 +579,92 @@ remplissage, pas quels fichiers il porte.
 
 ## Chantier U6 — les instruments
 
-**À faire** · prompt §5
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-- **En direct** (sparklines 60 s) : IOPS lecture/écriture, débit comparé au
-  maximum théorique au bord et au moyeu, seek moyen en cylindres et en ms,
-  nombre de seeks, répartition du temps (seek / rotation / transfert / calcul /
-  attente), histogramme des distances, chaleur des cylindres.
-- **Cumulés** : requêtes, Mo lus, Mo écrits, Mo déplacés et ratio au volume,
-  fichiers déplacés, évacuations.
-- **Volume avant → maintenant → après** : fichiers fragmentés en nombre et en
-  taux (dont parmi les fragmentables), morceaux (total, moyenne, p95, pire),
-  trous et plus grand trou, remplissage, slack, résidents MFT. Taux et
-  morceaux côte à côte, avec la courbe qui montre que l'un peut stagner quand
-  l'autre s'effondre.
-- **Démarrage** : fichiers lus, Mo lus, calcul, attente disque, écart au
-  témoin, seeks avec et sans préchargeur.
-- **Comparaison** de deux passes en colonnes, sans verdict global.
+L'onglet Instruments n'avait que quatre tuiles : requêtes et débit de la
+tranche de cent millisecondes en cours — donc des chiffres qui sautaient à
+chaque image —, seek moyen en cylindres et nombre de seeks. La maquette 11
+demande de dire où passe le temps, comment se répartissent les seeks, où va le
+bras, ce qui est lu et écrit, et ce que la passe a déplacé, **en cours de
+passe**. Le moteur ne le savait pas : ni lecture/écriture par tranche, ni temps
+par composante, et les fichiers déplacés et évacuations n'existaient que dans le
+plan final.
 
-### Ce que le code offre
+### Les décisions — côté moteur
 
-| indicateur | où | quand |
-|---|---|---|
-| IOPS, Mo/s | `SimulatorScreen.stats` | direct |
-| seeks, seek moyen (cyl.), requêtes, octets déplacés | `ActivityTotals` | direct |
-| débit théorique d'un cylindre | `DriveGeometry.sustainedMBs(cylinder:)` | statique |
-| fichiers, fragmentés, extents moyen/p95/max, trous, plus grand trou, slack, remplissage, résidents | `AllocationMetrics` | avant, après |
-| fichiers déplacés, évacuations, bilan | `DefragPlan` via `PassEnd.plan` | fin |
-| calcul, attente disque, témoin | `BootSession` | direct / fin |
+- **La mécanique cumule son temps** (`TraceStats`) : seek (commutations de tête
+  comprises), rotation, pas de piste pendant un transfert, calcul de la machine
+  entre deux lectures, attente. Avec le transfert, ils recomposent exactement
+  l'horloge — hors montée en régime, qui précède la première requête.
+- **Les tranches d'activité gardent un détail** (`ActivityDetail`) : lectures,
+  octets lus et écrits, temps par composante, seeks par classe de distance
+  (`SeekClass` : piste voisine, ≤ 1 %, ≤ 10 %, ≤ 50 % de la course, pleine
+  course — la même borne que `fullStrokeSeeks`), requêtes par bande de
+  cylindres (24 bandes, du bord au moyeu). Le détail est à part des champs
+  historiques : la comparaison avec le calcul d'un bloc l'ignore, et le dit.
+- **Les stratégies publient leurs compteurs** sur l'`OperationSink`
+  (`moves`), comme elles y publient déjà l'avancement, là où elles les comptent
+  pour leur plan : chaque stratégie garde son sens de « fichier déplacé ». La
+  chaîne les date à la fin de l'opération suivante ; à la fin du travail, **le
+  plan fait foi** et pose le dernier compte. `LivePass.moves` les lit à
+  l'instant écouté.
+- `LivePass` cumule le détail avec les totaux.
 
-### À ajouter côté moteur
+### Les décisions — côté écran
 
-- Séparation lecture / écriture des requêtes et des octets.
-- Répartition du temps par composante : `DiskMechanics` la connaît requête par
-  requête, rien ne la cumule.
-- Histogramme des distances de seek et visites par cylindre.
-- Seek moyen en ms, pas seulement en cylindres.
-- Métriques d'allocation **pendant** la passe : recalculer `AllocationMetrics`
-  à chaque validation est trop cher sur 2,7 millions de clusters ; il faudra
-  les tenir incrémentalement, aux mutations.
-- Garder le bilan d'une passe pour la comparaison.
+- **En direct, sur la dernière minute, seconde par seconde** : IOPS avec la part
+  de lectures, débit comparé au débit soutenu du bord et du moyeu de *ce* disque,
+  seek moyen en cylindres et en millisecondes (loi de seek du disque), nombre de
+  seeks. Chaque tuile a sa courbe de soixante points ; la valeur est celle de la
+  dernière seconde, plus celle d'une tranche.
+- **Depuis le début** : la barre « Où passe le temps », l'histogramme des
+  distances, la bande des cylindres visités, puis requêtes, Mo lus, écrits,
+  déplacés (et en part du contenu du volume), fichiers déplacés, évacuations.
+- **Le volume** : fichiers fragmentés (nombre et taux), morceaux à recoller,
+  trous libres, morceaux par fichier, **avant → après** — l'après au bilan —,
+  avec la phrase qui dit pourquoi fichiers fragmentés et morceaux ne racontent
+  pas la même chose. Pour un démarrage : fichiers lus, calcul, attente disque,
+  témoin.
+
+### Ce qui valide
+
+- **`swift test` : 99 tests `DiskCore` et 166 `DefragKit` passent**, dont cinq
+  nouveaux (`InstrumentsTests`), sur un FAT16 de 40 Mo vieilli :
+  - seek + rotation + transfert + pas + calcul + attente recomposent le temps de
+    travail à 10⁻⁶ s près, dans la mécanique comme en sommant les tranches ;
+  - sur trois requêtes servies directement à la mécanique, un calcul de 0,4 s
+    est compté en calcul et non en attente — la passe de défragmentation n'en a
+    pas ;
+  - les classes de seek redonnent le nombre de seeks, la classe « pleine
+    course » `fullStrokeSeeks`, les bandes le nombre de requêtes, les octets lus
+    et écrits ceux de la mécanique ;
+  - **pour les treize stratégies de `DefragPlanner.all`**, le dernier compteur
+    publié égale `filesMoved` et `evacuations` du plan ;
+  - `LivePass` rend le compteur à son instant, pas en avance.
+- **Le son ne change pas** : huit rendus hors-ligne identiques à l'octet à ceux
+  de `develop` — `windowsBoot`, `defrag`, `boot:dev-1993`, XP sur `gamer-2003`,
+  UltraDefrag sur `dev-2003`, tassage à la frontière sur `dev-1993`, recollage
+  économe sur `secretaire-2003`, JkDefrag sur `dev-1996`.
+- Sur le simulateur, démo de défragmentation à 44 s : 45 IOPS dont 33 % de
+  lectures, 2,8 Mo/s pour un maximum de 7,6 → 5,1, seek moyen 105 cylindres
+  ≈ 5,6 ms ; temps : seek 19 %, rotation 30 %, transfert 43 %, attente 7 % ;
+  bras concentré sur les bandes du bord, là où est la partition ; fichiers
+  déplacés et évacuations qui montent entre deux captures (148 → 156,
+  171 → 176).
+
+### Laissé ouvert
+
+- **L'état du volume pendant la passe.** Fragmentés, morceaux et trous ne sont
+  connus qu'au départ et au bilan : les tenir au fil des mutations demande un
+  suivi par fichier dans le rejeu, le même qui manque à U5.
+- **La comparaison de deux passes en colonnes** : U8.
+- **Le démarrage n'a pas été regardé à l'écran**, ni streamé dans un test : la
+  séparation du calcul est vérifiée sur la mécanique seule.
+- Les compteurs sont datés à la fin de l'opération *suivante* : un fichier est
+  compté un tampon après son dernier déplacement. Invisible à l'échelle d'une
+  seconde, mais c'est une approximation.
 
 ---
 
