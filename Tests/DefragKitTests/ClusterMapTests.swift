@@ -63,6 +63,83 @@ struct ClusterMapTests {
 
     // MARK: - Le décompte
 
+    /// Un bloc prend la nuance « d'un seul tenant » quand la majorité des
+    /// clusters de sa catégorie dominante l'est.
+    @Test("La nuance d'un bloc suit la majorité de sa catégorie")
+    func contiguousMajority() {
+        let player = ClusterMapPlayer(grid: MapGrid(columns: 2, rows: 1))
+        let document = ClusterCategory.document.rawValue
+        player.load(clusterCount: 200, initialRuns: [
+            MapRun(start: 0, count: 60, category: document, contiguous: true),
+            MapRun(start: 60, count: 40, category: document),
+            MapRun(start: 100, count: 30, category: document, contiguous: true),
+            MapRun(start: 130, count: 70, category: document),
+        ])
+        #expect(player.shades(at: 0).map(\.contiguous) == [true, false])
+
+        // Un fichier recollé repeint le second bloc sans en changer le décompte.
+        player.enqueue([TimedMutation(time: 1, start: 130, count: 70,
+                                      category: document, contiguous: true)])
+        #expect(player.shades(at: 1).map(\.contiguous) == [true, true])
+        #expect(player.tallyTotal == 200)
+    }
+
+    /// Chaque catégorie n'a ici qu'un fichier : sur la carte rejouée, ses
+    /// plages sont donc exactement ce fichier, et la nuance qu'elles portent
+    /// doit dire s'il est d'un seul tenant, après chaque déplacement validé.
+    @Test("À la fin de la passe, la nuance dit l'état réel de chaque fichier",
+          arguments: DefragPlanner.all.map(\.id))
+    func contiguityAfterPass(strategyID: String) throws {
+        let strategy = try #require(DefragPlanner.strategy(named: strategyID))
+        let format: VolumeFormat = strategyID == Windows95Strategy().id ? .fat16 : .ntfs
+        let partition = PartitionGeometry(startLBA: 0, clusterCount: 4_000,
+                                          clusterSectors: 8, format: format)
+        let categories: [ClusterCategory] = [.system, .application, .document, .archive, .churn]
+        var records: [DefragFile] = categories.enumerated().map { index, category in
+            // Quatre morceaux entrelacés avec ceux des autres, et de tailles
+            // inégales pour que les défragmenteurs partiels aient à choisir.
+            let extents = (0..<4).map { piece in
+                Extent(start: UInt32(1_000 + piece * 500 + index * 90),
+                       length: UInt32(20 + (index * 7 + piece * 13) % 60))
+            }
+            return DefragFile(id: UInt32(index), path: "\\DIR\\F\(index).DAT",
+                              category: category, walkOrder: index,
+                              extents: extents, isMovable: true)
+        }
+        records.append(DefragFile(id: 9, path: "\\PAGEFILE.SYS", category: .swap,
+                                  walkOrder: 9, extents: [Extent(start: 3_600, length: 50)],
+                                  isMovable: false))
+        let volume = DefragVolume(partition: partition, files: records)
+        let sink = OperationSink()
+        let plan = strategy.plan(volume: volume, into: sink)
+            .with(operations: sink.operations, mutations: sink.mutations)
+
+        var map = ClusterRunMap(clusterCount: partition.clusterCount, occupied: volume.categoryRuns())
+        var validations = 0
+        for operation in plan.operations {
+            let start = Int(operation.mutationStart)
+            for mutation in plan.mutations[start..<start + Int(operation.mutationCount)] {
+                map.replace(start: mutation.start, count: mutation.count,
+                            category: mutation.category.rawValue,
+                            contiguous: mutation.contiguous) { _ in }
+            }
+            // Entre la première écriture et la validation, un fichier en cours
+            // de déplacement est à la fois ici et là : on ne juge qu'une fois
+            // le déplacement validé, ce qui vaut aussi pour la fin de la passe.
+            guard operation.kind == .metadata else { continue }
+            validations += 1
+            let runs = map.runs()
+            for category in categories + [.swap] {
+                let pieces = runs.filter { $0.category == category.rawValue }
+                let extents = pieces.map { Extent(start: $0.start, length: $0.count) }.coalesced()
+                #expect(!pieces.isEmpty, "\(category)")
+                #expect(pieces.allSatisfy { $0.contiguous == (extents.count == 1) },
+                        "\(strategyID), validation \(validations) : \(category) en \(extents.count) morceau(x)")
+            }
+        }
+        #expect(validations > 0)
+    }
+
     /// L'invariant qui tient tout le reste : le décompte par bloc est une
     /// partition des clusters. Une mutation qui décrémenterait la mauvaise
     /// catégorie, ou un cluster tombé hors grille, s'y verrait immédiatement —
@@ -594,6 +671,29 @@ struct ClusterPaletteTests {
         #expect(buffer.count == cells.count)
         #expect(buffer[1] == ClusterPalette.color(.swap).pixel)
         #expect(buffer[2] == ClusterPalette.color(.document).pixel)
+    }
+
+    /// La nuance des fichiers d'un seul tenant reste de la même famille, mais
+    /// elle doit se distinguer — sauf là où il n'y a pas de fichier.
+    @Test("Un fichier d'un seul tenant se voit, sans changer de famille")
+    func contiguousShade() {
+        for category in ClusterCategory.allCases {
+            let plain = ClusterPalette.color(category, contiguous: false)
+            let tidy = ClusterPalette.color(category, contiguous: true)
+            if category == .free || category == .reserved {
+                #expect(plain == tidy)
+            } else {
+                #expect(plain.pixel != tidy.pixel, "\(category)")
+                #expect(tidy.red <= plain.red && tidy.green <= plain.green && tidy.blue <= plain.blue)
+            }
+        }
+        let shades = [ClusterShade(category: ClusterCategory.document.rawValue, fill: 255),
+                      ClusterShade(category: ClusterCategory.document.rawValue, fill: 255,
+                                   contiguous: true)]
+        #expect(ClusterPalette.flatPixelBuffer(shades)
+                == [ClusterPalette.color(.document).pixel,
+                    ClusterPalette.color(.document, contiguous: true).pixel])
+        #expect(ClusterPalette.shadedColor(shades[1]) == ClusterPalette.color(.document, contiguous: true))
     }
 
     /// Un octet hors palette vient forcément du rejeu ; il doit se voir à

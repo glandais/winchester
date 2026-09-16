@@ -166,7 +166,7 @@ struct WindowsXPStrategy: DefragStrategy {
             }
 
             DefragOperations.move(source: file.extents, destination: [target],
-                                  category: file.category, phase: 1,
+                                  category: file.category, contiguous: true, phase: 1,
                                   partition: partition, bufferBytes: bufferBytes,
                                   into: sink)
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,

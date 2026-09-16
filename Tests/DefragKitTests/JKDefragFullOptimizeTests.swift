@@ -45,7 +45,9 @@ private func replay(_ plan: DefragPlan, on volume: DefragVolume) -> DefragVolume
     for run in plan.initialRuns {
         for cluster in Int(run.start)..<Int(run.end) { occupied[cluster] = true }
     }
-    for operation in plan.operations where operation.mutationCount > 0 {
+    // Les repeints d'un fichier recollé, portés par la validation, ne sont
+    // pas des écritures : seules celles-ci ont à tomber sur du libre.
+    for operation in plan.operations where operation.mutationCount > 0 && operation.kind == .writeExtent {
         let slice = plan.mutations[Int(operation.mutationStart)..<Int(operation.mutationStart + operation.mutationCount)]
         for mutation in slice where mutation.category != .free {
             for cluster in mutation.start..<(mutation.start + mutation.count) {
@@ -156,6 +158,35 @@ struct JKDefragFullOptimizeTests {
         #expect(file.extents.first == Extent(start: 0, length: 8))
         #expect(report.splitPlacements == 1)
         #expect(file.clusterCount == 20)
+    }
+
+    /// Le même fichier, vu par la carte : posé en deux fois, il est d'abord
+    /// coupé — ce qu'il reste en haut doit alors perdre la teinte des fichiers
+    /// d'un seul tenant, alors que ce morceau-là n'a pas bougé.
+    @Test("Un fichier refragmenté par un déplacement partiel change de teinte en entier")
+    func partialMoveRepaintsTheWholeFile() {
+        let input = volume(clusterCount: 200, files: [
+            SortFile(name: "A.DAT", extents: [Extent(start: 100, length: 20)]),
+            SortFile(name: "SWAP", extents: [Extent(start: 11, length: 2)], category: .swap),
+        ])
+        let (plan, _, _) = run(input, .sort(.name))
+        var map = ClusterRunMap(clusterCount: 200, occupied: plan.initialRuns)
+        var states: [Bool] = []
+        for operation in plan.operations {
+            let start = Int(operation.mutationStart)
+            for mutation in plan.mutations[start..<start + Int(operation.mutationCount)] {
+                map.replace(start: mutation.start, count: mutation.count,
+                            category: mutation.category.rawValue,
+                            contiguous: mutation.contiguous) { _ in }
+            }
+            guard operation.kind == .metadata else { continue }
+            let pieces = map.runs().filter { $0.category == ClusterCategory.document.rawValue }
+            let extents = pieces.map { Extent(start: $0.start, length: $0.count) }.coalesced()
+            #expect(pieces.allSatisfy { $0.contiguous == (extents.count == 1) },
+                    "\(extents.count) morceau(x), teintes \(pieces.map(\.contiguous))")
+            if states.last != (extents.count == 1) { states.append(extents.count == 1) }
+        }
+        #expect(states.contains(false), "le fichier n'a jamais été coupé")
     }
 
     /// `ForcedFill` prend le fragment le plus haut et en détache la fin : le

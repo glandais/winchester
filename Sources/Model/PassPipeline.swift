@@ -294,7 +294,8 @@ private struct Chain {
             batch.mutations.append(TimedMutation(time: timing.end,
                                                  start: mutation.start,
                                                  count: mutation.count,
-                                                 category: mutation.category.rawValue))
+                                                 category: mutation.category.rawValue,
+                                                 contiguous: mutation.contiguous))
         }
         if let cluster = operation.cluster {
             batch.activity.append(ClusterActivity(start: timing.start, end: timing.end,

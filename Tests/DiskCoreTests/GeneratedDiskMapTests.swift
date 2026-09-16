@@ -34,7 +34,7 @@ struct GeneratedDiskMapTests {
         let disk = try Self.disk(clusterCount: 1_000, systemExtents: mft)
         let metadata = FileCategory.metadata.rawValue
 
-        let (categories, fill) = disk.shaded(count: 10)
+        let (categories, fill, _) = disk.shaded(count: 10)
         #expect(categories[0] == metadata)
         #expect(fill[0] == 255, "les cent premiers clusters sont tous à la MFT")
         #expect(categories[5] == metadata)

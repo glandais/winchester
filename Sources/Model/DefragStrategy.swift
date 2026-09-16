@@ -120,12 +120,16 @@ enum DefragOperations {
     /// fragmenté — d'où le pas à pas sur la plus longue portion contiguë des
     /// deux côtés, plafonnée à la taille du tampon.
     ///
+    /// `contiguous` dit ce que sera le fichier **une fois déplacé** : c'est
+    /// la teinte que prennent sur la carte les clusters écrits.
+    ///
     /// `bufferBytes` est ce qui fixe le rythme des allers-retours
     /// lecture/écriture, donc le tempo de la passe : c'est un réglage de l'outil
     /// simulé, pas une constante.
     static func move(source: [Extent],
                      destination: [Extent],
                      category: ClusterCategory,
+                     contiguous: Bool,
                      phase: Int,
                      partition: PartitionGeometry,
                      bufferBytes: Int,
@@ -163,7 +167,7 @@ enum DefragOperations {
 
             let first = sink.mutationMark
             sink.record(MapMutation(start: Int(writeStart), count: Int(length),
-                                    category: category))
+                                    category: category, contiguous: contiguous))
             recordFreed(start: readStart, length: length, kept: kept, into: sink)
 
             sink.emit(DiskOperation(
@@ -261,15 +265,32 @@ enum DefragOperations {
     }
 
     /// Validation d'un déplacement — ce que le format fait payer, et où.
+    ///
+    /// - Parameter repaint: le fichier entier, quand un déplacement **partiel**
+    ///   le fait changer d'état — recollé, ou au contraire coupé. Les morceaux
+    ///   qui n'ont pas bougé gardaient la teinte de l'ancien état ; ils prennent
+    ///   la nouvelle au moment où le système de fichiers valide le déplacement,
+    ///   avec la première écriture de métadonnées.
     static func commit(cluster: Int,
                        fileIndex: Int,
                        phase: Int,
                        partition: PartitionGeometry,
+                       repaint: (extents: [Extent], category: ClusterCategory, contiguous: Bool)? = nil,
                        into sink: OperationSink) {
+        var pending = repaint
         for access in partition.commitAccesses(forCluster: cluster, fileIndex: fileIndex) {
+            let first = sink.mutationMark
+            if let file = pending {
+                for extent in file.extents where !extent.isEmpty {
+                    sink.record(MapMutation(start: Int(extent.start), count: Int(extent.length),
+                                            category: file.category, contiguous: file.contiguous))
+                }
+                pending = nil
+            }
             sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: access.lba,
                                      sectors: access.sectors, isWrite: true,
-                                     issueTime: 0, cluster: nil))
+                                     issueTime: 0, cluster: nil,
+                                     mutationStart: first, mutationCount: sink.mutationMark - first))
         }
     }
 

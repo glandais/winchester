@@ -131,7 +131,7 @@ private struct ClusterMapImage: View {
 
         var pixels = shading
             ? ClusterPalette.pixelBuffer(shades)
-            : ClusterPalette.pixelBuffer(shades.map(\.category))
+            : ClusterPalette.flatPixelBuffer(shades)
         // La grille et la carte viennent du même modèle et coïncident ; on
         // ajuste tout de même, parce qu'un buffer plus court que la grille ne
         // ferait pas une image tronquée mais une lecture hors des clous.
@@ -181,6 +181,18 @@ struct ClusterLegend: View {
                             .fill(Theme.categoryColor(category))
                             .frame(width: 9, height: 9)
                         Text(category.label)
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.dim)
+                    }
+                }
+                // Une seule entrée pour la nuance, montrée sur une catégorie
+                // qui la porte : la répéter pour chacune doublerait la légende.
+                if let sample = categories.first(where: { $0 != .free && $0 != .reserved }) {
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(Theme.categoryColor(sample, contiguous: true))
+                            .frame(width: 9, height: 9)
+                        Text("Plus sombre : non fragmenté")
                             .font(.system(size: 10))
                             .foregroundStyle(Theme.dim)
                     }

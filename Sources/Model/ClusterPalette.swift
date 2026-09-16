@@ -64,12 +64,36 @@ enum ClusterPalette {
         }
     }
 
-    /// Table catégorie → pixel, indexée par le brut de l'énumération.
+    /// Assombrissement des fichiers d'un seul tenant.
+    ///
+    /// Le défragmenteur de Windows 95 distinguait déjà les données optimisées,
+    /// d'un bleu plus sombre que le reste. On garde la teinte de la catégorie
+    /// — la légende reste lisible — et on la baisse d'un cinquième : assez pour
+    /// qu'une zone rangée se détache d'une zone éparpillée, pas assez pour
+    /// qu'on la prenne pour une autre famille de fichiers.
+    static let contiguousDimming = 0.8
+
+    /// Couleur d'une catégorie, selon que ses fichiers sont fragmentés ou non.
+    /// Le libre et les métadonnées n'ont pas de fichier à recoller : ils ne
+    /// changent pas.
+    static func color(_ category: ClusterCategory, contiguous: Bool) -> ClusterColor {
+        let base = color(category)
+        guard contiguous, category != .free, category != .reserved else { return base }
+        return ClusterColor(red: base.red * contiguousDimming,
+                            green: base.green * contiguousDimming,
+                            blue: base.blue * contiguousDimming)
+    }
+
+    /// Table catégorie → pixel, indexée par le brut de l'énumération : les
+    /// huit catégories des fichiers fragmentés, puis les huit des fichiers
+    /// d'un seul tenant.
     ///
     /// Le rendu la consulte une fois par cellule, donc jusqu'à vingt mille fois
     /// par image : un `switch` par cellule serait du gaspillage pur, la palette
-    /// ne comptant que huit entrées fixes.
-    private static let pixels: [UInt32] = ClusterCategory.allCases.map { color($0).pixel }
+    /// ne comptant que seize entrées fixes.
+    private static let pixels: [UInt32] = [false, true].flatMap { contiguous in
+        ClusterCategory.allCases.map { color($0, contiguous: contiguous).pixel }
+    }
 
     /// Buffer de pixels d'une carte agrégée, une entrée par cellule.
     ///
@@ -85,7 +109,20 @@ enum ClusterPalette {
         let free = table[Int(ClusterCategory.free.rawValue)]
         return cells.map { cell in
             let index = Int(cell)
-            return index < table.count ? table[index] : free
+            return index < ClusterCategory.allCases.count ? table[index] : free
+        }
+    }
+
+    /// La même carte en aplats, mais qui distingue les fichiers d'un seul
+    /// tenant : la catégorie de chaque bloc sans son taux d'occupation.
+    static func flatPixelBuffer(_ shades: [ClusterShade]) -> [UInt32] {
+        let table = pixels
+        let categories = ClusterCategory.allCases.count
+        let free = table[Int(ClusterCategory.free.rawValue)]
+        return shades.map { shade in
+            let index = Int(shade.category)
+            guard index < categories else { return free }
+            return table[shade.contiguous ? index + categories : index]
         }
     }
 
@@ -111,7 +148,7 @@ enum ClusterPalette {
         let free = color(.free)
         guard let category = ClusterCategory(rawValue: shade.category),
               category != .free, shade.fill > 0 else { return free }
-        let full = color(category)
+        let full = color(category, contiguous: shade.contiguous)
         let t = tintFloor + (1 - tintFloor) * shade.fraction
         // `fill == 255` doit rendre la couleur pleine au bit près, sans quoi le
         // bloc plein et la légende qui le décrit ne seraient plus de la même

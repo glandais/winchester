@@ -6,6 +6,8 @@ struct MapMutation {
     let start: Int
     let count: Int
     let category: ClusterCategory
+    /// Le fichier qui occupe désormais ces clusters est d'un seul tenant.
+    var contiguous: Bool = false
 }
 
 /// Une requête bloc enrichie de ce qu'elle veut dire pour la carte et pour

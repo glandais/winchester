@@ -234,7 +234,9 @@ struct JKDefragStrategyTests {
         for run in plan.initialRuns {
             for cluster in Int(run.start)..<Int(run.end) { occupied[cluster] = true }
         }
-        for operation in plan.operations where operation.mutationCount > 0 {
+        // Les repeints d'un fichier recollé, portés par la validation, ne sont
+        // pas des écritures : seules celles-ci ont à tomber sur du libre.
+        for operation in plan.operations where operation.mutationCount > 0 && operation.kind == .writeExtent {
             let slice = plan.mutations[Int(operation.mutationStart)..<Int(operation.mutationStart + operation.mutationCount)]
             for mutation in slice where mutation.category != .free {
                 for cluster in mutation.start..<(mutation.start + mutation.count) {

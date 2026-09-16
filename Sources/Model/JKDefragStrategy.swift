@@ -657,14 +657,20 @@ extension JKDefragStrategy {
 
             let (source, result) = DefragOperations.relocation(of: file.extents, vcn: vcn,
                                                               length: length, to: target)
+            let extents = result.coalesced()
+            let contiguous = extents.count <= 1
             DefragOperations.move(source: source, destination: [target],
-                                  category: file.category, phase: phase,
+                                  category: file.category, contiguous: contiguous, phase: phase,
                                   partition: volume.partition,
                                   bufferBytes: strategy.bufferBytes,
                                   into: sink)
             DefragOperations.commit(cluster: Int(lcn), fileIndex: index, phase: phase,
-                                    partition: volume.partition, into: sink)
-            let extents = result.coalesced()
+                                    partition: volume.partition,
+                                    // Un fichier déplacé en entier est déjà tout
+                                    // entier de sa nouvelle teinte.
+                                    repaint: contiguous == file.isContiguous || length >= file.clusterCount
+                                        ? nil : (extents, file.category, contiguous),
+                                    into: sink)
             volume.relocateChanges(index, to: extents)
             order.move(position, to: extents[0].start)
             touched.insert(position)

@@ -212,6 +212,15 @@ phases affichées sur la chronologie ne sont donc datées qu'*après* la simulat
 change de couleur exactement quand son écriture s'entend. Comme sur l'original,
 un bloc affiché vaut plusieurs clusters — 35 ici, soit 140 Ko.
 
+Les fichiers **d'un seul tenant** y sont d'un cinquième plus sombres que les
+fichiers fragmentés de leur catégorie, comme les données optimisées du
+défragmenteur de Windows 95 : on voit ce qui est rangé et ce qui reste à
+recoller. Un bloc prend la nuance que porte la majorité des clusters de sa
+catégorie dominante. Quand un déplacement **partiel** change l'état d'un
+fichier — JkDefrag qui en coupe un autour d'un immobile, UltraDefrag qui en
+recolle un — les morceaux restés en place changent de teinte avec la validation
+du déplacement.
+
 Elle s'ouvre **en plein écran**, et la grille se dérive alors de la surface
 disponible plutôt que d'être figée : le repliement en lignes n'a aucune
 signification physique — la carte est une suite linéaire de clusters — donc on

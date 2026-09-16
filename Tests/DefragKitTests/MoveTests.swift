@@ -24,7 +24,7 @@ struct MoveTests {
 
         let sink = OperationSink()
         DefragOperations.move(source: source, destination: destination,
-                              category: .document, phase: 0,
+                              category: .document, contiguous: false, phase: 0,
                               partition: partition, bufferBytes: bufferBytes,
                               into: sink)
 

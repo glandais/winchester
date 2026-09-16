@@ -240,7 +240,7 @@ struct UltraDefragStrategy: DefragStrategy {
                 guard let target = DefragOperations.firstGap(in: volume,
                                                              need: file.clusterCount) else { continue }
                 DefragOperations.move(source: file.extents, destination: [target],
-                                      category: file.category, phase: phase,
+                                      category: file.category, contiguous: true, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
                                       into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
@@ -392,13 +392,19 @@ struct UltraDefragStrategy: DefragStrategy {
             if let target = DefragOperations.firstGap(in: volume, need: length) {
                 let (source, result) = DefragOperations.relocation(of: volume.files[position].extents,
                                                                     vcn: vcn, length: length, to: target)
+                let extents = result.coalesced()
+                let contiguous = extents.count <= 1
                 DefragOperations.move(source: source, destination: [target],
-                                      category: category, phase: phase,
+                                      category: category, contiguous: contiguous, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
                                       into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
-                                        phase: phase, partition: partition, into: sink)
-                apply(position, to: result.coalesced(), in: &volume)
+                                        phase: phase, partition: partition,
+                                        repaint: contiguous == volume.files[position].isContiguous
+                                            || length >= volume.files[position].clusterCount
+                                            ? nil : (extents, category, contiguous),
+                                        into: sink)
+                apply(position, to: extents, in: &volume)
                 moved.clusters += Int(length)
                 moved.clustersThisPass += Int(length)
                 succeeded = true

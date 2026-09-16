@@ -2319,3 +2319,56 @@ changent le départage par chemin de JkDefrag, de XP et d'UltraDefrag.
 - **Rien n'a été écouté**, et les passes complètes ne sont pas comparées en
   WAV : le seul effet du calcul allégé sur le son est garanti par le
   chapitre 12, mesuré sans les trois autres branches.
+
+## Chantier 13 — les fichiers d'un seul tenant, d'une autre teinte
+
+**Fait** · branche `fichiers-contigus-teintes`
+
+### Le problème
+
+La carte ne disait que la catégorie d'un cluster. Un volume rangé et un volume
+éparpillé avaient les mêmes couleurs ; seule la position trahissait la
+fragmentation, et encore, pas pour un fichier resté sur place en morceaux.
+
+### Les décisions
+
+- **Un booléen `contiguous` sur `MapRun`, `MapMutation` et `TimedMutation`**,
+  plutôt qu'un bit dans l'octet de catégorie : la plage fait douze octets avec
+  ou sans lui, et aucune comparaison à `rawValue` des tests n'avait à changer.
+  Deux plages voisines ne fusionnent plus que si elles ont la même nuance.
+- **Le décompte par bloc double** (seize compteurs au lieu de huit). Un bloc
+  prend la nuance de la majorité stricte des clusters de sa catégorie
+  dominante ; la catégorie elle-même se choisit toujours sur le total.
+- **Plus sombre, pas plus clair** : ×0,8 sur la couleur de la catégorie, comme
+  le bleu foncé des données optimisées de Windows 95. Le libre et les
+  métadonnées ne changent pas. La teinte proportionnelle mélange vers le libre
+  depuis cette couleur-là.
+- **L'état écrit est celui du fichier après le déplacement**, connu avant de
+  le lancer (`relocation(…).coalesced().count <= 1`). Un déplacement **partiel**
+  qui change cet état repeint le fichier entier, par des mutations portées par
+  la première écriture de métadonnées de `commit` — le moment où le système de
+  fichiers valide. Un déplacement complet n'en a pas besoin.
+- **La galerie** fait le même décompte dans `GeneratedDisk.shaded`, qui rend un
+  troisième tableau.
+
+### Ce qui valide
+
+- **239 tests passent**, dont quatre nouveaux : la palette, la majorité par
+  bloc, l'état de chaque fichier après chaque validation pour les onze
+  stratégies, et le fichier coupé autour d'un immobile par le tri par nom — ce
+  dernier **échoue quand on retire le repeint**, ce que le test des onze
+  stratégies ne faisait pas (ses fichiers sont tous déplacés en entier).
+- Les contrôles « aucune écriture sur un cluster occupé » de JkDefrag ne
+  regardent plus que les opérations `writeExtent` : un repeint n'est pas une
+  écriture.
+- **`RenderTrace`, `PLAN_ONLY`** sur `gamer-1996` pour Windows 95, le tri par
+  nom de JkDefrag et UltraDefrag : bilans identiques à `develop` à l'octet.
+- Capture sur le simulateur : la passe de Windows 95 montre les fichiers
+  système fragmentés plus clairs que les autres, et la légende a son entrée.
+
+### Laissé ouvert
+
+- Rien n'a été regardé **pendant** une passe ni en plein écran, seulement l'état
+  de départ.
+- La nuance d'un bloc à 17 000 cellules sur un gros volume se joue à la
+  majorité : un bloc à moitié rangé bascule d'un cluster à l'autre.

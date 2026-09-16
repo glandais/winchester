@@ -127,7 +127,8 @@ struct Windows95Strategy: DefragStrategy {
                 else { continue }
 
                 DefragOperations.move(source: occupant.extents, destination: refuge,
-                                      category: occupant.category, phase: phase,
+                                      category: occupant.category,
+                                      contiguous: refuge.coalesced().count <= 1, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
                                       into: sink)
                 DefragOperations.commit(cluster: Int(refuge[0].start), fileIndex: occupantPosition,
@@ -139,7 +140,7 @@ struct Windows95Strategy: DefragStrategy {
 
             // 2. Déplacer le fichier vers sa destination définitive.
             DefragOperations.move(source: volume.files[position].extents, destination: [target],
-                                  category: file.category, phase: phase,
+                                  category: file.category, contiguous: true, phase: phase,
                                   partition: partition, bufferBytes: bufferBytes,
                                   into: sink)
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,

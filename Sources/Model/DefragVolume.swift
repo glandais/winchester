@@ -369,8 +369,10 @@ struct DefragVolume {
         }
         for file in files {
             let raw = file.category.rawValue
+            let contiguous = file.isContiguous
             for extent in file.extents where !extent.isEmpty {
-                runs.append(MapRun(start: extent.start, count: extent.length, category: raw))
+                runs.append(MapRun(start: extent.start, count: extent.length, category: raw,
+                                   contiguous: contiguous))
             }
         }
         runs.sort { $0.start < $1.start }

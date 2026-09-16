@@ -19,8 +19,8 @@ enum Theme {
     /// écrit des pixels et ne peut rien faire d'une `Color`. Ici on ne fait que
     /// la traduire pour SwiftUI, de sorte que la légende et la carte ne
     /// puissent pas diverger.
-    static func categoryColor(_ category: ClusterCategory) -> Color {
-        let c = ClusterPalette.color(category)
+    static func categoryColor(_ category: ClusterCategory, contiguous: Bool = false) -> Color {
+        let c = ClusterPalette.color(category, contiguous: contiguous)
         return Color(red: c.red, green: c.green, blue: c.blue)
     }
 

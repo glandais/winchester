@@ -69,13 +69,19 @@ public struct GeneratedDisk: Sendable {
     /// - Returns: la catégorie dominante de chaque bloc, et sa part de clusters
     ///   occupés ramenée à 0…255. Un octet plutôt qu'un `Double` : on en garde
     ///   un par bloc, et l'œil ne distingue pas le deux-centcinquantième.
-    public func shaded(count cellCount: Int, free: UInt8 = .max) -> (categories: [UInt8], fill: [UInt8]) {
+    ///   Le troisième tableau dit si la catégorie dominante est surtout portée
+    ///   par des fichiers d'un seul tenant.
+    public func shaded(count cellCount: Int,
+                       free: UInt8 = .max) -> (categories: [UInt8], fill: [UInt8], contiguous: [Bool]) {
         precondition(cellCount > 0)
         let categoryCount = FileCategory.allCases.count
         var tally = [UInt32](repeating: 0, count: cellCount * categoryCount)
+        // Les clusters de chaque catégorie qui appartiennent à un fichier d'un
+        // seul tenant, sous-ensemble du décompte ci-dessus.
+        var contiguousTally = [UInt32](repeating: 0, count: cellCount * categoryCount)
         let clustersPerCell = max(Double(bitmap.clusterCount) / Double(cellCount), 1)
 
-        func count(_ extents: [Extent], as category: Int) {
+        func count(_ extents: [Extent], as category: Int, contiguous: Bool = false) {
             for extent in extents where !extent.isEmpty {
                 let first = Int(Double(extent.start) / clustersPerCell)
                 let last = Int(Double(extent.end - 1) / clustersPerCell)
@@ -85,7 +91,9 @@ public struct GeneratedDisk: Sendable {
                     let cellStart = Double(cell) * clustersPerCell
                     let overlap = min(Double(extent.end), cellStart + clustersPerCell)
                         - max(Double(extent.start), cellStart)
-                    tally[cell * categoryCount + category] += UInt32(max(overlap, 1))
+                    let share = UInt32(max(overlap, 1))
+                    tally[cell * categoryCount + category] += share
+                    if contiguous { contiguousTally[cell * categoryCount + category] += share }
                 }
             }
         }
@@ -96,11 +104,13 @@ public struct GeneratedDisk: Sendable {
         // métadonnées, celle des tables FAT.
         count(systemExtents, as: Int(FileCategory.metadata.rawValue))
         for record in catalog.files where !record.isResident {
-            count(record.extents, as: Int(record.category.rawValue))
+            count(record.extents, as: Int(record.category.rawValue),
+                  contiguous: record.extents.coalesced().count <= 1)
         }
 
         var result = [UInt8](repeating: free, count: cellCount)
         var fill = [UInt8](repeating: 0, count: cellCount)
+        var contiguous = [Bool](repeating: false, count: cellCount)
         for cell in 0..<cellCount {
             var best = -1
             var bestCount: UInt32 = 0
@@ -110,14 +120,17 @@ public struct GeneratedDisk: Sendable {
                 occupied += value
                 if value > bestCount { bestCount = value; best = category }
             }
-            if best >= 0 { result[cell] = UInt8(best) }
+            if best >= 0 {
+                result[cell] = UInt8(best)
+                contiguous[cell] = contiguousTally[cell * categoryCount + best] * 2 > bestCount
+            }
             // Le décompte majore d'un cluster les extents qui n'effleurent la
             // cellule que d'une fraction ; la borne à 255 évite qu'un bloc
             // débordé se retrouve « plus que plein ».
             let ratio = Double(occupied) / clustersPerCell
             fill[cell] = UInt8(min(max(ratio, 0), 1) * 255)
         }
-        return (result, fill)
+        return (result, fill, contiguous)
     }
 }
 

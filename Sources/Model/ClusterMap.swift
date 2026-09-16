@@ -45,7 +45,7 @@ struct MapGrid: Equatable, Sendable {
     /// charges et que les 16 808 d'un iPhone 17 Pro Max en paysage. Ce n'est
     /// pas le rendu qui l'impose — une grille de vingt mille cellules coûte
     /// 0,2 ms par image — mais la reconstruction du décompte, qui alloue
-    /// `cellCount × 8` compteurs et se refait à chaque changement de grille.
+    /// `cellCount × 16` compteurs — huit catégories, fragmentées ou non — et se refait à chaque changement de grille.
     static let cellLimit = 24_000
 
     /// Dérive une grille de la surface disponible.
@@ -105,6 +105,11 @@ struct ClusterShade: Equatable, Sendable {
     /// Part de clusters occupés du bloc, de 0 (vide) à 255 (plein). Un octet
     /// et non un `Double` : on en garde un par bloc, vingt mille fois.
     var fill: UInt8
+    /// Vrai quand la plupart des clusters de la catégorie dominante
+    /// appartiennent à des fichiers d'un seul tenant. La carte les montre d'une
+    /// teinte légèrement plus sombre : on voit ce qui est rangé et ce qui reste
+    /// à recoller.
+    var contiguous: Bool = false
 
     /// Part occupée, en fraction.
     var fraction: Double { Double(fill) / 255 }
@@ -125,9 +130,17 @@ struct MapRun: Equatable, Sendable {
     var start: UInt32
     var count: UInt32
     var category: UInt8
+    /// Le fichier qui la porte est d'un seul tenant. Sans effet sur la
+    /// mémoire : la plage fait douze octets avec ou sans lui.
+    var contiguous: Bool = false
 
     /// Premier cluster **après** la plage.
     var end: UInt32 { start &+ count }
+
+    /// Les deux plages n'en font qu'une : même contenu, et bout à bout.
+    func continues(into next: MapRun) -> Bool {
+        category == next.category && contiguous == next.contiguous && end == next.start
+    }
 }
 
 /// Carte des catégories tenue par intervalles.
@@ -192,7 +205,8 @@ struct ClusterRunMap {
             if start > frontier {
                 append(MapRun(start: frontier, count: start - frontier, category: free))
             }
-            append(MapRun(start: start, count: end - start, category: run.category))
+            append(MapRun(start: start, count: end - start, category: run.category,
+                          contiguous: run.contiguous))
             frontier = end
         }
         if frontier < total {
@@ -211,8 +225,9 @@ struct ClusterRunMap {
         while cursor < run.end {
             let index = block(of: cursor)
             let boundary = min(UInt32(index + 1) << blockShift, run.end)
-            let piece = MapRun(start: cursor, count: boundary - cursor, category: run.category)
-            if var last = blocks[index].last, last.category == piece.category, last.end == piece.start {
+            let piece = MapRun(start: cursor, count: boundary - cursor, category: run.category,
+                               contiguous: run.contiguous)
+            if var last = blocks[index].last, last.continues(into: piece) {
                 last.count += piece.count
                 blocks[index][blocks[index].count - 1] = last
             } else {
@@ -239,7 +254,7 @@ struct ClusterRunMap {
     func runs() -> [MapRun] {
         var result: [MapRun] = []
         forEachRun { run in
-            if var last = result.last, last.category == run.category, last.end == run.start {
+            if var last = result.last, last.continues(into: run) {
                 last.count += run.count
                 result[result.count - 1] = last
             } else {
@@ -256,7 +271,7 @@ struct ClusterRunMap {
     /// - Parameter replaced: appelé pour chaque morceau recouvert, avec la
     ///   catégorie qu'il portait. C'est la seule raison pour laquelle la carte
     ///   existe : sans elle, le rejeu ne saurait pas quel compteur décrémenter.
-    mutating func replace(start: Int, count: Int, category: UInt8,
+    mutating func replace(start: Int, count: Int, category: UInt8, contiguous: Bool = false,
                           replaced: (MapRun) -> Void) {
         let low = UInt32(max(start, 0))
         let high = UInt32(min(start + count, clusterCount))
@@ -267,13 +282,14 @@ struct ClusterRunMap {
             let index = block(of: cursor)
             let boundary = min(UInt32(index + 1) << blockShift, high)
             replace(inBlock: index, from: cursor, to: boundary,
-                    category: category, replaced: replaced)
+                    category: category, contiguous: contiguous, replaced: replaced)
             cursor = boundary
         }
     }
 
     private mutating func replace(inBlock index: Int, from low: UInt32, to high: UInt32,
-                                  category: UInt8, replaced: (MapRun) -> Void) {
+                                  category: UInt8, contiguous: Bool,
+                                  replaced: (MapRun) -> Void) {
         var runs = blocks[index]
         blocks[index] = []          // pas deux copies du tableau le temps du remaniement
 
@@ -291,20 +307,21 @@ struct ClusterRunMap {
             let run = runs[last]
             if run.start < low {
                 replacement.append(MapRun(start: run.start, count: low - run.start,
-                                              category: run.category))
+                                          category: run.category, contiguous: run.contiguous))
             }
             replaced(MapRun(start: max(run.start, low),
-                                count: min(run.end, high) - max(run.start, low),
-                                category: run.category))
+                            count: min(run.end, high) - max(run.start, low),
+                            category: run.category, contiguous: run.contiguous))
             if run.end > high {
                 replacement.append(MapRun(start: high, count: run.end - high,
-                                              category: run.category))
+                                          category: run.category, contiguous: run.contiguous))
             }
             last += 1
         }
         // La plage neuve s'insère après l'éventuel reste de gauche.
         let insertion = replacement.isEmpty || replacement[0].start >= low ? 0 : 1
-        replacement.insert(MapRun(start: low, count: high - low, category: category),
+        replacement.insert(MapRun(start: low, count: high - low, category: category,
+                                  contiguous: contiguous),
                            at: insertion)
         runs.replaceSubrange(first..<last, with: replacement)
 
@@ -314,8 +331,7 @@ struct ClusterRunMap {
         var position = max(first - 1, 0)
         let limit = min(first + replacement.count, runs.count - 1)
         while position < limit && position + 1 < runs.count {
-            if runs[position].category == runs[position + 1].category
-                && runs[position].end == runs[position + 1].start {
+            if runs[position].continues(into: runs[position + 1]) {
                 runs[position].count += runs[position + 1].count
                 runs.remove(at: position + 1)
             } else {
@@ -419,6 +435,7 @@ struct TimedMutation: Sendable {
     let start: Int
     let count: Int
     let category: UInt8
+    var contiguous: Bool = false
 }
 
 /// Une passe entière, telle que les tests la fabriquent à la main : l'état de
@@ -450,6 +467,9 @@ struct ClusterMapTimeline {
 final class ClusterMapPlayer {
 
     private static let categoryCount = ClusterCategory.allCases.count
+    /// Chaque catégorie compte deux fois dans le décompte : les clusters des
+    /// fichiers fragmentés, puis ceux des fichiers d'un seul tenant.
+    private static let slotCount = categoryCount * 2
 
     /// Grille courante. Elle se change en cours de route — le plein écran en
     /// demande une plus fine que la vue en pouce — et le décompte par bloc est
@@ -573,7 +593,7 @@ final class ClusterMapPlayer {
     /// entier.
     private func rebuildTally() {
         revision += 1
-        tally = [UInt32](repeating: 0, count: grid.cellCount * Self.categoryCount)
+        tally = [UInt32](repeating: 0, count: grid.cellCount * Self.slotCount)
         // Toute la réduction est à refaire : on repart d'une carte vide plutôt
         // que de marquer chaque bloc.
         cachedShades = []
@@ -581,7 +601,7 @@ final class ClusterMapPlayer {
         isDirty = [Bool](repeating: false, count: grid.cellCount)
         map.forEachRun { run in
             add(start: Int(run.start), count: Int(run.count),
-                category: Int(run.category), delta: 1)
+                category: Int(run.category), contiguous: run.contiguous, delta: 1)
         }
     }
 
@@ -591,7 +611,7 @@ final class ClusterMapPlayer {
     /// général ne coûte alors qu'une addition ; quand elle en traverse
     /// plusieurs, chacun ne reçoit que la part qui lui revient. C'est la même
     /// agrégation que `GeneratedDisk.cells`, appliquée au fil de l'eau.
-    private func add(start: Int, count: Int, category: Int, delta: Int) {
+    private func add(start: Int, count: Int, category: Int, contiguous: Bool, delta: Int) {
         guard count > 0, category < Self.categoryCount else { return }
         let perCell = clustersPerCell
         let lastCell = grid.cellCount - 1
@@ -605,7 +625,7 @@ final class ClusterMapPlayer {
             let cellEnd = cell == lastCell ? end : min((cell + 1) * perCell, end)
             let share = cellEnd - max(start, cell * perCell)
             guard share > 0 else { continue }
-            let slot = cell * Self.categoryCount + category
+            let slot = cell * Self.slotCount + category + (contiguous ? Self.categoryCount : 0)
             tally[slot] = UInt32(Int(tally[slot]) + delta * share)
             if !isDirty[cell] {
                 isDirty[cell] = true
@@ -654,25 +674,29 @@ final class ClusterMapPlayer {
     /// La couleur d'un bloc, tirée de son décompte.
     private func shade(ofCell cell: Int) -> ClusterShade {
         let perCell = clustersPerCell
-        let base = cell * Self.categoryCount
+        let base = cell * Self.slotCount
         var best = 0
         var bestCount: UInt32 = 0
+        var bestContiguous: UInt32 = 0
         var occupied: UInt32 = 0
         // La catégorie « libre » est l'indice zéro : elle ne concourt pas
         // pour la couleur, mais c'est son complément qui donne le taux.
         for category in 1..<Self.categoryCount {
-            let count = tally[base + category]
+            let contiguous = tally[base + Self.categoryCount + category]
+            let count = tally[base + category] + contiguous
             occupied += count
             if count > bestCount {
                 best = category
                 bestCount = count
+                bestContiguous = contiguous
             }
         }
         // Le dernier bloc ramasse le reste de la division et peut porter
         // plus de clusters que les autres : la borne à 1 l'empêche de
         // paraître « plus que plein ».
         let ratio = min(Double(occupied) / Double(perCell), 1)
-        return ClusterShade(category: UInt8(best), fill: UInt8(ratio * 255))
+        return ClusterShade(category: UInt8(best), fill: UInt8(ratio * 255),
+                            contiguous: bestCount > 0 && bestContiguous * 2 > bestCount)
     }
 
     /// Total du décompte, blocs et catégories confondus.
@@ -701,14 +725,15 @@ final class ClusterMapPlayer {
             // de cela seul que le décompte est décrémenté — le coût suit le
             // nombre de plages traversées, plus le nombre de clusters.
             map.replace(start: mutation.start, count: mutation.count,
-                        category: mutation.category) { [self] old in
+                        category: mutation.category,
+                        contiguous: mutation.contiguous) { [self] old in
                 add(start: Int(old.start), count: Int(old.count),
-                    category: Int(old.category), delta: -1)
+                    category: Int(old.category), contiguous: old.contiguous, delta: -1)
             }
             let start = max(mutation.start, 0)
             let end = min(mutation.start + mutation.count, clusterCount)
             add(start: start, count: end - start,
-                category: Int(mutation.category), delta: 1)
+                category: Int(mutation.category), contiguous: mutation.contiguous, delta: 1)
             pendingHead += 1
         }
         if pendingHead != appliedBefore { revision += 1 }

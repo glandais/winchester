@@ -183,9 +183,11 @@ final class DiskLibraryModel: ObservableObject {
     /// principal, sur une tâche détachée.
     private nonisolated static func shades(of disk: GeneratedDisk, count: Int) -> [ClusterShade] {
         let aggregate = disk.shaded(count: count)
-        return zip(aggregate.categories, aggregate.fill).map { raw, fill in
-            guard let category = FileCategory(rawValue: raw) else { return .empty }
-            return ClusterShade(category: ClusterCategory(category).rawValue, fill: fill)
+        return aggregate.categories.indices.map { cell in
+            guard let category = FileCategory(rawValue: aggregate.categories[cell]) else { return .empty }
+            return ClusterShade(category: ClusterCategory(category).rawValue,
+                                fill: aggregate.fill[cell],
+                                contiguous: aggregate.contiguous[cell])
         }
     }
 }
