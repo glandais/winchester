@@ -430,7 +430,7 @@ UltraDefrag. Une destination est toujours un trou déjà libre.
   qui rendrait le plan dépendant de la machine. Deux millions, c'est une
   demi-seconde à 250 ns la visite, un défaut de cache par nœud d'un arbre chaîné.
   **Il ne mord jamais** : sur les vingt volumes, la recherche la plus longue fait
-  152 854 visites (`secretaire-2007`). Le plan est donc celui qu'aurait produit
+  166 176 visites (`secretaire-2007`). Le plan est donc celui qu'aurait produit
   l'original sur n'importe quelle machine de l'époque, et non une approximation.
 - **Un déplacement peut échouer, et l'échec coûte cher.** `Fixup` garde un trou
   courant par zone sans le relire, et rien n'empêche deux zones de viser le même
@@ -439,8 +439,8 @@ UltraDefrag. Une destination est toujours un trou déjà libre.
   le fichier est **immobile** pour le reste de la passe, puis recalcule les zones
   (`JkDefragLib.cpp:2542-2547`). C'est modélisé tel quel. Le premier essai ne le
   modélisait pas et écrivait par-dessus un voisin : c'est un plantage sur
-  `famille-1996` qui l'a révélé. Mesuré : 1 échec sur `famille-1996`, 6 sur
-  `dev-2007`, 29 sur `secretaire-2007`, aucun ailleurs.
+  `famille-1996` qui l'a révélé. Mesuré : un échec sur `famille-1996`, un sur
+  `secretaire-2007`, aucun ailleurs.
 - **Une tranche qui déborde du fichier est refusée.** `Defragment` ne recalcule
   pas la taille de sa tranche après avoir sauté les morceaux trop gros pour elle.
   Elle peut alors demander des clusters au-delà de la fin du fichier. Borner la
@@ -498,23 +498,27 @@ outil qui n'évacue personne a besoin de trous, et ces deux volumes n'en ont plu
 
 #### Effets mesurés — NTFS
 
+Mesurés sur le générateur corrigé (section suivante), où la zone MFT cède de
+moitié au lieu de s'ouvrir d'un coup.
+
 | scénario | plein | morceaux restants, XP | UltraDefrag | JkDefrag | durée, XP → JkDefrag | Go déplacés, XP → JkDefrag |
 |---|---:|---:|---:|---:|---:|---:|
-| `secretaire-2003` | 94 % | 17 704 | 7 622 | **3 878** | 2 min 22 → 20 min 17 | 1,2 → 6,4 |
-| `famille-2003` | 93 % | 38 054 | 15 186 | **3 093** | 2 min 28 → 23 min 37 | 0,7 → 6,2 |
-| `gamer-2003` | 8 % | 0 | 0 | 0 | 7,8 s → 6 min 09 | 0,0 → 4,0 |
-| `dev-2003` | 94 % | 10 229 | 474 | 432 | 5 min 58 → 13 min 51 | 2,8 → 3,5 |
-| `secretaire-2007` | 88 % | 0 | 0 | 0 | 16 min 03 → 47 min 53 | 17,2 → 45,1 |
-| `famille-2007` | 93 % | 130 288 | 1 378 | 2 828 | 23 min 28 → 1 h 40 | 19,0 → 55,4 |
-| `gamer-2007` | 90 % | 26 753 | 376 | 407 | 27 min 31 → 1 h 29 | 31,4 → 109,0 |
-| `dev-2007` | 86 % | 0 | 0 | 0 | 1 h 18 → 2 h 04 | 38,4 → 77,6 |
+| `secretaire-2003` | 94 % | 23 777 | 13 821 | **5 118** | 1 min 18 → 21 min 25 | 0,4 → 5,6 |
+| `famille-2003` | 93 % | 42 617 | 17 131 | **1 786** | 2 min 34 → 28 min 24 | 0,7 → 11,6 |
+| `gamer-2003` | 8 % | 0 | 0 | 0 | 7,8 s → 6 min 11 | 0,0 → 4,1 |
+| `dev-2003` | 94 % | 3 771 | 13 | 25 | 4 min 50 → 11 min 38 | 1,1 → 3,6 |
+| `secretaire-2007` | 88 % | 0 | 0 | 0 | 9 min 49 → 49 min 41 | 10,2 → 44,3 |
+| `famille-2007` | 93 % | 132 920 | 1 350 | 1 911 | 23 min 14 → 2 h 02 | 22,9 → 103,1 |
+| `gamer-2007` | 90 % | 38 419 | 511 | 1 437 | 18 min 42 → 1 h 15 | 20,6 → 86,9 |
+| `dev-2007` | 86 % | 0 | 3 | 0 | 1 h 07 → 1 h 55 | 40,7 → 79,4 |
 
 Sur les cinq volumes où XP laisse du travail, JkDefrag fait mieux
-qu'UltraDefrag sur les trois de 2003, et moins bien sur les deux de 2007 — sans
-jamais s'en éloigner d'un ordre de grandeur. Les deux mécanismes diffèrent :
-UltraDefrag ne recolle que les petits morceaux, `Defragment` recopie le fichier
-entier par tranches, chacune dans le plus grand trou du moment. Ce qui fait
-gagner l'un ou l'autre selon le volume n'a pas été isolé.
+qu'UltraDefrag sur `secretaire-2003` et `famille-2003`, et moins bien sur les
+trois autres, sans jamais s'en éloigner d'un ordre de grandeur. Les deux
+mécanismes diffèrent : UltraDefrag ne recolle que les petits morceaux,
+`Defragment` recopie le fichier entier par tranches, chacune dans le plus grand
+trou du moment. Ce qui fait gagner l'un ou l'autre selon le volume n'a pas été
+isolé.
 
 Le prix est ailleurs que chez UltraDefrag : dans ce qui est déplacé sans être
 cassé. `gamer-2003` est plein à 8 % et n'a pas un fichier en morceaux ; JkDefrag
@@ -523,51 +527,25 @@ commence après la zone MFT et la réserve, à 13,5 % du volume, et tout ce qui 
 posé devant est renvoyé derrière. C'est la mise en zone, pas un défaut.
 
 Même leçon que pour UltraDefrag, dans l'autre sens : le nombre de **fichiers**
-fragmentés monte (155 → 201 sur `famille-2007`, 39 → 81 sur `dev-2003`), parce
-qu'une tranche ramène un fichier à deux morceaux là où XP renonçait et le
+fragmentés monte (150 → 159 sur `famille-2007`, 90 → 110 sur `gamer-2007`),
+parce qu'une tranche ramène un fichier à deux morceaux là où XP renonçait et le
 laissait intact.
 
-#### La zone MFT publiée décide de la moitié d'une passe NTFS
+#### D'abord mesurée sur une zone MFT qui ne rétrécissait pas
 
-Ce qui n'était qu'une garde pour XP devient ici **le premier paramètre**. Le
-générateur publie la zone réservée telle que l'allocateur l'a posée, 12,5 % du
-volume, même quand il a fini par y écrire. C'est le cas de sept volumes NTFS sur
-huit, tous ceux qui ont passé 87 % de remplissage pendant leur vieillissement.
-`CalculateZones` compte alors cette zone comme de l'immobile, **en plus** des
-fichiers qui l'occupent : la somme dépasse le volume, et la zone des space hogs
-est tronquée à la fin du disque. `Fixup` veut sortir de la zone tous les
-fichiers qui s'y trouvent ; sur `dev-2003`, il échoue 16 998 fois faute de
-trou.
+La première série de mesures a été faite sur l'ancien générateur, dont la zone
+MFT restait publiée entière même une fois entamée. Sur sept volumes sur huit,
+`CalculateZones` comptait alors la zone comme de l'immobile **en plus** des
+fichiers qui l'occupaient : la somme dépassait le volume, et `Fixup` passait
+l'essentiel de son temps à vider une réserve que Windows aurait déjà rendue.
+13 196 déplacements de `Fixup` sur `secretaire-2007`, 16 998 échecs faute de
+trou sur `dev-2003`, où la phase d'optimisation ne faisait **rien du tout**.
 
-Or NTFS cède sa zone quand le volume se remplit, et la zone que renvoie
-`FSCTL_GET_NTFS_VOLUME_DATA` devrait être la zone **courante**, pas la réserve
-d'origine. C'est une lecture de la documentation de Windows, pas une mesure sur
-un vrai volume. Les mêmes passes, avec une zone retirée dès qu'un fichier y est
-écrit :
-
-| scénario | Fixup, zone publiée → retirée | OptimizeVolume | Go déplacés | morceaux restants |
-|---|---:|---:|---:|---:|
-| `dev-2003` | 2 032 → 1 098 | **0** → 2 351 | 3,5 → 8,8 | 432 → 206 |
-| `famille-2003` | 452 → 40 | 1 508 → 2 889 | 6,2 → 9,7 | 3 093 → 2 031 |
-| `secretaire-2003` | 1 023 → 370 | 4 855 → 6 515 | 6,4 → 8,3 | 3 878 → 2 757 |
-| `famille-2007` | 1 532 → 10 | 6 037 → 11 085 | 55,4 → 101,2 | 2 828 → 1 991 |
-| `gamer-2007` | 2 768 → 41 | 8 057 → 9 366 | 109,0 → 127,4 | 407 → 297 |
-| `secretaire-2007` | **13 196** → 3 584 | 6 378 → 4 034 | 45,1 → 45,6 | 0 → 0 |
-| `dev-2007` | 10 766 → 2 508 | 7 032 → 8 985 | 77,6 → 79,7 | 0 → 0 |
-
-Deux lectures ressortent. Sur `dev-2003`, la phase d'optimisation **ne fait rien
-du tout** tant que la zone est publiée : aucun trou ne reste hors de la zone
-au-delà du début des fichiers ordinaires. Et sur `secretaire-2007`, près des
-trois quarts de `Fixup` servent à vider une réserve que Windows aurait sans
-doute déjà rendue.
-
-**Ce n'est pas tranché ici**, et c'est délibéré. La zone publiée est une décision
-du commit `47a9abc`, qui a changé les chiffres de XP. Pour XP, la retirer ne
-toucherait que `dev-2003` (19 353 → 27 747 requêtes) et `gamer-2007`
-(76 425 → 78 305). Le bon modèle est sans doute une zone qui se réduit au lieu
-de disparaître d'un coup, mais la loi de cette réduction reste à établir. C'est
-une décision du générateur, qui dépasse ce chantier. Les tableaux précédents
-sont ceux de la zone publiée.
+Retirer la zone dès qu'elle était entamée faisait tomber ces chiffres de moitié
+ou plus. C'est ce qui a décidé de corriger le générateur plutôt que la
+stratégie : l'écart venait de la zone publiée, pas de JkDefrag. Les tableaux
+ci-dessus sont ceux du générateur corrigé ; la comparaison complète est dans la
+section suivante.
 
 ### L'ordre de passage, isolé
 
@@ -576,40 +554,172 @@ passe (même placement, même garde, même grain) est rejouée dans l'ordre de
 chacun des autres outils. Par défaut rien ne change : les huit passes XP
 retombent à la requête près.
 
-Seek moyen, en cylindres :
+Seek moyen en cylindres, sur le générateur corrigé :
 
-| scénario | MFT (XP) | plus fragmenté d'abord (UD) | position sur le disque (JK) | arborescence (95) | mêmes fichiers déplacés ? |
-|---|---:|---:|---:|---:|---|
-| `famille-2003` | 30 277 | 22 311 (−26 %) | 22 758 (−25 %) | 31 856 (+5 %) | oui |
-| `secretaire-2007` | 41 242 | 39 998 (−3 %) | 38 542 (−7 %) | 41 214 (0 %) | oui |
-| `dev-2007` | 50 291 | 51 572 (+3 %) | 52 280 (+4 %) | 50 298 (0 %) | oui |
-| `famille-2007` | 35 489 | 49 031 (+38 %) | 69 913 (+97 %) | 36 838 (+4 %) | **non** |
-| `dev-2003` | 33 412 | 25 648 (−23 %) | 37 143 (+11 %) | 33 237 (−1 %) | **non** |
+| scénario | MFT (XP) | plus fragmenté d'abord (UD) | position sur le disque (JK) | arborescence (95) |
+|---|---:|---:|---:|---:|
+| `famille-2003` | 35 909 | 26 515 (−26 %) | 28 770 (−20 %) | 24 933 (−31 %) |
+| `secretaire-2007` | 36 427 | 41 102 (+13 %) | 39 410 (+8 %) | 36 333 (0 %) |
+| `dev-2007` | 29 089 | *47 805* | 38 055 (+31 %) | 29 087 (0 %) |
+| `dev-2003` | 44 737 | *28 527* | *27 275* | 44 749 (0 %) |
+| `secretaire-2003` | 22 202 | *26 852* | *26 221* | *24 531* |
+| `gamer-2007` | 40 584 | *44 912* | *40 523* | *42 149* |
+| `famille-2007` | 31 841 | *52 334* | *56 519* | *35 241* |
+
+En italique, les cas où l'ordre change aussi **quels fichiers sont déplacés** :
+le nombre de requêtes n'est plus le même, et l'écart ne mesure plus un ordre de
+passage.
 
 **Les « 39 % » écrits plus haut ne mesuraient pas un ordre de passage.** Ils
 comparaient la première séquence d'UltraDefrag à la passe de XP sur
-`famille-2007`, et le même écart se retrouve ici (+38 %). Mais sur ce volume,
-l'ordre décide aussi **quels fichiers obtiennent les trous** : dans l'ordre
-d'UltraDefrag, la passe XP lit deux fois plus de requêtes (167 727 contre 78 797)
-et laisse 84 714 morceaux au lieu de 130 288. Ce n'est plus la même passe.
+`famille-2007`. Sur ce volume, l'ordre décide aussi quels fichiers obtiennent
+les trous : dans l'ordre d'UltraDefrag, la passe XP lit presque trois fois plus
+de requêtes (191 221 contre 69 967) et laisse 71 019 morceaux au lieu de
+132 920. Ce n'est plus la même passe.
 
 Là où les fichiers déplacés sont les mêmes à l'unité, **l'ordre seul pèse de
-−26 % à +4 %**. C'est audible sur `famille-2003`, négligeable sur les deux
-volumes de 2007. Et l'ordre qui semble le plus local est parfois le pire : par
-position sur le disque, `famille-2007` double son seek moyen. L'hypothèse est
-que la destination reste le premier trou depuis le début du volume : chaque
-fichier pris un peu plus loin allonge l'aller-retour. Rien n'a vérifié cette
-hypothèse.
+−31 % à +31 %** du seek moyen. Deux choses en ressortent :
+- **aucun ordre ne gagne partout** : l'arborescence est le meilleur sur
+  `famille-2003` et n'apporte rien ailleurs ;
+- l'ordre qui semble le plus local, la position sur le disque, coûte +31 % sur
+  `dev-2007`. L'hypothèse est que la destination reste le premier trou depuis le
+  début du volume : chaque fichier pris un peu plus loin allonge l'aller-retour.
+  Rien ne l'a vérifiée.
 
-La leçon utile : **l'ordre de passage agit surtout sur ce qui est réparé**, et
-seulement ensuite sur la façon dont le bras s'y déplace. Sur `dev-2003`, la
-passe XP laisse 3 153 morceaux dans l'ordre d'UltraDefrag contre 10 229 dans le
-sien, à placement identique.
+La même mesure faite sur l'ancien générateur donnait de −26 % à +4 %, et
+concluait à un effet négligeable sur les volumes de 2007. Cette conclusion n'a
+pas survécu au changement de volumes. C'est un avertissement sur la portée de
+ces chiffres : ils valent pour une disposition de volume, pas pour un outil.
+
+La leçon qui, elle, tient sur les deux séries : **l'ordre de passage agit
+d'abord sur ce qui est réparé**. Sur `dev-2003`, la passe XP laisse 2 310
+morceaux dans l'ordre d'UltraDefrag contre 3 771 dans le sien, à placement
+identique.
+
+### La zone MFT cède de moitié
+
+**Fait** · branche `chantier-2`
+
+#### Le problème
+
+L'allocateur NTFS tenait sa zone MFT, 12,5 % du volume, entièrement à l'écart
+jusqu'à 87 % de remplissage, puis l'ouvrait **d'un coup et en entier**. Et le
+générateur publiait cette zone telle qu'à la création du volume, même une fois
+remplie de fichiers. Deux conséquences :
+
+- **le vieillissement** : une fois la zone ouverte, l'allocateur y éparpillait
+  les fichiers, loin de sa zone vierge, au lieu d'y trouver un bloc d'un tenant ;
+- **les défragmenteurs** voyaient une réserve de 12,5 % pleine de fichiers.
+  JkDefrag la vidait (section précédente), XP et UltraDefrag s'interdisaient
+  des trous que Windows aurait déjà rendus.
+
+#### Les décisions
+
+- **La zone rend la moitié de sa queue libre, chaque fois que le reste du volume
+  est plein.** C'est la seule règle publiée : « Each time the rest of the disk
+  becomes full, the buffer size is halved » (documentation Linux-NTFS, `$MFT`),
+  et « the unused tail of the MFT zone is halved […] this process can repeat »
+  (HackMag, *Inside NTFS*). Microsoft ne publie pas l'algorithme : l'article de
+  support sur `NtfsMftZoneReservation` dit seulement que la zone n'est utilisée
+  qu'une fois le reste plein. La loi est donc **empruntée à des descriptions
+  tierces**, pas à une source de Microsoft.
+- **« Le reste est plein » veut dire qu'un placement hors zone échoue**, faute
+  de clusters libres en nombre suffisant. Aucun seuil de remplissage :
+  `mftZoneYieldsAt` disparaît du profil.
+- **La moitié rendue est la plus éloignée de la MFT**, pour que celle-ci garde
+  de quoi grandir d'un tenant. Et la zone publiée est la zone **courante**,
+  celle que renverrait `FSCTL_GET_NTFS_VOLUME_DATA`.
+- **La MFT est enfin visible des défragmenteurs.** Le volume qu'ils reçoivent
+  ne marquait occupés que les clusters des fichiers du catalogue : `$Boot`, la
+  MFT et `$MFTMirr` y paraissaient libres. La zone entière les masquait presque
+  toujours ; une zone qui rétrécit les découvre. Le disque généré publie
+  désormais ses `systemExtents`, que `DefragVolume` marque occupés sans en faire
+  des fichiers. Mesuré sur le nouveau générateur **sans** cette correction : de 0
+  à 104 clusters système écrasés par passe selon l'outil (`dev-2003`, dont la
+  MFT est en 348 morceaux, est le pire). La passe de Windows 95 les contourne
+  aussi : elle ne consulte pas la bitmap.
+
+#### Ce qui change
+
+Les douze volumes FAT et `gamer-2003`, qui n'a jamais rempli le reste de son
+volume, donnent des passes d'époque et des démarrages **identiques** à la requête
+près. Seule la passe JkDefrag de `gamer-2003` bouge, de 4,0 à 4,1 Go déplacés :
+elle voit maintenant `$MFTMirr`. Les sept autres NTFS vieillissent autrement :
+
+| scénario | fichiers fragmentés au départ | morceaux au départ | passe XP, requêtes | passe XP, morceaux restants |
+|---|---:|---:|---:|---:|
+| `secretaire-2003` | 141 → 178 | 21 315 → 26 099 | 7 455 → 4 819 | 17 704 → 23 777 |
+| `famille-2003` | 80 → 68 | 42 510 → 47 055 | 9 190 → 9 144 | 38 054 → 42 617 |
+| `dev-2003` | **299 → 36** | 19 168 → 12 253 | 19 353 → 17 309 | 10 229 → 3 771 |
+| `secretaire-2007` | **186 → 49** | 13 922 → 9 651 | 35 408 → 23 962 | 0 → 0 |
+| `famille-2007` | 244 → 268 | 165 802 → 163 226 | 78 797 → 69 967 | 130 288 → 132 920 |
+| `gamer-2007` | 192 → 175 | 58 976 → 60 516 | 76 425 → 50 991 | 26 753 → 38 419 |
+| `dev-2007` | 172 → 176 | 132 445 → 120 211 | 280 595 → 258 179 | 0 → 0 |
+
+L'effet n'a pas de sens unique. Ce qui reste de la zone après le vieillissement,
+en part du volume, sur une réserve d'origine de 12,5 % : 8,1 % sur `dev-2003`,
+4,6 % sur `secretaire-2007` et `dev-2007`, 3,1 % sur `secretaire-2003` et
+`gamer-2007`, et presque rien sur `famille-2003` et `famille-2007` (2 266 et
+9 229 clusters). Le volume qui perd le plus de fichiers cassés, `dev-2003`, est
+celui qui garde la plus grande zone ; mais `dev-2007`, qui en garde autant que
+`secretaire-2007`, n'en perd aucun quand l'autre en perd les trois quarts. Une
+moitié rendue est un bloc d'un tenant, où un fichier peut tomber entier : c'est
+une piste, pas une explication. Le nombre de cessions n'a pas été compté.
+
+Les démarrages bougent peu, mais le témoin change de signe sur deux volumes :
+
+| scénario | durée | témoin |
+|---|---:|---:|
+| `secretaire-2003` | 35,4 s → 35,4 s | −4 % → +4 % |
+| `famille-2003` | 31,6 s → 31,5 s | +5 % → +10 % |
+| `dev-2003` | 50,4 s → 51,0 s | −11 % → −9 % |
+| `secretaire-2007` | 40,4 s → 41,9 s | +1 % → +5 % |
+| `famille-2007` | 38,9 s → 39,3 s | +7 % → +1 % |
+| `gamer-2007` | 34,4 s → 34,9 s | +4 % → +4 % |
+| `dev-2007` | 43,5 s → 44,0 s | +4 % → +2 % |
+
+**Deux conclusions publiées ne tiennent plus**, et sont corrigées au README
+plutôt qu'effacées ici :
+- « sur NTFS, le témoin perd, jusqu'à −11 % » (chantier 6) : seuls `dev-2003`
+  (−9 %) et `gamer-2003` (−1 %) restent sous leur témoin ;
+- « ce n'est pas le remplissage qui décide » : l'argument reposait sur
+  `dev-2003`, qui réparait 260 fichiers sur 299 là où `secretaire-2003` en
+  réparait 57 sur 141. Sur les nouveaux volumes, `dev-2003` n'a plus que 36
+  fichiers cassés. L'observation elle-même tient (32 sur 36 contre 68 sur 178,
+  à remplissage égal), mais sur des effectifs trop petits pour porter une loi.
+
+Les tableaux des sections précédentes du chantier 2 et du chantier 6 restent
+tels qu'ils ont été mesurés, sur l'ancien générateur. Le README donne les
+chiffres actuels.
+
+**La génération ralentit sur deux volumes** : `dev-2007` passe de 1,8 à 5,1 s,
+`secretaire-2007` de 0,34 à 0,92 s ; les cinq autres ne bougent pas. Ce sont les
+deux volumes qui gardent le plus de zone, donc qui restent le plus longtemps
+pleins hors d'elle : chaque écriture y rassemble des trous épars par `scatter`,
+sur tout le volume. Avant, la zone s'ouvrait d'un bloc et ce régime n'existait
+presque pas. Un compte des clusters libres de la zone, pour renoncer plus tôt, a
+été essayé et retiré : il coûtait plus qu'il ne rapportait (6,2 s), le temps
+étant dans les écritures qui réussissent, pas dans celles qui échouent.
+
+#### Ce qui valide
+
+Le test de l'allocateur vérifie désormais que la zone cède **de moitié** (entre
+un tiers et deux tiers de sa taille à la première cession, toujours collée à la
+MFT), qu'elle cède plusieurs fois à 96 % de remplissage, et que la MFT finit
+malgré tout par se fragmenter. Un test vérifie que les quatre défragmenteurs
+n'écrivent pas sur des extents système posés hors de toute zone. 209 tests.
 
 ### Ce qui reste
 
-- **La zone MFT publiée** (ci-dessus) : la décision la plus lourde, et une
-  décision du générateur.
+- **La loi de la zone MFT n'a pas de source Microsoft.** La division par deux
+  vient de descriptions tierces, et rien ne dit si la zone se reconstitue au
+  montage suivant. Le modèle la suppose définitive.
+- **Un volume plein hors zone coûte cher à générer** : 5,1 s pour `dev-2007`.
+  Un index des trous libres le réglerait, au prix d'une structure de plus à
+  tenir dans la bitmap.
+- **La carte du volume ne montre pas la MFT.** Ses clusters sont désormais
+  occupés pour les défragmenteurs, mais pas décrits comme plages : l'écran les
+  affiche libres.
 - **Les tris complets de JkDefrag** : `OptimizeSort` sur les cinq critères, avec
   `Vacate` et sa protection anti-ver, plus `ForcedFill` et `OptimizeUp`. Ce sont
   les seuls modes qui évacuent. Les zones, elles, sont faites.
