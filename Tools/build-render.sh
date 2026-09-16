@@ -26,6 +26,7 @@ swiftc -O -swift-version 6 -o "${1:-/tmp/rendertrace}" \
     Sources/Model/JKDefragFullOptimize.swift \
     Sources/Model/UltraDefragStrategy.swift \
     Sources/Model/FrontierCompactionStrategy.swift \
+    Sources/Model/FragmentMergeStrategy.swift \
     Sources/Model/GeneratedVolume.swift \
     Sources/Model/ClusterMap.swift \
     Sources/Model/OperationSink.swift \

@@ -412,7 +412,7 @@ rien : le planificateur travaille en extents, et un volume de 320 Go ne lui
 coûte pas plus cher qu'un de 180 Mo. Ce qui change avec le format, c'est
 l'**outil** — parce que c'est lui que le format datait.
 
-#### Cinq défragmenteurs, dont deux d'époque
+#### Six défragmenteurs, dont deux d'époque
 
 Sur un volume FAT, c'est la passe livrée avec Windows 95 puis 98 : tasser tous
 les fichiers contre le début du volume, dans l'ordre du parcours de
@@ -431,9 +431,11 @@ gros fichiers. **JkDefrag 3.36**, de 2008, est le seul qui range le volume sans
 `STRATEGY=jkDefrag`) pour comparer des passes sur exactement le même volume.
 JkDefrag s'obtient aussi dans ses autres modes, décrits plus bas.
 
-Le cinquième n'imite aucun outil : le **tassage à la frontière**
-(`STRATEGY=frontierCompaction`) a été écrit ici, pour FAT, à partir de ce que
-les quatre autres y font mal. Il est décrit en dernier.
+Les deux derniers n'imitent aucun outil, et ont été écrits ici à partir de ce
+que les quatre autres font mal : le **tassage à la frontière**
+(`STRATEGY=frontierCompaction`) pour FAT, et le **recollage économe**
+(`STRATEGY=fragmentMerge`) pour les gros volumes NTFS. Ils sont décrits en
+dernier.
 
 L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
 `famille-2007` tassait trois cents gigaoctets par tampons de 256 Ko : vingt-huit
@@ -648,6 +650,52 @@ sur les quatre volumes de 1999, il laisse entre 700 et 2 700 morceaux et plus de
 resserre à 10–20 % : tout passe par une navette de deux clusters, et chaque
 tronçon se paie d'une écriture des tables.
 
+#### Recoller peu, sur les gros volumes
+
+Sur les volumes NTFS de 2003 et 2007, la place ne manque plus — 2 à 33 Go
+libres — mais la taille : le tassage à la frontière y déplace tout le contenu
+du volume, jusqu'à 335 Go et dix heures de passe. Et la fragmentation y est faite
+de miettes. Sur `famille-2007`, 268 fichiers cassés pèsent 239 Go en 163 000
+morceaux, dont 161 000 font moins de 4 Mo et ne pèsent que 11 Go. Chacun coûte
+pourtant une lecture : c'est leur nombre, pas leur poids, qui fait la durée.
+
+Le **recollage économe** ne déplace donc que ce qui coûte peu. Une suite de
+morceaux de moins de 4 Mo est recopiée d'un seul tenant, contre le gros morceau
+voisin si le trou qui le borde l'accepte, sinon dans le trou le plus proche ; les
+gros morceaux restent où ils sont. Un morceau de 16 Mo au plus rejoint son
+voisin quand un trou s'ouvre à côté de lui. Et l'espace libre se consolide avec
+de petits fichiers : celui qui sépare deux trous part ailleurs, et les deux trous
+n'en font qu'un ; celui qui borde un trou part dans un trou exactement à sa
+taille, ou dans un trou plus petit. Les tours se succèdent tant que chacun retire
+au moins 1 % des trous.
+
+Deux choses tiennent au format. Les clusters quittés ne resservent qu'au point de
+contrôle, tous les seize déplacements, où les enregistrements de MFT et la
+bitmap sont écrits d'une traite : aucune écriture ne tombe sur un cluster dont
+la libération n'est pas écrite. Et un bloc de 4 à 16 Mo se lit morceau par
+morceau puis s'écrit une fois, là où les autres outils font un aller-retour du
+bras par morceau. La zone MFT n'est jamais une destination.
+
+| scénario | plein | durée, XP / UltraDefrag / JkDefrag / recollage | morceaux restants | trous libres |
+|---|---:|---:|---:|---:|
+| `dev-2003` | 94 % | 4 min 49 / 6 min 47 / 11 min 38 / **3 min 17** | 3 771 / 11 / 25 / **101** | 3 029 / 1 130 / 620 / **138** |
+| `famille-2003` | 93 % | 2 min 34 / 18 min 03 / 28 min 23 / **11 min 58** | 42 617 / 14 949 / 2 128 / **1 073** | 5 711 / 10 905 / 1 062 / **256** |
+| `secretaire-2003` | 94 % | 1 min 17 / 6 min 23 / 21 min 25 / **11 min 34** | 23 778 / 14 334 / 5 307 / **3 410** | 2 795 / 7 683 / 2 903 / **879** |
+| `gamer-2003` | 8 % | 7 s / 7 s / 6 min 11 / **8 s** | 0 / 0 / 0 / **0** | 6 / 6 / 15 / **3** |
+| `dev-2007` | 86 % | 1 h 07 / 1 h 16 / 1 h 55 / **12 min 30** | 0 / 19 / 0 / **844** | 5 323 / 5 346 / 253 / **207** |
+| `famille-2007` | 93 % | 23 min 13 / 1 h 27 / 2 h 02 / **23 min 37** | 132 920 / 1 503 / 2 191 / **1 822** | 29 449 / 6 586 / 1 544 / **539** |
+| `gamer-2007` | 90 % | 18 min 42 / 38 min 19 / 1 h 15 / **18 min 06** | 38 419 / 561 / 1 439 / **1 560** | 13 470 / 6 950 / 1 696 / **720** |
+| `secretaire-2007` | 88 % | 9 min 49 / 9 min 53 / 49 min 40 / **3 min 55** | 0 / 0 / 0 / **54** | 3 347 / 3 370 / 297 / **938** |
+
+Sur les huit volumes, la passe dure 1 h 25, contre 2 h 08 pour XP, 4 h 03 pour
+UltraDefrag et 7 h 09 pour JkDefrag, et laisse moins de morceaux (8 864) et
+moins de trous (3 680) que chacun d'eux. L'écart de durée avec XP et UltraDefrag
+tient surtout aux blocs pleins : donnés à ces outils, ils les ramènent à 1 h 08
+et 1 h 28, sans rien changer à ce qu'ils laissent. Ce que la passe apporte en
+propre, c'est la qualité à durée égale. Elle ne recopie jamais un fichier
+entier : sur `dev-2007`, où un trou de 22 Go accueille tout, XP et JkDefrag
+finissent sans un morceau, et elle en laisse 844.
+
 Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
 démarrage :
 
@@ -793,7 +841,7 @@ STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace ud.wav  # un autre o
 `windows95`, `windowsXP`, `jkDefrag`, `ultraDefrag`, les autres modes de
 JkDefrag : `jkDefragForcedFill`, `jkDefragMoveUp`, `jkDefragSortName`,
 `jkDefragSortSize`, `jkDefragSortAccess`, `jkDefragSortChange`,
-`jkDefragSortCreation`, et `frontierCompaction`. C'est ainsi que se comparent
+`jkDefragSortCreation`, `frontierCompaction` et `fragmentMerge`. C'est ainsi que se comparent
 deux passes sur exactement le même volume.
 
 Le rendu est **au fil de l'eau**, comme l'écoute : le son est mixé à mesure
@@ -873,6 +921,9 @@ Sources/Model/
     FrontierCompactionStrategy.swift  tasser un volume FAT dans l'ordre où
                            il est, par glissement, sans écrire sur une donnée
                            encore référencée ; sur demande
+    FragmentMergeStrategy.swift  recoller les petits morceaux et consolider
+                           l'espace libre d'un gros volume NTFS, par blocs
+                           pleins et points de contrôle ; sur demande
     DiskSimulator.swift    mécanique du disque, une requête après l'autre
     AudioCue.swift         chronologie mécanique → repères audio, au fil des
                            événements
@@ -920,7 +971,7 @@ journal dit pourquoi il est ainsi.
    déclaratif.
 4. Ajouter d'autres géométries (15 000 tr/min SCSI, disquette) : seules la table
    de zones et les constantes de seek changent.
-5. Écouter les cinq stratégies sur le même volume. `STRATEGY` les rend déjà
+5. Écouter les six stratégies sur le même volume. `STRATEGY` les rend déjà
    comparables au rendu hors-ligne, et tout ce qui les sépare est mesuré ; rien
    de tout cela n'a encore été confronté à l'oreille, et l'écran de
    l'application ne propose toujours que l'outil d'époque.

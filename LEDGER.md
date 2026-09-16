@@ -2491,3 +2491,208 @@ Les réglages qui suivent ont été choisis à la mesure, un par un :
 - **La garantie de cohérence est celle du modèle** : l'ordre des écritures à
   l'intérieur d'un lot — les deux copies de la table, puis les entrées de
   répertoire — n'est pas simulé, pas plus qu'il ne l'est pour les autres outils.
+
+## Chantier 15 — recoller peu, sur les gros volumes NTFS
+
+**Fait** · branche `defrag-ntfs-econome`
+
+### Le problème
+
+La même demande que pour FAT — une stratégie plus économe quand la place
+manque, plus rapide, et qui défragmente mieux — sur les huit volumes NTFS de la
+galerie. Mesures `PLAN_ONLY` de départ (durée simulée · morceaux restants ·
+trous libres restants) :
+
+| scénario | plein | Windows XP | UltraDefrag | JkDefrag | tassage à la frontière |
+|---|---:|---|---|---|---|
+| `dev-2003` | 94 % | 289 s · 3 771 · 3 029 | 407 s · 11 · 1 130 | 698 s · 25 · 620 | plantage |
+| `famille-2003` | 93 % | 154 s · 42 617 · 5 711 | 1 083 s · 14 949 · 10 905 | 1 703 s · 2 128 · 1 062 | 8 929 s · 0 · 2 |
+| `secretaire-2003` | 94 % | 77 s · 23 778 · 2 795 | 383 s · 14 334 · 7 683 | 1 285 s · 5 307 · 2 903 | 5 781 s · 0 · 2 |
+| `gamer-2003` | 8 % | 7 s · 0 · 6 | 7 s · 0 · 6 | 371 s · 0 · 15 | 8 s · 0 · 2 |
+| `dev-2007` | 86 % | 4 021 s · 0 · 5 323 | 4 581 s · 19 · 5 346 | 6 870 s · 0 · 253 | 30 500 s · 0 · 7 |
+| `famille-2007` | 93 % | 1 393 s · 132 920 · 29 449 | 5 202 s · 1 503 · 6 586 | 7 323 s · 2 191 · 1 544 | 35 676 s · 0 · 2 |
+| `gamer-2007` | 90 % | 1 122 s · 38 419 · 13 470 | 2 299 s · 561 · 6 950 | 4 520 s · 1 439 · 1 696 | 34 210 s · 0 · 2 |
+| `secretaire-2007` | 88 % | 589 s · 0 · 3 347 | 593 s · 0 · 3 370 | 2 980 s · 0 · 297 | 23 963 s · 0 · 78 |
+
+Le tassage du chantier 14 est parfait et hors de prix : il déplace tout le
+contenu du volume, jusqu'à 335 Go, et demande 94 s de CPU sur `famille-2007`.
+Aucun des trois autres ne tient à la fois les morceaux et les trous.
+
+La forme des volumes, relevée par un outil jetable avant de rien concevoir, a
+décidé de tout :
+
+- **la place ne manque plus, la taille oui** : 2 à 33 Go libres, jusqu'à
+  80 millions de clusters. Ce qui coûte O(contenu) coûte des heures ;
+- **la fragmentation est concentrée et faite de miettes.** Sur `famille-2007`,
+  268 fichiers cassés pèsent 239 Go en 163 249 morceaux ; les morceaux de moins
+  de 4 Mo sont 161 550, mais ne pèsent que 11 Go. Regroupés par suites, ils ne
+  feraient plus que 3 090 morceaux. Même forme partout : 12 179 des 12 253
+  morceaux de `dev-2003` font moins de 4 Mo, pour 586 Mo ;
+- **une passe coûte environ 12 ms par requête**, plus deux fois les données au
+  débit du disque. Recoller 163 000 morceaux, c'est d'abord 163 000 lectures ;
+- **`secretaire-2003` est le cas où la place manque vraiment** : 900 Mo libres
+  hors zone MFT, et les morceaux cassés intercalés, de 2 à 60 % du volume, entre
+  des archives contiguës de 36 Mo en moyenne, sans un cluster libre.
+
+### Le plantage d'abord
+
+`FrontierCompactionStrategy` plantait sur `dev-2003` : division par un trou
+nul. La zone MFT courante de ce volume (`9..<829135`) **recouvre des fichiers**
+; la frontière la saute d'un coup et tombe au milieu d'un fichier d'un seul
+tenant qui commence 176 clusters plus bas. Il n'y a pas de trou, et le fichier
+n'est pas « juste après le trou » : il se range désormais comme un fichier en
+morceaux, depuis ce qui dépasse de la frontière. Le calcul du morceau ne change
+que dans ce cas : les douze bilans FAT de la stratégie sont identiques à
+l'octet. Sur `dev-2003`, la passe donne 4 465 s, 0 morceau, 464 trous. Un test
+le reproduit, et plante sans la correction.
+
+### Les décisions
+
+`FragmentMergeStrategy` (`STRATEGY=fragmentMerge`, « Recollage économe »).
+Chaque ligne ajoute un geste ou un réglage à la précédente, mesurée sur les huit
+volumes :
+
+| version | durée totale | morceaux | trous |
+|---|---:|---:|---:|
+| petits morceaux (< 4 Mo) recollés au trou le plus proche | 11 275 s | 19 342 | 32 973 |
+| + déplacement par blocs pleins | 2 280 s | 19 342 | 32 973 |
+| + petit fichier entre deux trous déplacé, validations groupées par tour | 2 390 s | 18 522 | 19 716 |
+| + érosion du bord des trous | 3 976 s | 16 280 | 7 750 |
+| + plafond de 4 Mo, points de contrôle tous les 16 déplacements, arrêt au rendement | 4 231 s | 15 458 | 4 799 |
+| + morceau collé à son voisin | 5 072 s | 8 714 | 3 661 |
+| + correction d'une oscillation | **5 104 s** | **8 864** | **3 680** |
+
+- **Ne recoller que les suites de petits morceaux, laisser les gros.** C'est ce
+  que la forme des volumes désigne : presque tous les morceaux pour presque
+  aucune donnée. Une suite va d'abord contre le gros morceau qui la précède ou
+  la suit si le trou voisin l'accepte (553 fois sur `famille-2007`), sinon dans
+  le trou le plus proche qui l'accepte ; à défaut, elle est coupée à la taille
+  du plus grand. Une suite d'un seul morceau ne bouge que pour rejoindre un
+  voisin. Le trou le plus proche plutôt que le plus serré : 11 275 s contre
+  12 568, à qualité égale. Le seuil de 4 Mo : à 16 Mo, 12 % de durée en plus
+  pour 14 % de morceaux en moins ; à 2 Mo, 5 % de durée en moins pour 17 % de
+  morceaux en plus.
+- **Déplacer par blocs pleins** (`DefragOperations.gatheredMove`). `move` coupe
+  ses tampons aux bornes des extents : un fichier en 10 000 morceaux de 150 Ko
+  s'y recopie en 10 000 allers-retours du bras. `FSCTL_MOVE_FILE` copie par
+  blocs ; un bloc de 16 Mo qui en rassemble cent se lit en cent lectures
+  voisines et s'écrit une fois. Le grain est celui d'UltraDefrag (4 à 16 Mo
+  selon la capacité). C'est la décision qui pèse le plus, et elle n'est **pas**
+  algorithmique : voir plus bas.
+- **Consolider l'espace libre avec de petits fichiers.** Un fichier de 4 Mo au
+  plus, coincé entre deux trous, part dans un trou exactement à sa taille ou
+  dans le plus proche : les deux trous n'en font qu'un. Au bord d'un seul trou,
+  il part dans un trou exactement à sa taille, ou dans le plus petit qui
+  l'accepte s'il est plus petit que celui qu'il borde : l'espace libre passe du
+  petit trou au grand, et le tour suivant y trouve de quoi recoller. L'érosion
+  seule fait passer les trous de 19 565 à 7 750 ; limitée aux trous exacts, de
+  19 565 à 10 831. Le plafond de 4 Mo : à 1 Mo il reste 77 % de trous en plus ; à
+  16 Mo, 5 % de durée en plus pour 14 % de trous en moins.
+- **Coller un morceau à son voisin**, même gros, jusqu'à 16 Mo, quand la
+  consolidation a ouvert un trou à côté de ce voisin : 15 458 → 8 714 morceaux
+  (`secretaire-2003` : 8 221 → 3 236), pour 20 % de durée. De 8 à 32 Mo, la
+  durée croît de 17 % et les morceaux baissent de 14 %.
+- **Un point de contrôle tous les 16 déplacements.** Les clusters quittés sont
+  retenus (`relocateHoldingReleased`), et l'index des trous où la passe pose ne
+  les voit qu'une fois les validations écrites : triées et fusionnées, puis
+  les clusters rendus, puis l'index reconstruit. Par tour entier, comme le fait
+  UltraDefrag, l'espace libéré attend trop : 4 420 s · 15 825 · 5 056 contre
+  4 231 s · 15 458 · 4 799, meilleur sur les trois axes. Tous les 4 : 9 % de
+  durée en plus ; tous les 64 : 4 % de moins, 3 % de trous en plus.
+- **S'arrêter au rendement.** La consolidation décroît géométriquement — la
+  moitié de son gain en trois tours, 90 % en douze — et traîne ensuite des
+  centaines de tours pour quelques clusters. Un tour qui retire moins de 1 % des
+  trous est le dernier. Le compte se fait une fois les clusters du tour rendus :
+  compté avant, le premier tour de recollage paraissait créer des trous et la
+  passe s'arrêtait au deuxième (13 610 trous au lieu de 5 056).
+- **Pas de glissement vers un trou voisin.** Un fichier qui borde un seul trou
+  exactement à sa taille pouvait « s'y déplacer » : le trou passait de l'autre
+  côté, et le fichier revenait au tour suivant. Ce trou n'est plus une
+  destination. 0,6 % de durée, et surtout une passe qui converge.
+- **Écarté : recopier les fichiers entiers.** Quand un trou accepte un fichier
+  resté en quelques gros morceaux, le déplacer entier si cela coûte moins de
+  4 Mo par morceau supprimé gagne 7 % de morceaux pour 2,5 % de durée. Mesuré
+  plus tôt, avant le collage au voisin, le même geste à 16 et 64 Mo par morceau
+  allongeait la passe de 19 et 76 %. Gardé hors de la passe, pour que les gros
+  morceaux restent la règle.
+
+**Ce qui revient à l'algorithme, et ce qui revient aux primitives.** Mesuré en
+retirant chacune, puis en donnant les blocs pleins aux autres outils (le temps
+d'une mesure, rien n'en est resté) :
+
+| | durée totale | morceaux | trous |
+|---|---:|---:|---:|
+| recollage économe, `move` d'origine, une validation par déplacement | 14 655 s | 8 714 | 3 661 |
+| + validations groupées seulement | 13 110 s | | |
+| + blocs pleins seulement | 6 617 s | | |
+| + les deux | 5 072 s | | |
+| Windows XP · UltraDefrag · JkDefrag, tels quels | 7 652 · 14 555 · 25 750 s | 241 505 · 31 377 · 11 090 | 63 130 · 41 976 · 8 390 |
+| les mêmes, avec les blocs pleins | 4 063 · 5 277 · 17 345 s | inchangés | inchangés |
+
+(mesures faites avant la correction de l'oscillation, d'où 5 072 s et non
+5 104.) À primitives égales, la passe dure **autant qu'UltraDefrag** et laisse
+3,6 fois moins de morceaux et 11 fois moins de trous ; elle est **3,4 fois
+plus rapide que JkDefrag**, avec 21 % de morceaux et 56 % de trous en moins.
+L'avance en durée sur XP et UltraDefrag, elle, vient des blocs pleins.
+
+### Ce qui valide
+
+| scénario | Windows XP | UltraDefrag | JkDefrag | recollage économe |
+|---|---|---|---|---|
+| `dev-2003` | 289 s · 3 771 · 3 029 | 407 s · 11 · 1 130 | 698 s · 25 · 620 | **196 s · 101 · 138** |
+| `famille-2003` | 154 s · 42 617 · 5 711 | 1 083 s · 14 949 · 10 905 | 1 703 s · 2 128 · 1 062 | **718 s · 1 073 · 256** |
+| `secretaire-2003` | 77 s · 23 778 · 2 795 | 383 s · 14 334 · 7 683 | 1 285 s · 5 307 · 2 903 | **694 s · 3 410 · 879** |
+| `gamer-2003` | 7 s · 0 · 6 | 7 s · 0 · 6 | 371 s · 0 · 15 | **8 s · 0 · 3** |
+| `dev-2007` | 4 021 s · 0 · 5 323 | 4 581 s · 19 · 5 346 | 6 870 s · 0 · 253 | **750 s · 844 · 207** |
+| `famille-2007` | 1 393 s · 132 920 · 29 449 | 5 202 s · 1 503 · 6 586 | 7 323 s · 2 191 · 1 544 | **1 417 s · 1 822 · 539** |
+| `gamer-2007` | 1 122 s · 38 419 · 13 470 | 2 299 s · 561 · 6 950 | 4 520 s · 1 439 · 1 696 | **1 086 s · 1 560 · 720** |
+| `secretaire-2007` | 589 s · 0 · 3 347 | 593 s · 0 · 3 370 | 2 980 s · 0 · 297 | **235 s · 54 · 938** |
+| **huit volumes** | 7 652 s · 241 505 · 63 130 | 14 555 s · 31 377 · 41 976 | 25 750 s · 11 090 · 8 390 | **5 104 s · 8 864 · 3 680** |
+
+- **1 h 25 de passe au total**, contre 2 h 08 pour XP, 4 h 03 pour UltraDefrag
+  et 7 h 09 pour JkDefrag ; 67 Go déplacés contre 94, 126 et 331. Moins de
+  morceaux et moins de trous au total que tous les outils simulés.
+- **Quand la place manque** (`secretaire-2003`, 94 %) : 3 410 morceaux contre
+  5 307 pour JkDefrag et 14 334 pour UltraDefrag, 879 trous contre 2 903, en
+  deux fois moins de temps que JkDefrag.
+- **Le volume où il n'y a rien à faire** (`gamer-2003`) reste à 8 s.
+- **Planification en 0,8 s au plus** en release (`famille-2007`), 2,5 s de CPU
+  pour génération, planification et simulation, contre 2,0 s pour XP.
+- **253 tests passent**, dont sept nouveaux : six pour cette passe (passe
+  complète sur un volume vieilli — conservation, zone MFT, fichier d'échange,
+  écritures jamais faites sur un cluster non validé —, petits morceaux contre un
+  gros qui ne bouge pas, zone MFT seul grand trou, fichier entre deux trous,
+  bloc plein, outil jamais choisi seul) et celui du plantage. Les tests
+  existants qui passent toutes les stratégies (MFT jamais écrite, nuance de la
+  carte) la couvrent aussi. Ils mordent : autoriser la zone MFT en fait échouer
+  deux, retirer le voisin un, la consolidation deux, et rendre l'espace quitté
+  sans valider fait compter une écriture fautive dans deux.
+- **Non-régression** : 79 des 80 bilans (Windows 95, XP, UltraDefrag, JkDefrag,
+  tassage, sur les vingt volumes où la passe les mesure) sont identiques à
+  l'octet ; le 80ᵉ est le plantage corrigé.
+- Le **rendu complet** de `dev-2003` passe par la chaîne au fil de l'eau : 3 min
+  17, 38 Mo de WAV, même bilan qu'en `PLAN_ONLY`.
+
+### Laissé ouvert
+
+- **Les blocs pleins ne servent qu'à cette passe.** Les donner aux autres outils
+  NTFS diviserait leur durée par 1,5 à 2,8 et changerait leur son, donc la passe
+  que l'application fait entendre par défaut : c'est une décision à part.
+- **`dev-2007` et `secretaire-2007` gardent des morceaux** : 844 et 54,
+  quand XP et JkDefrag tombent à zéro en recopiant 10 à 78 Go dans le grand trou
+  de 20 à 23 Go de ces volumes. La passe ne recopie pas de fichier entier.
+- **`secretaire-2003` laisse 2 560 suites sans trou.** Les recoller demanderait
+  de faire glisser les archives qui les séparent, c'est-à-dire le tassage du
+  chantier 14 et son prix.
+- **Le journal de NTFS n'est pas simulé**, pour aucun outil. Grouper les
+  validations au point de contrôle suppose que les enregistrements de MFT et la
+  bitmap partent avec l'écrivain paresseux ; chaque `FSCTL_MOVE_FILE` écrirait
+  aussi dans `$LogFile`.
+- **Les réglages sont calés sur les huit volumes de la galerie**, et la grille
+  de réglage a été mesurée avant la correction de l'oscillation.
+- **Rien n'a été écouté**, ni vu dans l'application. `xcodegen generate` sera
+  nécessaire pour que le fichier entre dans le projet Xcode.
+- **`Tools/build-render.sh` ne compile plus avec Swift 6.4** : `swift build`
+  y prend par défaut le nouveau système de build, qui range les produits sous
+  `.build/out` sans les `.o` que le script lie. Les mesures de ce chantier ont
+  été faites avec `--build-system native` et `.build/arm64-apple-macosx/release`.

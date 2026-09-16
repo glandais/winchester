@@ -15,14 +15,15 @@ private func fatVolume(clusterCount: Int, files: [(category: ClusterCategory, ex
     return DefragVolume(partition: partition, files: records)
 }
 
-/// Rejoue les opérations d'un plan et vérifie la garantie de la passe : une
-/// écriture ne tombe que sur un cluster libre **et validé comme tel**.
+/// Rejoue les opérations d'un plan et vérifie la garantie des passes qui
+/// retiennent les clusters quittés : une écriture ne tombe que sur un cluster
+/// libre **et validé comme tel**.
 ///
 /// Un cluster que quitte un déplacement n'est libre pour les écritures
 /// suivantes qu'une fois les tables réécrites : avant, une coupure de courant
 /// laisserait les tables pointer dessus.
-private func expectWritesOnlyOnReleasedClusters(_ plan: DefragPlan,
-                                                sourceLocation: SourceLocation = #_sourceLocation) {
+func expectWritesOnlyOnReleasedClusters(_ plan: DefragPlan,
+                                        sourceLocation: SourceLocation = #_sourceLocation) {
     let count = plan.partition.clusterCount
     var occupied = [Bool](repeating: false, count: count)
     var released = [Bool](repeating: false, count: count)
@@ -190,6 +191,31 @@ struct FrontierCompactionStrategyTests {
         #expect(moves == 40)
         #expect(report.commits < moves / 4)
         #expect(plan.after.freeHoles == 1)
+        expectWritesOnlyOnReleasedClusters(plan)
+    }
+
+    /// Sur un volume NTFS qui a débordé dans sa zone MFT, la zone courante
+    /// recouvre des fichiers. La frontière la saute d'un coup, et tombe au
+    /// milieu d'un fichier d'un seul tenant qui commence sous elle : il n'y a
+    /// pas de trou à combler, et c'est ce trou nul qui faisait planter la
+    /// passe sur `dev-2003`.
+    @Test("Un fichier à cheval sur la fin de la zone MFT est rangé")
+    func aFileAcrossTheMftZoneEnd() {
+        let partition = PartitionGeometry(startLBA: 0, clusterCount: 200,
+                                          clusterSectors: 8, format: .ntfs)
+        let files = [
+            DefragFile(id: 0, path: "\\A.DAT", category: .document, walkOrder: 0,
+                       extents: [Extent(start: 40, length: 20)], isMovable: true),
+            DefragFile(id: 1, path: "\\B.DAT", category: .application, walkOrder: 1,
+                       extents: [Extent(start: 90, length: 10)], isMovable: true),
+        ]
+        let volume = DefragVolume(partition: partition, files: files, mftZone: 10..<50,
+                                  systemExtents: [Extent(start: 0, length: 10)])
+        let (plan, report) = FrontierCompactionStrategy().run(volume: volume)
+
+        #expect(report.abandoned == 0)
+        #expect(plan.before.fill == plan.after.fill)
+        #expect(plan.after.fragmentedFiles == 0)
         expectWritesOnlyOnReleasedClusters(plan)
     }
 

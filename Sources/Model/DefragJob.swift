@@ -173,7 +173,7 @@ enum DefragPlanner {
         Windows95Strategy(), WindowsXPStrategy(), JKDefragStrategy(), UltraDefragStrategy(),
         JKDefragStrategy(mode: .forcedFill), JKDefragStrategy(mode: .moveUp),
     ] + JKDefragStrategy.SortField.allCases.map { JKDefragStrategy(mode: .sort($0)) }
-      + [FrontierCompactionStrategy()]
+      + [FrontierCompactionStrategy(), FragmentMergeStrategy()]
 
     static func strategy(named id: String) -> (any DefragStrategy)? {
         all.first { $0.id == id }

@@ -450,13 +450,21 @@ extension FrontierCompactionStrategy {
                     continue
                 }
 
-                let piece = file.extents.first { $0.start == at } ?? Extent(start: at, length: 1)
+                // Un extent peut commencer sous la frontière quand elle a sauté
+                // un obstacle qui le recouvrait : la zone MFT courante, sur un
+                // volume NTFS qui a débordé dedans. Son fichier n'est pas « juste
+                // après le trou » — il n'y en a pas — et se range comme un
+                // fichier en morceaux, depuis ce qui dépasse de la frontière.
+                let straddling = file.extents.first { $0.start < at && $0.end > at }
+                let piece = straddling.map { Extent(start: at, length: $0.end - at) }
+                    ?? file.extents.first { $0.start == at } ?? Extent(start: at, length: 1)
+                let straddles = straddling != nil
                 let target = Extent(start: frontier, length: size)
                 let fits = size <= room
 
                 // 2. D'un seul tenant, juste après le trou : il glisse, sauf s'il
                 //    faut trop de tronçons pour ça.
-                if !fragmented[owner] && fits {
+                if !fragmented[owner] && !straddles && fits {
                     let chunks = (size + gap - 1) / gap
                     if chunks > strategy.slideChunkLimit {
                         if fill(gap: gap, mustMove: false, exact: true, phase: phase) { continue }

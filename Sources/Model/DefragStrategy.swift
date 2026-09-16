@@ -184,6 +184,71 @@ enum DefragOperations {
         }
     }
 
+    /// Le même déplacement, mais par **blocs pleins** : chaque écriture de
+    /// `bufferBytes` est précédée des lectures de tous les morceaux de source
+    /// qui la composent.
+    ///
+    /// `move` coupe ses tampons aux bornes des extents, des deux côtés : un
+    /// fichier en dix mille morceaux de 150 Ko s'y recopie en dix mille allers-
+    /// retours du bras entre la source et la destination. Un bloc de 16 Mo qui
+    /// en rassemble cent se lit en cent lectures voisines, et s'écrit une fois.
+    static func gatheredMove(source: [Extent],
+                             destination: [Extent],
+                             category: ClusterCategory,
+                             contiguous: Bool,
+                             phase: Int,
+                             partition: PartitionGeometry,
+                             bufferBytes: Int,
+                             into sink: OperationSink) {
+        let buffer = UInt32(max(bufferBytes / partition.clusterBytes, 1))
+        let kept = destination.count > 1
+            ? destination.filter { !$0.isEmpty }.sorted { $0.start < $1.start }
+            : destination
+
+        var sourceIndex = 0
+        var sourceOffset: UInt32 = 0
+        var freed: [Extent] = []
+
+        for to in destination where !to.isEmpty {
+            var written: UInt32 = 0
+            while written < to.length {
+                let block = min(to.length - written, buffer)
+                var gathered: UInt32 = 0
+                freed.removeAll(keepingCapacity: true)
+                while gathered < block && sourceIndex < source.count {
+                    let from = source[sourceIndex]
+                    let length = min(from.length - sourceOffset, block - gathered)
+                    let readStart = from.start + sourceOffset
+                    sink.emit(DiskOperation(
+                        kind: .readExtent, phase: phase,
+                        lba: partition.lba(ofCluster: Int(readStart)),
+                        sectors: Int(length) * partition.clusterSectors,
+                        isWrite: false, issueTime: 0, cluster: Int(readStart)))
+                    freed.append(Extent(start: readStart, length: length))
+                    gathered += length
+                    sourceOffset += length
+                    if sourceOffset == from.length { sourceIndex += 1; sourceOffset = 0 }
+                }
+                guard gathered > 0 else { return }
+
+                let writeStart = to.start + written
+                let first = sink.mutationMark
+                sink.record(MapMutation(start: Int(writeStart), count: Int(gathered),
+                                        category: category, contiguous: contiguous))
+                for extent in freed {
+                    recordFreed(start: extent.start, length: extent.length, kept: kept, into: sink)
+                }
+                sink.emit(DiskOperation(
+                    kind: .writeExtent, phase: phase,
+                    lba: partition.lba(ofCluster: Int(writeStart)),
+                    sectors: Int(gathered) * partition.clusterSectors,
+                    isWrite: true, issueTime: 0, cluster: Int(writeStart),
+                    mutationStart: first, mutationCount: sink.mutationMark - first))
+                written += gathered
+            }
+        }
+    }
+
     /// Les clusters d'une portion de source qui redeviennent libres : tout ce
     /// qui n'est pas recouvert par la destination du même fichier.
     ///
