@@ -18,6 +18,12 @@ struct ContentView: View {
     @StateObject private var model = SimulationModel()
     @StateObject private var library = DiskLibraryModel()
     @State private var tab: AppTab = .disks
+    @State private var nowPlaying: NowPlaying?
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// En arrière-plan, aucun onglet n'est vu : la passe continue de sonner,
+    /// mais aucun écran ne suit plus son horloge.
+    private var isActive: Bool { scenePhase == .active }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -27,11 +33,11 @@ struct ContentView: View {
                 .tabItem { Label("Disques", systemImage: "internaldrive") }
                 .tag(AppTab.disks)
 
-            SimulatorScreen(model: model, engine: model.engine, isVisible: tab == .pass)
+            SimulatorScreen(model: model, engine: model.engine, isVisible: isActive && tab == .pass)
                 .tabItem { Label("Passe", systemImage: "waveform") }
                 .tag(AppTab.pass)
 
-            InstrumentsScreen(model: model, engine: model.engine, isVisible: tab == .instruments)
+            InstrumentsScreen(model: model, engine: model.engine, isVisible: isActive && tab == .instruments)
                 .passMiniPlayer(model: model, isShown: tab != .pass) { tab = .pass }
                 .tabItem { Label("Instruments", systemImage: "gauge.with.dots.needle.33percent") }
                 .tag(AppTab.instruments)
@@ -44,6 +50,12 @@ struct ContentView: View {
         .toolbarBackground(Theme.panel, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .tint(Theme.read)
+        .onAppear {
+            if nowPlaying == nil { nowPlaying = NowPlaying(model: model) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { model.engine.suspendIfIdle() }
+        }
     }
 }
 

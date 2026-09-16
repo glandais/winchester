@@ -54,6 +54,25 @@ final class DiskNoiseEngine: ObservableObject {
     let haptics = DiskHaptics()
     var supportsHaptics: Bool { haptics.isSupported }
 
+    /// Tous les réglages de « Son et vibrations » d'un bloc : c'est ce qu'on
+    /// compare aux préréglages et ce qu'on enregistre.
+    var mix: SoundMix {
+        get {
+            SoundMix(spindleLevel: spindleLevel, transientLevel: transientLevel, masterLevel: masterLevel,
+                     hapticsEnabled: hapticsEnabled, hapticIntensity: hapticIntensity,
+                     spindleHaptics: spindleHaptics, spindleHapticLevel: spindleHapticLevel)
+        }
+        set {
+            spindleLevel = newValue.spindleLevel
+            transientLevel = newValue.transientLevel
+            masterLevel = newValue.masterLevel
+            hapticsEnabled = newValue.hapticsEnabled
+            hapticIntensity = newValue.hapticIntensity
+            spindleHaptics = newValue.spindleHaptics
+            spindleHapticLevel = newValue.spindleHapticLevel
+        }
+    }
+
     /// Diagnostic haptique, rafraîchi à chaque tick.
     @Published private(set) var hapticReport: String = "—"
 
@@ -85,6 +104,8 @@ final class DiskNoiseEngine: ObservableObject {
 
     private var pump: Timer?
     private var waiting: Timer?
+    /// Le fondu de la minuterie d'arrêt, s'il est en cours.
+    private var fade: Timer?
     private var seekCache: [Int: AVAudioPCMBuffer] = [:]
     private var tickCache: [Int: AVAudioPCMBuffer] = [:]
 
@@ -148,6 +169,7 @@ final class DiskNoiseEngine: ObservableObject {
     // MARK: - Transport
 
     func play() {
+        cancelFade()
         guard isLoaded, !isPlaying, !isFinished else { return }
         do {
             if !engine.isRunning { try engine.start() }
@@ -172,6 +194,7 @@ final class DiskNoiseEngine: ObservableObject {
     }
 
     func pause() {
+        cancelFade()
         stopWaiting()
         guard isPlaying else { return }
         let t = currentTime
@@ -192,6 +215,7 @@ final class DiskNoiseEngine: ObservableObject {
     }
 
     func stop() {
+        cancelFade()
         stopWaiting()
         pump?.invalidate()
         pump = nil
@@ -207,6 +231,47 @@ final class DiskNoiseEngine: ObservableObject {
         scheduled = []
         haptics.resetDiagnostics()
         spindle.snap(to: 0)
+    }
+
+    /// Baisse le son jusqu'au silence, puis met en pause : la minuterie d'arrêt
+    /// ne coupe pas net une passe qu'on écoute pour s'endormir. Le niveau
+    /// général n'est pas touché — seul le mélangeur descend, et remonte à la
+    /// pause.
+    func pauseFadingOut(over duration: Double = 8) {
+        guard fade == nil else { return }
+        guard isPlaying else {
+            // Rien ne sonne encore : il n'y a rien à baisser.
+            pause()
+            return
+        }
+        let start = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let progress = (CACurrentMediaTime() - start) / duration
+                if progress >= 1 || !self.isPlaying {
+                    self.pause()
+                } else {
+                    self.engine.mainMixerNode.outputVolume = self.masterLevel * Float(1 - progress)
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        fade = timer
+    }
+
+    private func cancelFade() {
+        guard let fade else { return }
+        fade.invalidate()
+        self.fade = nil
+        engine.mainMixerNode.outputVolume = masterLevel
+    }
+
+    /// L'app passe en arrière-plan : un graphe audio qui tourne à vide la
+    /// garderait éveillée pour rien. `play()` le relance.
+    func suspendIfIdle() {
+        guard !isPlaying, !isBuffering, engine.isRunning else { return }
+        engine.pause()
     }
 
     // MARK: - Attente de la passe

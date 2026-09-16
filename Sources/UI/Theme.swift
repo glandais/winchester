@@ -169,3 +169,11 @@ enum FrenchFormat {
         return "\(date.day == 1 ? "1er" : String(date.day)) \(month) \(date.year)"
     }
 }
+
+extension Font {
+    /// La police des écrans : une taille fixe des maquettes, à graisse et
+    /// dessin choisis.
+    static func dynamic(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+        .system(size: size, weight: weight, design: design)
+    }
+}

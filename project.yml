@@ -31,6 +31,12 @@ targets:
       - path: Sources
         excludes:
           - DiskCore/**
+    # Une passe dure jusqu'à sept heures : elle doit continuer de sonner écran
+    # verrouillé. Le reste de l'Info.plist est généré par Xcode.
+    info:
+      path: Support/Info.plist
+      properties:
+        UIBackgroundModes: [audio]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.glandais.disknoise

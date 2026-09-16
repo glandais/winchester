@@ -11,7 +11,9 @@ struct SettingsScreen: View {
     @ObservedObject var model: SimulationModel
     let engine: DiskNoiseEngine
     @State private var showsModelNotes = false
-    /// Change à chaque réglage touché, pour redessiner ce qui en dépend.
+    @State private var showsSound = false
+    /// Change quand la feuille « Son et vibrations » se ferme, pour relire le
+    /// mixage qu'on y a laissé.
     @State private var revision = 0
 
     var body: some View {
@@ -27,58 +29,41 @@ struct SettingsScreen: View {
                 .padding(16)
             }
         }
+        // La feuille fermée, la ligne relit le mixage qu'on y a laissé.
+        .sheet(isPresented: $showsSound, onDismiss: { revision += 1 }) {
+            SoundSheet(engine: engine)
+        }
     }
 
+    /// Le mixage se règle dans sa feuille ; la ligne dit seulement lequel est
+    /// en place.
     private var mixer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Mixage des couches")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.text)
-
-            LevelSlider(label: "Rotation (procédurale)", value: engineBinding(\.spindleLevel))
-            LevelSlider(label: "Tête (banc de résonateurs)", value: engineBinding(\.transientLevel))
-            LevelSlider(label: "Général", value: engineBinding(\.masterLevel))
-
-            Divider().overlay(Theme.stroke).padding(.vertical, 4)
-
-            if engine.supportsHaptics {
-                Toggle(isOn: engineBinding(\.hapticsEnabled)) {
-                    Text("Retour haptique")
-                        .font(.system(size: 13, weight: .semibold))
+        Button {
+            showsSound = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "speaker.wave.2")
+                    .font(.dynamic(size: 17))
+                    .foregroundStyle(Theme.read)
+                    .frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Son et vibrations")
+                        .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
-                }
-                if engine.hapticsEnabled {
-                    LevelSlider(label: "Intensité des transitoires", value: engineBinding(\.hapticIntensity))
-                    Toggle(isOn: engineBinding(\.spindleHaptics)) {
-                        Text("Grondement de rotation")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.dim)
-                    }
-                    if engine.spindleHaptics {
-                        LevelSlider(label: "Niveau du grondement", value: engineBinding(\.spindleHapticLevel))
-                    }
-                    Text(engine.hapticReport)
-                        .font(.system(size: 10, design: .monospaced))
+                    Text(engine.mix.preset?.label ?? "Réglage personnel")
+                        .font(.dynamic(size: 12))
                         .foregroundStyle(Theme.dim)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
-            } else {
-                Text("Retour haptique indisponible sur cet appareil")
-                    .font(.system(size: 11))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.dynamic(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.dim)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .panel()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panel()
-    }
-
-    /// Un réglage du moteur. L'écran n'observe pas le moteur : c'est l'écriture
-    /// qui le fait redessiner.
-    private func engineBinding<Value>(_ keyPath: ReferenceWritableKeyPath<DiskNoiseEngine, Value>) -> Binding<Value> {
-        let engine = engine
-        let revision = $revision
-        return Binding(get: { engine[keyPath: keyPath] },
-                       set: { engine[keyPath: keyPath] = $0; revision.wrappedValue += 1 })
+        .buttonStyle(.plain)
     }
 
     /// La géométrie change d'un scénario à l'autre — et d'un disque généré à
@@ -115,27 +100,6 @@ struct SettingsScreen: View {
                 .foregroundStyle(Theme.text)
         }
         .panel()
-    }
-}
-
-private struct LevelSlider: View {
-    let label: String
-    @Binding var value: Float
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.dim)
-                Spacer()
-                Text(String(format: "%.0f %%", value * 100))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Theme.dim)
-                    .monospacedDigit()
-            }
-            Slider(value: $value, in: 0...1)
-        }
     }
 }
 

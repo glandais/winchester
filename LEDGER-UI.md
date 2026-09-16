@@ -936,24 +936,109 @@ un mot. Aucun disque construit ne survivait à l'app.
 
 ## Chantier U10 — son, vibrations, ambiance
 
-**À faire** · prompt §8
+**Fait** · branche `interface-grand-public`
 
-### Visé
+### Le problème
 
-- Feuille **Son et vibrations** : préréglages (Casque, Haut-parleur,
-  Silencieux et vibrations seules), curseurs fins en avancé (rotation, tête,
-  général ; haptique, intensité, grondement et son niveau), état « haptique
-  indisponible ».
-- **Mode ambiance** : écran assombri, plateau minimal, minuterie d'arrêt.
+Le mixage et l'haptique tenaient en six curseurs et trois interrupteurs au
+milieu des Réglages, sans préréglage, et **rien ne survivait à l'app** : chaque
+lancement revenait au mixage d'origine. Il n'y avait pas de mode ambiance, alors
+qu'une passe de plusieurs heures en appelle un. Et la question laissée ouverte
+ici — une passe tient-elle écran verrouillé ? — avait sa réponse dans le
+projet : non, faute de mode audio d'arrière-plan déclaré.
 
-### Ce que le code offre
+### Les décisions
 
-Tous les niveaux existent sur `DiskNoiseEngine` et `DiskHaptics`.
+- **`SoundMix`** (`Sources/Model`, donc testé) : les sept réglages en une valeur,
+  les trois **préréglages**, et le préréglage que reproduit un mixage — aucun
+  dès qu'un curseur a bougé. Enregistré en JSON dans `UserDefaults` à chaque
+  réglage touché, relu au lancement ; un enregistrement illisible rend le
+  mixage d'origine, un niveau hors bornes est ramené entre 0 et 1.
+- **Les préréglages** :
 
-### Questions
+  | | rotation | tête | général | haptique | grondement |
+  |---|---:|---:|---:|---|---:|
+  | Casque | 32 % | 100 % | 85 % | 0,85 | 45 % |
+  | Haut-parleur | 50 % | 100 % | 100 % | 0,85 | 60 % |
+  | Vibrations seules | 32 % | 100 % | **0** | 1,0 | 60 % |
 
-- Lecture en arrière-plan (session audio, écran verrouillé) : pas vérifié que
-  le fil producteur de `PassSession` et le moteur tiennent app suspendue.
+  Casque est le mixage d'origine, réglé au casque. Le haut-parleur de l'iPhone
+  n'a pas de grave : la rotation monte, et le grondement haptique rend dans la
+  main ce que l'oreille perd. **Vibrations seules coupe le niveau général, pas
+  le moteur** : l'horloge de la passe est celle du lecteur audio, qui doit
+  continuer de rendre — du silence.
+  Ces valeurs sont raisonnées, **pas écoutées** (voir plus bas).
+- **La feuille « Son et vibrations »** (maquette 15, `SoundSheet`) : les trois
+  préréglages en tête avec une phrase qui dit ce que fait celui en place, puis
+  Rotation, Tête, Général, puis l'haptique — interrupteur, intensité,
+  grondement —, comme sur la maquette. Le niveau du grondement, le diagnostic
+  haptique et « revenir au mixage d'origine » vont dans **Réglages avancés**.
+  Elle s'ouvre depuis la ligne des Réglages, qui dit le préréglage en place, et
+  depuis un bouton de l'en-tête de la passe.
+- **Haptique indisponible** : la section le dit en une phrase, et « Vibrations
+  seules » est grisé avec la raison en indication VoiceOver.
+- **Le mode ambiance** (maquette 16, `AmbientScreen`), ouvert par la lune de
+  l'en-tête de la passe : fond noir, titre et outil, un plateau réduit à son
+  contour, un repère lent et le bras sur le cylindre en cours, le temps écouté,
+  l'avancement, et **« minuterie dans 1 h 48 »** — jamais de temps restant pour
+  la passe. Lecture/pause, **minuterie d'arrêt** (15 min, 30 min, 1 h, 2 h, 6 h),
+  et un appui n'importe où ramène à la passe. Il se redessine **deux fois par
+  seconde**, pas soixante, et l'écran de la passe qu'il recouvre coupe son relais
+  d'horloge, comme sous le plein écran de la carte.
+- **Il ne retient pas l'écran allumé.** Garder un écran allumé des heures pour un
+  bruit de fond coûte la batterie pour une image que personne ne regarde :
+  l'iPhone se verrouille comme d'habitude, et la passe continue.
+- **La minuterie compte en heure murale** (`SimulationModel.setSleepTimer`),
+  vérifiée une fois par seconde : c'est l'heure du coucher qu'on règle, et une
+  passe qui attend son calcul ne doit pas la repousser. À l'échéance, le moteur
+  **baisse le son en huit secondes** puis met en pause
+  (`DiskNoiseEngine.pauseFadingOut`) ; le fondu agit sur le mélangeur, pas sur
+  le niveau général enregistré, et toute lecture ou pause l'annule.
+  En Debug, une durée de 10 s s'ajoute à la liste pour le vérifier.
+- **Arrière-plan** : `UIBackgroundModes = audio`, déclaré dans
+  `Support/Info.plist` par `project.yml` (le reste de l'Info.plist reste généré).
+  En arrière-plan, **aucun onglet ne suit l'horloge** (`ContentView` coupe les
+  relais hors de `scenePhase == .active`), et un graphe audio **à l'arrêt** est
+  mis en pause (`suspendIfIdle`) plutôt que de garder l'app éveillée pour rien ;
+  `play()` le relance.
+- **Écran verrouillé et centre de contrôle** (`NowPlaying`) : titre, outil ou
+  système, temps écouté, et lecture/pause ; suivant, précédent, saut et
+  position sont désactivés — il n'y a pas de chronologie. L'information n'est
+  publiée qu'aux changements d'état, le système fait avancer le temps entre deux.
+- `Font.dynamic(size:weight:design:)` apparaît ici, sur les nouveaux écrans : une
+  taille de maquette que U12 fera suivre la taille de texte.
+
+### Ce qui valide
+
+- **`swift test`** : les cinq tests de `SoundMixTests` — chaque préréglage se
+  reconnaît, un curseur déplacé n'en reproduit plus aucun, Vibrations seules
+  coupe le son sans l'haptique, l'aller-retour par `UserDefaults`, un
+  enregistrement illisible ou hors bornes.
+- Construit en Debug pour le simulateur iPhone 17 Pro, sans erreur.
+- Sur le simulateur, démo de défragmentation :
+  - la feuille s'ouvre de l'en-tête, Casque sélectionné ; « Haut-parleur » passe
+    la rotation à 50 % et le général à 100 % ; la section haptique dit
+    « indisponible » et Vibrations seules est grisé ;
+  - **après relance de l'app**, la ligne des Réglages dit « Haut-parleur » ;
+  - le mode ambiance montre titre, plateau, temps, avancement ; minuterie de
+    10 s : « Arrêt dans 7 s », puis **« 47 % · en pause »** ;
+  - **en arrière-plan** (Réglages de l'iOS au premier plan) pendant 25 s,
+    l'avancement passe de 40 à 56 % : la passe continue. CPU de l'app : 4,9 s sur
+    20 s, soit **25 %**, l'ordre de grandeur d'un onglet sans carte au premier
+    plan (U0).
+
+### Laissé ouvert
+
+- **Rien n'a été écouté ni senti** : les préréglages sont raisonnés, pas réglés à
+  l'oreille sur un haut-parleur d'iPhone, et l'haptique ne se vérifie pas sur le
+  simulateur. À refaire sur le téléphone.
+- **L'écran verrouillé et le centre de contrôle n'ont pas été regardés.** La
+  tenue en arrière-plan n'est prouvée que sur le simulateur, qui n'applique pas
+  forcément la suspension comme un appareil.
+- Une passe qui **attend son calcul** en arrière-plan (`isBuffering`) reste
+  éveillée par le minuteur d'attente : c'est voulu, mais une passe de tri de
+  JkDefrag de sept heures n'a pas été laissée tourner écran verrouillé.
+- Le mode ambiance n'a pas de variante paysage dédiée.
 
 ---
 

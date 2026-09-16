@@ -19,6 +19,8 @@ struct SimulatorScreen: View {
     @State private var showsFullScreenMap = false
     @State private var view: View_ = .map
     @State private var report: PassRecord?
+    @State private var showsSound = false
+    @State private var showsAmbient = false
 
     /// Un onglet caché reste en vie : sans cela, il suivrait l'horloge soixante
     /// fois par seconde sans que personne le voie.
@@ -32,6 +34,9 @@ struct SimulatorScreen: View {
 
     private var engine: DiskNoiseEngine { clock.engine }
     private var time: Double { engine.currentTime }
+
+    /// Un plein écran le recouvre : la carte, ou le mode ambiance.
+    private var isCovered: Bool { showsFullScreenMap || showsAmbient }
 
     /// Une passe de démarrage n'a pas de carte : seul le plateau se montre.
     private var shownView: View_ { model.defrag == nil ? .platter : view }
@@ -79,14 +84,16 @@ struct SimulatorScreen: View {
         .fullScreenCover(isPresented: $showsFullScreenMap) {
             DefragFullScreenMap(model: model, engine: engine)
         }
-        .onAppear { clock.isRelaying = isVisible && !showsFullScreenMap }
+        .sheet(isPresented: $showsSound) { SoundSheet(engine: engine) }
+        .fullScreenCover(isPresented: $showsAmbient) { AmbientScreen(model: model) }
+        .onAppear { clock.isRelaying = isVisible && !isCovered }
         .onChange(of: isVisible) { _, visible in
-            clock.isRelaying = visible && !showsFullScreenMap
+            clock.isRelaying = visible && !isCovered
         }
         // Recouvert, cet écran ne suit plus l'horloge : il se redessinait
         // sinon soixante fois par seconde sous le plein écran. Il se remet à
         // l'heure dès que le plein écran se ferme.
-        .onChange(of: showsFullScreenMap) { _, covered in
+        .onChange(of: isCovered) { _, covered in
             clock.isRelaying = isVisible && !covered
         }
     }
@@ -108,6 +115,8 @@ struct SimulatorScreen: View {
                         .lineLimit(1)
                 }
                 Spacer()
+                headerButton("speaker.wave.2", label: "Son et vibrations") { showsSound = true }
+                headerButton("moon.stars", label: "Mode ambiance") { showsAmbient = true }
                 activityLED
             }
 
@@ -180,6 +189,17 @@ struct SimulatorScreen: View {
             .panel()
         }
         .buttonStyle(.plain)
+    }
+
+    private func headerButton(_ systemImage: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.dynamic(size: 15))
+                .foregroundStyle(Theme.text.opacity(0.8))
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.white.opacity(0.06)))
+        }
+        .accessibilityLabel(label)
     }
 
     private func bootTitle(_ boot: BootPlayback) -> String {

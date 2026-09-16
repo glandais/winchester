@@ -57,6 +57,7 @@ final class SimulationModel: ObservableObject {
         self.live = live
         self.cache = [.builtin(.windowsBoot): scenario]
         self.engine = DiskNoiseEngine(rpm: scenario.geometry.rpm)
+        engine.mix = SoundMix.load(from: .standard)
         engine.load(feed: live, rpm: scenario.geometry.rpm)
         captureStart()
         finished = engine.$isFinished
@@ -230,6 +231,38 @@ final class SimulationModel: ObservableObject {
     /// celui-ci est rangé, rangé si celui-ci est vieilli.
     func counterpartBoot(ofDisk diskID: String, rangedBy: String?) -> PassRecord? {
         records.last { $0.kind == .boot && $0.diskID == diskID && ($0.rangedBy == nil) != (rangedBy == nil) }
+    }
+
+    // MARK: - Minuterie d'arrêt
+
+    /// L'heure à laquelle la passe s'arrêtera d'elle-même, en fondu.
+    @Published private(set) var sleepDeadline: Date?
+    private var sleepCheck: Timer?
+
+    /// Arme la minuterie, ou la désarme avec `nil`. Elle compte en heure
+    /// murale, pas en temps de passe : c'est l'heure du coucher qu'on règle, et
+    /// une passe qui attend son calcul ne doit pas la repousser.
+    func setSleepTimer(after seconds: Double?) {
+        sleepCheck?.invalidate()
+        sleepCheck = nil
+        guard let seconds else {
+            sleepDeadline = nil
+            return
+        }
+        sleepDeadline = Date(timeIntervalSinceNow: seconds)
+        // Une vérification par seconde suffit à une échéance d'une heure, et
+        // continue en arrière-plan tant que la passe joue.
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkSleepTimer() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        sleepCheck = timer
+    }
+
+    private func checkSleepTimer() {
+        guard let deadline = sleepDeadline, Date() >= deadline else { return }
+        setSleepTimer(after: nil)
+        engine.pauseFadingOut()
     }
 
     // MARK: - L'instant écouté
