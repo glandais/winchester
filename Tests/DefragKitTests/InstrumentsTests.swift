@@ -127,3 +127,70 @@ struct InstrumentsTests {
         #expect(live.moves?.filesMoved == plan.filesMoved)
     }
 }
+
+/// L'état d'arrivée d'une passe, gardé pour la reposer ailleurs.
+@Suite("Arrangement d'arrivée")
+struct ArrangementTests {
+
+    private static func volume() -> DefragVolume {
+        let partition = PartitionGeometry(startLBA: 0, sectors: 40_000_000 / 512,
+                                          clusterSectors: 8, format: .fat16)
+        return VolumeFactory.agedWindows95(partition: partition, fill: 0.78).defragVolume()
+    }
+
+    @Test("Reposé sur le volume de départ, l'arrangement redonne l'état d'arrivée du plan",
+          arguments: DefragPlanner.all.map(\.id))
+    func arrangementRebuildsTheAfterState(id: String) throws {
+        let strategy = try #require(DefragPlanner.strategy(named: id))
+        let volume = Self.volume()
+        let plan = strategy.plan(volume: volume, into: OperationSink())
+        #expect(plan.arrangement.count == volume.files.count)
+
+        let rebuilt = volume.rearranged(plan.arrangement).stats
+        #expect(rebuilt.fragmentedFiles == plan.after.fragmentedFiles)
+        #expect(rebuilt.fragments == plan.after.fragments)
+        #expect(rebuilt.freeHoles == plan.after.freeHoles)
+        #expect(rebuilt.fileCount == plan.after.fileCount)
+        #expect(abs(rebuilt.fill - plan.after.fill) < 1e-12)
+        #expect(abs(rebuilt.extentsPerFile - plan.after.extentsPerFile) < 1e-12)
+    }
+
+    @Test("Un plan résumé garde son arrangement")
+    func summarizedKeepsArrangement() {
+        let plan = Windows95Strategy().plan(volume: Self.volume())
+        #expect(plan.summarized().arrangement == plan.arrangement)
+        #expect(!plan.arrangement.isEmpty)
+    }
+}
+
+/// Démarrer un disque rangé, c'est lire ses fichiers là où la passe les a mis.
+@Suite("Démarrage d'un disque rangé")
+struct RangedBootTests {
+
+    @Test("Le démarrage du disque rangé suit l'arrangement de la passe")
+    func rangedBootReadsTheNewPlaces() throws {
+        let disk = try DiskGenerator.generate(try ScenarioLibrary.load("gamer-1993"))
+        let volume = try GeneratedVolumeBridge.volume(from: disk)
+        let plan = Windows95Strategy().plan(volume: volume)
+        let moved = plan.arrangement.filter { place in
+            volume.files.first { $0.id == place.id }?.extents != place.extents
+        }
+        try #require(!moved.isEmpty, "la passe doit déplacer quelque chose")
+
+        let places = Dictionary(plan.arrangement.map { ($0.id, $0.extents) },
+                                uniquingKeysWith: { _, last in last })
+        let ranged = disk.rearranged(extents: places)
+        for place in moved {
+            #expect(ranged.catalog[place.id]?.extents == place.extents)
+        }
+
+        // Le démarrage lit autre chose, ailleurs : ses requêtes ne sont plus
+        // les mêmes.
+        let before = BootPlanner.plan(disk: disk)
+        let after = BootPlanner.plan(disk: ranged)
+        #expect(before.filesRead == after.filesRead)
+        #expect(before.requests.map(\.lba) != after.requests.map(\.lba))
+        // Et l'état du volume rangé est celui que le plan annonce.
+        #expect(ranged.metrics.fragmentedFileCount == plan.after.fragmentedFiles)
+    }
+}

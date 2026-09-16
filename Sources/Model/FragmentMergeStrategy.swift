@@ -137,7 +137,8 @@ struct FragmentMergeStrategy: DefragStrategy {
             filesAlreadyInPlace: movable - pass.touched.count,
             // Toute destination est un trou libre : personne n'est délogé
             // pour faire place.
-            evacuations: 0
+            evacuations: 0,
+            arrangement: pass.volume.arrangement
         )
         return (plan, pass.report)
     }

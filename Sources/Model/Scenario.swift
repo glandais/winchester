@@ -287,7 +287,9 @@ enum ScenarioBuilder {
     ///
     /// Rien n'est refusé ici : lire des fichiers ne suppose aucune stratégie de
     /// rangement, donc NTFS démarre comme les autres.
-    static func build(boot disk: GeneratedDisk) -> Scenario {
+    /// `rangedBy` nomme l'outil qui a rangé ce disque, quand on démarre le
+    /// volume qu'une passe a laissé : c'est le même disque, et le titre le dit.
+    static func build(boot disk: GeneratedDisk, rangedBy: String? = nil) -> Scenario {
         let plan = BootPlanner.plan(disk: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
                                                    atLeast: plan.partition.totalSectors)
@@ -321,8 +323,10 @@ enum ScenarioBuilder {
         let requests = plan.requests
         return Scenario(
             kind: .windowsBoot,
-            label: ScenarioLabel(title: disk.spec.displayName,
+            label: ScenarioLabel(title: rangedBy == nil ? disk.spec.displayName
+                                     : "\(disk.spec.displayName), rangé",
                                  summary: "Démarrage de \(plan.osName)\(launch), "
+                                     + (rangedBy.map { "après le passage de \($0), " } ?? "")
                                      + "sur \(hardware.geometry.model)",
                                  volumeNote: note),
             geometry: hardware.geometry,

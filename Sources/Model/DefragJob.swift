@@ -112,6 +112,10 @@ struct DefragPlan {
     let filesMoved: Int
     let filesAlreadyInPlace: Int
     let evacuations: Int
+    /// Où chaque fichier a fini, extents compris : l'état d'arrivée qu'on peut
+    /// reposer sur le disque d'origine pour le démarrer rangé. Quelques octets
+    /// par fichier, là où garder le volume entier garderait sa bitmap.
+    var arrangement: [FileArrangement] = []
 
     /// Le même plan, avec les opérations et les mutations qu'un récepteur a
     /// gardées.
@@ -120,7 +124,7 @@ struct DefragPlan {
                    operations: operations, mutations: mutations, phases: phases,
                    before: before, after: after, movedBytes: movedBytes,
                    filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,
-                   evacuations: evacuations)
+                   evacuations: evacuations, arrangement: arrangement)
     }
 
     /// Le même plan, sans les opérations ni les mutations.
@@ -133,8 +137,14 @@ struct DefragPlan {
                    operations: [], mutations: [], phases: phases,
                    before: before, after: after, movedBytes: movedBytes,
                    filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,
-                   evacuations: evacuations)
+                   evacuations: evacuations, arrangement: arrangement)
     }
+}
+
+/// La place d'un fichier à la fin d'une passe.
+struct FileArrangement: Sendable, Equatable {
+    let id: UInt32
+    let extents: [Extent]
 }
 
 /// Le point d'entrée : à quel défragmenteur ce volume a-t-il affaire ?

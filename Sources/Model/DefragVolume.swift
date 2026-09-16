@@ -337,6 +337,26 @@ struct DefragVolume {
 
     // MARK: - Mesures
 
+    /// Où est chaque fichier, dans l'ordre du volume.
+    var arrangement: [FileArrangement] {
+        files.map { FileArrangement(id: $0.id, extents: $0.extents) }
+    }
+
+    /// Le même volume, chaque fichier posé là où `arrangement` le dit. Un
+    /// fichier que l'arrangement ne nomme pas garde sa place.
+    func rearranged(_ arrangement: [FileArrangement]) -> DefragVolume {
+        let places = Dictionary(arrangement.map { ($0.id, $0.extents) },
+                                uniquingKeysWith: { _, last in last })
+        let moved = files.map { file -> DefragFile in
+            guard let extents = places[file.id] else { return file }
+            var copy = file
+            copy.extents = extents
+            return copy
+        }
+        return DefragVolume(partition: partition, files: moved, mftZone: mftZone,
+                            systemExtents: systemExtents)
+    }
+
     var stats: VolumeStats {
         let broken = files.filter { !$0.isContiguous }
         return VolumeStats(fill: fill,

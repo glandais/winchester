@@ -171,7 +171,8 @@ struct Windows95Strategy: DefragStrategy {
             movedBytes: movedClusters * partition.clusterBytes,
             filesMoved: filesMoved,
             filesAlreadyInPlace: alreadyInPlace,
-            evacuations: evacuations
+            evacuations: evacuations,
+            arrangement: volume.arrangement
         )
     }
 

@@ -288,7 +288,8 @@ struct JKDefragStrategy: DefragStrategy {
             filesAlreadyInPlace: pass.order.count - pass.touched.count,
             // Personne n'est délogé hors des tris : `Vacate` n'est appelé que
             // par eux. Ailleurs, une destination est toujours un trou.
-            evacuations: pass.report.evacuations
+            evacuations: pass.report.evacuations,
+            arrangement: pass.volume.arrangement
         )
         return (plan, pass.report)
     }

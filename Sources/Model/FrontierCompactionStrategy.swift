@@ -134,7 +134,8 @@ struct FrontierCompactionStrategy: DefragStrategy {
             movedBytes: pass.report.movedClusters * input.partition.clusterBytes,
             filesMoved: pass.touched.count,
             filesAlreadyInPlace: pass.movableCount - pass.touched.count,
-            evacuations: pass.report.evacuations + pass.report.parked
+            evacuations: pass.report.evacuations + pass.report.parked,
+            arrangement: pass.volume.arrangement
         )
         return (plan, pass.report)
     }

@@ -187,7 +187,8 @@ struct UltraDefragStrategy: DefragStrategy {
             filesAlreadyInPlace: alreadyInPlace,
             // Une destination est toujours un trou libre : personne n'est
             // délogé, exactement comme sur la passe de XP.
-            evacuations: 0
+            evacuations: 0,
+            arrangement: volume.arrangement
         )
     }
 

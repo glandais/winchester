@@ -208,7 +208,8 @@ struct WindowsXPStrategy: DefragStrategy {
             // Le chiffre qui dit tout de cette stratégie : elle ne déloge
             // personne. Sur FAT, la même passe en comptait deux fois plus que
             // de fichiers déplacés.
-            evacuations: 0
+            evacuations: 0,
+            arrangement: volume.arrangement
         )
     }
 
