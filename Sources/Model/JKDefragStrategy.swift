@@ -308,6 +308,9 @@ struct JKDefragStrategy: DefragStrategy {
         var failedMoves = 0
         var gapsVisited = 0
         var gapsSkipped = 0
+        /// Trous relus après un déplacement refusé, au lieu d'être sautés
+        /// (`Retry`, jusqu'à cinq essais par trou).
+        var gapRetries = 0
         var perfectFitSearches = 0
         var perfectFitsFound = 0
         /// Recherches abandonnées faute de visites — là où l'original manquait
@@ -815,13 +818,14 @@ extension JKDefragStrategy {
             let total = UInt32(volume.partition.clusterCount)
             for zone in UInt8(0)...2 {
                 var begin = zones[Int(zone)]
+                var retry = 0
                 while begin < total {
                     // Le trou suivant, où qu'il soit : la recherche n'est pas
                     // bornée à la zone, seuls les fichiers le sont.
                     guard let found = gap(from: begin, size: 0, mustFit: true) else { break }
                     begin = found.start
                     sink.progress = Double(begin) / Double(total)
-                    let end = found.end
+                    var end = found.end
                     report.gapsVisited += 1
 
                     // Tout ce qui pourrait venir combler ce trou : les fichiers
@@ -837,7 +841,7 @@ extension JKDefragStrategy {
                     // assez de fichiers au-dessus pour remplir le trou.
                     var perfectFit = UInt64(end - begin) <= above
 
-                    while begin < end {
+                    while begin < end && retry < 5 {
                         var chosen: Int32?
                         if perfectFit {
                             chosen = findBestItem(start: begin, end: end, zone: zone)
@@ -851,15 +855,25 @@ extension JKDefragStrategy {
                         guard let position = chosen else { break }
 
                         let clusters = volume.files[Int(position)].clusterCount
-                        guard move(position, vcn: 0, length: clusters, to: begin,
-                                   phase: phase, pass: 2) else { break }
-                        begin += clusters
+                        if move(position, vcn: 0, length: clusters, to: begin,
+                                phase: phase, pass: 2) {
+                            begin += clusters
+                            retry = 0
+                        } else {
+                            // `GapEnd = GapBegin` : le même trou sera relu au
+                            // tour suivant, avec un essai de moins. Le fichier
+                            // refusé est devenu immobile, un autre sera choisi.
+                            end = begin
+                            retry += 1
+                            report.gapRetries += 1
+                        }
                     }
 
                     // Un trou qu'on n'a pas pu remplir est sauté.
                     if begin < end {
                         report.gapsSkipped += 1
                         begin = end
+                        retry = 0
                     }
                 }
             }
