@@ -32,6 +32,15 @@ enum GenerationState {
 final class DiskLibraryModel: ObservableObject {
 
     @Published private(set) var scenarios: [ProfileSpec] = []
+    /// Les disques construits dans l'app, enregistrés.
+    @Published private(set) var customs: [ProfileSpec] = []
+    /// Le disque que l'assistant est en train d'écrire : il se fabrique comme
+    /// les autres, sans être enregistré.
+    @Published private(set) var draft: ProfileSpec?
+    /// Ce que le magasin n'a pas pu lire ou écrire.
+    @Published private(set) var storeFailure: String?
+
+    private let store: CustomDiskStore
     @Published private(set) var state: GenerationState = .idle
     @Published var selectedID: String? {
         didSet {
@@ -77,16 +86,82 @@ final class DiskLibraryModel: ObservableObject {
 
     private var task: Task<Void, Never>?
 
-    init() {
+    init(store: CustomDiskStore = .standard()) {
+        self.store = store
         do {
             scenarios = try ScenarioLibrary.loadAll()
         } catch {
             state = .failed("scénarios illisibles : \(error)")
         }
+        do {
+            customs = try store.load()
+        } catch {
+            storeFailure = "Mes disques n'ont pas pu être relus : \(error.localizedDescription)"
+        }
+    }
+
+    /// Un profil connu, quel qu'il soit : brouillon, disque construit ou scénario.
+    func spec(id: String) -> ProfileSpec? {
+        if let draft, draft.id == id { return draft }
+        return customs.first { $0.id == id } ?? scenarios.first { $0.id == id }
     }
 
     var selected: ProfileSpec? {
-        scenarios.first { $0.id == selectedID }
+        selectedID.flatMap(spec(id:))
+    }
+
+    // MARK: - Mes disques
+
+    /// Pose le brouillon de l'assistant et le fabrique. S'il remplace un
+    /// brouillon déjà fabriqué sous le même identifiant, il repart de zéro.
+    func build(draft spec: ProfileSpec) {
+        draft = spec
+        if selectedID == spec.id {
+            generate(spec.id)
+        } else {
+            selectedID = spec.id
+        }
+    }
+
+    /// Enregistre un disque, ou met à jour celui qui porte son identifiant.
+    func save(_ spec: ProfileSpec) {
+        if let index = customs.firstIndex(where: { $0.id == spec.id }) {
+            customs[index] = spec
+        } else {
+            customs.append(spec)
+        }
+        if draft?.id == spec.id { draft = nil }
+        persist()
+    }
+
+    func rename(_ id: String, to name: String) {
+        guard let index = customs.firstIndex(where: { $0.id == id }) else { return }
+        customs[index].displayName = name
+        persist()
+    }
+
+    func delete(_ id: String) {
+        customs.removeAll { $0.id == id }
+        fragmentedRatios[id] = nil
+        if selectedID == id { cancel(); selectedID = nil }
+        persist()
+    }
+
+    /// Une copie à modifier : nouvel identifiant, même histoire.
+    func duplicate(_ spec: ProfileSpec) -> ProfileSpec {
+        var copy = spec
+        copy.id = CustomDiskStore.newIdentifier()
+        copy.displayName = spec.displayName.hasSuffix("(copie)") ? spec.displayName : "\(spec.displayName) (copie)"
+        return copy
+    }
+
+    private func persist() {
+        do {
+            try store.save(customs)
+            storeFailure = nil
+        } catch {
+            storeFailure = "Mes disques n'ont pas pu être enregistrés : \(error.localizedDescription)"
+        }
     }
 
     /// Scénarios groupés par année, dans l'ordre chronologique.
@@ -109,7 +184,15 @@ final class DiskLibraryModel: ObservableObject {
     }
 
     func generate(_ id: String) {
-        guard let spec = scenarios.first(where: { $0.id == id }) else { return }
+        guard let spec = spec(id: id) else { return }
+        // Un profil écrit à la main peut arrêter net le générateur : il ne part
+        // pas tant qu'il porte une remarque bloquante.
+        if let blocking = spec.issues.first(where: { $0.severity == .blocking }) {
+            task?.cancel()
+            shades = []
+            state = .failed(blocking.message)
+            return
+        }
 
         task?.cancel()
         state = .running(fraction: 0, day: 0, fileCount: 0, fill: 0)
