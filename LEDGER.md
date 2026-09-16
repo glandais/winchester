@@ -1798,3 +1798,89 @@ suit, et en sortant, l'écran normal reprend la lecture là où elle en est.
   chantier ne l'a pas profilé plus loin.
 - **La galerie** (`LibraryFullScreenMap`) n'était pas concernée : son volume ne
   bouge pas et ne suit aucune horloge. Elle n'a pas été mesurée.
+
+---
+
+## Chantier 9 — ce qu'`UltraDefragStrategy` ne reproduit pas
+
+**Relevé, non corrigé** · aucune modification de code
+
+### Le problème
+
+Une relecture de `UltraDefragStrategy` face aux sources d'UltraDefrag 7.1.1
+(`defrag.c`, `move.c`, `search.c`, `zenwinx/ftw*.c`) confirme que
+`defrag_routine` et `defrag_sequence` sont transposés presque à l'instruction
+près : ordre de passage, deux séquences, plafond du plus grand trou, garde-fou
+`n < 2`, annexion du voisin, avancée de `min_vcn`, grain de
+`adjust_move_at_once_parameter`. Deux écarts de **comportement** ressortent
+pourtant. Aucun n'est mentionné dans l'en-tête de la stratégie, qui ne déclare
+que le second essai de `defragment()` et les répertoires FAT.
+
+#### 1. L'espace libéré sur NTFS est réutilisé dans le même tour
+
+Dans `move_file` (`move.c:719-727`), les clusters que le déplacement libère ne
+reviennent dans `jp->free_regions` **que hors NTFS** :
+
+> on NTFS we cannot use the released space until release_temp_space_regions
+> call because Windows marks clusters as temporarily allocated immediately
+> after the move
+
+`release_temp_space_regions` n'est appelé qu'en tête de chaque
+`defrag_routine`. Sur NTFS, un trou libéré pendant un tour n'est donc visible
+qu'au tour suivant, pour `find_first_free_region` comme pour
+`find_largest_free_region`.
+
+`DefragVolume.relocate` libère la source dans la bitmap immédiatement
+(`DefragVolume.swift:249`). Dans un même tour, `firstGap` et `largestGap`
+voient des trous que l'outil réel ne voit pas, en particulier ceux que le
+fichier vient lui-même de quitter pendant sa défragmentation partielle. Effets
+attendus, non mesurés :
+
+- des destinations **plus basses** sur le plateau, donc d'autres trajets de tête
+  et un autre son ;
+- un plafond « plus grand trou » plus haut, donc des suites de petits fragments
+  plus longues ;
+- probablement moins de tours avant convergence.
+
+Les huit volumes où cette passe a été mesurée sont NTFS : l'écart pèse sur tous
+les chiffres de la section « Recoller au lieu de déplacer ».
+
+#### 2. Les fragments sont comptés dans l'ordre du plateau, pas du fichier
+
+UltraDefrag compte `disp.fragments` **dans l'ordre des VCN** (`ftw.c:225`,
+`ftw_ntfs.c:1098`) : un bloc ouvre un fragment si son LCN ne prolonge pas le
+bloc *précédent du fichier*. `build_fragments_list` suit la même règle, et
+`IsFragmented` de JKDefrag aussi (`JkDefragLib.cpp:1348`, `NextLcn`).
+
+`DefragFile.fragmentCount` (`DefragVolume.swift:44`) **trie d'abord les extents
+par LCN** avant de chercher les ruptures. Un fichier dont deux extents se
+touchent sur le disque mais dans l'ordre inverse du fichier — B posé juste
+avant A — y compte pour **un** morceau, contre deux dans les deux outils. La
+tête, qui lit le fichier dans l'ordre, fait pourtant un seek arrière.
+
+Conséquences pour UltraDefrag : un tel fichier sort de `canDefragment`
+(`isContiguous`) et change de rang dans le tri par nombre de fragments. Le
+commentaire de `fragments(of:)`, qui dit suivre « la même règle que
+`DefragFile.fragmentCount` », n'est exact que pour des extents rangés par LCN
+croissant. L'écart dépasse la stratégie : `fragmentCount` sert aussi au tri de
+`WindowsXPStrategy` (`WindowsXPStrategy.swift:242`) et à
+`VolumeStats.fragments` (`DefragVolume.swift:299`), donc à tous les tableaux de
+morceaux restants du journal.
+
+### Laissé ouvert
+
+- **Rien n'est mesuré.** Ni la fréquence, dans la galerie, des fichiers aux
+  extents adjacents mais inversés, ni l'effet du report de l'espace libéré sur
+  les passes NTFS. Les deux sont à chiffrer avant de corriger.
+- **Corriger le point 1** voudrait une bitmap « libérée ce tour-ci » propre à
+  NTFS, relâchée en tête de `routine`. La question est de savoir si elle reste
+  locale à `UltraDefragStrategy` ou si `WindowsXPStrategy`, qui appelle le même
+  `FSCTL_MOVE_FILE`, subit la même contrainte.
+- **Corriger le point 2** change les compteurs de toutes les stratégies. Il
+  faudra remesurer les tableaux existants, pas seulement ceux d'UltraDefrag.
+- Écarts mineurs relevés au passage, sans effet sur les passes livrées :
+  départage des chemins sensible à la casse (`winx_wcsicmp` ne l'est pas), zone
+  MFT exclue même au-delà de XP (`move.c:44` ne la retire qu'avant XP), seconde
+  séquence toujours jouée même quand le seuil est personnalisé, et doc de
+  `eliminateLittleFragments` trop stricte sur `n < 2` (un fragment isolé plus
+  l'annexe du voisin donne `n = 2` et se déplace).
