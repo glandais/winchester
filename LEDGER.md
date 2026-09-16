@@ -2692,7 +2692,9 @@ L'avance en durée sur XP et UltraDefrag, elle, vient des blocs pleins.
   de réglage a été mesurée avant la correction de l'oscillation.
 - **Rien n'a été écouté**, ni vu dans l'application. `xcodegen generate` sera
   nécessaire pour que le fichier entre dans le projet Xcode.
-- **`Tools/build-render.sh` ne compile plus avec Swift 6.4** : `swift build`
-  y prend par défaut le nouveau système de build, qui range les produits sous
-  `.build/out` sans les `.o` que le script lie. Les mesures de ce chantier ont
-  été faites avec `--build-system native` et `.build/arm64-apple-macosx/release`.
+- **`Tools/build-render.sh` ne compilait plus avec Swift 6.4** : `swift build`
+  y prend par défaut le nouveau système de build, qui pose le module et un seul
+  `DiskCore.o` à la racine des produits. Le script accepte maintenant les deux
+  dispositions et copie le paquet de ressources à côté de l'exécutable. Les
+  mesures de ce chantier ont été faites avec l'ancien système ; les bilans sont
+  les mêmes avec le nouveau.
