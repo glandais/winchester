@@ -300,6 +300,40 @@ struct JKDefragStrategyTests {
         }
     }
 
+    /// La bitmap tenait la MFT occupée, mais la carte ne lisait que les
+    /// fichiers : l'écran montrait libres des clusters où personne n'a le
+    /// droit d'écrire. Elle doit s'y voir au départ, et y être encore à la fin.
+    @Test("La MFT se voit sur la carte, du début à la fin de la passe")
+    func mftIsOnTheMap() {
+        let files = (0..<20).map { index in
+            JKFile(name: "F\(index).DAT", category: .document,
+                   extents: [Extent(start: 200 + UInt32(index) * 12, length: 3),
+                             Extent(start: 206 + UInt32(index) * 12, length: 3)])
+        }
+        let mft = [Extent(start: 0, length: 1), Extent(start: 1, length: 60), Extent(start: 70, length: 20)]
+        let volume = jkVolume(clusterCount: 1_000, files: files, format: .ntfs,
+                              mftZone: 61..<61, systemExtents: mft)
+        let reserved = ClusterCategory.reserved.rawValue
+
+        let strategies: [any DefragStrategy] = [
+            Windows95Strategy(), WindowsXPStrategy(), JKDefragStrategy(), UltraDefragStrategy(),
+        ]
+        for strategy in strategies {
+            let plan = DefragPlanner.plan(volume: volume, using: strategy)
+            var map = [UInt8](repeating: ClusterCategory.free.rawValue, count: 1_000)
+            for run in plan.initialRuns {
+                for cluster in Int(run.start)..<Int(run.end) { map[cluster] = run.category }
+            }
+            #expect(map.filter { $0 == reserved }.count == 81, "\(strategy.label) : MFT absente au départ")
+            for mutation in plan.mutations {
+                for cluster in mutation.start..<min(mutation.start + mutation.count, map.count) {
+                    map[cluster] = mutation.category.rawValue
+                }
+            }
+            #expect(map.filter { $0 == reserved }.count == 81, "\(strategy.label) : MFT absente à la fin")
+        }
+    }
+
     /// JkDefrag est de 2008 : aucun disque de la galerie ne l'a connu, il ne
     /// s'obtient que sur demande.
     @Test("JkDefrag ne se choisit pas tout seul")

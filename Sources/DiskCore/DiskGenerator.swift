@@ -36,7 +36,13 @@ public struct GeneratedDisk: Sendable {
     /// ferait quatre-vingt-quatre mégaoctets. Pour l'affichage, `cells` agrège
     /// sans jamais la matérialiser.
     public func categoryMap() -> [UInt8] {
-        catalog.categoryMap(clusterCount: bitmap.clusterCount)
+        var map = catalog.categoryMap(clusterCount: bitmap.clusterCount)
+        for extent in systemExtents {
+            let end = min(extent.end, bitmap.clusterCount)
+            guard extent.start < end else { continue }
+            for cluster in extent.start..<end { map[Int(cluster)] = FileCategory.metadata.rawValue }
+        }
+        return map
     }
 
     /// Carte agrégée en `cellCount` blocs, prête pour la grille de l'interface.
@@ -69,9 +75,8 @@ public struct GeneratedDisk: Sendable {
         var tally = [UInt32](repeating: 0, count: cellCount * categoryCount)
         let clustersPerCell = max(Double(bitmap.clusterCount) / Double(cellCount), 1)
 
-        for record in catalog.files where !record.isResident {
-            let category = Int(record.category.rawValue)
-            for extent in record.extents {
+        func count(_ extents: [Extent], as category: Int) {
+            for extent in extents where !extent.isEmpty {
                 let first = Int(Double(extent.start) / clustersPerCell)
                 let last = Int(Double(extent.end - 1) / clustersPerCell)
                 guard first < cellCount else { continue }
@@ -83,6 +88,15 @@ public struct GeneratedDisk: Sendable {
                     tally[cell * categoryCount + category] += UInt32(max(overlap, 1))
                 }
             }
+        }
+
+        // La MFT et ses voisins ne sont décrits par aucun fichier du
+        // catalogue : sans cette ligne, la carte les montrait libres alors que
+        // la bitmap les tient occupés. Ils prennent la couleur des
+        // métadonnées, celle des tables FAT.
+        count(systemExtents, as: Int(FileCategory.metadata.rawValue))
+        for record in catalog.files where !record.isResident {
+            count(record.extents, as: Int(record.category.rawValue))
         }
 
         var result = [UInt8](repeating: free, count: cellCount)

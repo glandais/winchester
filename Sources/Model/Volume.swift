@@ -11,7 +11,8 @@ enum ClusterCategory: UInt8, CaseIterable {
     case archive
     case churn
     case swap
-    /// Hors zone de données : secteur d'amorçage, tables d'allocation, racine.
+    /// Ce que le système de fichiers occupe pour lui-même : secteur
+    /// d'amorçage, tables FAT et racine, ou sur NTFS la MFT et sa copie.
     case reserved
 
     var label: String {
@@ -23,7 +24,7 @@ enum ClusterCategory: UInt8, CaseIterable {
         case .archive:     return "Aide, archives"
         case .churn:       return "Temporaires, cache"
         case .swap:        return "Fichier d'échange"
-        case .reserved:    return "FAT, racine"
+        case .reserved:    return "FAT, MFT, racine"
         }
     }
 

@@ -225,9 +225,18 @@ struct DefragVolume {
     /// pas est libre. Elle coûte le nombre d'extents — cent soixante-dix-huit
     /// mille sur le plus gros volume de la galerie — là où `categoryMap()`
     /// coûte le nombre de clusters, soit quatre cent quarante fois plus.
+    ///
+    /// Les extents système y figurent en `.reserved`, la couleur des tables
+    /// FAT : sans eux, la MFT paraissait libre à l'écran alors que la bitmap la
+    /// tient occupée, et une zone MFT qui cède montrait un trou là où aucun
+    /// défragmenteur n'a le droit d'écrire.
     func categoryRuns() -> [MapRun] {
         var runs: [MapRun] = []
-        runs.reserveCapacity(files.reduce(0) { $0 + $1.extents.count })
+        runs.reserveCapacity(files.reduce(systemExtents.count) { $0 + $1.extents.count })
+        let reserved = ClusterCategory.reserved.rawValue
+        for extent in systemExtents where !extent.isEmpty {
+            runs.append(MapRun(start: extent.start, count: extent.length, category: reserved))
+        }
         for file in files {
             let raw = file.category.rawValue
             for extent in file.extents where !extent.isEmpty {
@@ -246,6 +255,11 @@ struct DefragVolume {
     /// des tests, qui s'en servent de référence sur de petits volumes.
     func categoryMap() -> [UInt8] {
         var map = [UInt8](repeating: ClusterCategory.free.rawValue, count: partition.clusterCount)
+        for extent in systemExtents {
+            let end = min(Int(extent.end), map.count)
+            guard Int(extent.start) < end else { continue }
+            for cluster in Int(extent.start)..<end { map[cluster] = ClusterCategory.reserved.rawValue }
+        }
         for file in files {
             let raw = file.category.rawValue
             for extent in file.extents {
