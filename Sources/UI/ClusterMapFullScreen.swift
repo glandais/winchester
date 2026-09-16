@@ -142,7 +142,7 @@ struct DefragFullScreenMap: View {
 
     private var detail: String {
         let grid = model.mapGrid
-        return "\(grid.columns)×\(grid.rows) · 1 bloc = \(model.clustersPerCell) clusters"
+        return "\(grid.columns)×\(grid.rows) · 1 bloc \(FrenchFormat.clustersPerCell(model.clustersPerCell))"
     }
 
     /// Ce qu'on sait d'un bloc pendant la passe : sa catégorie et son
@@ -151,9 +151,9 @@ struct DefragFullScreenMap: View {
     private func passCellInfo(_ cell: Int, clusterCount: Int, clusterBytes: Int) -> some View {
         let shades = model.clusterShades(at: time)
         let shade = shades.indices.contains(cell) ? shades[cell] : .empty
-        let perCell = model.clustersPerCell
-        let start = min(cell * perCell, clusterCount)
-        let end = cell == model.mapGrid.cellCount - 1 ? clusterCount : min(start + perCell, clusterCount)
+        let clusters = model.clusters(ofCell: cell)
+        let start = clusters.lowerBound
+        let end = clusters.upperBound
         let category = ClusterCategory(rawValue: shade.category) ?? .free
         return CellInfoBar(
             swatch: Theme.categoryColor(category, contiguous: shade.contiguous),
@@ -287,7 +287,7 @@ struct LibraryFullScreenMap: View {
     }
 
     private var detail: String {
-        "\(model.grid.columns)×\(model.grid.rows) · 1 bloc = \(model.clustersPerCell) clusters"
+        "\(model.grid.columns)×\(model.grid.rows) · 1 bloc \(FrenchFormat.clustersPerCell(model.clustersPerCell))"
     }
 }
 

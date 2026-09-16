@@ -91,6 +91,55 @@ struct MapGrid: Equatable, Sendable {
     }
 }
 
+/// Le partage des clusters entre les blocs de la grille.
+///
+/// Un bloc vaut `clusterCount / cellCount` clusters, **fraction comprise** :
+/// arrondir cette part à l'entier inférieur faisait tomber tout le reste de la
+/// division dans le dernier bloc. Sur une grille de plein écran le reste est
+/// énorme — 850 Mo en FAT16 font 54 400 clusters ; sur 14 000 blocs, trois
+/// clusters par bloc n'en couvraient que 42 000, et le cinquième du volume
+/// s'entassait dans une seule case. Ici chaque bloc reçoit sa part à un
+/// cluster près, en arithmétique entière pour que les bornes et la projection
+/// d'un cluster ne se contredisent jamais.
+///
+/// Quand il y a plus de blocs que de clusters, un bloc vaut un cluster et les
+/// blocs au-delà du volume restent vides, comme avant.
+struct CellPartition: Equatable, Sendable {
+
+    let clusterCount: Int
+    let cellCount: Int
+    /// Ce que la grille découpe : le volume, ou un cluster par bloc s'il est
+    /// plus petit que la grille.
+    private let span: Int
+
+    init(clusterCount: Int, cellCount: Int) {
+        self.clusterCount = max(clusterCount, 0)
+        self.cellCount = max(cellCount, 1)
+        self.span = max(self.clusterCount, self.cellCount)
+    }
+
+    /// Clusters par bloc, en moyenne — jamais moins d'un.
+    var clustersPerCell: Double { Double(span) / Double(cellCount) }
+
+    /// Le bloc qui porte ce cluster : ⌊k · C / N⌋.
+    func cell(ofCluster cluster: Int) -> Int {
+        min(max(cluster, 0) * cellCount / span, cellCount - 1)
+    }
+
+    /// Premier cluster du bloc : ⌈c · N / C⌉, la réciproque exacte de
+    /// `cell(ofCluster:)`.
+    func start(ofCell cell: Int) -> Int {
+        min((cell * span + cellCount - 1) / cellCount, clusterCount)
+    }
+
+    /// Les clusters du bloc. Vide pour un bloc au-delà du volume.
+    func clusters(ofCell cell: Int) -> Range<Int> {
+        let low = start(ofCell: cell)
+        let high = cell >= cellCount - 1 ? clusterCount : start(ofCell: cell + 1)
+        return low..<max(low, high)
+    }
+}
+
 /// Un bloc d'affichage : sa couleur, et ce qu'il en reste de rempli.
 ///
 /// Les deux vont ensemble parce qu'ils sortent du même décompte et qu'aucune
@@ -525,10 +574,12 @@ final class ClusterMapPlayer {
         self.grid = grid
     }
 
-    var clustersPerCell: Int {
-        guard isLoaded else { return 1 }
-        return max(clusterCount / grid.cellCount, 1)
+    /// Le partage courant des clusters entre les blocs.
+    var partition: CellPartition {
+        CellPartition(clusterCount: isLoaded ? clusterCount : 0, cellCount: grid.cellCount)
     }
+
+    var clustersPerCell: Double { isLoaded ? partition.clustersPerCell : 1 }
 
     /// Repart d'un volume dans l'état donné, sans aucune mutation en attente.
     func load(clusterCount: Int, initialRuns: [MapRun]) {
@@ -613,17 +664,13 @@ final class ClusterMapPlayer {
     /// agrégation que `GeneratedDisk.cells`, appliquée au fil de l'eau.
     private func add(start: Int, count: Int, category: Int, contiguous: Bool, delta: Int) {
         guard count > 0, category < Self.categoryCount else { return }
-        let perCell = clustersPerCell
-        let lastCell = grid.cellCount - 1
+        let partition = self.partition
         let end = start + count
-        let firstCell = min(start / perCell, lastCell)
-        let finalCell = min((end - 1) / perCell, lastCell)
+        let firstCell = partition.cell(ofCluster: start)
+        let finalCell = partition.cell(ofCluster: end - 1)
         for cell in firstCell...finalCell {
-            // Le dernier bloc ramasse tout ce qui dépasse de la division : sans
-            // cela, les clusters de la queue du volume ne seraient comptés
-            // nulle part.
-            let cellEnd = cell == lastCell ? end : min((cell + 1) * perCell, end)
-            let share = cellEnd - max(start, cell * perCell)
+            let clusters = partition.clusters(ofCell: cell)
+            let share = min(clusters.upperBound, end) - max(clusters.lowerBound, start)
             guard share > 0 else { continue }
             let slot = cell * Self.slotCount + category + (contiguous ? Self.categoryCount : 0)
             tally[slot] = UInt32(Int(tally[slot]) + delta * share)
@@ -673,7 +720,7 @@ final class ClusterMapPlayer {
 
     /// La couleur d'un bloc, tirée de son décompte.
     private func shade(ofCell cell: Int) -> ClusterShade {
-        let perCell = clustersPerCell
+        let capacity = partition.clusters(ofCell: cell).count
         let base = cell * Self.slotCount
         var best = 0
         var bestCount: UInt32 = 0
@@ -691,10 +738,8 @@ final class ClusterMapPlayer {
                 bestContiguous = contiguous
             }
         }
-        // Le dernier bloc ramasse le reste de la division et peut porter
-        // plus de clusters que les autres : la borne à 1 l'empêche de
-        // paraître « plus que plein ».
-        let ratio = min(Double(occupied) / Double(perCell), 1)
+        // Un bloc au-delà d'un volume plus petit que la grille ne porte rien.
+        let ratio = capacity > 0 ? min(Double(occupied) / Double(capacity), 1) : 0
         return ClusterShade(category: UInt8(best), fill: UInt8(ratio * 255),
                             contiguous: bestCount > 0 && bestContiguous * 2 > bestCount)
     }
@@ -710,7 +755,7 @@ final class ClusterMapPlayer {
     var tallyTotal: Int { tally.reduce(0) { $0 + Int($1) } }
 
     func cell(ofCluster cluster: Int) -> Int {
-        min(cluster / clustersPerCell, grid.cellCount - 1)
+        partition.cell(ofCluster: cluster)
     }
 
     /// Applique ce qui est dû à cet instant. Un instant antérieur n'applique

@@ -384,6 +384,41 @@ struct ClusterMapTests {
         }
     }
 
+    /// Le cas de « Secrétariat, 1996 » en plein écran : 850 Mo en FAT16, soit
+    /// 54 400 clusters, sur une grille de 85 × 170 blocs. Arrondie à trois
+    /// clusters par bloc, la carte entassait les 11 050 derniers dans la
+    /// dernière case, et la fin du volume n'apparaissait nulle part.
+    @Test("La fin du volume occupe la fin de la carte, pas sa dernière case")
+    func volumeTailSpreadsOverTheGrid() {
+        let clusterCount = 54_400
+        let grid = MapGrid(columns: 85, rows: 170)
+        let player = ClusterMapPlayer(grid: grid)
+        let tail = clusterCount * 4 / 5
+        player.load(clusterCount: clusterCount,
+                    initialRuns: [MapRun(start: UInt32(tail), count: UInt32(clusterCount - tail),
+                                         category: ClusterCategory.allCases[1].rawValue)])
+
+        let shades = player.shades(at: 0)
+        let firstTailCell = grid.cellCount * 4 / 5
+        #expect(shades[firstTailCell - 1].fill == 0)
+        #expect(shades[firstTailCell...].allSatisfy { $0.fill == 255 },
+                "le dernier cinquième de la grille porte le dernier cinquième du volume")
+        #expect(player.tallyTotal == clusterCount)
+
+        // Les blocs se suivent sans trou ni recouvrement, et chacun vaut sa
+        // part à un cluster près.
+        let partition = player.partition
+        var next = 0
+        for cell in 0..<grid.cellCount {
+            let clusters = partition.clusters(ofCell: cell)
+            #expect(clusters.lowerBound == next)
+            #expect(clusters.count == 3 || clusters.count == 4)
+            #expect(clusters.allSatisfy { partition.cell(ofCluster: $0) == cell })
+            next = clusters.upperBound
+        }
+        #expect(next == clusterCount)
+    }
+
     /// Sans passe chargée, la carte n'a rien à montrer — et la vue ne doit pas
     /// pour autant tomber sur un tableau de la mauvaise taille.
     @Test("Une carte sans passe ne rend aucune cellule")
@@ -463,11 +498,12 @@ struct ClusterMapTests {
     /// L'agrégation telle qu'elle se faisait avant : un parcours de tous les
     /// clusters, puis la catégorie occupée la plus représentée de chaque bloc.
     private static func reference(of map: [UInt8], grid: MapGrid) -> [UInt8] {
-        let perCell = max(map.count / grid.cellCount, 1)
-        let lastCell = grid.cellCount - 1
+        // Chaque cluster dans le bloc de sa position relative, ⌊k · C / N⌋ :
+        // pas de reste de division entassé dans le dernier bloc.
+        let span = max(map.count, grid.cellCount)
         var tally = [UInt32](repeating: 0, count: grid.cellCount * categoryCount)
         for cluster in 0..<map.count {
-            let cell = min(cluster / perCell, lastCell)
+            let cell = cluster * grid.cellCount / span
             tally[cell * categoryCount + Int(map[cluster])] += 1
         }
         return (0..<grid.cellCount).map { cell in

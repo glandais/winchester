@@ -212,7 +212,7 @@ private struct ClusterMapImage: View {
 /// Légende : seules les catégories réellement présentes sont listées.
 struct ClusterLegend: View {
     let categories: [ClusterCategory]
-    let clustersPerCell: Int
+    let clustersPerCell: Double
     let clusterBytes: Int
 
     var body: some View {
@@ -241,8 +241,9 @@ struct ClusterLegend: View {
                     }
                 }
             }
-            Text("1 bloc = \(FrenchFormat.integer(clustersPerCell)) clusters = "
-                 + FrenchFormat.megabytes(UInt64(clustersPerCell) * UInt64(clusterBytes), smallInKilobytes: true))
+            Text("1 bloc \(FrenchFormat.clustersPerCell(clustersPerCell)) = "
+                 + FrenchFormat.megabytes(UInt64((clustersPerCell * Double(clusterBytes)).rounded()),
+                                          smallInKilobytes: true))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(Theme.dim.opacity(0.8))
         }

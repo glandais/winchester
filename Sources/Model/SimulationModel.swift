@@ -162,7 +162,12 @@ final class SimulationModel: ObservableObject {
     /// Cellule en cours d'accès, s'il y en a une à cet instant.
     func activeCell() -> (cell: Int, isWrite: Bool)? { live.activeCell() }
 
-    var clustersPerCell: Int { live.map?.clustersPerCell ?? 1 }
+    var clustersPerCell: Double { live.map?.clustersPerCell ?? 1 }
+
+    /// Les clusters d'un bloc de la carte rejouée.
+    func clusters(ofCell cell: Int) -> Range<Int> {
+        live.map?.partition.clusters(ofCell: cell) ?? 0..<0
+    }
 
     /// Grille sur laquelle la carte est agrégée. La vue la lit ici plutôt que
     /// de la deviner : c'est le modèle qui décide combien de blocs il produit,

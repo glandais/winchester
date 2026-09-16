@@ -117,6 +117,15 @@ enum FrenchFormat {
         String(format: "%.\(digits)f", value).replacingOccurrences(of: ".", with: ",")
     }
 
+    /// La part d'un bloc de carte : « = 43 clusters » quand elle tombe juste,
+    /// « ≈ 3,8 clusters » sinon — un bloc de plein écran vaut rarement un
+    /// nombre entier de clusters.
+    static func clustersPerCell(_ value: Double) -> String {
+        let rounded = value.rounded()
+        if abs(value - rounded) < 0.05 { return "= \(integer(Int(rounded))) clusters" }
+        return "≈ \(decimal(value, digits: value < 10 ? 1 : 0)) clusters"
+    }
+
     /// Un rapport entre 0 et 1, arrondi à l'unité — sauf sous 10 %, où la
     /// décimale dit encore quelque chose.
     static func percent(_ ratio: Double) -> String {

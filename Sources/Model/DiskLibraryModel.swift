@@ -171,9 +171,10 @@ final class DiskLibraryModel: ObservableObject {
 
     // MARK: - Lecture pour l'affichage
 
-    var clustersPerCell: Int {
+    /// Le découpage de `GeneratedDisk.cells`, fraction comprise.
+    var clustersPerCell: Double {
         guard let disk = state.disk else { return 1 }
-        return max(Int(disk.clusterCount) / grid.cellCount, 1)
+        return max(Double(disk.clusterCount) / Double(grid.cellCount), 1)
     }
 
     /// Catégories réellement présentes, pour ne légender que ce qu'on voit.
