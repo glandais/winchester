@@ -119,11 +119,15 @@ enum FrenchFormat {
 
     /// La part d'un bloc de carte : « = 43 clusters » quand elle tombe juste,
     /// « ≈ 3,8 clusters » sinon — un bloc de plein écran vaut rarement un
-    /// nombre entier de clusters.
+    /// nombre entier de clusters. Le seuil ne sert qu'à absorber l'erreur de
+    /// la division flottante : 9,97 clusters ne s'écrivent pas « = 10 ».
     static func clustersPerCell(_ value: Double) -> String {
         let rounded = value.rounded()
-        if abs(value - rounded) < 0.05 { return "= \(integer(Int(rounded))) clusters" }
-        return "≈ \(decimal(value, digits: value < 10 ? 1 : 0)) clusters"
+        if abs(value - rounded) < 1e-9 { return "= \(integer(Int(rounded))) clusters" }
+        // 9,97 arrondi à une décimale s'écrirait « 10,0 » : la virgule n'y dit
+        // plus rien.
+        let text = decimal(value, digits: value < 10 ? 1 : 0)
+        return "≈ \(text.hasSuffix(",0") ? String(text.dropLast(2)) : text) clusters"
     }
 
     /// Un rapport entre 0 et 1, arrondi à l'unité — sauf sous 10 %, où la

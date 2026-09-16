@@ -43,4 +43,22 @@ struct GeneratedDiskMapTests {
         let map = disk.categoryMap()
         #expect(map.filter { $0 == metadata }.count == 104)
     }
+
+    /// Dix clusters sur quatre blocs, deux et demi par bloc. Le cluster 2 est
+    /// peint dans le premier bloc ; la liste du contenu arrondissait le début
+    /// du deuxième bloc à l'entier inférieur et l'y rangeait aussi.
+    @Test("Un cluster est listé dans le bloc dont il fait la couleur")
+    func contentsFollowTheShade() throws {
+        let disk = try Self.disk(clusterCount: 10, systemExtents: [Extent(start: 2, length: 1)])
+        let metadata = FileCategory.metadata.rawValue
+
+        let (categories, fill, _) = disk.shaded(count: 4)
+        #expect(categories[0] == metadata)
+        #expect(categories[1] == .max)
+        #expect(fill[0] == 85, "un cluster sur les trois du bloc")
+
+        #expect(disk.clusterRange(ofCell: 0, cellCount: 4) == 0..<3)
+        #expect(disk.contents(ofCell: 0, cellCount: 4).systemClusters == 1)
+        #expect(disk.contents(ofCell: 1, cellCount: 4).systemClusters == 0)
+    }
 }

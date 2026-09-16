@@ -79,19 +79,21 @@ public struct GeneratedDisk: Sendable {
         // Les clusters de chaque catégorie qui appartiennent à un fichier d'un
         // seul tenant, sous-ensemble du décompte ci-dessus.
         var contiguousTally = [UInt32](repeating: 0, count: cellCount * categoryCount)
-        let clustersPerCell = max(Double(bitmap.clusterCount) / Double(cellCount), 1)
+        let partition = CellPartition(clusterCount: Int(bitmap.clusterCount), cellCount: cellCount)
 
         func count(_ extents: [Extent], as category: Int, contiguous: Bool = false) {
             for extent in extents where !extent.isEmpty {
-                let first = Int(Double(extent.start) / clustersPerCell)
-                let last = Int(Double(extent.end - 1) / clustersPerCell)
-                guard first < cellCount else { continue }
-                for cell in first...min(last, cellCount - 1) {
+                let start = Int(extent.start)
+                let end = Int(extent.end)
+                guard start < partition.clusterCount else { continue }
+                let first = partition.cell(ofCluster: start)
+                let last = partition.cell(ofCluster: end - 1)
+                for cell in first...last {
                     // Part de l'extent qui tombe dans cette cellule.
-                    let cellStart = Double(cell) * clustersPerCell
-                    let overlap = min(Double(extent.end), cellStart + clustersPerCell)
-                        - max(Double(extent.start), cellStart)
-                    let share = UInt32(max(overlap, 1))
+                    let clusters = partition.clusters(ofCell: cell)
+                    let overlap = min(clusters.upperBound, end) - max(clusters.lowerBound, start)
+                    guard overlap > 0 else { continue }
+                    let share = UInt32(overlap)
                     tally[cell * categoryCount + category] += share
                     if contiguous { contiguousTally[cell * categoryCount + category] += share }
                 }
@@ -124,10 +126,11 @@ public struct GeneratedDisk: Sendable {
                 result[cell] = UInt8(best)
                 contiguous[cell] = contiguousTally[cell * categoryCount + best] * 2 > bestCount
             }
-            // Le décompte majore d'un cluster les extents qui n'effleurent la
-            // cellule que d'une fraction ; la borne à 255 évite qu'un bloc
-            // débordé se retrouve « plus que plein ».
-            let ratio = Double(occupied) / clustersPerCell
+            // Le décompte est exact, mais deux extents peuvent se recouvrir
+            // (la MFT et un fichier qui la décrit) : la borne évite un bloc
+            // « plus que plein ». Un bloc au-delà du volume ne porte rien.
+            let capacity = partition.clusters(ofCell: cell).count
+            let ratio = capacity > 0 ? Double(occupied) / Double(capacity) : 0
             fill[cell] = UInt8(min(max(ratio, 0), 1) * 255)
         }
         return (result, fill, contiguous)

@@ -31,19 +31,14 @@ extension GeneratedDisk {
     /// La plage de clusters que représente un bloc, sur une carte de
     /// `cellCount` blocs.
     ///
-    /// Le découpage est celui de `shaded(count:)` — une part fractionnaire de
-    /// clusters par bloc —, arrondi au cluster : les plages se suivent sans
-    /// trou ni recouvrement, et le dernier bloc va jusqu'au bout du volume.
+    /// Le découpage est celui de `shaded(count:)`, `CellPartition` : les
+    /// plages se suivent sans trou ni recouvrement, et un cluster est listé
+    /// dans le bloc même dont il fait la couleur.
     public func clusterRange(ofCell cell: Int, cellCount: Int) -> Range<UInt32> {
         precondition(cellCount > 0 && cell >= 0 && cell < cellCount)
-        let total = bitmap.clusterCount
-        let perCell = max(Double(total) / Double(cellCount), 1)
-        func bound(_ index: Int) -> UInt32 {
-            UInt32(min(Double(total), (Double(index) * perCell).rounded(.down)))
-        }
-        let start = bound(cell)
-        let end = cell == cellCount - 1 ? total : bound(cell + 1)
-        return start..<max(start, end)
+        let clusters = CellPartition(clusterCount: Int(bitmap.clusterCount), cellCount: cellCount)
+            .clusters(ofCell: cell)
+        return UInt32(clusters.lowerBound)..<UInt32(clusters.upperBound)
     }
 
     /// Les fichiers d'un bloc, pour qu'on sache ce qu'on regarde en le
