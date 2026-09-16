@@ -977,6 +977,13 @@ struct UltraDefragStrategyTests {
         // XP sert celui que la MFT présente en premier, qui n'en a que deux.
         let xp = DefragPlanner.plan(volume: volume, using: WindowsXPStrategy())
         #expect(firstServed(xp)?.1 == .archive)
+
+        // Et la même passe XP, rejouée dans l'ordre d'UltraDefrag, sert le
+        // même fichier que lui : c'est l'ordre qui décide ici, pas le placement.
+        var sorted = WindowsXPStrategy()
+        sorted.order = .mostFragmented
+        let reordered = DefragPlanner.plan(volume: volume, using: sorted)
+        #expect(firstServed(reordered)?.1 == .document)
     }
 
     /// La première séquence de `defrag_sequence` a un seuil infini : tout

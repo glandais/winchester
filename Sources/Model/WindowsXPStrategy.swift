@@ -77,6 +77,26 @@ struct WindowsXPStrategy: DefragStrategy {
     /// donc le nombre de seeks, donc le grain de la passe.
     var bufferBytes = 4 * 1024 * 1024
 
+    /// L'ordre dans lequel les fichiers cassés sont visités.
+    ///
+    /// L'outil de XP suit la MFT, et c'est le réglage par défaut. Les autres
+    /// ordres sont ceux des outils voisins, rejoués **avec le même placement** :
+    /// c'est ce qui permet de mesurer ce que coûte un ordre de passage seul,
+    /// sans qu'un algorithme de placement différent vienne brouiller l'écart.
+    var order: Order = .mftRecord
+
+    enum Order: String, CaseIterable, Sendable {
+        /// Les numéros d'enregistrement de la MFT — l'outil de XP.
+        case mftRecord
+        /// Le plus fragmenté d'abord, départagé par le chemin — UltraDefrag.
+        case mostFragmented
+        /// La position du premier cluster sur le disque — `Defragment` de
+        /// JkDefrag, figé à l'ordre de départ.
+        case diskPosition
+        /// Le parcours de l'arborescence — le défragmenteur de Windows 95.
+        case directoryWalk
+    }
+
     /// Le découpage de l'écran de XP, et il n'en a que trois : analyser,
     /// défragmenter, rendre compte. Pas de \WINDOWS ni de \PROGRA~1 — cet
     /// outil-là ne parcourt pas l'arborescence, il lit la liste des fichiers
@@ -121,7 +141,7 @@ struct WindowsXPStrategy: DefragStrategy {
         // globalement dans un sens, avec des retours en arrière.
         let candidates = volume.files.indices
             .filter { canTouch(volume.files[$0]) }
-            .sorted { volume.files[$0].id < volume.files[$1].id }
+            .sorted { order.precedes(volume.files[$0], volume.files[$1]) }
 
         for position in candidates {
             let file = volume.files[position]
@@ -206,5 +226,29 @@ struct WindowsXPStrategy: DefragStrategy {
     /// chemin.
     private func canTouch(_ file: DefragFile) -> Bool {
         file.isMovable && file.category != .reserved && file.clusterCount > 0
+    }
+}
+
+extension WindowsXPStrategy.Order {
+
+    /// Un ordre total : chaque critère est départagé jusqu'à l'identifiant,
+    /// sans quoi le tri — donc le son — dépendrait de l'implémentation de
+    /// `sorted`.
+    func precedes(_ a: DefragFile, _ b: DefragFile) -> Bool {
+        switch self {
+        case .mftRecord:
+            return a.id < b.id
+        case .mostFragmented:
+            if a.fragmentCount != b.fragmentCount { return a.fragmentCount > b.fragmentCount }
+            if a.path != b.path { return a.path < b.path }
+            return a.id < b.id
+        case .diskPosition:
+            let left = a.firstCluster ?? .max, right = b.firstCluster ?? .max
+            if left != right { return left < right }
+            return a.id < b.id
+        case .directoryWalk:
+            if a.walkOrder != b.walkOrder { return a.walkOrder < b.walkOrder }
+            return a.id < b.id
+        }
     }
 }
