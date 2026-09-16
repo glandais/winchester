@@ -802,14 +802,77 @@ incrémental de `swift test` incohérent : la suite complète **plantait** (sign
 alors que chaque suite passait seule. Ce n'était pas le code : un
 `rm -rf .build/arm64-apple-macosx/debug` et la suite passe, 210 tests.
 
+### La MFT sur la carte
+
+**Fait** · branche `chantier-2`
+
+#### Le problème
+
+La section sur la zone MFT avait rendu `$Boot`, la MFT et `$MFTMirr` visibles
+aux défragmenteurs, par `systemExtents`, mais pas à l'écran. Les deux cartes ne
+lisaient que les fichiers : `DefragVolume.categoryRuns()` pour la passe,
+`GeneratedDisk.shaded(count:)` pour la galerie. Une MFT hors zone y paraissait
+libre, alors qu'aucun outil n'a le droit d'y écrire.
+
+L'écart est petit en clusters et pas en sens. MFT des huit volumes NTFS :
+
+| scénario | clusters | extents |
+|---|---:|---:|
+| `gamer-2003` | 802 | 1 |
+| `famille-2003` | 1 980 | 1 |
+| `secretaire-2003` | 2 554 | 1 |
+| `gamer-2007` | 4 019 | 1 |
+| `famille-2007` | 4 259 | 1 |
+| `dev-2003` | 4 652 | **348** |
+| `secretaire-2007` | 4 721 | **203** |
+| `dev-2007` | 7 102 | 6 |
+
+C'est sur `dev-2003` et `secretaire-2007` que l'erreur se voyait : une MFT en
+centaines de morceaux, semés hors d'une zone qui a cédé, faisait autant de
+faux trous.
+
+#### Les décisions
+
+- **Les extents système entrent dans les deux agrégations**, avant les
+  fichiers, sans devenir des fichiers : ni déplacés, ni comptés dans les
+  statistiques de la passe.
+- **Ils prennent la couleur de `.reserved`**, celle des tables FAT, et non une
+  couleur neuve. C'est la même chose : ce que le système de fichiers occupe pour
+  lui-même. Le noyau le disait déjà, `FileCategory.metadata` étant commentée
+  « FAT, MFT, répertoires ». La légende passe de « FAT, racine » à « FAT, MFT,
+  racine ».
+- `categoryMap()`, des deux côtés, suit la même règle : c'est la référence
+  cluster par cluster des tests, et elle ne doit pas diverger de ce que montrent
+  les plages.
+
+Rien d'audible ne bouge : `initialRuns` ne sert qu'au rejeu de la carte et à la
+légende, et aucune mutation ne change.
+
+#### Ce qui valide
+
+Deux tests, qui échouent tous les deux sans la correction (MFT comptée 0 au lieu
+de 81 et de 104) :
+- les quatre défragmenteurs publient la MFT en `.reserved` au départ, et elle y
+  est encore une fois toutes les mutations rejouées ;
+- la galerie peint un bloc entièrement MFT plein et en métadonnées, et laisse
+  libre un bloc sans MFT.
+
+212 tests.
+
+#### Laissé ouvert
+
+**Rien n'a été regardé à l'écran.** Le simulateur démarré sur le poste n'était
+pas celui du projet, et un second n'a pas été démarré. La légende se replie
+d'elle-même (`FlowRow`), mais le libellé allongé n'a pas été vu. À 48 × 26, un
+bloc de `dev-2003` vaut des milliers de clusters : la MFT n'y gagne la couleur
+d'un bloc que là où elle domine, et le nombre de blocs concernés n'a pas été
+compté.
+
 ### Ce qui reste
 
 - **La loi de la zone MFT n'a pas de source Microsoft.** La division par deux
   vient de descriptions tierces, et rien ne dit si la zone se reconstitue au
   montage suivant. Le modèle la suppose définitive.
-- **La carte du volume ne montre pas la MFT.** Ses clusters sont désormais
-  occupés pour les défragmenteurs, mais pas décrits comme plages : l'écran les
-  affiche libres.
 - **Les tris complets de JkDefrag** : `OptimizeSort` sur les cinq critères, avec
   `Vacate` et sa protection anti-ver, plus `ForcedFill` et `OptimizeUp`. Ce sont
   les seuls modes qui évacuent. Les zones, elles, sont faites.

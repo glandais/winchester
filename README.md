@@ -213,6 +213,11 @@ rémanence de 0,34 s, fondue sur l'âge comme la traînée du plateau.
 Rien de tout cela n'est tenu cluster par cluster : la carte est une suite de
 plages, et un volume de 320 Go coûte 2,6 Mo au lieu de 78.
 
+Sur NTFS, `$Boot`, la MFT et `$MFTMirr` n'appartiennent à aucun fichier du
+catalogue, mais occupent le volume : la carte les peint de la couleur des tables
+FAT, celle de ce que le système de fichiers se réserve pour lui-même. Une zone
+MFT qui cède ne laisse donc pas croire que la MFT est un trou.
+
 ## Les disques d'époque
 
 Second écran de l'application : une galerie de volumes vieillis, cinq époques
