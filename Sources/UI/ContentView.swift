@@ -1,5 +1,6 @@
 import SwiftUI
 import DiskCore
+import Combine
 
 /// Deux écrans : la simulation sonore, et la galerie de disques d'époque.
 ///
@@ -57,14 +58,21 @@ struct ContentView: View {
     }
 }
 
-/// Le moteur publie sa propre horloge : il doit être observé directement,
-/// sinon l'écran ne se rafraîchit pas pendant la lecture.
+/// Le moteur publie sa propre horloge : l'écran la suit au travers d'un relais,
+/// sinon il ne se rafraîchit pas pendant la lecture.
 struct SimulatorScreen: View {
 
     @ObservedObject var model: SimulationModel
-    @ObservedObject var engine: DiskNoiseEngine
+    @StateObject private var clock: ClockRelay
     @State private var showsModelNotes = false
     @State private var showsFullScreenMap = false
+
+    init(model: SimulationModel, engine: DiskNoiseEngine) {
+        _model = ObservedObject(wrappedValue: model)
+        _clock = StateObject(wrappedValue: ClockRelay(engine: engine))
+    }
+
+    private var engine: DiskNoiseEngine { clock.engine }
 
     private var time: Double { engine.currentTime }
     /// Une seule interrogation de la trace par image, partagée par le plateau et
@@ -198,6 +206,13 @@ struct SimulatorScreen: View {
             .panel()
             .fullScreenCover(isPresented: $showsFullScreenMap) {
                 DefragFullScreenMap(model: model, engine: engine)
+            }
+            // Recouvert, cet écran ne suit plus l'horloge : il se redessinait
+            // sinon soixante fois par seconde sous le plein écran — carte,
+            // plateau et bandeau que personne ne voit —, et doublait le coût de
+            // la lecture. Il se remet à l'heure dès que le plein écran se ferme.
+            .onChange(of: showsFullScreenMap) { _, covered in
+                clock.isRelaying = !covered
             }
         }
     }
@@ -387,27 +402,27 @@ struct SimulatorScreen: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.text)
 
-            LevelSlider(label: "Rotation (procédurale)", value: $engine.spindleLevel)
-            LevelSlider(label: "Tête (banc de résonateurs)", value: $engine.transientLevel)
-            LevelSlider(label: "Général", value: $engine.masterLevel)
+            LevelSlider(label: "Rotation (procédurale)", value: engineBinding(\.spindleLevel))
+            LevelSlider(label: "Tête (banc de résonateurs)", value: engineBinding(\.transientLevel))
+            LevelSlider(label: "Général", value: engineBinding(\.masterLevel))
 
             Divider().overlay(Theme.stroke).padding(.vertical, 4)
 
             if engine.supportsHaptics {
-                Toggle(isOn: $engine.hapticsEnabled) {
+                Toggle(isOn: engineBinding(\.hapticsEnabled)) {
                     Text("Retour haptique")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.text)
                 }
                 if engine.hapticsEnabled {
-                    LevelSlider(label: "Intensité des transitoires", value: $engine.hapticIntensity)
-                    Toggle(isOn: $engine.spindleHaptics) {
+                    LevelSlider(label: "Intensité des transitoires", value: engineBinding(\.hapticIntensity))
+                    Toggle(isOn: engineBinding(\.spindleHaptics)) {
                         Text("Grondement de rotation")
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.dim)
                     }
                     if engine.spindleHaptics {
-                        LevelSlider(label: "Niveau du grondement", value: $engine.spindleHapticLevel)
+                        LevelSlider(label: "Niveau du grondement", value: engineBinding(\.spindleHapticLevel))
                     }
                     Text(engine.hapticReport)
                         .font(.system(size: 10, design: .monospaced))
@@ -422,6 +437,14 @@ struct SimulatorScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
+    }
+
+    /// Un réglage du moteur. Le relais ne fournit pas de `Binding` : on le
+    /// fabrique, et la vue se redessine par le relais comme pour l'horloge.
+    private func engineBinding<Value>(_ keyPath: ReferenceWritableKeyPath<DiskNoiseEngine, Value>) -> Binding<Value> {
+        let engine = engine
+        return Binding(get: { engine[keyPath: keyPath] },
+                       set: { engine[keyPath: keyPath] = $0 })
     }
 
     /// La géométrie change d'un scénario à l'autre — et d'un disque généré à
@@ -458,6 +481,38 @@ struct SimulatorScreen: View {
                 .foregroundStyle(Theme.text)
         }
         .panel()
+    }
+}
+
+// MARK: - Relais d'horloge
+
+/// Transmet à un écran les changements du moteur — son horloge d'abord, soixante
+/// fois par seconde —, tant qu'on ne lui demande pas de se taire.
+///
+/// `@ObservedObject` ne sait pas cesser d'observer : un écran recouvert par un
+/// plein écran reste abonné, et SwiftUI recalcule son corps à chaque image même
+/// si rien n'en est visible. Le relais est ce qu'on peut couper.
+@MainActor
+final class ClockRelay: ObservableObject {
+
+    let engine: DiskNoiseEngine
+
+    /// Coupé, plus rien ne passe. Rouvert, un seul changement est envoyé, pour
+    /// que l'écran rattrape d'un coup l'état qu'il a manqué.
+    var isRelaying = true {
+        didSet { if isRelaying && !oldValue { objectWillChange.send() } }
+    }
+
+    private var subscription: AnyCancellable?
+
+    init(engine: DiskNoiseEngine) {
+        self.engine = engine
+        subscription = engine.objectWillChange.sink { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isRelaying else { return }
+                self.objectWillChange.send()
+            }
+        }
     }
 }
 

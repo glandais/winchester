@@ -165,6 +165,58 @@ struct ClusterMapTests {
         #expect(stepping.cells(at: end) == seeking.cells(at: end))
     }
 
+    /// La carte ne refait sa réduction que lorsqu'une mutation est tombée, et
+    /// seulement pour les blocs que cette mutation a touchés. Le risque d'un tel
+    /// cache est un bloc figé sur une couleur périmée ; on compare donc, une
+    /// image sur deux, à un player neuf qui ne peut rien avoir retenu — et on
+    /// vérifie que le cache sert vraiment, sans quoi il ne ferait que coûter.
+    /// Oublier un seul bloc touché par image suffit à faire échouer ce test.
+    @Test("Une image sans mutation reprend la carte de l'image d'avant, jamais une carte périmée")
+    func unchangedFramesReuseTheReduction() {
+        let plan = Self.plan()
+        let timeline = Self.timeline(from: plan)
+        let end = Self.endTime(timeline)
+
+        let player = ClusterMapPlayer()
+        player.load(timeline)
+        var frames = 0
+        var reductions = 0
+        var previous = player.shades(at: 0)
+        var revision = player.revision
+        var time = 0.0
+        while time < end {
+            time += 1.0 / 60
+            frames += 1
+            let shades = player.shades(at: time)
+            if player.revision == revision {
+                // Le même stockage, pas seulement le même contenu : c'est ce
+                // qui dispense la vue de comparer seize mille blocs.
+                let same = shades.withUnsafeBufferPointer { a in
+                    previous.withUnsafeBufferPointer { b in a.baseAddress == b.baseAddress }
+                }
+                #expect(same, "à \(time) s")
+            } else {
+                reductions += 1
+            }
+            if frames % 2 == 0 {
+                let fresh = ClusterMapPlayer()
+                fresh.load(timeline)
+                #expect(shades == fresh.shades(at: time), "à \(time) s")
+            }
+            previous = shades
+            revision = player.revision
+        }
+        // Le petit volume des tests mute presque à chaque image ; le cache doit
+        // tout de même avoir servi.
+        #expect(reductions > 0)
+        #expect(reductions < frames, "\(reductions) réductions pour \(frames) images")
+
+        // Changer de grille invalide aussi.
+        let fine = MapGrid(columns: 96, rows: 54)
+        player.setGrid(fine)
+        #expect(player.shades(at: end).count == fine.cellCount)
+    }
+
     // MARK: - La grille
 
     /// Changer de grille ne change pas l'état du disque, seulement la finesse

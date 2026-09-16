@@ -480,6 +480,26 @@ final class ClusterMapPlayer {
     private var pending: [TimedMutation] = []
     private var pendingHead = 0
     private var time: Double = 0
+    /// Change à chaque fois que le décompte change : une mutation appliquée, une
+    /// grille changée, un volume chargé. Tant qu'il ne bouge pas, la carte non
+    /// plus.
+    ///
+    /// C'est la plupart des images : une passe applique quelques dizaines de
+    /// mutations par seconde, et l'écran en demande soixante. Sans cela, chaque
+    /// image refaisait la réduction de tous les blocs puis le `CGImage` qui en
+    /// sort, pour retrouver la carte de l'image d'avant.
+    private(set) var revision = 0
+    /// La dernière réduction, et le décompte dont elle sort.
+    private var cachedShades: [ClusterShade] = []
+    private var cachedRevision = -1
+    /// Les blocs dont le décompte a bougé depuis la dernière réduction.
+    ///
+    /// Une liste et non un intervalle : un déplacement écrit au début du volume
+    /// et libère à la fin, et l'intervalle qui couvrirait les deux serait la
+    /// carte entière. Une mutation ne touche en général qu'un ou deux blocs ;
+    /// c'est ce qu'une image doit recalculer, pas les seize mille autres.
+    private var dirtyCells: [Int] = []
+    private var isDirty: [Bool] = []
 
     init(grid: MapGrid = .standard) {
         self.grid = grid
@@ -509,6 +529,7 @@ final class ClusterMapPlayer {
             pending = []
             pendingHead = 0
             tally = []
+            revision += 1
             return
         }
         load(clusterCount: timeline.clusterCount, initialRuns: timeline.initialRuns)
@@ -551,7 +572,13 @@ final class ClusterMapPlayer {
     /// le changement de grille, le seul endroit où le décompte se refait en
     /// entier.
     private func rebuildTally() {
+        revision += 1
         tally = [UInt32](repeating: 0, count: grid.cellCount * Self.categoryCount)
+        // Toute la réduction est à refaire : on repart d'une carte vide plutôt
+        // que de marquer chaque bloc.
+        cachedShades = []
+        dirtyCells = []
+        isDirty = [Bool](repeating: false, count: grid.cellCount)
         map.forEachRun { run in
             add(start: Int(run.start), count: Int(run.count),
                 category: Int(run.category), delta: 1)
@@ -580,6 +607,10 @@ final class ClusterMapPlayer {
             guard share > 0 else { continue }
             let slot = cell * Self.categoryCount + category
             tally[slot] = UInt32(Int(tally[slot]) + delta * share)
+            if !isDirty[cell] {
+                isDirty[cell] = true
+                dirtyCells.append(cell)
+            }
         }
     }
 
@@ -598,34 +629,50 @@ final class ClusterMapPlayer {
     /// se paye, c'est de ne pas l'avoir : à 17 000 blocs sur un volume de
     /// 320 Go, un bloc vaut quatre mille clusters et « la catégorie dominante »
     /// affiche plein un bloc où il reste les trois quarts de la place.
+    ///
+    /// Tant que rien n'a changé depuis l'appel précédent, c'est **le même
+    /// tableau** qui revient, et pas seulement un tableau égal : deux tableaux
+    /// qui partagent leur stockage se comparent sans être parcourus, et c'est
+    /// cette comparaison-là qui permet à la vue de ne pas redessiner sa carte.
     func shades(at requestedTime: Double) -> [ClusterShade] {
         guard isLoaded else { return [] }
         advance(to: requestedTime)
+        if cachedRevision == revision { return cachedShades }
 
-        let perCell = clustersPerCell
-        var shades = [ClusterShade](repeating: .empty, count: grid.cellCount)
-        for cell in 0..<grid.cellCount {
-            let base = cell * Self.categoryCount
-            var best = 0
-            var bestCount: UInt32 = 0
-            var occupied: UInt32 = 0
-            // La catégorie « libre » est l'indice zéro : elle ne concourt pas
-            // pour la couleur, mais c'est son complément qui donne le taux.
-            for category in 1..<Self.categoryCount {
-                let count = tally[base + category]
-                occupied += count
-                if count > bestCount {
-                    best = category
-                    bestCount = count
-                }
-            }
-            // Le dernier bloc ramasse le reste de la division et peut porter
-            // plus de clusters que les autres : la borne à 1 l'empêche de
-            // paraître « plus que plein ».
-            let ratio = min(Double(occupied) / Double(perCell), 1)
-            shades[cell] = ClusterShade(category: UInt8(best), fill: UInt8(ratio * 255))
+        if cachedShades.count != grid.cellCount {
+            cachedShades = [ClusterShade](repeating: .empty, count: grid.cellCount)
+            for cell in 0..<grid.cellCount { cachedShades[cell] = shade(ofCell: cell) }
+        } else {
+            for cell in dirtyCells { cachedShades[cell] = shade(ofCell: cell) }
         }
-        return shades
+        for cell in dirtyCells { isDirty[cell] = false }
+        dirtyCells.removeAll(keepingCapacity: true)
+        cachedRevision = revision
+        return cachedShades
+    }
+
+    /// La couleur d'un bloc, tirée de son décompte.
+    private func shade(ofCell cell: Int) -> ClusterShade {
+        let perCell = clustersPerCell
+        let base = cell * Self.categoryCount
+        var best = 0
+        var bestCount: UInt32 = 0
+        var occupied: UInt32 = 0
+        // La catégorie « libre » est l'indice zéro : elle ne concourt pas
+        // pour la couleur, mais c'est son complément qui donne le taux.
+        for category in 1..<Self.categoryCount {
+            let count = tally[base + category]
+            occupied += count
+            if count > bestCount {
+                best = category
+                bestCount = count
+            }
+        }
+        // Le dernier bloc ramasse le reste de la division et peut porter
+        // plus de clusters que les autres : la borne à 1 l'empêche de
+        // paraître « plus que plein ».
+        let ratio = min(Double(occupied) / Double(perCell), 1)
+        return ClusterShade(category: UInt8(best), fill: UInt8(ratio * 255))
     }
 
     /// Total du décompte, blocs et catégories confondus.
@@ -647,6 +694,7 @@ final class ClusterMapPlayer {
     func advance(to requestedTime: Double) {
         guard requestedTime >= time else { return }
         time = requestedTime
+        let appliedBefore = pendingHead
         while pendingHead < pending.count && pending[pendingHead].time <= requestedTime {
             let mutation = pending[pendingHead]
             // La carte rend ce que chaque morceau recouvert portait, et c'est
@@ -663,5 +711,6 @@ final class ClusterMapPlayer {
                 category: Int(mutation.category), delta: 1)
             pendingHead += 1
         }
+        if pendingHead != appliedBefore { revision += 1 }
     }
 }
