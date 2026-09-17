@@ -85,6 +85,39 @@ if let strategyID {
     strategy = nil
 }
 
+// `life:<profil>` ne rend aucun son : il fait défiler la vie du disque et dit
+// ce qu'elle laisse, journée par journée. C'est la vue d'ensemble dont une
+// écoute ne donne qu'un jour.
+if requested.hasPrefix("life:") {
+    let id = String(requested.dropFirst(5))
+    guard let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == id }) else {
+        FileHandle.standardError.write("profil inconnu : \(id)\n".data(using: .utf8)!)
+        exit(1)
+    }
+    let started = Date()
+    let life = DiskLife(spec: spec)
+    var lines: [String] = []
+    while !life.isFinished {
+        for digest in life.advance(days: 30) {
+            let notable = digest.landmark != nil
+            guard notable || digest.day % 90 == 0 else { continue }
+            lines.append(String(format: "  %5d  %@  %3d %% plein  %6d fichiers  %5d en morceaux  %6d Mo  %@%@",
+                                Int(digest.day), digest.date as NSString,
+                                Int(digest.fill * 100), digest.fileCount, digest.fragmentedFiles,
+                                digest.bytesWritten / 1_000_000,
+                                digest.activities.map(\.label).joined(separator: ", ") as NSString,
+                                digest.landmark.map { "  ← \($0.label)" } ?? ""))
+        }
+    }
+    FileHandle.standardError.write(("""
+    profil        : \(spec.displayName)
+    jours         : \(life.digests.count), \(life.landmarks.count) à écouter
+    défilement    : \(String(format: "%.1f", Date().timeIntervalSince(started))) s
+
+    """ + lines.joined(separator: "\n") + "\n").data(using: .utf8)!)
+    exit(0)
+}
+
 let scenario: Scenario
 var installed: InstalledDisk?
 if let kind = ScenarioKind(rawValue: requested) {

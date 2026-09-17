@@ -122,6 +122,11 @@ public final class HistoryReplay: @unchecked Sendable {
     // MARK: - L'état du disque
 
     public var catalog: FileCatalog { fat?.catalog ?? ntfs!.catalog }
+    /// Ce que le système de fichiers occupe pour lui-même à cet instant : la
+    /// MFT a pu grandir depuis le premier jour.
+    public var systemExtents: [Extent] {
+        fat?.allocator.metadataExtents ?? ntfs!.allocator.metadataExtents
+    }
     public var bitmap: ClusterBitmap { fat?.allocator.bitmap ?? ntfs!.allocator.bitmap }
 
     /// Le disque tel qu'il est à cet instant de l'histoire. Les mesures sont

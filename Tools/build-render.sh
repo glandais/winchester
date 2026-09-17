@@ -31,6 +31,7 @@ swiftc -O -swift-version 6 -o "$OUT" \
     Sources/Model/InstallSession.swift \
     Sources/Model/MachineWriter.swift \
     Sources/Model/DaySession.swift \
+    Sources/Model/DiskLife.swift \
     Sources/Model/DiskSimulator.swift \
     Sources/Model/Volume.swift \
     Sources/Model/DefragJob.swift \

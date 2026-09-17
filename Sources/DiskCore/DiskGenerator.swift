@@ -73,13 +73,31 @@ public struct GeneratedDisk: Sendable {
     ///   par des fichiers d'un seul tenant.
     public func shaded(count cellCount: Int,
                        free: UInt8 = .max) -> (categories: [UInt8], fill: [UInt8], contiguous: [Bool]) {
+        ClusterShading.shaded(catalog: catalog, systemExtents: systemExtents,
+                              clusterCount: bitmap.clusterCount, cellCount: cellCount, free: free)
+    }
+}
+
+/// L'agrégation d'un volume en blocs d'affichage.
+///
+/// Le disque généré n'est pas seul à la demander : le défilement de la vie d'un
+/// disque en veut une par journée, sans construire de disque. D'où la
+/// séparation — mêmes décomptes, deux appelants.
+public enum ClusterShading {
+
+    /// - Returns: la catégorie dominante de chaque bloc, sa part de clusters
+    ///   occupés ramenée à 0…255, et si cette catégorie est surtout portée par
+    ///   des fichiers d'un seul tenant.
+    public static func shaded(catalog: FileCatalog, systemExtents: [Extent],
+                              clusterCount: UInt32, cellCount: Int,
+                              free: UInt8 = .max) -> (categories: [UInt8], fill: [UInt8], contiguous: [Bool]) {
         precondition(cellCount > 0)
         let categoryCount = FileCategory.allCases.count
         var tally = [UInt32](repeating: 0, count: cellCount * categoryCount)
         // Les clusters de chaque catégorie qui appartiennent à un fichier d'un
         // seul tenant, sous-ensemble du décompte ci-dessus.
         var contiguousTally = [UInt32](repeating: 0, count: cellCount * categoryCount)
-        let partition = CellPartition(clusterCount: Int(bitmap.clusterCount), cellCount: cellCount)
+        let partition = CellPartition(clusterCount: Int(clusterCount), cellCount: cellCount)
 
         func count(_ extents: [Extent], as category: Int, contiguous: Bool = false) {
             for extent in extents where !extent.isEmpty {
