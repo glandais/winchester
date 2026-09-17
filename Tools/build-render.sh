@@ -19,43 +19,58 @@ else
 fi
 
 OUT="${1:-/tmp/rendertrace}"
+# L'outil vidéo se range à côté : même dossier, même paquet de ressources.
+VIDEO_OUT="$(dirname "$OUT")/rendervideo"
 
-# shellcheck disable=SC2086 # CORE_FLAGS doit se découper en arguments
-swiftc -O -swift-version 6 -o "$OUT" \
-    $CORE_FLAGS \
-    Sources/Model/VolumeLayout.swift \
-    Sources/Model/DefragVolume.swift \
-    Sources/Model/Workload.swift \
-    Sources/Model/Platter.swift \
-    Sources/Model/BootSession.swift \
-    Sources/Model/InstallSession.swift \
-    Sources/Model/MachineWriter.swift \
-    Sources/Model/DaySession.swift \
-    Sources/Model/DiskLife.swift \
-    Sources/Model/DiskSimulator.swift \
-    Sources/Model/Volume.swift \
-    Sources/Model/DefragJob.swift \
-    Sources/Model/DefragStrategy.swift \
-    Sources/Model/Windows95Strategy.swift \
-    Sources/Model/WindowsXPStrategy.swift \
-    Sources/Model/JKDefragStrategy.swift \
-    Sources/Model/JKDefragFullOptimize.swift \
-    Sources/Model/UltraDefragStrategy.swift \
-    Sources/Model/FrontierCompactionStrategy.swift \
-    Sources/Model/FragmentMergeStrategy.swift \
-    Sources/Model/GeneratedVolume.swift \
-    Sources/Model/ClusterMap.swift \
-    Sources/Model/OperationSink.swift \
-    Sources/Model/PassPipeline.swift \
-    Sources/Model/PassSession.swift \
-    Sources/Model/LivePass.swift \
-    Sources/Model/ClusterPalette.swift \
-    Sources/Model/Scenario.swift \
-    Sources/Audio/Biquad.swift \
-    Sources/Audio/SeekSynth.swift \
-    Sources/Audio/SpindleVoice.swift \
-    Sources/Model/AudioCue.swift \
-    Tools/RenderTrace/main.swift
+# Les sources du modèle et de la synthèse que partagent les deux outils.
+MODEL_SOURCES="
+    Sources/Model/VolumeLayout.swift
+    Sources/Model/DefragVolume.swift
+    Sources/Model/Workload.swift
+    Sources/Model/Platter.swift
+    Sources/Model/BootSession.swift
+    Sources/Model/InstallSession.swift
+    Sources/Model/MachineWriter.swift
+    Sources/Model/DaySession.swift
+    Sources/Model/DiskLife.swift
+    Sources/Model/DiskSimulator.swift
+    Sources/Model/Volume.swift
+    Sources/Model/DefragJob.swift
+    Sources/Model/DefragStrategy.swift
+    Sources/Model/Windows95Strategy.swift
+    Sources/Model/WindowsXPStrategy.swift
+    Sources/Model/JKDefragStrategy.swift
+    Sources/Model/JKDefragFullOptimize.swift
+    Sources/Model/UltraDefragStrategy.swift
+    Sources/Model/FrontierCompactionStrategy.swift
+    Sources/Model/FragmentMergeStrategy.swift
+    Sources/Model/GeneratedVolume.swift
+    Sources/Model/ClusterMap.swift
+    Sources/Model/OperationSink.swift
+    Sources/Model/PassPipeline.swift
+    Sources/Model/PassSession.swift
+    Sources/Model/LivePass.swift
+    Sources/Model/ClusterPalette.swift
+    Sources/Model/Scenario.swift
+    Sources/Audio/Biquad.swift
+    Sources/Audio/SeekSynth.swift
+    Sources/Audio/SpindleVoice.swift
+    Sources/Model/AudioCue.swift
+    Tools/Shared/ScenarioRequest.swift
+    Tools/Shared/StreamingMixer.swift
+    Tools/Shared/Report.swift
+"
+
+# shellcheck disable=SC2086 # CORE_FLAGS et MODEL_SOURCES se découpent en arguments
+swiftc -O -swift-version 6 -o "$OUT" $CORE_FLAGS $MODEL_SOURCES Tools/RenderTrace/main.swift
+
+# shellcheck disable=SC2086
+swiftc -O -swift-version 6 -o "$VIDEO_OUT" $CORE_FLAGS $MODEL_SOURCES \
+    Tools/RenderVideo/Canvas.swift \
+    Tools/RenderVideo/PlatterDrawing.swift \
+    Tools/RenderVideo/FrameComposer.swift \
+    Tools/RenderVideo/AudioSnippets.swift \
+    Tools/RenderVideo/main.swift
 
 # Bundle.module ne cherche les ressources de DiskCore qu'à côté de l'exécutable
 # (Swift Build n'y ajoute plus le chemin du dossier de build).

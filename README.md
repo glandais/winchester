@@ -1002,6 +1002,40 @@ entre la lecture séquentielle du noyau et le crépitement des pilotes, et **88 
 de l'énergie entre 1,5 et 8 kHz**, conforme aux mesures publiées sur des seeks
 piste-à-piste répétés.
 
+## Vidéos
+
+Les vidéos de démonstration se rendent **hors de l'application** : la même
+passe, le même modèle et la même horloge que le son, dessinés image par image en
+Core Graphics et encodés par `ffmpeg` (à installer : `brew install ffmpeg`).
+
+```sh
+./Tools/make-videos.sh                    # tout le lot de Tools/videos.txt
+./Tools/make-videos.sh defrag-windows95   # les lignes dont le nom commence ainsi
+
+./Tools/build-render.sh                   # construit aussi /tmp/rendervideo
+SCENARIO=windowsBoot /tmp/rendervideo demarrage.mp4
+SCENARIO=defrag FIT_SECONDS=180 /tmp/rendervideo defrag-3min.mp4
+SCENARIO=dev-1993 LAYOUT=short FIT_SECONDS=58 /tmp/rendervideo short.mp4
+MAX_SECONDS=10 SCENARIO=defrag /tmp/rendervideo essai.mp4
+```
+
+Chaque vidéo reprend ce que montre la passe dans l'application : la carte des
+clusters rejouée (pour une défragmentation), le plateau et son bras, la phase,
+l'avancement, les déplacements et le débit. Elle se termine sur un bilan de
+quelques secondes, avec les chiffres de `PLAN_ONLY`. Deux formats : 1920 × 1080
+(`LAYOUT=landscape`) et 1080 × 1920 pour les Shorts (`LAYOUT=short`).
+
+La version **intégrale** a exactement le son de `RenderTrace`, au bit près avant
+l'encodage AAC. Une version **accélérée** (`SPEED`, ou `FIT_SECONDS` qui déduit
+la vitesse d'une planification à blanc) garde le son tel qu'il est, par
+extraits de quatre secondes pris au milieu de ce que l'image montre et enchaînés
+en fondu : accélérer le son lui-même en ferait un autre bruit. Tout est en flux,
+et une passe de plusieurs heures se rend sans tenir en mémoire, à une centaine
+d'images par seconde.
+
+Les vidéos vont dans `.build/videos/`, avec le journal de chaque rendu. Une
+vidéo déjà présente n'est pas refaite.
+
 ## Structure
 
 ```
@@ -1106,6 +1140,10 @@ Sources/Haptics/
 Sources/UI/                SwiftUI : plateau, carte des clusters, chronologie,
                            transport, mixage
 Tools/RenderTrace/         rendu hors-ligne en WAV
+Tools/RenderVideo/         rendu hors-ligne en vidéo : carte, plateau, bilan
+Tools/Shared/              scénario demandé, mixage en flux et bilan, communs
+                           aux deux outils
+Tools/make-videos.sh       le lot de vidéos décrit dans Tools/videos.txt
 ```
 
 ## Journal de bord

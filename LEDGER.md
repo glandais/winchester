@@ -2998,3 +2998,94 @@ Deux obstacles :
   2007 cela coûte quelques millisecondes, mais rien n'est incrémental.
 - **Les jours sautés ne sont pas racontés** : on ne peut pas revenir en arrière
   dans une vie, seulement la rejouer depuis le début.
+
+## Chantier 18 — des vidéos de la passe, rendues hors de l'application
+
+**Fait** · branche `videos-youtube`
+
+### Le problème
+
+Montrer DiskNoise sur YouTube : un démarrage, une défragmentation, plus tard une
+installation. Filmer l'application n'est pas possible proprement. Le simulateur
+enregistre l'écran **sans le son**, l'application n'a aucun point d'entrée
+d'automatisation (ni argument de lancement, ni lien profond), et une
+défragmentation d'époque dure de trente minutes à plusieurs heures en temps réel.
+Capturer la sortie audio du Mac en même temps aurait demandé un pilote audio
+virtuel, et un calage à la main.
+
+### Les décisions
+
+- **Tout rendre hors de l'application**, depuis la même passe. `RenderTrace`
+  produisait déjà le son au fil de l'eau, et tout ce que l'écran montre passe par
+  le même `PassBatch` : mutations de la carte, échantillons de tête, accès,
+  phases, avancement. `RenderVideo` nourrit une `LivePass` sans producteur
+  (`absorb`, puis `advance` à l'instant de chaque image). La carte, la rémanence,
+  le plateau, la phase et les compteurs sont donc **lus exactement comme dans
+  l'application**, sur la même horloge que le mixeur. Rien n'est recalculé : il
+  n'existe pas de seconde simulation à maintenir.
+- **Une image n'est rendue qu'une fois la passe produite jusqu'à son instant**
+  (`batch.clock`). Les mutations antérieures sont alors toutes connues, et la
+  vidéo reste en flux comme le son : les images partent dans `ffmpeg` à mesure,
+  et rien ne s'accumule.
+- **Core Graphics plutôt que SwiftUI.** L'outil est un exécutable macOS, compilé
+  contre les mêmes sources `Model` et `Audio` que `RenderTrace`. Le plateau de
+  `PlatterView` est transcrit trait pour trait (`PlatterDrawing`), avec des
+  épaisseurs rapportées au rayon. La carte reprend l'image d'un pixel par bloc de
+  `ClusterMapImage`, agrandie sans interpolation en blocs de pixels entiers.
+  Couleurs et palette viennent de `ClusterPalette` et des valeurs de `Theme`.
+- **Le son accéléré est fait d'extraits, pas accéléré.** Un seek de trente
+  millisecondes passé à ×20 n'est plus un seek. Chaque tranche de quatre
+  secondes de vidéo fait entendre le son réel du milieu de ce que l'image
+  montre, enchaîné en fondu à puissance constante. Les fenêtres ne dépendent
+  que de leur rang, ce qui permet de les remplir en flux sans connaître la durée
+  de la passe. `FIT_SECONDS` déduit la vitesse d'une planification à blanc.
+  Au-delà de ×1, le plateau ne tourne plus (comme avec « Réduire les
+  animations ») : une image y couvrirait des dizaines de tours.
+- **Le code commun sort de `RenderTrace`** dans `Tools/Shared` : lecture de
+  `SCENARIO`/`STRATEGY`/`FULL_BLOCKS`, mixeur en flux (gains passés en
+  paramètres, sortie brute facultative, rappel `onFlush`), bilan et écriture du
+  WAV.
+- **Deux formats** : 1920 × 1080, et 1080 × 1920 pour les Shorts. Chaque vidéo
+  finit sur huit secondes de bilan, avec les chiffres de `PLAN_ONLY`.
+- **Un lot décrit en texte** (`Tools/videos.txt`), rendu par
+  `Tools/make-videos.sh` dans `.build/videos/`, deux rendus à la fois. Une vidéo
+  déjà faite n'est pas refaite.
+
+### Ce qui valide
+
+- **`RenderTrace` n'a pas bougé** : les WAV de `windowsBoot`, `defrag` et
+  `boot:dev-1993` ont le même md5 avant et après la mise en commun.
+- **Le son de la vidéo intégrale est celui de `RenderTrace`** : WAV identique à
+  l'octet sur toute la durée commune (vidéo `windowsBoot` sans bilan). L'image
+  et le son partagent l'instant zéro et la même horloge, donc le calage se
+  vérifie par construction.
+- **Formats** (`ffprobe`) : 1920 × 1080 ou 1080 × 1920, 30 images/s, H.264 et
+  AAC, pistes de même durée.
+- Images relues aux instants clés : carte, rémanence, plateau, légende,
+  avancement, bilan.
+- **Le débit est moyenné sur ce que l'image couvre**, jamais moins d'une
+  seconde. La tranche de 100 ms sous l'instant de l'image convient au temps
+  réel ; en accéléré, une image couvre plusieurs tranches et n'en lire qu'une
+  affichait « 0,0 Mo/s » pendant que la passe écrivait. Sur `famille-2007` sous
+  UltraDefrag à ×17, la ligne passe de 0,0 à 27,0 puis 4,3 Mo/s selon le moment
+  de la passe. Les autres compteurs sont des cumuls, et ne souffrent pas du
+  problème.
+- **Le premier lot entier** (17 vidéos, 5,2 Go) se rend en une quarantaine de
+  minutes, deux rendus à la fois. Il comprend trois démarrages, la
+  défragmentation livrée, `dev-1993` sous Windows 95, et `famille-2007` sous
+  XP et sous UltraDefrag, chacun en intégrale, en accéléré et en Short. La
+  simulation et l'image tiennent environ 100 images/s en 1080p : 30 min 42 de
+  `dev-1993` en 615 s, 1 h 26 min 50 d'UltraDefrag en 1 550 s. Les Shorts
+  accélérés vont jusqu'à ×90 et durent 1 min 06, bilan compris.
+
+### Laissé ouvert
+
+- **L'installation** attend son scénario (chantier `installer-le-disque`).
+  Quand `SCENARIO` la connaîtra, il suffira d'une ligne dans `videos.txt`.
+- **Ni intro, ni musique, ni sous-titres** : titres et miniatures restent à
+  faire au montage. Rien n'a été publié.
+- **Rien n'a été écouté** en entier. L'enchaînement des extraits accélérés n'a
+  été vérifié qu'au niveau (−30 dB de moyenne, −10 dB de crête sur la
+  défragmentation livrée).
+- La passe livrée dure 3 min 25 : une version « accélérée » en trois minutes
+  n'aurait pas eu de sens, `videos.txt` la demande en une minute.

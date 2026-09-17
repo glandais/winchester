@@ -1,0 +1,22 @@
+# Les vidéos que fabrique Tools/make-videos.sh, une par ligne :
+#
+#   nom | variables du scénario | déclinaisons
+#
+# Variables : SCENARIO, STRATEGY, FULL_BLOCKS (voir Tools/RenderVideo/main.swift).
+# Déclinaisons, séparées par des espaces :
+#   full        passe intégrale en temps réel, 1920 × 1080
+#   fast:<s>    passe accélérée pour tenir en <s> secondes, 1920 × 1080
+#   short:<s>   Short 1080 × 1920, accéléré seulement si la passe dépasse <s> secondes
+#
+# Les scénarios livrés
+demarrage-windows      | SCENARIO=windowsBoot                        | full short:170
+defrag-windows95       | SCENARIO=defrag                             | full fast:60 short:58
+
+# Un disque de la galerie, démarré puis défragmenté : l'avant et l'après
+demarrage-dev-1993     | SCENARIO=boot:dev-1993                      | full short:170
+demarrage-famille-2007 | SCENARIO=boot:famille-2007                  | full short:170
+defrag-dev-1993        | SCENARIO=dev-1993                           | full fast:300 short:58
+
+# NTFS : l'outil d'époque contre UltraDefrag, sur le même volume
+defrag-famille-2007-xp | SCENARIO=famille-2007 STRATEGY=windowsXP    | full fast:300 short:58
+defrag-famille-2007-ud | SCENARIO=famille-2007 STRATEGY=ultraDefrag  | full fast:300 short:58
