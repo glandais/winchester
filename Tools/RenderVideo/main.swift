@@ -228,11 +228,14 @@ if let end, !capped, endCard > 0 {
     } else if let day = scenario.dayPlayback {
         lines = describe(day, stats: end.stats, duration: end.duration).components(separatedBy: "\n")
     }
-    lines += [
-        "durée         : \(French.clock(end.duration))",
-        "seeks         : \(French.integer(end.stats.seekCount)) (moy. \(end.stats.averageSeekDistance) cyl.)",
-        "lu / écrit    : \(end.stats.bytesRead / 1_000_000) / \(end.stats.bytesWritten / 1_000_000) Mo",
-    ]
+    // La description d'un scénario dit déjà une partie de ces chiffres — une
+    // journée donne ce qu'elle a lu et écrit. On n'ajoute que ce qui manque.
+    for line in ["durée         : \(French.clock(end.duration))",
+                 "seeks         : \(French.integer(end.stats.seekCount)) (moy. \(end.stats.averageSeekDistance) cyl.)",
+                 "lu / écrit    : \(end.stats.bytesRead / 1_000_000) / \(end.stats.bytesWritten / 1_000_000) Mo"] {
+        let key = line.prefix { $0 != ":" }
+        if !lines.contains(where: { $0.hasPrefix(key) }) { lines.append(line) }
+    }
     let cardFrames = Int(endCard * fps)
     background.withUnsafeBytes { background in
         for index in 0..<cardFrames {

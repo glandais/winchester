@@ -3085,7 +3085,9 @@ La demande de scénario étant désormais commune aux deux outils, la vidéo les
 pris sans rien changer d'autre que l'accès à la carte, qui passe par
 `Scenario.map` au lieu du seul `defrag` : une installation se regarde donc
 remplir un volume vierge, et une journée montre ce qu'elle laisse. Le bilan
-final reprend les deux nouvelles descriptions. Les WAV de `RenderTrace` sont
+final reprend les deux nouvelles descriptions, sans répéter ce qu'elles disent
+déjà, et son titre rétrécit plutôt que de se tronquer — le nom d'une journée
+porte sa date. Les WAV de `RenderTrace` sont
 restés identiques à l'octet, sur les cinq scénarios, y compris les deux
 nouveaux.
 

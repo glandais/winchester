@@ -375,7 +375,13 @@ final class FrameComposer {
             size -= 1
         }
         let body = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-        let heading = font(layout == .landscape ? 56 : 60, .semibold)
+        // Le titre porte le nom du scénario, qui peut être long : il rétrécit
+        // jusqu'à tenir plutôt que de se faire tronquer.
+        var headingSize: CGFloat = layout == .landscape ? 56 : 60
+        while headingSize > 28 && Canvas.width(title, font: font(headingSize, .semibold)) > width - 80 {
+            headingSize -= 2
+        }
+        let heading = font(headingSize, .semibold)
         let lineHeight = Canvas.lineHeight(body)
         let height = Canvas.lineHeight(heading) + 30 + lineHeight * CGFloat(lines.count) + 80
         let panel = CGRect(x: margin, y: (CGFloat(canvas.height) - height) / 2, width: width, height: height)
