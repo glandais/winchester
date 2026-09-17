@@ -1016,11 +1016,14 @@ Core Graphics et encodés par `ffmpeg` (à installer : `brew install ffmpeg`).
 SCENARIO=windowsBoot /tmp/rendervideo demarrage.mp4
 SCENARIO=defrag FIT_SECONDS=180 /tmp/rendervideo defrag-3min.mp4
 SCENARIO=dev-1993 LAYOUT=short FIT_SECONDS=58 /tmp/rendervideo short.mp4
+SCENARIO=install:secretaire-1996 /tmp/rendervideo installation.mp4
+SCENARIO=day:dev-1996:120 /tmp/rendervideo jour120.mp4
 MAX_SECONDS=10 SCENARIO=defrag /tmp/rendervideo essai.mp4
 ```
 
 Chaque vidéo reprend ce que montre la passe dans l'application : la carte des
-clusters rejouée (pour une défragmentation), le plateau et son bras, la phase,
+clusters rejouée — d'une défragmentation, d'une installation qui part d'un
+volume vierge, d'une journée d'usage —, le plateau et son bras, la phase,
 l'avancement, les déplacements et le débit. Elle se termine sur un bilan de
 quelques secondes, avec les chiffres de `PLAN_ONLY`. Deux formats : 1920 × 1080
 (`LAYOUT=landscape`) et 1080 × 1920 pour les Shorts (`LAYOUT=short`).

@@ -17,6 +17,10 @@ demarrage-dev-1993     | SCENARIO=boot:dev-1993                      | full shor
 demarrage-famille-2007 | SCENARIO=boot:famille-2007                  | full short:170
 defrag-dev-1993        | SCENARIO=dev-1993                           | full fast:300 short:58
 
+# Le jour 0 d'un disque, et une journée de sa vie
+installation-secretaire-1996 | SCENARIO=install:secretaire-1996        | full fast:150 short:58
+journee-dev-1996-j120        | SCENARIO=day:dev-1996:120               | full fast:120 short:58
+
 # NTFS : l'outil d'époque contre UltraDefrag, sur le même volume
 defrag-famille-2007-xp | SCENARIO=famille-2007 STRATEGY=windowsXP    | full fast:300 short:58
 defrag-famille-2007-ud | SCENARIO=famille-2007 STRATEGY=ultraDefrag  | full fast:300 short:58

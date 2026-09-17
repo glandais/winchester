@@ -3078,10 +3078,19 @@ virtuel, et un calage à la main.
   `dev-1993` en 615 s, 1 h 26 min 50 d'UltraDefrag en 1 550 s. Les Shorts
   accélérés vont jusqu'à ×90 et durent 1 min 06, bilan compris.
 
+### Après le rebasage sur `develop`
+
+Les chantiers 16 et 17 ont ajouté `install:<profil>` et `day:<profil>:<jour>`.
+La demande de scénario étant désormais commune aux deux outils, la vidéo les a
+pris sans rien changer d'autre que l'accès à la carte, qui passe par
+`Scenario.map` au lieu du seul `defrag` : une installation se regarde donc
+remplir un volume vierge, et une journée montre ce qu'elle laisse. Le bilan
+final reprend les deux nouvelles descriptions. Les WAV de `RenderTrace` sont
+restés identiques à l'octet, sur les cinq scénarios, y compris les deux
+nouveaux.
+
 ### Laissé ouvert
 
-- **L'installation** attend son scénario (chantier `installer-le-disque`).
-  Quand `SCENARIO` la connaîtra, il suffira d'une ligne dans `videos.txt`.
 - **Ni intro, ni musique, ni sous-titres** : titres et miniatures restent à
   faire au montage. Rien n'a été publié.
 - **Rien n'a été écouté** en entier. L'enchaînement des extraits accélérés n'a

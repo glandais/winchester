@@ -9,6 +9,8 @@ import AVFAudio
 //   SCENARIO=windowsBoot /tmp/rendervideo demarrage.mp4
 //   SCENARIO=defrag SPEED=4 /tmp/rendervideo defrag-x4.mp4
 //   SCENARIO=defrag LAYOUT=short FIT_SECONDS=58 /tmp/rendervideo defrag-short.mp4
+//   SCENARIO=install:secretaire-1996 /tmp/rendervideo installation.mp4
+//   SCENARIO=day:dev-1996:120 /tmp/rendervideo jour120.mp4
 //
 // `SCENARIO`, `STRATEGY` et `FULL_BLOCKS` se lisent comme pour `RenderTrace`.
 //
@@ -56,7 +58,8 @@ if let fit = Double(environment["FIT_SECONDS"] ?? "") {
     say(String(format: "durée %.1f s, vitesse ×%.2f", end.duration, speed))
 }
 
-let scenario = try ScenarioRequest.scenario()
+let request = try ScenarioRequest.request()
+let scenario = request.scenario
 
 // MARK: - Encodage
 
@@ -116,7 +119,7 @@ let live = LivePass(session: nil,
                     seekModel: scenario.seekModel,
                     spindle: scenario.setup.spindle,
                     phases: scenario.phases,
-                    map: scenario.defrag.map { ($0.partition.clusterCount, $0.initialRuns) })
+                    map: scenario.map.map { ($0.partition.clusterCount, $0.initialRuns) })
 if let grid = composer.mapGrid { live.map?.setGrid(grid) }
 
 let work = outputPath + ".work"
@@ -219,6 +222,11 @@ if let end, !capped, endCard > 0 {
         lines = describe(plan).components(separatedBy: "\n")
     } else if let boot = scenario.boot {
         lines = describe(boot, duration: end.duration).components(separatedBy: "\n")
+    } else if let install = scenario.install, let installed = request.installed {
+        lines = describe(install, installed: installed, geometry: scenario.geometry,
+                         duration: end.duration).components(separatedBy: "\n")
+    } else if let day = scenario.dayPlayback {
+        lines = describe(day, stats: end.stats, duration: end.duration).components(separatedBy: "\n")
     }
     lines += [
         "durée         : \(French.clock(end.duration))",

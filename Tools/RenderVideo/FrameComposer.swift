@@ -60,7 +60,7 @@ final class FrameComposer {
         let size = layout.size
         canvas = Canvas(width: size.width, height: size.height)
 
-        let hasMap = scenario.defrag != nil
+        let hasMap = scenario.map != nil
         frames = Self.frames(layout: layout, hasMap: hasMap)
 
         if hasMap {
@@ -74,9 +74,13 @@ final class FrameComposer {
             cellSide = 1
         }
 
+        // Une installation part d'un volume vierge : sa légende ne se lit pas
+        // dans l'état de départ, mais dans ce que la passe va poser.
         var present = Set<UInt8>()
-        for run in scenario.defrag?.initialRuns ?? [] { present.insert(run.category) }
-        legend = ClusterCategory.allCases.filter { $0 == .free || present.contains($0.rawValue) }
+        for run in scenario.map?.initialRuns ?? [] { present.insert(run.category) }
+        legend = present.count > 1
+            ? ClusterCategory.allCases.filter { $0 == .free || present.contains($0.rawValue) }
+            : ClusterCategory.allCases
     }
 
     // MARK: - Mise en page
@@ -292,7 +296,7 @@ final class FrameComposer {
             rows.append(("Évacuations", French.integer(moves.evacuations)))
         }
         rows.append(("Débit", "\(French.decimal(throughputMBs(live, at: time))) Mo/s"))
-        if scenario.defrag == nil || layout == .landscape {
+        if scenario.map == nil || layout == .landscape {
             rows.append(("Seeks", French.integer(live.totals.seeks)))
             rows.append(("Course moyenne", "\(French.integer(live.totals.averageSeekDistance)) cyl."))
         }
