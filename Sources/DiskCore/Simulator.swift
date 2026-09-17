@@ -43,16 +43,40 @@ public struct SimulationOutcome: Sendable {
 
 /// Ce qu'un événement a changé sur le disque, pour qui le rejoue pas à pas.
 public struct SimulationStep: Sendable {
-    /// Le fichier tel qu'il vient d'être posé, extents compris.
-    public var created: FileRecord?
-    /// Le fichier tel qu'il était avant d'être effacé.
-    public var deleted: FileRecord?
+    /// Le fichier avant l'événement, `nil` pour une création.
+    public var before: FileRecord?
+    /// Le fichier après, `nil` pour un effacement ou une écriture refusée.
+    public var after: FileRecord?
+    /// Clusters qui reçoivent des données : tout le fichier pour une création,
+    /// un réenregistrement ou une réécriture sur place, la fin ajoutée pour un
+    /// ajout.
+    public var written: [Extent] = []
+    /// Clusters que l'allocateur vient de prendre. Une réécriture sur place
+    /// écrit sans rien prendre.
+    public var allocated: [Extent] = []
+    /// Clusters rendus : un effacement, la fin d'une troncature, l'ancienne
+    /// place d'un fichier réenregistré.
+    public var released: [Extent] = []
+    /// Ce qu'une défragmentation de l'histoire a déplacé, fichier par fichier.
+    public var moves: [FileMove] = []
     /// Clusters que la table de métadonnées vient de prendre pour grandir.
     public var metadataGrew: [Extent] = []
     /// L'écriture a été refusée faute de place.
     public var failed = false
 
     public init() {}
+
+    /// Le fichier créé, s'il l'a été.
+    public var created: FileRecord? { before == nil ? after : nil }
+    /// Le fichier effacé, s'il l'a été.
+    public var deleted: FileRecord? { after == nil && failed == false ? before : nil }
+}
+
+/// Un fichier qu'une défragmentation a changé de place.
+public struct FileMove: Sendable {
+    public var record: FileRecord
+    public var from: [Extent]
+    public var to: [Extent] { record.extents }
 }
 
 /// Rejoue une timeline en mutant une bitmap et un catalogue.
@@ -125,9 +149,9 @@ public struct Simulator<A: Allocator> {
     /// Rejoue un seul événement, et dit ce qu'il a changé sur le disque.
     ///
     /// C'est `apply` vu de l'extérieur : même effet, plus un compte rendu. Il
-    /// coûte une copie des extents de métadonnées par appel, ce que `run` ne
-    /// paie pas — on ne s'en sert que pour les quelques milliers d'événements
-    /// d'une installation qu'on veut rejouer à l'oreille.
+    /// coûte une copie des extents du fichier et des métadonnées par appel, ce
+    /// que `run` ne paie pas — on ne s'en sert que pour ce qu'on veut rejouer à
+    /// l'oreille.
     public mutating func step(_ timed: TimedEvent) -> SimulationStep {
         let metadataBefore = allocator.metadataExtents
         let failuresBefore = failedWrites
@@ -136,12 +160,53 @@ public struct Simulator<A: Allocator> {
         switch timed.event {
         case let .create(spec):
             apply(timed.event, on: timed.day)
-            result.created = catalog[spec.id]
+            result.after = catalog[spec.id]
+            let extents = result.after?.extents ?? []
+            result.written = extents
+            result.allocated = extents
+
         case let .delete(id):
-            result.deleted = catalog[id]
+            result.before = catalog[id]
             apply(timed.event, on: timed.day)
-        default:
+            result.released = result.before?.extents ?? []
+
+        case let .append(id, _), let .truncate(id, _), let .replaceViaTemporary(id, _):
+            result.before = catalog[id]
             apply(timed.event, on: timed.day)
+            result.after = catalog[id]
+            let old = result.before?.extents ?? []
+            let new = result.after?.extents ?? []
+            switch timed.event {
+            case .replaceViaTemporary:
+                // Le temporaire est écrit en entier, ailleurs, puis l'original
+                // rend sa place.
+                if old != new {
+                    result.written = new
+                    result.allocated = new.subtracting(old)
+                    result.released = old.subtracting(new)
+                }
+            default:
+                result.allocated = new.subtracting(old)
+                result.written = result.allocated
+                result.released = old.subtracting(new)
+            }
+
+        case let .rewrite(id):
+            result.before = catalog[id]
+            apply(timed.event, on: timed.day)
+            result.after = result.before
+            result.written = result.before?.extents ?? []
+
+        case .defragment:
+            var places: [UInt32: [Extent]] = [:]
+            for record in catalog.files where !record.extents.isEmpty {
+                places[record.id] = record.extents
+            }
+            apply(timed.event, on: timed.day)
+            for record in catalog.directoryWalkOrder() {
+                guard let from = places[record.id], from != record.extents else { continue }
+                result.moves.append(FileMove(record: record, from: from))
+            }
         }
 
         result.failed = failedWrites > failuresBefore
@@ -150,6 +215,14 @@ public struct Simulator<A: Allocator> {
             result.metadataGrew = metadataAfter.subtracting(metadataBefore)
         }
         return result
+    }
+
+    /// Rejoue un événement sans compte rendu.
+    /// - Returns: `true` si l'écriture a été refusée.
+    public mutating func replay(_ timed: TimedEvent) -> Bool {
+        let failuresBefore = failedWrites
+        apply(timed.event, on: timed.day)
+        return failedWrites > failuresBefore
     }
 
     private mutating func apply(_ event: FileEvent, on day: UInt32) {

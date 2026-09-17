@@ -186,29 +186,17 @@ public enum DiskGenerator {
     /// exactement celui dont la galerie montre la version vieillie.
     public static func install(_ spec: ProfileSpec,
                                manifests: [AppManifest] = AppLibrary.all) throws -> InstalledDisk {
-        let compiled = ScenarioCompiler.compile(spec, manifests: manifests)
-        switch spec.fileSystem.type {
-        case .fat16, .vfat, .fat32:
-            return try replayInstallation(compiled, allocator: fatAllocator(for: spec))
-        case .ntfs:
-            return try replayInstallation(compiled, allocator: ntfsAllocator(for: spec))
-        }
-    }
-
-    private static func replayInstallation<A: GeneratorAllocator>(_ compiled: CompiledScenario,
-                                                                 allocator: A) throws -> InstalledDisk {
-        var simulator = Simulator(allocator: allocator, catalog: compiled.catalog)
-        let initial = allocator.metadataExtents
+        let replay = HistoryReplay(spec, manifests: manifests)
 
         var stepOfFile: [UInt32: Int] = [:]
-        for (index, step) in compiled.installSteps.enumerated() {
+        for (index, step) in replay.installSteps.enumerated() {
             for id in step.temporaryIDs { stepOfFile[id] = index }
             for id in step.fileIDs { stepOfFile[id] = index }
         }
 
         var journal: [InstallEntry] = []
         var currentStep = -1
-        var failedWrites = 0
+        var played = 0
 
         func enter(_ id: UInt32) {
             guard let step = stepOfFile[id], step > currentStep else { return }
@@ -218,41 +206,39 @@ public enum DiskGenerator {
             currentStep = step
         }
 
-        for (index, timed) in compiled.timeline.events.enumerated() {
-            // Une passe de défragmentation datée du premier jour n'appartient
-            // pas à l'installation : elle ne commence qu'une fois Windows posé.
-            guard timed.day == 0 else { break }
-            if case .defragment = timed.event { break }
-            if index % 512 == 0 { try Task.checkCancellation() }
-
-            switch timed.event {
-            case let .create(spec): enter(spec.id)
+        // Une passe de défragmentation datée du premier jour n'appartient pas
+        // à l'installation : elle ne commence qu'une fois Windows posé. On
+        // s'arrête donc avant elle, en regardant l'événement avant de le jouer.
+        while let next = replay.peek, next.day == 0 {
+            if case .defragment = next.event { break }
+            if played & 0x1FF == 0 { try Task.checkCancellation() }
+            switch next.event {
+            case let .create(file): enter(file.id)
             case let .delete(id):   enter(id)
             default: break
             }
-
-            let step = simulator.step(timed)
-            if step.failed { failedWrites += 1 }
+            var step = SimulationStep()
+            replay.play(day: 0) { _, result in
+                step = result
+                return false
+            }
+            played += 1
             if !step.metadataGrew.isEmpty { journal.append(.metadataGrew(step.metadataGrew)) }
             if let created = step.created { journal.append(.created(created)) }
             if let deleted = step.deleted { journal.append(.deleted(deleted)) }
         }
-        if currentStep + 1 < compiled.installSteps.count {
-            for skipped in (currentStep + 1)..<compiled.installSteps.count {
+        if currentStep + 1 < replay.installSteps.count {
+            for skipped in (currentStep + 1)..<replay.installSteps.count {
                 journal.append(.begin(step: skipped))
             }
         }
 
-        let final = simulator.allocator
-        let metrics = AllocationMetrics.evaluate(files: simulator.catalog.files.map(\.entry),
-                                                 bitmap: final.bitmap,
-                                                 profile: final.profile)
-        return InstalledDisk(disk: disk(spec: compiled.spec, allocator: final,
-                                        catalog: simulator.catalog, metrics: metrics,
-                                        failedWrites: failedWrites, dayCount: 1),
-                             steps: compiled.installSteps,
+        var disk = replay.snapshot()
+        disk.dayCount = 1
+        return InstalledDisk(disk: disk,
+                             steps: replay.installSteps,
                              journal: journal,
-                             initialSystemExtents: initial)
+                             initialSystemExtents: replay.initialSystemExtents)
     }
 
     // MARK: - Allocateurs
@@ -275,6 +261,17 @@ public enum DiskGenerator {
         return NTFSAllocator(profile: NTFSProfile(clusterKB: spec.fileSystem.clusterKB ?? 4),
                              clusterCount: spec.clusterCount,
                              mirrorPlacement: mirror)
+    }
+
+    /// Le disque que décrit un simulateur en cours de rejeu.
+    static func disk<A: GeneratorAllocator>(spec: ProfileSpec, simulator: Simulator<A>,
+                                            failedWrites: Int, dayCount: UInt32) -> GeneratedDisk {
+        let allocator = simulator.allocator
+        let metrics = AllocationMetrics.evaluate(files: simulator.catalog.files.map(\.entry),
+                                                 bitmap: allocator.bitmap,
+                                                 profile: allocator.profile)
+        return disk(spec: spec, allocator: allocator, catalog: simulator.catalog, metrics: metrics,
+                    failedWrites: failedWrites, dayCount: dayCount)
     }
 
     private static func disk<A: GeneratorAllocator>(spec: ProfileSpec, allocator: A,
