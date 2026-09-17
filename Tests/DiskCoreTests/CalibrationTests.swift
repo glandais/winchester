@@ -239,12 +239,21 @@ struct CalibrationTests {
         #expect(disk.metrics.maxExtentsPerFile > 500)
     }
 
-    /// Le même profil, la même année, sur FAT32 plutôt que NTFS : le taux
-    /// grimpe à plus de 20 %. L'écart entre les deux est l'un des résultats les
-    /// plus parlants du modèle — et il montre que ce qui manque à famille-2003
-    /// pour atteindre la fourchette visée n'est pas un réglage, c'est un
-    /// allocateur qui place moins bien.
-    @Test("Le même usage fragmente trois fois plus sur FAT32 que sur NTFS")
+    /// Le même profil, la même année, sur FAT32 plutôt que NTFS : 22 % contre
+    /// 11 %. L'écart entre les deux est l'un des résultats les plus parlants du
+    /// modèle — et il montre que ce qui manque à famille-2003 pour atteindre la
+    /// fourchette visée n'est pas un réglage, c'est un allocateur qui place
+    /// moins bien.
+    ///
+    /// Le facteur était de douze, et il n'était pas mérité : `NTFSAllocator`
+    /// renvoyait son curseur système au début de la plage de données à chaque
+    /// échec de placement, ce qui tassait les fichiers système en tête de
+    /// volume et laissait le reste étrangement propre. Le curseur avance
+    /// désormais, comme son commentaire l'annonçait, et NTFS se rapproche de sa
+    /// cible (1,8 % → 11 %, pour 40 à 60 % visés) en même temps que l'écart se
+    /// resserre. Deux, c'est ce que le modèle produit ; ce n'est pas une
+    /// fourchette qu'on élargit pour qu'il y entre.
+    @Test("Le même usage fragmente deux fois plus sur FAT32 que sur NTFS")
     func fileSystemDominatesTheOutcome() throws {
         let fat32 = try Self.generate("famille-1999")
         let ntfs = try Self.generate("famille-2003")
@@ -252,7 +261,7 @@ struct CalibrationTests {
         #expect(fat32.metrics.fill > 0.90)
         #expect(ntfs.metrics.fill > 0.90)
         #expect(fat32.metrics.fragmentedRatioAmongFragmentable
-                > ntfs.metrics.fragmentedRatioAmongFragmentable * 2.5)
+                > ntfs.metrics.fragmentedRatioAmongFragmentable * 1.9)
     }
 
     /// L'asymétrie entre profils est ce qui rend l'application crédible : si

@@ -117,14 +117,23 @@ struct Windows95Strategy: DefragStrategy {
             }
 
             // 1. Évacuer ce qui occupe la destination.
+            //
+            // Un occupant qui ne trouve aucun refuge bloque la place : le
+            // fichier ne se pose pas là. `DEFRAG.EXE` ne s'est jamais permis
+            // d'écrire sur une donnée encore référencée — c'eût été détruire le
+            // volume, et c'était la hantise de l'époque. Il sautait la place et
+            // laissait le trou, exactement comme `FrontierCompactionStrategy`
+            // le fait avec ses `shelters` ; la lenteur de ces outils est le prix
+            // qu'ils payaient pour cette garantie-là.
             let reserved = frontier..<target.end
+            var blockedHere = false
             for occupantPosition in volume.occupants(of: target.start..<target.end)
             where occupantPosition != position {
                 let occupant = volume.files[occupantPosition]
-                guard occupant.isMovable else { continue }
+                guard occupant.isMovable else { blockedHere = true; break }
                 guard let refuge = freeRuns(in: volume, count: occupant.clusterCount,
                                             from: target.end, excluding: reserved, total: total)
-                else { continue }
+                else { blockedHere = true; break }
 
                 DefragOperations.move(source: occupant.extents, destination: refuge,
                                       category: occupant.category,
@@ -139,7 +148,27 @@ struct Windows95Strategy: DefragStrategy {
                 sink.moves.evacuations = evacuations
             }
 
+            // La place est restée prise : on la saute et on laisse le trou,
+            // comme en 1995. La frontière avance quand même — l'outil ne
+            // revenait jamais en arrière.
+            if blockedHere {
+                frontier = target.end
+                continue
+            }
+
             // 2. Déplacer le fichier vers sa destination définitive.
+            //
+            // L'invariant vaut pour les huit stratégies et pas pour celle-ci
+            // seulement : tout plan qui écrit sur un cluster encore référencé
+            // est faux. Il ne s'énonce pas en `bitmap.isFree(target)` — le
+            // fichier occupe souvent déjà une partie de sa destination, et ces
+            // clusters-là sont les siens. Ce que la place ne doit plus porter,
+            // c'est la donnée de **quelqu'un d'autre**. L'audit de
+            // `AllocationInvariantTests` le vérifie sur les treize plans ;
+            // celle-ci le vérifie sur place, là où le manquement s'écrivait.
+            assert(volume.occupants(of: target.start..<target.end).allSatisfy { $0 == position }
+                   && !blocked.contains { $0.start < target.end && $0.end > target.start },
+                   "\(id) : dépôt de \(file.path) sur \(target), encore occupé")
             DefragOperations.move(source: volume.files[position].extents, destination: [target],
                                   category: file.category, contiguous: true, phase: phase,
                                   partition: partition, bufferBytes: bufferBytes,

@@ -3224,3 +3224,206 @@ défragmentation, 56,7 s et 1 942 pour le démarrage.
   la galerie ; c'est maintenant vrai de la démo d'accueil.
 - **Rien n'a été écouté en entier**, ni comparé à l'ancien son autrement qu'au
   bilan.
+
+## Chantier 20 — les quatre fautes du lot 1
+
+**Fait** · branche `experts`
+
+### Le problème
+
+`LEDGER-EXPERTS.md` range ce que trois relectures ont trouvé en trois tas :
+quatre **fautes** — le code produit quelque chose d'impossible —, huit erreurs
+de fait, et deux décisions de conception. Ce chantier ne traite que les quatre
+fautes, et rien d'autre. Ce ne sont pas des réglages : ce sont un plan de
+défragmentation qui écrit par-dessus une donnée encore référencée, un disque qui
+perd un tour de plateau au milieu d'une lecture contiguë, un curseur mort et une
+MFT qui ramasse les miettes du volume une par une.
+
+| | où | ce qui était faux | mesuré avant |
+|---|---|---|---|
+| F1 | `Windows95Strategy.swift:120` | un occupant qui ne trouve pas de refuge reste en place, et l'étape 2 pose le fichier par-dessus | `dev-1996` : 347 trous avant la passe, **496 après** — pour une passe dont le principe est de tasser |
+| F2 | `DiskSimulator.swift:270` | la latence rotationnelle suppose le secteur 0 à l'angle 0 sur toutes les pistes, le franchissement de piste suppose l'inverse | un Barracuda ATA IV lit un fichier **contigu** à 10,1 Mo/s en requêtes de 64 Ko, pour une piste à 47,1 |
+| F3 | `NTFSAllocator.swift:238` | `systemCursor = range.lowerBound` écrase la ligne au-dessus et fait l'inverse du commentaire | chaque fichier système rebalaie la tête saturée depuis le même point |
+| F4 | `NTFSAllocator.swift:438` | `bestFitRun(minLength: 1)` sur tout le volume rend le plus petit trou du disque | MFT de `dev-2003` : 4 653 clusters en **348 extents** |
+
+### Les décisions
+
+**F1 — la place reste prise, et le trou avec.** Si un occupant de la destination
+ne trouve aucun refuge, la frontière saute la place et continue. C'est ce que
+faisait `DEFRAG.EXE`, et c'est ce que `FrontierCompactionStrategy` fait déjà
+avec ses `shelters` : un défragmenteur qui écrit sur une donnée encore
+référencée est un défragmenteur qui détruit le volume, et la lenteur de ces
+outils est exactement le prix qu'ils payaient pour l'éviter. L'assertion posée
+avant tout dépôt ne s'énonce pas en `bitmap.isFree(target)` — un fichier occupe
+souvent déjà une partie de sa destination, et ces clusters-là sont les siens :
+ce que la place ne doit plus porter, c'est la donnée de quelqu'un d'autre.
+
+**F2 — un skew explicite, et un seul `angleOf`.** `DriveGeometry.TrackSkew`
+porte `track = seek(1)/tour` et `head = commutation/tour` ;
+`angleOf(position, skew:)` dit où passe un secteur, et sert **et** la latence
+rotationnelle **et** le franchissement de piste au milieu d'un transfert. Les
+deux ne peuvent donc plus se contredire. Le décalage d'un cylindre au suivant
+vaut `track + (heads-1)·head` : on quitte la dernière tête et on rejoint la
+première, ce qui défait `heads-1` décalages de tête — sans ce terme, la
+continuité serait vraie d'une tête à l'autre et fausse d'un cylindre à l'autre,
+soit l'incohérence qu'on corrige. C'est ainsi que ces disques étaient formatés,
+et non un correctif d'arrondi déguisé. La tolérance `delta < -1e-9` vient en
+plus, et elle reconnaît seulement qu'un angle nul calculé par somme de durées ne
+tombe jamais exactement sur zéro : la marge de l'horloge reste à 1e-10 même sur
+la plus longue passe de la galerie.
+
+**F3 — le curseur avance, comme son commentaire l'annonçait.** L'affectation
+morte disparaît, `systemCursor` avance d'un `searchHorizon` à chaque échec et ne
+recule plus.
+
+**F4 — la MFT s'étend par paquets, au plus près d'elle-même.** Deux choses la
+cassaient, et la seconde compte plus que la première. Un `bestFitRun` rend le
+trou le plus **juste**, donc un trou différent à chaque fois : il disperse par
+construction. Le premier trou venu à partir de la fin de la table, lui, fait
+tomber deux paquets successifs côte à côte dans le même grand trou, et
+`coalesced()` n'en fait qu'un extent. Et le paquet — huit clusters, le minimum
+dont les descriptions de NTFS fassent état — espace les demandes, là où un
+cluster à la fois en faisait une par fichier créé. Attention au sens du
+best-fit : demander le bloc minimal rendrait un trou de la taille du bloc, donc
+autant d'extents que de blocs. Premier essai à 8 : **676 extents**, deux fois
+pire que le défaut corrigé.
+
+### Ce qui valide
+
+- **`swift test` : 330 tests passent** sur les deux cibles, et
+  `DISKCORE_CALIBRATION=1 swift test --filter Calibration` passe avec ses deux
+  problèmes connus.
+- **L'audit d'allocation** (`Tests/DefragKitTests/AllocationInvariantTests.swift`)
+  rejoue les **treize** plans que la galerie sait produire — les huit
+  algorithmes et les cinq tris de JkDefrag — sur un volume d'essai à 80 % puis à
+  97 %, et vérifie deux choses : `plan.arrangement` ne référence aucun cluster
+  deux fois ni un extent système, et aucune `writeExtent` ne tombe sur une donnée
+  encore vivante. Le flux d'opérations ne nomme pas le fichier déplacé, mais il
+  porte ses **validations**, et un déplacement tient entre deux d'entre elles :
+  la règle s'énonce alors sans identité — une écriture ne tombe que sur un
+  cluster libre, ou sur un cluster que le même déplacement vient de lire. Un
+  second test réduit le cas de F1 à trois fichiers et cent clusters, et il
+  échoue sur le code d'avant la correction.
+- **Le test de non-régression du skew** (`TrackSkewTests`) : *N* requêtes
+  contiguës coûtent exactement ce que coûte une requête de *N* fois la taille,
+  à 1e-9 près, pour *N* de 8 à 128. Avant, l'écart était d'un facteur 2,2 ; le
+  débit d'une lecture contiguë de 4 Mo découpée en 64 Ko passe de **10,1 à
+  35,8 Mo/s**, pour une piste à 47,1. Un troisième test confronte `AccessCost`,
+  second consommateur du modèle de coût, à `DiskMechanics` : les deux doivent
+  facturer le même transfert. Ce n'était pas garanti — `AccessCost` ne facture
+  aucune attente au franchissement de piste, ce qui était jusqu'ici une
+  hypothèse muette et contraire, et qui est maintenant la même, par le même
+  `angleOf`.
+- **Le test de la MFT** (`Tests/DiskCoreTests/MFTGrowthTests.swift`) borne le
+  nombre d'extents sur les deux volumes dont la MFT déborde de sa zone, et
+  vérifie que les cinq autres la gardent d'un seul tenant.
+
+| volume | MFT, extents avant | après |
+|---|---:|---:|
+| `dev-2003` | 348 | **39** |
+| `secretaire-2007` | 50 | **23** |
+| `dev-2007` | 6 | **4** |
+| les cinq autres NTFS | 1 | 1 |
+
+### Ce que cela change, mesuré
+
+**F2 fait tomber les vingt démarrages**, de 3,7 à 21,5 %, et l'écart croît avec
+l'époque : plus le disque est rapide et plus la lecture est longue, plus le tour
+perdu pesait. `ThinkModel` n'a **pas** été recalé — c'est le lot 3 qui le fera,
+une fois les corrections de montage et d'arrondi au cluster en place.
+
+| profil | avant | après | |
+|---|---:|---:|---:|
+| `dev-2007` | 47,0 s | 36,9 s | −21,5 % |
+| `gamer-2003` | 70,0 s | 56,0 s | −20,0 % |
+| `secretaire-2007` | 41,9 s | 34,0 s | −18,9 % |
+| `dev-2003` | 49,1 s | 40,0 s | −18,5 % |
+| `famille-2007` | 38,3 s | 31,6 s | −17,5 % |
+| `famille-1999` | 66,0 s | 56,3 s | −14,7 % |
+| `dev-1999` | 57,0 s | 49,7 s | −12,8 % |
+| `gamer-1999` | 54,8 s | 47,9 s | −12,6 % |
+| `secretaire-2003` | 33,8 s | 29,9 s | −11,5 % |
+| `famille-2003` | 28,8 s | 25,7 s | −10,8 % |
+| `secretaire-1999` | 56,7 s | 50,8 s | −10,4 % |
+| `gamer-2007` | 29,8 s | 26,9 s | −9,7 % |
+| `secretaire-1996` | 55,4 s | 50,3 s | −9,2 % |
+| `dev-1996` | 58,7 s | 53,5 s | −8,9 % |
+| `famille-1996` | 54,4 s | 50,0 s | −8,1 % |
+| `gamer-1996` | 44,0 s | 41,4 s | −5,9 % |
+| `dev-1993` | 41,8 s | 39,7 s | −5,0 % |
+| `poweruser-1993` | 42,7 s | 40,7 s | −4,7 % |
+| `secretaire-1993` | 36,0 s | 34,6 s | −3,9 % |
+| `gamer-1993` | 29,5 s | 28,4 s | −3,7 % |
+
+Conséquence directe : la part du calcul dans un démarrage passe de 29–52 % à
+30–64 %. Le plancher n'a pas bougé ; c'est le disque qui a cessé de payer un
+tour qu'il ne devait pas.
+
+**F1 révèle ce que la passe de 95 valait vraiment.** Six des douze volumes FAT
+changent de résultat, et deux basculent complètement : sur `gamer-1993` et
+`gamer-1996`, pleins à 99 %, l'outil de 95 n'évacue plus que deux occupants
+avant d'être bloqué partout, et rend le volume intact. Ses anciens 438 → 3
+fichiers fragmentés sur `gamer-1996` étaient achetés en écrivant sur des
+données vivantes.
+
+| volume | morceaux restants, avant → après | trous libres, avant → après |
+|---|---:|---:|
+| `dev-1996` | 416 → 2 258 | 496 → **131** |
+| `dev-1999` | 3 → 1 332 | 24 → 232 |
+| `famille-1999` | 52 → 2 511 | 330 → 387 |
+| `gamer-1999` | 13 → 818 | 21 → 97 |
+| `gamer-1993` | 0 → 942 | 241 → **4** |
+| `gamer-1996` | 20 → 1 601 | 359 → **1** |
+
+Les deux lectures sont vraies en même temps : la passe laisse plus de morceaux,
+et **beaucoup moins de trous**. Le « 347 avant, 496 après » de `dev-1996`, qui
+était le symptôme, devient 347 → 131. La bitmap ne perd plus le compte.
+
+**F3 est le changement le plus lourd du lot, et ce n'était pas prévu.** Le
+curseur système qui repartait du début tassait les fichiers système en tête de
+volume et laissait le reste étrangement propre. Sur `famille-2003`, le taux de
+fichiers fragmentés passe de **1,8 % à 11,1 %** — dans la direction de la cible
+du cahier des charges, qui est de 40 à 60 %. Le test
+« Le même usage fragmente trois fois plus sur FAT32 que sur NTFS » mesurait donc
+un facteur douze qui n'était pas mérité ; il en mesure deux, et son titre suit.
+Le facteur n'a pas été élargi pour que le modèle y entre : c'est la valeur
+mesurée, et la raison est dans le docstring.
+
+**F4 divise par neuf le morcellement de la MFT de `dev-2003`** sans rien coûter
+à la génération (1,0 s en release, inchangé).
+
+### Le README
+
+Toutes les tables mesurées ont été régénérées d'un seul jeu de mesures — vingt
+démarrages, et vingt volumes croisés avec les treize outils, en release et en
+`PLAN_ONLY` — parce que la moitié d'entre elles avaient déjà dérivé **avant** ce
+chantier : `dev-1996` y était donné plein à 87 % quand le générateur le remplit
+à 95 %, et sa passe de 95 à 36 min 21 quand elle en durait 48. Une table à moitié
+fraîche aurait été pire qu'une table périmée. C'est exactement le défaut que les
+trois revues signalent, et il vaut pour ce journal comme pour le reste : les
+chiffres ci-dessus sont ceux du commit qui les porte.
+
+### Laissé ouvert
+
+- **La dérive de calibration n'est pas compensée** : les vingt démarrages sont
+  sous leur cible de 4 à 21 %, et `ThinkModel` n'a pas bougé. C'est le lot 3 qui
+  recalera, une fois le montage et l'arrondi au cluster corrigés — les trois
+  changements touchent la même durée, et la recaler trois fois reviendrait à
+  cacher les deux suivants dans la première.
+- **`InstallEra.writeRequestSectors` n'a pas été plafonné**, bien que ce soit
+  maintenant possible : c'est un autre lot.
+- **La passe de 95 ne fait plus rien sur les deux volumes à 99 %.** C'est
+  correct — un volume dont l'espace libre ne loge pas le plus gros fichier ne se
+  compacte pas par cet algorithme-là — mais ce n'est pas tout ce que faisait
+  `DEFRAG.EXE`, qui déplaçait par tronçons plutôt que par fichiers entiers.
+  `LEDGER-EXPERTS.md` range la question au lot 5 (« évacuer vers le fond du
+  volume dans `Windows95Strategy`, ou assumer le facteur 12 ») ; elle y reste.
+- **L'audit d'allocation a trouvé un second cas, hors lot.** Sur un volume
+  construit à la main, un fichier déplacé de deux clusters vers l'avant avec un
+  tampon de soixante-quatre écrit sur ses propres clusters avant de les avoir
+  lus. Aucun volume de la galerie ne le déclenche — l'audit passe sur les treize
+  plans aux deux remplissages — mais c'est une propriété de
+  `DefragOperations.move`, pas de la stratégie qui l'appelle.
+- **Le lot 2 reste entier** : `clusterKB` de 1993, `gamer-1999`, `$MFTMirr`,
+  `.system`, la commutation de tête. Aucune n'a été touchée, y compris quand
+  elle se trouvait trois lignes plus bas.

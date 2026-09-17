@@ -83,7 +83,14 @@ public struct AccessCost: Sendable {
             guard remaining > 0 else { break }
 
             // Fin de piste : commutation de tête dans le même cylindre, ou pas
-            // de piste vers le cylindre suivant.
+            // de piste vers le cylindre suivant. Aucune attente rotationnelle
+            // n'est facturée là, et ce n'est pas une approximation : c'est
+            // exactement ce que le skew de `DriveGeometry.TrackSkew` paie, la
+            // piste d'arrivée étant formatée décalée de ce que le
+            // franchissement coûte. `DiskMechanics` fait la même hypothèse par
+            // le même chemin — `angleOf` —, et `TrackSkewTests` vérifie que les
+            // deux modèles facturent le même transfert, pour qu'ils ne divergent
+            // pas en silence.
             total += position.head + 1 < geometry.heads
                 ? seekModel.headSwitchDuration
                 : seekModel.duration(distance: 1)

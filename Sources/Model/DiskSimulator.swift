@@ -201,6 +201,18 @@ struct DiskMechanics {
     let spinUpDuration: Double
     let idle: IdleBehavior
 
+    /// Le décalage angulaire d'une piste à l'autre, déduit de la loi de seek de
+    /// ce disque : c'est lui qui rend gratuit le franchissement de piste au
+    /// milieu d'une lecture séquentielle.
+    let skew: DriveGeometry.TrackSkew
+
+    /// Tolérance sur l'angle, en tours. La somme des durées accumule quelques
+    /// unités du dernier chiffre, et un angle négatif de `1e-12` n'est pas un
+    /// tour à rattraper : c'est un zéro mal arrondi. Sans cette borne, une
+    /// lecture strictement contiguë perdait un tour de plateau environ une fois
+    /// sur trois.
+    private static let angularTolerance = 1e-9
+
     /// Fin de la dernière requête servie — ou fin de la mise en rotation, si
     /// aucune ne l'a encore été.
     private(set) var clock: Double
@@ -216,6 +228,7 @@ struct DiskMechanics {
         self.spinUpAt = spinUpAt
         self.spinUpDuration = spinUpDuration
         self.idle = idle
+        self.skew = geometry.skew(seekModel: seekModel)
         self.clock = spinUpAt + spinUpDuration
         // Au repos le bras est parqué au diamètre intérieur (ou sur une rampe
         // hors plateau). Le premier accès est donc une course quasi complète :
@@ -234,6 +247,22 @@ struct DiskMechanics {
 
     func start(events: inout [DiskEvent]) {
         events.append(DiskEvent(time: spinUpAt, kind: .spinUp(duration: spinUpDuration)))
+    }
+
+    /// Ce qu'il faut attendre, à l'instant `t`, pour que ce secteur-là passe
+    /// sous la tête.
+    ///
+    /// L'angle du plateau est lu sur une horloge absolue et non tiré au sort :
+    /// c'est ce qui fait qu'un fichier éclaté coûte vraiment plus cher, et pas
+    /// seulement statistiquement. La tolérance, elle, ne rattrape pas une
+    /// erreur de modèle : elle reconnaît qu'un angle nul calculé par somme de
+    /// durées ne tombe jamais exactement sur zéro.
+    private func rotationalWait(to position: DriveGeometry.Position, at t: Double) -> Double {
+        let revolution = geometry.revolutionDuration
+        let current = (t / revolution).truncatingRemainder(dividingBy: 1.0)
+        var delta = geometry.angleOf(position, skew: skew) - current
+        if delta < -Self.angularTolerance { delta += 1 } else { delta = max(delta, 0) }
+        return delta * revolution
     }
 
     mutating func serve(_ request: BlockRequest,
@@ -272,13 +301,9 @@ struct DiskMechanics {
 
         // 2. Latence rotationnelle : attendre que le secteur visé passe
         //    sous la tête. En moyenne un demi-tour, soit 4,17 ms ici.
-        let spt = geometry.sectorsPerTrack(cylinder: headCylinder)
-        let currentAngle = (t / revolution).truncatingRemainder(dividingBy: 1.0)
-        let targetAngle = Double(target.sector) / Double(spt)
-        var delta = targetAngle - currentAngle
-        if delta < 0 { delta += 1 }
-        t += delta * revolution
-        stats.rotationSeconds += delta * revolution
+        let latency = rotationalWait(to: target, at: t)
+        t += latency
+        stats.rotationSeconds += latency
 
         // L'échantillon d'affichage est refermé après le transfert, une fois
         // connu le cylindre d'arrivée : c'est lui qui fait avancer le bras
@@ -307,7 +332,12 @@ struct DiskMechanics {
 
             guard remaining > 0 else { break }
 
-            // Passage à la piste logique suivante.
+            // Passage à la piste logique suivante. Le plateau tourne pendant le
+            // franchissement : le secteur 0 de la piste d'arrivée n'est
+            // rattrapé que parce qu'il a été formaté décalé de ce que ce
+            // franchissement-là coûte. C'est le même `angleOf` que la latence
+            // ci-dessus qui le dit, et non plus une hypothèse muette et
+            // contraire.
             if headIndex + 1 < geometry.heads {
                 headIndex += 1
                 events.append(DiskEvent(time: t, kind: .headSwitch))
@@ -327,6 +357,12 @@ struct DiskMechanics {
                 // menaient nulle part, et un bras collé au moyeu.
                 break
             }
+
+            let wait = rotationalWait(to: DriveGeometry.Position(cylinder: headCylinder,
+                                                                 head: headIndex, sector: 0),
+                                      at: t)
+            t += wait
+            stats.rotationSeconds += wait
         }
 
         let sample = HeadSample(time: sampleTime,

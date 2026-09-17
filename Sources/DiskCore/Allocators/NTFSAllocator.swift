@@ -88,6 +88,12 @@ public struct NTFSAllocator: Allocator {
     /// de 80 Go devient quadratique.
     private let searchHorizon: UInt32 = 1 << 16
 
+    /// Bloc par lequel `$MFT` s'agrandit hors de sa zone. NTFS n'étend jamais
+    /// la table d'un enregistrement à la fois : il en demande un paquet — au
+    /// moins huit — et cherche de quoi le poser d'un seul tenant. Huit clusters
+    /// couvrent ce minimum quelle que soit la taille de cluster du volume.
+    private let mftGrowthClusters: UInt32 = 8
+
     /// Point de départ du prochain parcours. Il avance avec les allocations, ce
     /// qui évite que toutes les écritures se disputent les mêmes trous en tête
     /// de volume.
@@ -235,10 +241,10 @@ public struct NTFSAllocator: Allocator {
             }
             // Le curseur système avance même quand il ne trouve rien : sinon
             // chaque mise à jour rebalaie la même zone pleine depuis le début.
-            systemCursor = min(systemCursor &+ searchHorizon, range.upperBound)
-            // La tête du volume est pleine : le fichier système suivant est
-            // traité comme les autres.
-            systemCursor = range.lowerBound
+            // La tête du volume est pleine ; ce fichier-ci est traité comme les
+            // autres, et le suivant cherchera plus loin.
+            systemCursor = min(max(systemCursor, range.lowerBound) &+ searchHorizon,
+                               range.upperBound)
 
         case .normal, .temporary:
             break
@@ -433,15 +439,52 @@ public struct NTFSAllocator: Allocator {
 
         // Sa zone est pleine ou entamée : la MFT part chercher de la place
         // ailleurs, et se fragmente. C'est le symptôme classique d'un volume
-        // NTFS qu'on a laissé se remplir.
+        // NTFS qu'on a laissé se remplir. Reste à se fragmenter comme elle le
+        // faisait, et non comme un ramasse-miettes.
+        //
+        // Deux choses la cassaient. Un `bestFitRun(minLength: 1)` sur tout le
+        // volume rend le **plus petit trou du disque**, presque toujours d'un
+        // cluster ; et il était appelé à chaque fichier créé, parce qu'un
+        // fichier de plus ne réclame qu'un cluster de table. La MFT de
+        // `dev-2003` sortait ainsi en 348 extents pour 4 653 clusters, quand un
+        // volume maltraité pendant des années en montre quelques dizaines.
+        //
+        // Un vrai NTFS fait l'inverse des deux : il agrandit `$MFT` par
+        // **paquets**, et il les pose **au plus près de la table**. Le premier
+        // point espace les demandes ; le second est celui qui compte vraiment,
+        // parce que deux paquets pris à la suite dans le même grand trou se
+        // touchent, et que `coalesced()` n'en fait alors qu'un seul extent. Un
+        // best-fit, lui, les disperse par construction : il cherche le trou le
+        // plus juste, donc un trou différent à chaque fois.
+        //
+        // Le premier trou venu se lit dans la bitmap par mots de soixante-quatre
+        // bits sans mesurer ce qu'il enjambe : les bornes `searchWindow` et
+        // `searchHorizon`, qui existent pour brider un best-fit, n'ont ici rien
+        // à brider.
         while remaining > 0 {
-            guard let run = bitmap.bestFitRun(minLength: 1, in: 0..<bitmap.clusterCount) else { break }
-            let take = min(run.length, remaining)
+            // Hors zone, la MFT prend un paquet entier même si elle a moins que
+            // cela à placer ; dans sa zone, au contraire, elle ne prend que ce
+            // qu'il lui faut — la place y est déjà à elle.
+            let block = max(remaining, mftGrowthClusters)
+            let floor = min(block, mftGrowthClusters)
+            let nearest = mft.extents.last?.end ?? 0
+            var wanted = block
+            var found: Extent?
+            while found == nil, wanted >= floor {
+                found = bitmap.firstFitRun(minLength: wanted, maxLength: wanted, from: nearest)
+                    ?? bitmap.firstFitRun(minLength: wanted, maxLength: wanted, from: 0)
+                if found == nil { wanted /= 2 }
+            }
+            // Plus rien qui tienne un paquet entier : le volume n'a plus que
+            // des miettes, et la MFT prend la plus grosse.
+            guard let run = found ?? bitmap.largestFreeRun() else { break }
+            let take = min(run.length, block)
+            guard take > 0 else { break }
             let extent = Extent(start: run.start, length: take)
             bitmap.allocate(extent)
             highWater = max(highWater, extent.end)
             mft.extents.appendRun(start: extent.start, length: extent.length)
-            remaining -= take
+            remaining -= min(take, remaining)
         }
         mft.extents = mft.extents.coalesced()
     }

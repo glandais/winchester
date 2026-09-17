@@ -123,6 +123,65 @@ public struct DriveGeometry: Sendable {
     /// c'est ce qui en fait une course quasi complète.
     public var parkCylinder: Int { cylinders - 1 }
 
+    /// Décalage angulaire du secteur 0 d'une piste à la suivante : le *skew*,
+    /// tel que ces disques étaient formatés en usine.
+    ///
+    /// Une lecture qui franchit une piste paie d'abord le déplacement — une
+    /// commutation de tête, ou un pas de piste — et pendant ce temps le plateau
+    /// continue de tourner. Si le secteur 0 de toutes les pistes était au même
+    /// angle, il serait déjà passé : il faudrait attendre un tour presque
+    /// entier à chaque piste, et un disque ne lirait jamais plus vite qu'une
+    /// piste par tour. Le formatage décale donc chaque piste de ce que coûte
+    /// exactement le franchissement, et la lecture séquentielle ne paie rien.
+    ///
+    /// Les deux décalages ne sont pas le même : `head` couvre la commutation de
+    /// tête à l'intérieur d'un cylindre, `track` le pas de piste vers le
+    /// cylindre suivant. Les grandeurs sont en **tours**, parce que c'est ainsi
+    /// qu'elles s'ajoutent à un angle.
+    public struct TrackSkew: Sendable, Equatable {
+        public let track: Double
+        public let head: Double
+
+        public init(track: Double, head: Double) {
+            self.track = track
+            self.head = head
+        }
+
+        /// Pas de décalage : le secteur 0 au même angle sur toutes les pistes.
+        /// C'est l'hypothèse qu'aucun disque à plateaux n'a jamais vérifiée, et
+        /// elle ne sert qu'à mesurer ce que le skew rend.
+        public static let none = TrackSkew(track: 0, head: 0)
+    }
+
+    /// Le skew de ce disque, déduit de sa loi de seek : ce que coûte un pas de
+    /// piste et une commutation de tête, comptés en tours de plateau.
+    public func skew(seekModel: SeekModel) -> TrackSkew {
+        let revolution = revolutionDuration
+        guard revolution > 0 else { return .none }
+        return TrackSkew(track: seekModel.duration(distance: 1) / revolution,
+                         head: seekModel.headSwitchDuration / revolution)
+    }
+
+    /// Angle, en tours depuis l'index, auquel un secteur passe sous la tête.
+    ///
+    /// C'est **la** fonction qui dit où est un secteur : la latence
+    /// rotationnelle d'une requête comme le franchissement de piste au milieu
+    /// d'un transfert s'y réfèrent, et ne peuvent donc plus se contredire.
+    ///
+    /// Le décalage d'un cylindre au suivant absorbe en plus le retour de la
+    /// dernière tête à la première : on quitte la piste `(c, heads-1)` et on
+    /// rejoint `(c+1, 0)`, ce qui défait `heads-1` décalages de tête. Sans ce
+    /// terme, la continuité serait vraie d'une tête à l'autre et fausse d'un
+    /// cylindre à l'autre — soit l'incohérence qu'on corrige.
+    public func angleOf(_ position: Position, skew: TrackSkew) -> Double {
+        let spt = Double(sectorsPerTrack(cylinder: position.cylinder))
+        let cylinderSkew = skew.track + Double(heads - 1) * skew.head
+        let angle = Double(position.sector) / spt
+            + Double(position.cylinder) * cylinderSkew
+            + Double(position.head) * skew.head
+        return angle - angle.rounded(.down)
+    }
+
     /// Rayon physique normalisé : 1,0 au bord (cylindre 0), 0,42 au moyeu.
     public func normalizedRadius(cylinder: Int) -> Double {
         normalizedRadius(cylinder: Double(cylinder))
