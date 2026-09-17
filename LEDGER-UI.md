@@ -10,9 +10,112 @@ Point de départ : le prompt donné à Claude Design, recopié dans
 maquettes qu'il a produites —
 <https://claude.ai/design/p/e24dba35-01ce-43f9-ad1d-fb8fae1f916e>.
 
-Tant qu'un chantier est **À faire**, sa fiche dit ce qu'on vise et ce que le
-code offre déjà. Une fois mené, elle prend la forme des entrées de `LEDGER.md` :
-le problème, les décisions, ce qui valide, ce qui reste ouvert.
+Chaque fiche de chantier prend la forme des entrées de `LEDGER.md` : le
+problème, les décisions, ce qui valide, ce qui reste ouvert.
+
+## Où en est-on
+
+**Les treize chantiers sont faits**, menés sur la branche `interface-grand-public`
+et fusionnés dans `develop` le 17 septembre 2026. Ce qu'ils ont laissé ouvert est
+rassemblé plus bas, dans [Ce qui reste](#ce-qui-reste) ; les fiches gardent le
+détail et le pourquoi.
+
+| chantier | ce que c'est | maquettes | où dans le code | commits |
+|---|---|---|---|---|
+| [U0](#chantier-u0--la-charpente) | quatre onglets, bandeau de passe | — | `ContentView`, `PassMiniPlayer` | `fa91de3` |
+| [U1](#chantier-u1--la-galerie-des-disques-prédéfinis) | galerie filtrable, démos | 02, 03 | `DisksScreen`, `DiskGallery` | `aa6ece9` |
+| [U2](#chantier-u2--la-génération-et-la-fiche-du-disque) | fabrication, fiche du disque | 04, 05 | `DiskLibraryView`, `DiskLibraryModel` | `4d990e0` |
+| [U3](#chantier-u3--choisir-le-défragmenteur) | choix du défragmenteur | 08 | `DefragToolChoice` | `d1e570d`, `384353f` |
+| [U4](#chantier-u4--lécran-de-la-passe) | écran de la passe | 09, 10 | `PassScreen` | `273e0f1` |
+| [U5](#chantier-u5--la-carte-en-plein-écran-touchée) | carte plein écran, bloc touché | 12 | `ClusterMapFullScreen`, `CellPartition` | `3ff1acf`, `8aabe6a`, `61f3729` |
+| [U6](#chantier-u6--les-instruments) | instruments | 11 | `InstrumentsScreen`, `LivePass` | `48eae77`, `a403b12` |
+| [U7](#chantier-u7--le-démarrage-et-son-témoin) | démarrage et témoin | 14 | `PassScreen`, `BootPlayback` | `30d9481` |
+| [U8](#chantier-u8--le-bilan) | bilan, autre outil, disque rangé | 13 | `PassReport`, `PassRecord`, `RearrangedDisk` | `4b8364d`, `2711fb6` |
+| [U9](#chantier-u9--construire-un-disque-usagé) | assistant, Mes disques | 06, 07, 17 | `DiskWizard`, `ProfileIssues`, `CustomDiskStore` | `babfe93`, `64d759a` |
+| [U10](#chantier-u10--son-vibrations-ambiance) | son, ambiance, arrière-plan | 15, 16 | `SoundSheet`, `AmbientScreen`, `SoundMix`, `NowPlaying` | `9a20fee` |
+| [U11](#chantier-u11--accueil-et-explications) | accueil, fiches « Pourquoi » | 01, 14 | `OnboardingView`, `Explanations` | `0d81c88` |
+| [U12](#chantier-u12--états-et-accessibilité) | interruptions, accessibilité | 17 | `DiskNoiseEngine`, `MapZones`, `Theme` | `e52eb52` |
+
+## Ce qui reste
+
+Tiré des « Laissé ouvert » de chaque fiche, sans ce qu'un chantier suivant a
+réglé. Entre parenthèses, la fiche où le point est détaillé.
+
+### À vérifier sur le téléphone
+
+Le simulateur ne sait ni jouer le son dans une oreille, ni vibrer, ni recevoir
+un appel. Une séance sur l'iPhone lève la plupart de ces réserves d'un coup.
+
+- **Rien n'a été écouté** : ni les passes, ni les trois préréglages, réglés par
+  raisonnement (U0, U10).
+- **Le haptique n'a jamais été senti** (U0, U10).
+- **Les interruptions** : un appel qui met en pause puis reprend, des écouteurs
+  retirés (U12).
+- **L'écran verrouillé et le centre de contrôle**, et une longue passe — un tri
+  de JkDefrag — laissée tourner écran verrouillé (U10).
+- **VoiceOver qui parle** : parcours au doigt, ordre de lecture, étiquettes ;
+  seul l'arbre d'accessibilité a été contrôlé (U12).
+- **Le plein écran en paysage**, jamais regardé (U5).
+
+### À relire ou à mesurer
+
+- **Les huit fiches « Pourquoi » ajoutées** n'ont pas eu la relecture croisée
+  des quatre de la maquette (U11).
+- **Les fourchettes de durée des outils sont figées dans le code** et ne suivent
+  pas un changement du modèle (U3).
+- **Les chiffres du disque d'exemple des maquettes sont faux** : ne pas s'en
+  servir comme référence (maquettes, U3).
+- **Le gain de CPU des onglets cachés** n'a jamais été mesuré avant/après (U0).
+- **Un démarrage rangé où l'écart s'entend**, sur un FAT de 1996 après
+  Windows 95 : le mécanisme n'est prouvé que par un test (U8).
+- **Pas regardés à l'écran** : le démarrage dans les instruments (U6) ; les ⓘ
+  des évacuations, du témoin et du préchargeur (U11) ; l'assistant et le bilan
+  en grande taille de texte, la carte plein écran sous « Réduire les
+  animations » (U12) ; renommer, supprimer, les étapes 2, 4 et 6 de l'assistant
+  (U9).
+
+### Ce qui demande le moteur
+
+- **La carte qui se remplit pendant la fabrication** : `GenerationProgress` ne
+  porte que des compteurs (U2).
+- **Les fichiers d'un bloc pendant une passe**, et **l'état du volume au fil de
+  la passe** (fragmentés, morceaux, trous) : tous deux demandent un suivi par
+  fichier dans le rejeu (U5, U6).
+- **Une médiane des morceaux** parmi les fichiers fragmentés, plus honnête que
+  la moyenne sur NTFS (U2).
+- Le catalogue des logiciels et leurs années sont écrits côté écran (U9).
+
+### Ce qui manque à l'écran
+
+- **« Comparer avec un disque 2003 et XP »** depuis le témoin (U7).
+- **Ranger un disque déjà rangé** : « Essayer un autre outil » repart toujours du
+  volume d'origine (U8).
+- **La démo Windows 95** n'a ni autre outil, ni démarrage rangé, ni choix d'outil
+  (U3, U8).
+- **Le démarrage livré** (Barracuda 2001) n'a pas de témoin (U7).
+- **Les compteurs de l'écran de la passe** — fichiers déplacés, évacuations —
+  attendent encore le bilan, alors que les instruments les suivent en direct
+  depuis U6 (U4).
+- **Les bilans ne survivent pas à l'app**, par décision (U8, U9).
+- **La capacité se règle au curseur**, pas à la saisie (U9).
+- Pas de ⓘ sur IOPS, débit et « Où passe le temps » (U11).
+- Pas de glisser ni de zoom sur la carte plein écran (U5).
+
+### Finitions et nettoyage
+
+- **Deux écritures de capacité** : « 1,08 Go » sur la carte, « 1,1 Go » dans la
+  passe (U1, U2).
+- Le titre du disque apparaît deux fois sur sa fiche (U1).
+- Quitter la fiche pendant une fabrication ne l'annule pas (U1).
+- La vue Carte ou Plateau n'est pas retenue d'une passe à l'autre (U4).
+- Les cartes du bilan changent de grille si l'on a ouvert le plein écran pendant
+  la passe (U8).
+- Les octets lus par la mécanique d'un démarrage dépassent un peu ceux du plan
+  (U7).
+- Les seuils des phrases du témoin sont posés à la main (U7).
+- Le mode ambiance n'a pas de variante paysage (U10).
+- `Font.dynamic` suppose le fil principal (U12).
+- `SimulationModel.selections` et `title(of:)` ne servent plus (U0).
 
 ---
 
@@ -132,7 +235,7 @@ Commit `fbbcfd3` sur `develop`.
 
 ## Chantier U0 — la charpente
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `fa91de3`
 
 ### Le problème
 
@@ -213,7 +316,7 @@ ne rappelait qu'une passe jouait quand on retournait à la galerie.
 
 ## Chantier U1 — la galerie des disques prédéfinis
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `aa6ece9`
 
 ### Le problème
 
@@ -281,7 +384,7 @@ boutons s'empilaient sous les puces, sur le même écran.
 
 ## Chantier U2 — la génération et la fiche du disque
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `4d990e0`
 
 ### Le problème
 
@@ -355,7 +458,7 @@ disait « jour 62 », un compteur que personne ne sait lire.
 
 ## Chantier U3 — choisir le défragmenteur
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `d1e570d`, `384353f`
 
 ### Le problème
 
@@ -437,7 +540,7 @@ FAT »), recollage proposé, interrupteur visible avec XP présélectionné.
 
 ## Chantier U4 — l'écran de la passe
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `273e0f1`
 
 ### Le problème
 
@@ -513,7 +616,7 @@ frise, et seuls **Relancer** et lecture/pause existaient.
 
 ## Chantier U5 — la carte en plein écran, touchée
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `3ff1acf`, `8aabe6a`, `61f3729`
 
 ### Le problème
 
@@ -582,7 +685,7 @@ remplissage, pas quels fichiers il porte.
 
 ## Chantier U6 — les instruments
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `48eae77`, `a403b12`
 
 ### Le problème
 
@@ -673,7 +776,7 @@ plan final.
 
 ## Chantier U7 — le démarrage et son témoin
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `30d9481`
 
 ### Le problème
 
@@ -749,7 +852,7 @@ dit nulle part, et le témoin ne donnait que sa durée, pas ses seeks.
 
 ## Chantier U8 — le bilan
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `4b8364d`, `2711fb6`
 
 ### Le problème
 
@@ -842,7 +945,7 @@ de l'état d'arrivée que ses statistiques.
 
 ## Chantier U9 — construire un disque usagé
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `babfe93`, `64d759a`
 
 ### Le problème
 
@@ -936,7 +1039,7 @@ un mot. Aucun disque construit ne survivait à l'app.
 
 ## Chantier U10 — son, vibrations, ambiance
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `9a20fee`
 
 ### Le problème
 
@@ -1044,7 +1147,7 @@ projet : non, faute de mode audio d'arrière-plan déclaré.
 
 ## Chantier U11 — accueil et explications
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `0d81c88`
 
 ### Le problème
 
@@ -1121,7 +1224,7 @@ qu'elles éclairent, et à moitié écrit pour qui a lu le code (« one-shots »
 
 ## Chantier U12 — états et accessibilité
 
-**Fait** · branche `interface-grand-public`
+**Fait** · `e52eb52`
 
 ### Le problème
 
@@ -1248,13 +1351,3 @@ génération en cours, annulée ou échouée a son panneau dans la fiche d'un di
   une vue ferait planter l'app.
 - La carte en pouce de la passe n'avait pas de rémanence : sous « Réduire les
   animations », elle est inchangée.
-
----
-
-## Ordre proposé
-
-U0 d'abord, parce que tout le reste s'y accroche. Puis U1 → U2 → U3 → U4 :
-c'est le parcours principal, et U3 débloque la seule fonction nouvelle qui ne
-demande qu'un pont. U6, U8 et U9 sont ceux qui demandent le plus au moteur ;
-chacun mérite de commencer par sa partie moteur, testée par `swift test` et
-`RenderTrace`, avant d'avoir un écran.
