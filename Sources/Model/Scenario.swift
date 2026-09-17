@@ -169,6 +169,20 @@ struct InstallPlayback {
     let installed: GeneratedDisk
 }
 
+/// Ce qu'on sait d'une journée avant de l'écouter.
+struct DayPlayback {
+    let day: UInt32
+    /// La date, telle que la fiche du profil la compte.
+    let date: String
+    let partition: PartitionGeometry
+    let activities: [DayActivity]
+    /// Ce que la journée va écrire, annoncé par l'histoire.
+    let bytes: Int
+    let initialRuns: [MapRun]
+    /// Le disque au matin.
+    let disk: GeneratedDisk
+}
+
 /// Un scénario : ce qu'il faut pour **produire** une passe, pas la passe.
 ///
 /// Tout était calculé avant que le premier son ne sorte — requêtes, chronologie
@@ -190,12 +204,14 @@ struct Scenario {
     let defrag: DefragPlayback?
     let boot: BootPlayback?
     let install: InstallPlayback?
+    let dayPlayback: DayPlayback?
 
     /// La carte que montre la passe, si elle en a une : le volume à ranger,
     /// ou le volume vierge qu'on installe.
     var map: (partition: PartitionGeometry, initialRuns: [MapRun])? {
         if let defrag { return (defrag.partition, defrag.initialRuns) }
         if let install { return (install.partition, install.initialRuns) }
+        if let dayPlayback { return (dayPlayback.partition, dayPlayback.initialRuns) }
         return nil
     }
 
@@ -294,6 +310,7 @@ enum ScenarioBuilder {
             defrag: nil,
             boot: nil,
             install: nil,
+            dayPlayback: nil,
             feed: { pipeline, isCancelled in
                 for request in requests {
                     guard !isCancelled() else { break }
@@ -393,6 +410,7 @@ enum ScenarioBuilder {
                                freshSeeks: freshTrace.stats.seekCount,
                                freshAverageSeek: freshTrace.stats.averageSeekDistance),
             install: nil,
+            dayPlayback: nil,
             feed: { pipeline, isCancelled in
                 for request in requests {
                     guard !isCancelled() else { break }
@@ -465,6 +483,7 @@ enum ScenarioBuilder {
             defrag: nil,
             boot: nil,
             install: playback,
+            dayPlayback: nil,
             feed: { pipeline, isCancelled in
                 let sink = OperationSink { operation, mutations, progress, moves in
                     guard !isCancelled() else { return }
@@ -472,6 +491,72 @@ enum ScenarioBuilder {
                 }
                 InstallPlanner.plan(installed: installed, diskBytesPerSecond: bytesPerSecond,
                                     into: sink, isCancelled: isCancelled)
+                return nil
+            }
+        )
+    }
+
+    // MARK: - Une journée de la vie d'un disque
+
+    /// Une journée d'usage : démarrage, séances, arrêt.
+    ///
+    /// `replay` doit être arrêté au matin de ce jour-là — les jours précédents
+    /// rejoués ou sautés. La journée est **jouée pendant l'écoute** : le disque
+    /// avance à mesure que la passe se planifie.
+    static func build(day: UInt32, replay: HistoryReplay) throws -> Scenario {
+        let disk = replay.snapshot()
+        let partition = GeneratedVolumeBridge.partition(of: disk)
+        let hardware = GeneratedVolumeBridge.drive(for: disk.spec, atLeast: partition.totalSectors)
+        let volume = try GeneratedVolumeBridge.volume(from: disk)
+        // Les séances datent les phases ; les activités, chacune une fois,
+        // résument la journée.
+        let sessions = DayPlanner.sessions(of: day, in: replay)
+        let activities = DayPlanner.activities(of: day, in: replay)
+        let date = disk.spec.timeline.start.adding(days: Int(day)).description
+
+        let playback = DayPlayback(day: day, date: date, partition: partition,
+                                   activities: activities,
+                                   bytes: replay.writtenBytes(of: day),
+                                   initialRuns: volume.categoryRuns(),
+                                   disk: disk)
+
+        let note = "« \(disk.spec.displayName) », jour \(day) sur \(disk.spec.timeline.dayCount) : "
+            + "le volume est à \(Int(disk.metrics.fill * 100)) %, "
+            + "\(disk.metrics.fragmentedFileCount) fichiers en morceaux. "
+            + "La journée est rejouée telle que l'histoire du profil la décrit — "
+            + "ce qu'elle écrit vient d'elle, ce qu'elle lit vient de ce que "
+            + "l'activité suppose."
+
+        let bytesPerSecond = hardware.geometry.outerSustainedMBs * 1_000_000
+        let phases = DayPlanner.phases(of: sessions)
+        return Scenario(
+            kind: .defrag,
+            label: ScenarioLabel(title: "\(disk.spec.displayName), \(date)",
+                                 summary: activities.isEmpty
+                                     ? "Journée sans activité, sur \(hardware.geometry.model)"
+                                     : activities.map(\.label).joined(separator: ", ")
+                                         + ", sur \(hardware.geometry.model)",
+                                 volumeNote: note),
+            geometry: hardware.geometry,
+            seekModel: hardware.seek,
+            setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
+                             spinUpAt: 0.35, spinUpDuration: 1.2,
+                             idle: IdleBehavior(parkAfter: parkDelay),
+                             tail: tailDuration),
+            phases: phases,
+            fixedSpans: nil,
+            defrag: nil,
+            boot: nil,
+            install: nil,
+            dayPlayback: playback,
+            feed: { pipeline, isCancelled in
+                let sink = OperationSink { operation, mutations, progress, moves in
+                    guard !isCancelled() else { return }
+                    pipeline.serve(operation, mutations: mutations, progress: progress, moves: moves)
+                }
+                DayPlanner.plan(day: day, replay: replay, disk: disk,
+                                diskBytesPerSecond: bytesPerSecond, into: sink,
+                                isCancelled: isCancelled)
                 return nil
             }
         )
@@ -590,6 +675,7 @@ enum ScenarioBuilder {
                                    initialRuns: volume.categoryRuns()),
             boot: nil,
             install: nil,
+            dayPlayback: nil,
             feed: { pipeline, isCancelled in
                 // Une passe abandonnée ne s'interrompt pas — les stratégies
                 // n'ont pas de point d'arrêt — mais elle cesse de simuler : le

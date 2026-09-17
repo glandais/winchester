@@ -29,6 +29,8 @@ swiftc -O -swift-version 6 -o "$OUT" \
     Sources/Model/Platter.swift \
     Sources/Model/BootSession.swift \
     Sources/Model/InstallSession.swift \
+    Sources/Model/MachineWriter.swift \
+    Sources/Model/DaySession.swift \
     Sources/Model/DiskSimulator.swift \
     Sources/Model/Volume.swift \
     Sources/Model/DefragJob.swift \

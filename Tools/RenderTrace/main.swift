@@ -21,6 +21,12 @@ import AVFAudio
 //
 //   SCENARIO=install:secretaire-1996 /tmp/rendertrace install1996.wav
 //
+// Préfixé de `day:` et suivi d'un numéro de jour, c'est une **journée d'usage**
+// qui est rendue : démarrage, séances, arrêt, sur le disque tel qu'il est ce
+// jour-là.
+//
+//   SCENARIO=day:dev-1996:120 /tmp/rendertrace jour120.wav
+//
 //   SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav
 //   TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
 //
@@ -38,8 +44,13 @@ let requested = ProcessInfo.processInfo.environment["SCENARIO"] ?? ""
 
 let wantsBoot = requested.hasPrefix("boot:")
 let wantsInstall = requested.hasPrefix("install:")
+let wantsDay = requested.hasPrefix("day:")
+// `day:<profil>:<jour>`
+let dayParts = wantsDay ? requested.dropFirst(4).split(separator: ":", maxSplits: 1) : []
+let requestedDay = UInt32(dayParts.count > 1 ? String(dayParts[1]) : "") ?? 1
 let profileID = wantsBoot ? String(requested.dropFirst(5))
     : wantsInstall ? String(requested.dropFirst(8))
+    : wantsDay ? String(dayParts.first ?? "")
     : requested
 
 // `STRATEGY` force le défragmenteur simulé au lieu de laisser le format le
@@ -80,7 +91,12 @@ if let kind = ScenarioKind(rawValue: requested) {
     scenario = ScenarioBuilder.build(kind)
 } else if let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == profileID }) {
     FileHandle.standardError.write("génération de \(spec.id)…\n".data(using: .utf8)!)
-    if wantsInstall {
+    if wantsDay {
+        FileHandle.standardError.write("rejeu jusqu'au jour \(requestedDay)…\n".data(using: .utf8)!)
+        let replay = HistoryReplay(spec)
+        if requestedDay > 0 { replay.skip(through: requestedDay - 1) }
+        scenario = try ScenarioBuilder.build(day: requestedDay, replay: replay)
+    } else if wantsInstall {
         let install = try DiskGenerator.install(spec)
         installed = install
         scenario = ScenarioBuilder.build(install: install)
@@ -96,6 +112,7 @@ if let kind = ScenarioKind(rawValue: requested) {
     let known = ScenarioKind.allCases.map(\.rawValue) + ScenarioLibrary.identifiers
         + ScenarioLibrary.identifiers.map { "boot:\($0)" }
         + ScenarioLibrary.identifiers.map { "install:\($0)" }
+        + ["day:<profil>:<jour>"]
     FileHandle.standardError.write(
         "scénario inconnu : \(requested)\nconnus : \(known.joined(separator: ", "))\n"
             .data(using: .utf8)!)
@@ -393,6 +410,19 @@ func describe(_ playback: InstallPlayback, installed: InstalledDisk, duration: D
     """
 }
 
+/// Ce qu'une journée a fait au disque.
+func describe(_ playback: DayPlayback, duration: Double) -> String {
+    let stats = end.stats
+    return """
+    journée       : jour \(playback.day), \(playback.date)
+    activités     : \(playback.activities.isEmpty ? "aucune" : playback.activities.map(\.label).joined(separator: ", "))
+    volume        : \(playback.disk.catalog.liveCount) fichiers, \
+    \(Int(playback.disk.metrics.fill * 100)) % plein, \(playback.disk.metrics.fragmentedFileCount) fragmentés
+    annoncé       : \(playback.bytes / 1_000_000) Mo à écrire
+    lu / écrit    : \(stats.bytesRead / 1_000_000) / \(stats.bytesWritten / 1_000_000) Mo
+    """
+}
+
 /// Ce que chaque étape a duré. Sur un démarrage décrit en fichiers, aucune de
 /// ces durées n'est imposée : elles tombent de la simulation.
 func describePhases(_ spans: [PhaseSpan], throughput: [Double]) -> String {
@@ -420,6 +450,7 @@ durée         : \(String(format: "%.1f", end.duration)) s
 \(end.plan.map(describe) ?? "")
 \(scenario.boot.map { describe($0, duration: end.duration) } ?? "")
 \(scenario.install.flatMap { playback in installed.map { describe(playback, installed: $0, duration: end.duration) } } ?? "")
+\(scenario.dayPlayback.map { describe($0, duration: end.duration) } ?? "")
 \(describePhases(spans, throughput: throughput))
 
 """.data(using: .utf8)!)

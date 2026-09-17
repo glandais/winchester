@@ -77,6 +77,34 @@ public final class HistoryReplay: @unchecked Sendable {
         return true
     }
 
+    /// Les événements d'un jour, sans les jouer. Il doit être le jour courant.
+    public func events(of day: UInt32) -> ArraySlice<TimedEvent> {
+        var end = cursor
+        while end < events.count, events[end].day == day { end += 1 }
+        return events[cursor..<end]
+    }
+
+    /// Ce que le jour va écrire, tel que son histoire l'annonce : de quoi
+    /// mesurer un avancement avant de l'avoir joué.
+    public func writtenBytes(of day: UInt32) -> Int {
+        var total = 0
+        for timed in events(of: day) {
+            switch timed.event {
+            case let .create(file):
+                total += Int(file.bytes)
+            case let .replaceViaTemporary(_, bytes):
+                total += Int(bytes)
+            case let .append(id, bytes):
+                total += max(Int(bytes) - Int(catalog[id]?.logicalSize ?? 0), 0)
+            case let .rewrite(id):
+                total += Int(catalog[id]?.logicalSize ?? 0)
+            case .truncate, .delete, .defragment:
+                break
+            }
+        }
+        return total
+    }
+
     /// L'événement suivant, sans le jouer.
     public var peek: TimedEvent? {
         cursor < events.count ? events[cursor] : nil
