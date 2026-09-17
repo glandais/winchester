@@ -1,8 +1,9 @@
 import SwiftUI
 import DiskCore
 
-/// L'onglet d'accueil : les deux scénarios livrés, prêts à écouter, puis la
-/// galerie des disques d'époque, dont chaque carte ouvre la fiche du disque.
+/// L'onglet d'accueil : les deux démos, prêtes à écouter et posées chacune sur
+/// un disque du catalogue qu'elles nomment, puis la galerie des disques
+/// d'époque, dont chaque carte ouvre la fiche du disque.
 ///
 /// Lancer quoi que ce soit d'ici bascule sur l'onglet **Passe** et démarre la
 /// lecture : on a choisi quoi écouter, il n'y a plus à appuyer sur lecture.

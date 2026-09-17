@@ -12,7 +12,7 @@ import DiskCore
 @Suite("Plateau affiché")
 struct PlatterTests {
 
-    private static let drive = DriveCatalog.defragDrive
+    private static let drive = DriveCatalog.fireball1996
 
     private static func request(at issueTime: Double, lba: Int,
                                 sectors: Int = 8, isWrite: Bool = false) -> BlockRequest {

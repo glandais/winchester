@@ -324,10 +324,13 @@ extension DriveReference {
 
 extension DriveCatalog {
 
-    /// Le disque du scénario de démarrage : un 20 Go de 2001, une seule face.
-    public static let bootDrive = all.first { $0.model.hasSuffix("ST320011A") } ?? all[0]
-
-    /// Le disque du scénario de défragmentation : le disque de 1996 sur lequel
-    /// tournait le défragmenteur de Windows 95.
-    public static let defragDrive = all.first { $0.model.hasPrefix("Quantum Fireball") } ?? all[0]
+    /// Deux fiches nommées, celles sur lesquelles le modèle a été calé et que
+    /// les tests mesurent : le 20 Go à une face de 2001, et le 1,08 Go de 1996.
+    ///
+    /// Elles portaient les deux scénarios livrés, du temps où ceux-ci avaient
+    /// leur propre disque ; les démos tournent désormais sur des disques de la
+    /// galerie, dont la géométrie est déduite d'une fiche et d'une année. Ces
+    /// deux-là restent nommées parce qu'un point de mesure a besoin d'un nom.
+    public static let barracuda2001 = all.first { $0.model.hasSuffix("ST320011A") } ?? all[0]
+    public static let fireball1996 = all.first { $0.model.hasPrefix("Quantum Fireball") } ?? all[0]
 }

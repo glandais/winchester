@@ -12,7 +12,7 @@ import DiskCore
 @Suite("Disque au repos")
 struct IdleTests {
 
-    private static let drive = DriveCatalog.defragDrive
+    private static let drive = DriveCatalog.fireball1996
 
     private static func request(at issueTime: Double, lba: Int,
                                 sectors: Int = 8) -> BlockRequest {
@@ -152,27 +152,5 @@ struct IdleTests {
             if case .trackStep = $0.kind { return true } else { return false }
         }
         #expect(steps.count < 50)
-    }
-
-    // MARK: - Les phases disent le moteur
-
-    /// `WorkloadPhase.spin` était renseigné et lu par personne. La chronologie
-    /// du moteur qu'il décrit doit être exactement celle qui était recopiée à la
-    /// main dans le scénario livré.
-    @Test("La chronologie du moteur vient des phases")
-    func spinScheduleComesFromPhases() throws {
-        let phases = WorkloadLibrary.windowsBootAndOffice
-        let generator = WorkloadGenerator(geometry: Self.drive.geometry)
-        let (_, spans) = generator.generate(phases: phases)
-        let schedule = SpinSchedule(phases: phases, spans: spans)
-
-        #expect(schedule.spinUpAt == 0.35)
-        #expect(abs(schedule.spinUpDuration - 5.4) < 1e-9)
-
-        let stopAt = try #require(schedule.idle.stopAt)
-        let shutdown = try #require(spans.last)
-        #expect(shutdown.id == "shutdown")
-        #expect(abs(stopAt - (shutdown.start + 0.35)) < 1e-9)
-        #expect(schedule.idle.stopDuration > 0)
     }
 }

@@ -17,30 +17,53 @@ enum ScenarioKind: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .windowsBoot:
-            return "Démarrage Windows puis lancement d'une suite bureautique, "
-                + "sur un Barracuda ATA IV de 2001"
+            return "Démarrage de Windows 98 SE puis d'Office 97, sur « Secrétariat, 1999 » "
+                + "du catalogue : un FAT32 de 4,2 Go vieilli par deux ans de bureautique"
         case .defrag:
-            return "Passe complète du défragmenteur de Windows 95 sur un volume FAT16 vieilli, "
-                + "sur un Quantum Fireball 1080AT de 1996"
+            return "Tassage à la frontière sur « Développeur, 1993 » du catalogue : "
+                + "un FAT16 de 210 Mo vieilli par deux ans de compilations"
         }
     }
 
-    /// Ce que disent les notes de modélisation du volume sous la passe. Un
-    /// disque venu de la galerie n'a pas la même histoire qu'un volume vieilli
-    /// sur place, et c'est la seule ligne des notes qui change.
-    var volumeNote: String {
+    /// Le disque du catalogue sur lequel la démo tourne.
+    ///
+    /// Les deux démos n'ont plus de volume à elles : elles prennent un disque
+    /// d'époque de la galerie, celui dont l'histoire raconte le mieux ce
+    /// qu'elles font entendre. Le matériel suit le disque — c'est la fiche du
+    /// profil qui le décrit, et non plus un modèle choisi à côté — et tout ce
+    /// que la galerie sait faire d'un disque vaut désormais pour la démo :
+    /// comparer deux outils sur son volume, redémarrer celui qu'une passe a
+    /// rangé, retrouver son bilan.
+    var profileID: String {
         switch self {
-        case .windowsBoot:
-            return ""
-        case .defrag:
-            return "Partition FAT16 vieillie par deux ans d'usage simulé : installation, "
-                + "puis créations, suppressions et réenregistrements. L'allocateur next-fit "
-                + "de VFAT suffit à tout disperser, aucun mécanisme exotique n'intervient."
+        // Windows 98 SE et Office 97, deux ans de documents et rien d'autre,
+        // sur un FAT32 rempli à 88 %. C'est le volume de la galerie où la
+        // fragmentation coûte le plus à un démarrage (+4 % sur le témoin), et
+        // son système n'a pas encore le préchargeur de XP : les fichiers
+        // partent dans l'ordre du registre, et le bras suit.
+        case .windowsBoot: return "secretaire-1999"
+        // Le plus proche parent du volume écrit à la main qu'il remplace : un
+        // FAT16 en clusters de 8 Ko, plein à 74 %, là où l'ancien était un
+        // FAT16 de 180 Mo à 78 %. Sa passe tient en cinq minutes, et sa carte
+        // est assez petite pour qu'un bloc d'écran vaille peu de clusters.
+        case .defrag: return "dev-1993"
         }
     }
 
-    var label: ScenarioLabel {
-        ScenarioLabel(title: title, summary: summary, volumeNote: volumeNote)
+    /// L'outil de la démo, quand elle en demande un ; `nil` laisse le format
+    /// décider, comme pour un disque de la galerie.
+    ///
+    /// Le tassage à la frontière plutôt que le défragmenteur de 95 : c'est
+    /// celui qu'on **regarde** le mieux, une frontière balayant le volume
+    /// depuis son début, tout ce qui est dessous étant rangé. Et il arrive au
+    /// même résultat que l'outil d'époque sur ce volume — aucun fichier
+    /// déplaçable en morceaux, un seul trou libre — en 5 min 22 au lieu de
+    /// 30 min 35.
+    var strategy: (any DefragStrategy)? {
+        switch self {
+        case .windowsBoot: return nil
+        case .defrag:      return FrontierCompactionStrategy()
+        }
     }
 }
 
@@ -70,9 +93,9 @@ enum GeneratedActivity: String, Hashable, CaseIterable, Sendable {
 
 /// Ce que le sélecteur de scénario propose.
 ///
-/// Les deux scénarios livrés sont toujours là ; un disque de la galerie s'y
-/// ajoute quand on demande à le démarrer ou à le défragmenter, et y reste tant
-/// qu'on n'en confie pas un autre au simulateur.
+/// Les deux démos sont toujours là ; un disque de la galerie s'y ajoute quand on
+/// demande à le démarrer ou à le défragmenter, et y reste tant qu'on n'en confie
+/// pas un autre au simulateur.
 enum ScenarioSelection: Hashable, Identifiable {
     case builtin(ScenarioKind)
     /// Identifiant du profil de la galerie, et ce qu'on lui demande.
@@ -83,7 +106,7 @@ enum ScenarioSelection: Hashable, Identifiable {
         return false
     }
 
-    /// Clé d'ordre stable : les scénarios livrés d'abord, dans l'ordre de leur
+    /// Clé d'ordre stable : les deux démos d'abord, dans l'ordre de leur
     /// déclaration, puis les disques générés par identifiant de profil.
     var sortKey: String {
         switch self {
@@ -101,9 +124,9 @@ enum ScenarioSelection: Hashable, Identifiable {
 /// phrase de résumé sous le titre, et la description de son volume dans les
 /// notes de modélisation.
 ///
-/// Les deux scénarios livrés tirent ces trois textes de leur `ScenarioKind` ;
-/// un disque venu de la galerie les tire de son profil. C'est la seule chose
-/// qui les distingue une fois la passe planifiée.
+/// Un disque venu de la galerie les tire de son profil ; une démo garde cette
+/// note de volume et remplace les deux premiers par les siens. C'est la seule
+/// chose qui les distingue une fois la passe planifiée.
 struct ScenarioLabel {
     let title: String
     let summary: String
@@ -207,14 +230,13 @@ struct DayPlayback {
 /// et la source des requêtes ; la passe se calcule à mesure qu'on l'écoute.
 struct Scenario {
     let kind: ScenarioKind
-    let label: ScenarioLabel
+    /// Ce que l'écran en dit. Une démo reprend le scénario d'un disque du
+    /// catalogue et n'en change que ce titre et cette phrase.
+    var label: ScenarioLabel
     let geometry: DriveGeometry
     let seekModel: SeekModel
     let setup: PassSetup
     let phases: [PhaseDescriptor]
-    /// Les phases à durée imposée du démarrage livré. `nil` en boucle fermée,
-    /// où chacune commence à sa première requête.
-    let fixedSpans: [PhaseSpan]?
 
     let defrag: DefragPlayback?
     let boot: BootPlayback?
@@ -242,7 +264,6 @@ struct Scenario {
                  deliver: @escaping PassPipeline.Delivery) -> PassEnd? {
         let pipeline = PassPipeline(setup: setup, batchRequests: batchRequests,
                                     batchSeconds: batchSeconds, deliver: deliver)
-        for span in fixedSpans ?? [] { pipeline.mark(phase: span.index, at: span.start) }
         let plan = feed(pipeline, isCancelled)
         guard !isCancelled() else { return nil }
         return pipeline.finish(plan: plan)
@@ -266,11 +287,12 @@ struct Scenario {
         return live
     }
 
-    /// Les phases datées, une fois la passe finie.
+    /// Les phases datées, une fois la passe finie. Aucune durée n'est imposée :
+    /// chacune commence à sa première requête.
     func spans(of end: PassEnd) -> [PhaseSpan] {
-        fixedSpans ?? PhaseSpan.closedLoop(firstStarts: end.firstStarts,
-                                           descriptors: phases,
-                                           duration: end.duration)
+        PhaseSpan.closedLoop(firstStarts: end.firstStarts,
+                             descriptors: phases,
+                             duration: end.duration)
     }
 }
 
@@ -278,74 +300,44 @@ enum ScenarioBuilder {
 
     static let bucketDuration = ActivityBucket.duration
 
-    static func build(_ kind: ScenarioKind) -> Scenario {
-        switch kind {
-        case .windowsBoot: return buildWindowsBoot()
-        case .defrag:      return buildDefrag()
-        }
+    // MARK: - Les deux démos
+
+    /// Le disque du catalogue sur lequel tourne une démo.
+    ///
+    /// C'est le générateur de la galerie, sur le profil que la démo a choisi :
+    /// un disque d'époque de deux ans se fabrique en quelques dizaines de
+    /// millisecondes, et les deux démos ont été prises parmi les plus légers.
+    static func disk(of kind: ScenarioKind) throws -> GeneratedDisk {
+        try DiskGenerator.generate(ScenarioLibrary.load(kind.profileID))
     }
 
-    // MARK: - Démarrage Windows
-
-    private static func buildWindowsBoot() -> Scenario {
-        let drive = DriveCatalog.bootDrive
-        let geometry = drive.geometry
-        let seekModel = drive.seekModel
-        let phases = WorkloadLibrary.windowsBootAndOffice
-
-        // Une minute et quelques milliers de requêtes : les générer d'avance ne
-        // coûte rien, et c'est la chronologie des phases qui les date.
-        let generator = WorkloadGenerator(geometry: geometry)
-        let (requests, spans) = generator.generate(phases: phases)
-        let total = spans.last?.end ?? 0
-
-        // La chronologie du moteur vient des phases, plus d'ici : la première
-        // le lance, la dernière le coupe. Le bras va se parquer avant la
-        // coupure, ce que le scénario n'avait pas à dire.
-        let spin = SpinSchedule(phases: phases, spans: spans)
-
-        let setup = PassSetup(geometry: geometry, seekModel: seekModel,
-                              spinUpAt: spin.spinUpAt,
-                              spinUpDuration: spin.spinUpDuration,
-                              idle: IdleBehavior(parkAfter: parkDelay,
-                                                 stopAt: spin.idle.stopAt,
-                                                 stopDuration: spin.idle.stopDuration),
-                              tail: nil,
-                              minimumDuration: total,
-                              datesPhases: false)
-
-        return Scenario(
-            kind: .windowsBoot,
-            label: ScenarioKind.windowsBoot.label,
-            geometry: geometry,
-            seekModel: seekModel,
-            setup: setup,
-            phases: phases.map(\.descriptor),
-            fixedSpans: spans,
-            defrag: nil,
-            boot: nil,
-            install: nil,
-            dayPlayback: nil,
-            feed: { pipeline, isCancelled in
-                for request in requests {
-                    guard !isCancelled() else { break }
-                    pipeline.serve(request)
-                }
-                return nil
-            }
-        )
+    /// Une démo : la passe d'un disque du catalogue, sous le nom de la démo.
+    ///
+    /// Rien n'est calculé ici qui ne le soit pour un disque de la galerie — ce
+    /// sont les deux mêmes constructeurs. La démo n'ajoute que son titre et sa
+    /// phrase ; les notes de modélisation restent celles que le volume généré
+    /// sait dire de lui-même, et elles sont plus précises que ce qu'un texte
+    /// écrit d'avance pouvait annoncer.
+    static func build(_ kind: ScenarioKind, disk: GeneratedDisk) throws -> Scenario {
+        var scenario: Scenario
+        switch kind {
+        case .windowsBoot: scenario = build(boot: disk)
+        case .defrag:      scenario = try build(generated: disk, using: kind.strategy)
+        }
+        scenario.label = ScenarioLabel(title: kind.title, summary: kind.summary,
+                                       volumeNote: scenario.label.volumeNote)
+        return scenario
     }
 
     // MARK: - Démarrage d'un disque de la galerie
 
-    /// Le même geste que le démarrage livré, mais sur un disque qu'on vient de
-    /// fabriquer — et surtout, décrit autrement.
+    /// Démarrer un disque qu'on vient de fabriquer.
     ///
-    /// Le scénario livré nomme des **fractions du plateau** ; celui-ci nomme
-    /// des **fichiers**, et les prend là où l'allocateur les a laissés. C'est
-    /// ce qui lui permet d'exister sur les vingt disques de la galerie au lieu
-    /// d'un seul, et c'est aussi ce qui rend sa durée intéressante : elle n'est
-    /// pas décrétée. Le système calcule entre deux lectures — c'est le
+    /// Le scénario de démarrage écrit à la main, que la démo a remplacé, nommait
+    /// des **fractions du plateau** ; celui-ci nomme des **fichiers**, et les
+    /// prend là où l'allocateur les a laissés. C'est ce qui lui permet d'exister
+    /// sur les vingt disques de la galerie au lieu d'un seul, et c'est aussi ce
+    /// qui rend sa durée intéressante : elle n'est pas décrétée. Le système calcule entre deux lectures — c'est le
     /// plancher — et le disque ajoute ce qu'il ajoute.
     ///
     /// Rien n'est refusé ici : lire des fichiers ne suppose aucune stratégie de
@@ -410,7 +402,6 @@ enum ScenarioBuilder {
                              idle: IdleBehavior(parkAfter: parkDelay),
                              tail: plan.tail),
             phases: plan.phases,
-            fixedSpans: nil,
             defrag: nil,
             boot: BootPlayback(osName: plan.osName,
                                appName: plan.appName,
@@ -494,7 +485,6 @@ enum ScenarioBuilder {
                              idle: IdleBehavior(parkAfter: parkDelay),
                              tail: tailDuration),
             phases: phases.descriptors,
-            fixedSpans: nil,
             defrag: nil,
             boot: nil,
             install: playback,
@@ -559,7 +549,6 @@ enum ScenarioBuilder {
                              idle: IdleBehavior(parkAfter: parkDelay),
                              tail: tailDuration),
             phases: phases,
-            fixedSpans: nil,
             defrag: nil,
             boot: nil,
             install: nil,
@@ -585,19 +574,6 @@ enum ScenarioBuilder {
 
     // MARK: - Défragmentation
 
-    /// Partition C: de 180 Mo en tête d'un disque de 876 Mo, clusters de 4 Ko —
-    /// ce que donnait `FORMAT` pour cette taille en FAT16. Elle occupe les 21 %
-    /// extérieurs du plateau, et les tables d'allocation sont à son tout début :
-    /// valider un déplacement fait revenir le bras au bord, d'où le
-    /// « clac … clac » régulier.
-    ///
-    /// Une passe complète dure ici un peu plus de trois minutes. Sur un volume
-    /// de l'époque réellement dimensionné (500 Mo à 1 Go) elle en prenait vingt
-    /// à quarante-cinq : c'est le volume qui est réduit, pas le modèle.
-    static let partitionSectors = 180_000_000 / DriveGeometry.bytesPerSector
-    static let clusterSectors = 8
-    static let volumeFill = 0.78
-
     /// Silence final, une fois la passe terminée. Il n'est plus tout à fait
     /// silencieux : le bras s'y parque.
     private static let tailDuration = 3.5
@@ -610,18 +586,6 @@ enum ScenarioBuilder {
     /// largement, seek de course complète compris.
     private static let parkDelay = 1.0
 
-    private static func buildDefrag() -> Scenario {
-        let partition = PartitionGeometry(startLBA: 0,
-                                          sectors: partitionSectors,
-                                          clusterSectors: clusterSectors)
-        let volume = VolumeFactory.agedWindows95(partition: partition, fill: volumeFill)
-
-        return assembleDefrag(volume: volume.defragVolume(),
-                              geometry: DriveCatalog.defragDrive.geometry,
-                              seekModel: DriveCatalog.defragDrive.seekModel,
-                              label: ScenarioKind.defrag.label)
-    }
-
     // MARK: - Défragmentation d'un disque de la galerie
 
     /// Même passe, sur un volume venu du générateur de disques d'époque.
@@ -629,9 +593,9 @@ enum ScenarioBuilder {
     /// Le disque est converti en volume à défragmenter par
     /// `GeneratedVolumeBridge` — qui refuse les formats que l'outil simulé ne
     /// sait pas ranger — et le matériel est celui que décrit la fiche du
-    /// profil, pas le disque de 1996 du scénario livré : un 210 Mo à
-    /// 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à 5 400 tr/min de 1996,
-    /// et c'est tout l'intérêt de l'exercice.
+    /// profil, jamais un modèle choisi à côté : un 210 Mo à 3 600 tr/min de 1993
+    /// ne sonne pas comme un 1 Go à 5 400 tr/min de 1996, et c'est tout
+    /// l'intérêt de l'exercice.
     static func build(generated disk: GeneratedDisk,
                       using strategy: (any DefragStrategy)? = nil) throws -> Scenario {
         let volume = try GeneratedVolumeBridge.volume(from: disk)
@@ -683,7 +647,6 @@ enum ScenarioBuilder {
             seekModel: seekModel,
             setup: setup,
             phases: strategy.phases,
-            fixedSpans: nil,
             defrag: DefragPlayback(partition: partition,
                                    strategy: strategy,
                                    before: volume.stats,

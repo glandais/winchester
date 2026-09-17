@@ -8,14 +8,17 @@
 #   fast:<s>    passe accélérée pour tenir en <s> secondes, 1920 × 1080
 #   short:<s>   Short 1080 × 1920, accéléré seulement si la passe dépasse <s> secondes
 #
-# Les scénarios livrés
-demarrage-windows      | SCENARIO=windowsBoot                        | full short:170
-defrag-windows95       | SCENARIO=defrag                             | full fast:60 short:58
+# Les deux démos de l'accueil, chacune sur son disque du catalogue :
+# secretaire-1999 pour le démarrage, dev-1993 tassé à la frontière
+demarrage-secretaire-1999 | SCENARIO=windowsBoot                     | full short:170
+defrag-frontiere-dev-1993 | SCENARIO=defrag                          | full fast:60 short:58
 
-# Un disque de la galerie, démarré puis défragmenté : l'avant et l'après
+# Un disque de la galerie, démarré puis défragmenté : l'avant et l'après.
+# Le même dev-1993 que la démo, mais sous l'outil de son époque — 30 min 35
+# contre 5 min 22, et c'est tout l'intérêt de le rendre deux fois.
 demarrage-dev-1993     | SCENARIO=boot:dev-1993                      | full short:170
 demarrage-famille-2007 | SCENARIO=boot:famille-2007                  | full short:170
-defrag-dev-1993        | SCENARIO=dev-1993                           | full fast:300 short:58
+defrag-dev-1993-win95  | SCENARIO=dev-1993                           | full fast:300 short:58
 
 # Le jour 0 d'un disque, et une journée de sa vie
 installation-secretaire-1996 | SCENARIO=install:secretaire-1996        | full fast:150 short:58

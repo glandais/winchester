@@ -24,8 +24,14 @@ final class SimulationModel: ObservableObject {
     private var cache: [ScenarioSelection: Scenario] = [:]
 
     /// Le disque de la galerie que joue la passe, s'il en vient un : c'est lui
-    /// qu'on relance avec un autre outil, ou qu'on démarre une fois rangé.
+    /// qu'on relance avec un autre outil, ou qu'on démarre une fois rangé. Les
+    /// deux démos en ont un elles aussi, puisqu'elles tournent sur un disque du
+    /// catalogue.
     private(set) var disk: GeneratedDisk?
+    /// Les disques des démos, fabriqués à la première écoute puis gardés : deux
+    /// volumes de quelques milliers de fichiers, qu'on ne refabrique pas à
+    /// chaque aller-retour du sélecteur.
+    private var demoDisks: [ScenarioKind: GeneratedDisk]
     /// L'outil qui a rangé `disk`, quand la passe démarre un volume rangé.
     private(set) var rangedBy: String?
 
@@ -54,12 +60,24 @@ final class SimulationModel: ObservableObject {
     var mapSource: (partition: PartitionGeometry, initialRuns: [MapRun])? { scenario.map }
 
     init() {
-        let scenario = ScenarioBuilder.build(.windowsBoot)
+        // La démo de démarrage tourne sur un disque du catalogue : il se
+        // fabrique. Quelques dizaines de millisecondes pour un volume de 1999,
+        // payées une fois au lancement — la galerie, elle, fabrique hors du fil
+        // principal parce qu'un Vista de 250 Go y met 1,3 s.
+        let kind = ScenarioKind.windowsBoot
+        guard let disk = try? ScenarioBuilder.disk(of: kind),
+              let scenario = try? ScenarioBuilder.build(kind, disk: disk) else {
+            // Les profils des démos sont embarqués et relus par un test : y
+            // échouer ici, c'est un scénario absent du bundle.
+            preconditionFailure("le disque de la démo « \(kind.title) » ne se fabrique pas")
+        }
         let live = scenario.startLivePass()
-        self.selection = .builtin(.windowsBoot)
+        self.selection = .builtin(kind)
         self.scenario = scenario
         self.live = live
-        self.cache = [.builtin(.windowsBoot): scenario]
+        self.cache = [.builtin(kind): scenario]
+        self.demoDisks = [kind: disk]
+        self.disk = disk
         self.engine = DiskNoiseEngine(rpm: scenario.geometry.rpm)
         engine.mix = SoundMix.load(from: .standard)
         engine.load(feed: live, rpm: scenario.geometry.rpm)
@@ -72,7 +90,7 @@ final class SimulationModel: ObservableObject {
             }
     }
 
-    /// Ce que propose le sélecteur : les scénarios livrés, puis le disque de la
+    /// Ce que propose le sélecteur : les deux démos, puis le disque de la
     /// galerie qu'on lui a confié, s'il y en a un.
     ///
     /// Un seul à la fois : c'est un sélecteur segmenté, et vingt profils n'y
@@ -88,14 +106,29 @@ final class SimulationModel: ObservableObject {
         guard selection != self.selection else { return }
         guard let scenario = cache[selection] ?? built(selection) else { return }
         cache[selection] = scenario
+        // Une démo tourne sur un disque du catalogue : c'est lui que son bilan
+        // nomme, et lui qu'on redémarre une fois rangé. Y revenir par le
+        // sélecteur le remet donc en place.
+        if case let .builtin(kind) = selection {
+            disk = demoDisks[kind]
+            rangedBy = nil
+        }
         adopt(scenario, as: selection)
     }
 
     private func built(_ selection: ScenarioSelection) -> Scenario? {
         // Un disque généré n'est jamais reconstruit à la volée : il n'existe
         // que dans la galerie, et n'entre ici que par `load(generated:as:)`.
-        guard case let .builtin(kind) = selection else { return nil }
-        return ScenarioBuilder.build(kind)
+        guard case let .builtin(kind) = selection, let disk = demoDisk(kind) else { return nil }
+        return try? ScenarioBuilder.build(kind, disk: disk)
+    }
+
+    /// Le disque d'une démo : fabriqué à la première écoute, puis gardé.
+    private func demoDisk(_ kind: ScenarioKind) -> GeneratedDisk? {
+        if let disk = demoDisks[kind] { return disk }
+        guard let disk = try? ScenarioBuilder.disk(of: kind) else { return nil }
+        demoDisks[kind] = disk
+        return disk
     }
 
     /// Adopte un disque fabriqué par la galerie et bascule dessus.

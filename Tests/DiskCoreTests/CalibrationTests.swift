@@ -30,6 +30,19 @@ struct ScenarioLibraryTests {
         }
     }
 
+    /// Les deux démos de l'accueil ne portent plus de volume à elles : elles
+    /// tournent sur un disque du catalogue, nommé par son identifiant dans
+    /// `ScenarioKind`. Ce fichier-là n'est pas compilé par le paquet — d'où ces
+    /// deux identifiants recopiés : ils sont le seul endroit où un profil
+    /// renommé se verrait autrement au lancement de l'application, et non ici.
+    @Test("Les profils des deux démos sont dans le catalogue")
+    func demoProfilesExist() throws {
+        for id in ["secretaire-1999", "dev-1993"] {
+            #expect(ScenarioLibrary.identifiers.contains(id), "profil de démo absent : \(id)")
+            _ = try ScenarioLibrary.load(id)
+        }
+    }
+
     /// Ce qui est écrit dans le JSON décrit un usage, jamais un résultat. Ce
     /// test est là pour que personne n'ajoute un jour un « fragmentation: 0.23 »
     /// à ce format.

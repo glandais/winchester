@@ -12,7 +12,8 @@ struct PassRecord: Identifiable {
 
     let id = UUID()
     let passNumber: Int
-    /// Le profil de la galerie, ou le titre d'un scénario livré.
+    /// Le profil de la galerie — celui d'une démo comme celui d'une fiche — ou,
+    /// à défaut de disque, le titre de la passe.
     let diskID: String
     let title: String
     let kind: Kind

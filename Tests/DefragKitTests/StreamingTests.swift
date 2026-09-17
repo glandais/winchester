@@ -14,10 +14,9 @@ import DiskCore
 @Suite("Passe au fil de l'eau")
 struct StreamingTests {
 
-    private static let drive = DriveCatalog.defragDrive
-    private static let bootDrive = DriveCatalog.bootDrive
+    private static let drive = DriveCatalog.fireball1996
 
-    /// Le volume du scénario livré : un FAT16 de 180 Mo vieilli sur place.
+    /// Un FAT16 de 180 Mo vieilli sur place, fabriqué par le fixture.
     private static func agedVolume() -> DefragVolume {
         let partition = PartitionGeometry(startLBA: 0,
                                           sectors: 180_000_000 / 512,
@@ -127,37 +126,44 @@ struct StreamingTests {
         Self.expectSameCues(history.cues, reference.cues)
     }
 
-    @Test("Les repères du démarrage livré sont ceux du calcul d'un bloc")
-    func bootCuesMatch() {
-        let phases = WorkloadLibrary.windowsBootAndOffice
-        let geometry = Self.bootDrive.geometry
-        let (requests, spans) = WorkloadGenerator(geometry: geometry).generate(phases: phases)
-        let spin = SpinSchedule(phases: phases, spans: spans)
-        let idle = IdleBehavior(parkAfter: 1.0, stopAt: spin.idle.stopAt,
-                                stopDuration: spin.idle.stopDuration)
-        let trace = DiskSimulator.run(geometry: geometry, seekModel: Self.bootDrive.seekModel,
-                                      requests: requests, totalDuration: spans.last?.end ?? 0,
-                                      spinUpAt: spin.spinUpAt, spinUpDuration: spin.spinUpDuration,
-                                      idle: idle)
-        let reference = ReferenceCues.build(events: trace.events, cylinders: geometry.cylinders)
+    /// Un démarrage n'est ni une passe pilotée par un débit ni une passe qui
+    /// part dès que le disque se libère : entre deux lectures, le système
+    /// calcule (`BlockRequest.thinkTime`). C'est le seul scénario où la date
+    /// d'une requête dépend de ce que la précédente a duré, donc celui où le
+    /// flux avait le plus de chances de s'écarter du calcul d'un bloc.
+    @Test("Les repères d'un démarrage sont ceux du calcul d'un bloc")
+    func bootCuesMatch() throws {
+        let disk = try DiskGenerator.generate(try ScenarioLibrary.load("gamer-1993"))
+        let plan = BootPlanner.plan(disk: disk)
+        let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
+                                                   atLeast: plan.partition.totalSectors)
+        let setup = PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
+                              spinUpAt: 0.35,
+                              spinUpDuration: max(plan.post - 0.6, 0.5),
+                              idle: IdleBehavior(parkAfter: 1.0),
+                              tail: plan.tail)
+        let trace = DiskSimulator.run(geometry: setup.geometry, seekModel: setup.seekModel,
+                                      requests: plan.requests, totalDuration: 0,
+                                      spinUpAt: setup.spinUpAt,
+                                      spinUpDuration: setup.spinUpDuration,
+                                      idle: setup.idle)
+        let reference = ReferenceCues.build(events: trace.events,
+                                            cylinders: setup.geometry.cylinders)
 
         let recorder = PassRecorder()
-        let pipeline = PassPipeline(setup: PassSetup(geometry: geometry,
-                                                     seekModel: Self.bootDrive.seekModel,
-                                                     spinUpAt: spin.spinUpAt,
-                                                     spinUpDuration: spin.spinUpDuration,
-                                                     idle: idle,
-                                                     minimumDuration: spans.last?.end ?? 0,
-                                                     datesPhases: false),
-                                    batchRequests: 11, deliver: recorder.receive)
-        for span in spans { pipeline.mark(phase: span.index, at: span.start) }
-        for request in requests { pipeline.serve(request) }
+        let pipeline = PassPipeline(setup: setup, batchRequests: 11, deliver: recorder.receive)
+        for request in plan.requests { pipeline.serve(request) }
         let end = pipeline.finish()
 
+        #expect(reference.count > 100)
         Self.expectSameCues(recorder.history.cues, reference)
-        #expect(end.duration == trace.duration)
         #expect(end.eventCount == trace.events.count)
-        #expect(recorder.history.phases.map(\.time) == spans.map(\.start))
+        #expect(end.requestCount == plan.requests.count)
+        // Les phases se datent à leur première requête, ici comme là-bas.
+        let spans = PhaseSpan.closedLoop(firstStarts: end.firstStarts,
+                                         descriptors: plan.phases,
+                                         duration: end.duration)
+        #expect(recorder.history.phases.map(\.index) == spans.dropFirst().map(\.index))
     }
 
     /// L'installation mêle ce que les deux autres séparent : des opérations

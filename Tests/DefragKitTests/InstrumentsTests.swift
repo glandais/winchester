@@ -8,7 +8,7 @@ import DiskCore
 @Suite("Instruments d'une passe")
 struct InstrumentsTests {
 
-    private static let drive = DriveCatalog.defragDrive
+    private static let drive = DriveCatalog.fireball1996
     private static let setup = PassSetup(geometry: drive.geometry, seekModel: drive.seekModel,
                                          spinUpAt: 0, spinUpDuration: 0.9,
                                          idle: IdleBehavior(parkAfter: 1.0),

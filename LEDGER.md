@@ -3100,3 +3100,127 @@ nouveaux.
   défragmentation livrée).
 - La passe livrée dure 3 min 25 : une version « accélérée » en trois minutes
   n'aurait pas eu de sens, `videos.txt` la demande en une minute.
+
+## Chantier 19 — les deux démos sur des disques du catalogue
+
+**Fait** · branche `develop`
+
+### Le problème
+
+L'accueil proposait deux démos qui ne tournaient sur rien de ce que
+l'application sait fabriquer. Chacune portait son propre disque, écrit à la
+main à côté du reste :
+
+| | volume | matériel | ce qu'il décrivait |
+|---|---|---|---|
+| Démarrage | aucun — des phases réglées à l'oreille | Barracuda ATA IV, fiche recopiée | des **fractions du plateau** : « les pilotes à 7,5 % » |
+| Défragmentation | FAT16 de 180 Mo à 78 %, `VolumeFactory.agedWindows95` | Quantum Fireball 1080AT, fiche recopiée | un vieillissement paramétré par un taux de remplissage |
+
+Deux conséquences. D'abord, les démos étaient les deux seules passes de
+l'application **sans disque** : pas de fichiers nommés, donc pas de catégories
+sur la carte, pas de témoin, pas de bilan comparable, pas de « démarrer le
+disque rangé », et un résumé de volume écrit d'avance plutôt que mesuré.
+Ensuite, elles vieillissaient à part : les vingt profils de la galerie ont reçu
+l'installation, la journée, la vie entière et six outils, et ces deux-là n'ont
+rien reçu.
+
+### Les décisions
+
+- **Chaque démo nomme un profil de la galerie** (`ScenarioKind.profileID`) et
+  passe par les constructeurs existants, `build(boot:)` et
+  `build(generated:using:)`. Elle n'ajoute que son titre et sa phrase ; la note
+  de modélisation reste celle que le volume généré sait dire de lui-même, et
+  elle est **mesurée** — taille de cluster, remplissage, jours vieillis, durée
+  du témoin.
+- **Le démarrage prend `secretaire-1999`** : Windows 98 SE puis Office 97, deux
+  ans de documents et rien d'autre, FAT32 rempli à 88 %. C'est le volume de la
+  galerie où la fragmentation coûte le plus à un démarrage — +4 % sur le témoin,
+  le maximum des huit mesurés — et son système n'a pas le préchargeur de XP :
+  les fichiers partent dans l'ordre du registre, et le bras suit. Il remplace un
+  scénario qui promettait « Windows puis une suite bureautique » sans ouvrir un
+  fichier.
+- **La défragmentation prend `dev-1993`**, le plus proche parent du volume
+  qu'elle remplace : FAT16 en clusters de 8 Ko, plein à 74 %, là où l'ancien
+  était un FAT16 de 180 Mo à 78 %. Sa carte est assez petite pour qu'un bloc
+  d'écran vaille 22 clusters.
+- **Et elle le range au tassage à la frontière**, pas avec l'outil de 95. Le
+  critère est ce qu'on **regarde** : une frontière balaie le volume depuis son
+  début, tout ce qui est dessous est rangé, et la carte se remplit d'un bord à
+  l'autre. Les deux outils finissent au même état sur ce volume — aucun fichier
+  déplaçable en morceaux, un seul trou libre — mais l'un met 5 min 22 et l'autre
+  30 min 35. Une démo de trente minutes n'est pas une démo.
+- **Le disque d'une démo est un disque de la galerie pour tout le reste** :
+  `SimulationModel` le garde dans `disk`, donc le bilan le nomme, les
+  comparaisons d'outils le retrouvent, et « démarrer le disque rangé » marche
+  depuis une démo comme depuis une fiche.
+- **Il se fabrique au lancement pour la première, à la première écoute pour la
+  seconde**, puis reste en mémoire (`demoDisks`). Les deux profils ont été
+  choisis parmi les plus légers du catalogue : 25 ms et 47 ms en release, contre
+  1,3 s pour un Vista de 250 Go. La galerie continue de fabriquer hors du fil
+  principal, avec son avancement ; une démo n'en a pas besoin.
+
+### Ce qui valide
+
+- **`swift test` : 206 tests passent**, dont un nouveau qui vérifie que les deux
+  identifiants de profil des démos sont bien dans le catalogue — `Scenario.swift`
+  n'étant pas compilé par le paquet, c'est le seul filet contre un profil
+  renommé, qui se verrait sinon au lancement de l'application.
+- **Le rendu hors-ligne donne les deux passes attendues.**
+  `SCENARIO=windowsBoot` : 56,7 s, 534 fichiers lus, 105 Mo, 28,1 s de calcul,
+  témoin à 54,7 s soit +4 %. `SCENARIO=defrag` : 322,4 s, 5 762 requêtes,
+  1 025 fichiers déplacés, 52 évacuations, 200 fichiers fragmentés avant et 0
+  après, 46 trous libres avant et 1 après.
+- **Sur le simulateur** (iPhone 17 Pro Max, iOS 26.5, Debug) : l'accueil montre
+  les deux cartes avec le disque qu'elles nomment ; la démo de défragmentation
+  joue le tassage à la frontière sur une carte de 220 Mo en FAT16 où les six
+  catégories de fichiers apparaissent ; la démo de démarrage titre « Windows 98
+  SE, puis Office 97 » sur « IDE 4,2 Go · 5 400 tr/min », 534 fichiers à lire.
+
+### Le nettoyage qui suit
+
+Remplacer les deux volumes a laissé sans client toute la branche du modèle qui
+décrivait une passe **en phases** plutôt qu'en fichiers. Elle est supprimée, et
+ce qui restait dans le code de production pour le seul usage des tests en sort :
+
+- **`WorkloadLibrary`, `WorkloadPhase`, `Ramp`, `SpinSchedule` et
+  `WorkloadGenerator` sont supprimés** (450 lignes). `Workload.swift` ne garde
+  que `BlockRequest` et la datation des phases après coup. Plus aucune passe
+  n'est décrite par un débit, une localité et une rafale : toutes viennent d'un
+  catalogue de fichiers ou d'un volume à ranger.
+- **`Scenario.fixedSpans`, `PassPipeline.mark(phase:at:)`,
+  `PassSetup.datesPhases` et `PassSetup.minimumDuration` disparaissent avec
+  elles.** Aucune phase n'a plus de durée imposée, donc `spans(of:)` passe
+  toujours par `PhaseSpan.closedLoop` et la chaîne date les phases sans
+  condition. Une durée de passe ne dépend plus que de la trace et du parcage.
+- **`VolumeFactory.agedWindows95` passe dans les tests**
+  (`Tests/DefragKitTests/AgedVolumeFactory.swift`). C'était le volume de la
+  démo ; ce n'est plus qu'un volume d'essai — il se fabrique en quelques
+  millisecondes, sans générateur ni catalogue, et six suites s'en servent pour
+  donner à une stratégie de quoi travailler.
+- **`DriveCatalog.bootDrive` et `defragDrive` sont renommés `barracuda2001` et
+  `fireball1996`.** Les deux fiches restent — ce sont des points de mesure du
+  modèle de géométrie, et les tests les vérifient — mais elles ne portent plus
+  de scénario, donc elles portent le nom du disque et non celui d'une passe.
+- **Le test du démarrage en flux est réécrit sur un disque généré.** Il
+  vérifiait que la passe livrée décrite en phases était identique au calcul d'un
+  bloc ; il le vérifie maintenant sur le démarrage de `gamer-1993`, c'est-à-dire
+  sur le seul cas où la date d'une requête dépend de ce que la précédente a duré
+  (`BlockRequest.thinkTime`). Le test qui ne portait que sur `SpinSchedule` est
+  supprimé avec elle.
+
+`swift test` : 205 tests passent, et les deux passes des démos donnent le même
+bilan qu'avant le nettoyage — 322,4 s et 5 762 requêtes pour la
+défragmentation, 56,7 s et 1 942 pour le démarrage.
+
+### Laissé ouvert
+
+- **Le WAV des deux démos n'est plus celui de la référence** : il ne pouvait pas
+  l'être, ce sont d'autres volumes. Les md5 de `windowsBoot` et `defrag` d'avant
+  ce chantier ne valent plus rien. `Tools/videos.txt` nomme désormais ses lignes
+  d'après le disque et l'outil, pour qu'une vidéo dise sur quoi elle porte.
+- **Le crépitement est plus clairsemé** que celui des phases réglées à
+  l'oreille : un démarrage décrit en fichiers ne pose que les accès qui
+  correspondent à un fichier du catalogue. C'était déjà noté pour les disques de
+  la galerie ; c'est maintenant vrai de la démo d'accueil.
+- **Rien n'a été écouté en entier**, ni comparé à l'ancien son autrement qu'au
+  bilan.

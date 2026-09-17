@@ -8,7 +8,7 @@ import DiskCore
 struct PhaseTimeTests {
 
     private static func pass() -> LivePass {
-        let drive = DriveCatalog.defragDrive
+        let drive = DriveCatalog.fireball1996
         let spindle = SpindleTimeline(spinUpAt: 0, duration: 1.0, rpm: drive.geometry.rpm,
                                       spinDownAt: nil, spinDownDuration: 4)
         let phases = ["a", "b", "c"].map { PhaseDescriptor(id: $0, label: $0, detail: "") }

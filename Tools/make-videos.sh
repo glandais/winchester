@@ -2,7 +2,7 @@
 # Fabrique les vidéos décrites dans Tools/videos.txt.
 #
 #   ./Tools/make-videos.sh                 # tout le lot
-#   ./Tools/make-videos.sh defrag-windows95  # les lignes dont le nom commence ainsi
+#   ./Tools/make-videos.sh defrag-frontiere  # les lignes dont le nom commence ainsi
 #
 # Les vidéos vont dans .build/videos/. Une vidéo déjà présente n'est pas refaite :
 # supprimer le fichier pour la reconstruire. JOBS règle le parallélisme (2) —

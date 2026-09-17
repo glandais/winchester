@@ -1,15 +1,19 @@
 # DiskNoise — spike
 
 Simulation d'I/O **au niveau bloc** d'un disque dur à plateaux, convertie en son
-via AVFAudio. Application iOS de démonstration, avec deux scénarios livrés :
+via AVFAudio. Application iOS de démonstration, avec deux démos prêtes à
+écouter, qui tournent l'une et l'autre sur un disque de la galerie :
 
-- **Démarrage** — « démarrage Windows puis lancement d'une suite bureautique »,
-  une minute, sur un Seagate Barracuda ATA IV de 20 Go (2001) ;
-- **Défragmentation** — passe complète du défragmenteur de Windows 95 sur un
-  volume FAT16 vieilli, 3 min 24, sur un Quantum Fireball 1080AT (1996).
+- **Démarrage** — Windows 98 SE puis Office 97 sur `secretaire-1999`, un FAT32
+  de 4,2 Go vieilli par deux ans de bureautique : 56,7 s, dont 47 % d'attente du
+  disque, et 4 % de plus que le même contenu jamais fragmenté ;
+- **Défragmentation** — tassage à la frontière sur `dev-1993`, un FAT16 de
+  210 Mo plein à 74 % : 5 min 22, 1 025 fichiers déplacés, et un volume qui sort
+  sans un seul fichier déplaçable en morceaux.
 
 Et une galerie de vingt disques d'époque, générés sur l'appareil, qu'on peut
-**démarrer** ou **défragmenter** à voix haute.
+**démarrer**, **installer**, **défragmenter** ou **revivre** à voix haute — les
+deux démos n'étant que deux d'entre eux, sous un nom et un outil choisis.
 
 Spike : l'objectif est de valider la chaîne complète et le réglage du synthé,
 pas de livrer une bibliothèque.
@@ -17,12 +21,12 @@ pas de livrer une bibliothèque.
 ## Chaîne
 
 ```
-scénario de phases      catalogue d'un volume généré      volume à ranger
-    │ WorkloadGenerator      │ BootPlanner                      │ DefragPlanner
-    │ localité, débit,       │ quels fichiers, dans quel ordre, │ empaquetage,
-    │ rafales                │ calcul entre deux lectures       │ évacuations, FAT
-    └────────────────────────┴────────────┬─────────────────────┘
-                                          ▼
+catalogue d'un volume généré                       volume à ranger
+    │ BootPlanner · InstallSession · DaySession         │ DefragPlanner
+    │ quels fichiers, dans quel ordre,                  │ empaquetage,
+    │ calcul entre deux lectures                        │ évacuations, FAT
+    └──────────────────────────┬────────────────────────┘
+                               ▼
 requêtes bloc, une à une         (date, LBA, nb secteurs, R/W) — OperationSink
         │  DiskMechanics          LBA→CHS zoné, seek, latence rotationnelle, transfert
         ▼
@@ -49,16 +53,19 @@ repères, même WAV à l'échantillon près sur les 48 scénarios de référence
 
 ## Ce qui est modélisé
 
-**Géométrie** — deux disques qui ont existé, repris de leurs fiches.
+**Géométrie** — deux disques qui ont existé, repris de leurs fiches. Ils ne
+portent plus de scénario — les démos tournent sur des disques de la galerie,
+dont la géométrie est déduite de leur fiche et de leur année — mais ils restent
+les points d'ancrage du modèle, et les tests les mesurent.
 
-Celui du démarrage est un **Seagate Barracuda ATA IV ST320011A** de 2001 :
+Le premier est un **Seagate Barracuda ATA IV ST320011A** de 2001 :
 20 Go, 63 800 pistes, 7 200 tr/min, 791 → 435 secteurs par piste, soit 48,6 Mo/s
 au bord et 26,7 au moyeu. **Un seul plateau, une seule face utilisée** : pas une
 commutation de tête de tout le démarrage. Son bras est léger et son
 asservissement rapide — 0,95 ms piste-à-piste, 9,0 ms en seek moyen, 16 ms en
 pleine course.
 
-Celui de la défragmentation est un **Quantum Fireball 1080AT** de 1996 : 1,08 Go,
+Le second est un **Quantum Fireball 1080AT** de 1996 : 1,08 Go,
 3 835 pistes, quatre faces, 5 400 tr/min, 166 → 111 secteurs par piste, soit
 7,6 Mo/s au bord et 5,1 au moyeu. Bras plus lourd, asservissement plus lent —
 3,0 ms piste-à-piste, 12,0 ms en seek moyen, 21,6 ms en pleine course, et un
@@ -79,7 +86,8 @@ entier de 3 835 pistes en 1996 et un coin de plateau lu cinq fois plus vite en
 Le modèle interpole donc dans le temps entre sept disques **réellement vendus**,
 de 1993 à 2008, dont les fiches sont recopiées dans `DriveCatalog` avec leur
 source — plus une huitième, variante à un plateau de celle de 2001, qui ne sert
-pas d'ancrage mais porte le scénario de démarrage. Ce qu'il interpole, ce ne sont pas des « densités » en général mais les
+pas d'ancrage et portait le scénario de démarrage avant qu'il passe sur un
+disque de la galerie. Ce qu'il interpole, ce ne sont pas des « densités » en général mais les
 deux seules grandeurs que ces fiches publient sans ambiguïté :
 
 - le nombre de **pistes par face**, qui fixe la course du bras, donc toute
@@ -246,8 +254,9 @@ MFT qui cède ne laisse donc pas croire que la MFT est un trou.
 
 ## Les disques d'époque
 
-L'onglet **Disques** de l'application : les deux scénarios livrés, prêts à
-écouter, puis une galerie de volumes vieillis, cinq époques et quatre profils
+L'onglet **Disques** de l'application : les deux démos, prêtes à écouter et
+posées sur deux disques de la galerie qu'elles nomment, puis une galerie de
+volumes vieillis, cinq époques et quatre profils
 chacune, en cartes qu'on filtre par année et par profil. Un disque se génère
 sur l'appareil quand on ouvre sa fiche, pas avant : la galerie ne connaît sa
 fragmentation qu'une fois qu'il a été fabriqué. Les trois autres onglets sont la
@@ -529,7 +538,7 @@ simulateur, qui en planifie la passe et la fait sonner.
 
 Les fichiers gardent exactement les clusters que l'allocateur leur a donnés —
 c'est ce volume-là qui est défragmenté, pas une approximation — et le matériel
-est celui de la fiche du profil, pas le disque de 1996 du scénario livré : la
+est celui de la fiche du profil, et non un modèle choisi à côté : la
 géométrie est celle des disques vendus l'année du scénario, et la loi de seek
 passe par les **deux** durées que publie une fiche — le seek moyen et le
 piste-à-piste. C'est leur rapport qui distingue une époque d'une autre : entre
@@ -716,16 +725,17 @@ Le catalogue ne date que les écritures, au jour près : le dernier accès y est
 dernière écriture, et à jour égal c'est le chemin qui départage — unique, puisque
 le générateur ne fait jamais coexister deux fichiers au même chemin.
 
-Ces passes FAT-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`),
-contre 3 min 24 pour le scénario livré, dont le volume est délibérément réduit.
-C'est la vraie durée d'une passe d'époque sur un volume d'époque, et ce n'est
+Ces passes FAT-là sont longues : de 31 min (`dev-1993`) à 5 h 04 (`dev-1999`).
+C'est la vraie durée d'une passe d'époque sur un volume d'époque, et c'est
+pourquoi la démo de défragmentation a pris un autre outil que celui de 95 —
+5 min 22 sur `dev-1993` au lieu de 30 min 35, pour le même résultat. Ce n'est
 pas la taille du volume qui la fixe : `secretaire-1993`, le plus petit disque de
 la galerie, y passe 66 minutes — 170 Mo dont 71 % des fichiers sont en morceaux,
 lus à 1,8 Mo/s — quand `dev-1996`, six fois plus gros, en prend 36.
 
 Ce qui la fixe, c'est le **remplissage**. Un volume plein n'a plus où évacuer :
-à 76 % de remplissage la passe livrée déplace 231 Mo pour ranger un volume de
-179 Mo, à 93 % `dev-1999` en déplace 44 938 pour 6 710 — sept fois son propre
+à 74 % de remplissage la passe de `dev-1993` déplace 175 Mo pour ranger un
+volume de 220 Mo, à 93 % `dev-1999` en déplace 44 938 pour 6 710 — sept fois son propre
 contenu, en 23 284 évacuations. C'est ce va-et-vient que l'on entend, et c'est
 pour cela que l'outil d'époque demandait de faire de la place avant de le
 lancer.
@@ -853,9 +863,10 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
 - Pas de réordonnancement d'ascenseur, pas de cache disque, pas de NCQ. File
   FIFO : représentatif d'un contrôleur IDE de l'époque, et c'est ce qui rend le
   crépitement si dense.
-- **Le démarrage d'un disque généré est moins dense que le scénario livré** :
-  1 056 requêtes pour tout un démarrage de `dev-1996`, contre 90 à 150
-  par seconde dans le scénario réglé à l'oreille. Un vrai démarrage consulte le
+- **Un démarrage décrit en fichiers est moins dense qu'un scénario réglé à
+  l'oreille** : 1 056 requêtes pour tout un démarrage de `dev-1996`, contre 90 à
+  150 par seconde dans les phases écrites à la main du scénario que la démo a
+  remplacé — lequel ne vit plus que dans les tests. Un vrai démarrage consulte le
   registre à chaque périphérique, relit des `.INI`, rouvre des répertoires —
   autant d'accès courts que ce modèle ne pose pas, parce qu'aucun d'eux ne
   correspond à un fichier du catalogue. Le crépitement est donc un peu plus
@@ -870,11 +881,11 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
 - **La mémoire d'un gros disque est désormais celle de sa génération**, pas de
   sa passe : `dev-1999` tient à 220 Mo au rendu hors-ligne comme à son
   démarrage, et un NTFS de 2007 reste au-dessus de 700 Mo pour la même raison.
-- **La passe de défragmentation est raccourcie par la taille du volume, pas par
-  une accélération.** 180 Mo se défragmentent en 3 min 24 ; un
-  volume de l'époque réellement dimensionné (500 Mo à 1 Go) en prend vingt-sept
-  à soixante-deux, et la galerie le montre. Le modèle est le même, le volume est
-  plus petit.
+- **Une passe de défragmentation n'est jamais accélérée** : ce qui la raccourcit,
+  c'est la taille du volume et l'outil. Les 220 Mo de `dev-1993` se tassent en
+  5 min 22 à la frontière et en 30 min 35 sous l'outil de 95 ; un volume de
+  l'époque réellement dimensionné (500 Mo à 1 Go) y passe des heures, et la
+  galerie le montre. Le modèle est le même dans les trois cas.
 - Le défragmenteur modélisé ne fait pas de passe de vérification, ne relit pas
   ce qu'il vient d'écrire et ne reprend pas une passe interrompue. Les entrées
   de répertoire sont réduites à une écriture d'un secteur dans la racine.
@@ -1010,7 +1021,7 @@ Core Graphics et encodés par `ffmpeg` (à installer : `brew install ffmpeg`).
 
 ```sh
 ./Tools/make-videos.sh                    # tout le lot de Tools/videos.txt
-./Tools/make-videos.sh defrag-windows95   # les lignes dont le nom commence ainsi
+./Tools/make-videos.sh defrag-frontiere   # les lignes dont le nom commence ainsi
 
 ./Tools/build-render.sh                   # construit aussi /tmp/rendervideo
 SCENARIO=windowsBoot /tmp/rendervideo demarrage.mp4
@@ -1046,8 +1057,7 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     DriveGeometry.swift    géométrie zonée, LBA→CHS ; déduction d'un disque
                            quelconque à partir de sa fiche et de son année
     DriveCatalog.swift     huit disques réellement vendus, 1993 → 2008, avec
-                           leurs sources ; densités interpolées dans le temps,
-                           et les deux disques des scénarios livrés
+                           leurs sources ; densités interpolées dans le temps
     SeekModel.swift        loi de durée, découpage en quatre phases, calage
                            sur le seek moyen et le piste-à-piste d'une fiche
     SeededGenerator.swift  SplitMix64, tirages stables entre plateformes
@@ -1077,7 +1087,7 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
                            son premier jour, rejoué pas à pas
     Resources/scenarios/   vingt scénarios : cinq époques, quatre profils
 Sources/Model/
-    Workload.swift         phases du scénario, générateur de requêtes déterministe
+    Workload.swift         requête bloc, et datation des phases après coup
     BootSession.swift      démarrage décrit en fichiers : ce que chaque époque
                            va chercher dans le catalogue, dans quel ordre, et ce
                            que la machine calcule entre deux lectures ; plus le
@@ -1093,7 +1103,7 @@ Sources/Model/
                            redémarrages ; la carte part d'un volume vierge
     VolumeLayout.swift     plan d'une partition FAT16, FAT32 ou NTFS : où sont
                            les métadonnées, et ce que coûte une validation
-    Volume.swift           volume vieilli sur place, allocateur next-fit
+    Volume.swift           volume en clusters, allocateur next-fit
     DefragVolume.swift     le volume vu par le défragmenteur : bitmap, fichiers
                            décrits par extents, index des occupants par blocs
     DefragJob.swift        types du plan, et choix de la stratégie sur le format

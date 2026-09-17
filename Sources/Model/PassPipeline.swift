@@ -195,14 +195,8 @@ struct PassSetup {
     var spinUpDuration: Double
     var idle: IdleBehavior = .none
     /// Ce que dure la passe après sa dernière requête. `nil` : la durée est
-    /// celle de la trace — la dernière requête, le parcage, ou
-    /// `minimumDuration` si le scénario impose plus long.
+    /// celle de la trace — la dernière requête, ou le parcage s'il vient après.
     var tail: Double?
-    var minimumDuration = 0.0
-    /// Les phases sont-elles datées par la simulation ? Oui en boucle fermée,
-    /// où chacune commence à sa première requête. Un scénario à durées
-    /// imposées les pose lui-même avec `mark(phase:at:)`.
-    var datesPhases = true
 
     /// La rotation du plateau : la montée comme la coupure sont des dates,
     /// connues avant la moindre requête.
@@ -247,11 +241,6 @@ final class PassPipeline {
 
     /// La rotation du plateau : des dates, connues avant toute requête.
     var spindle: SpindleTimeline { chain.mechanics.spindle }
-
-    /// Une phase imposée par le scénario.
-    func mark(phase index: Int, at time: Double) {
-        chain.batch.phases.append(PhaseMark(index: index, time: time))
-    }
 
     /// Une requête sans conséquence sur la carte : un démarrage.
     @discardableResult
@@ -348,7 +337,7 @@ private struct Chain {
             if firstStarts[phase] == nil { firstStarts[phase] = timing.start }
             lastPhase = phase
         }
-        if setup.datesPhases && currentPhase != phase {
+        if currentPhase != phase {
             batch.phases.append(PhaseMark(index: phase, time: timing.start))
             currentPhase = phase
         }
@@ -442,7 +431,7 @@ private struct Chain {
         }
 
         let duration = setup.tail.map { workEnd + $0 }
-            ?? max(max(setup.minimumDuration, mechanics.clock), parkAt ?? 0)
+            ?? max(mechanics.clock, parkAt ?? 0)
         let end = PassEnd(stats: mechanics.stats,
                           requestCount: mechanics.stats.requestCount,
                           eventCount: eventCount,

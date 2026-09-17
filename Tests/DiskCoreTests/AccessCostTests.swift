@@ -6,7 +6,7 @@ struct AccessCostTests {
 
     /// Le disque de la passe livrée, géométrie et loi de seek prises à la même
     /// fiche : un Quantum Fireball 1080AT de 1996.
-    private static let drive = DriveCatalog.defragDrive
+    private static let drive = DriveCatalog.fireball1996
 
     private static let cost = AccessCost(
         geometry: drive.geometry,

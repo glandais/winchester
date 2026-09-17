@@ -7,11 +7,12 @@ let sampleRate = 48_000.0
 /// Le scénario que demandent les variables d'environnement, commun à
 /// `RenderTrace` et à `RenderVideo`.
 ///
-/// `SCENARIO` accepte l'identifiant d'un scénario livré (`windowsBoot`,
-/// `defrag`), celui d'un profil de la galerie — le disque est alors généré, et
-/// sa passe de défragmentation rendue sur le matériel que décrit sa fiche — ou,
-/// préfixé de `boot:`, le **démarrage** de ce disque, qui ne refuse aucun
-/// format.
+/// `SCENARIO` accepte l'identifiant d'une démo (`windowsBoot`, `defrag`) — dont
+/// le disque est un profil de la galerie, généré comme les autres, avec l'outil
+/// que la démo a choisi —, celui d'un profil de la galerie — le disque est alors
+/// généré, et sa passe de défragmentation rendue sur le matériel que décrit sa
+/// fiche — ou, préfixé de `boot:`, le **démarrage** de ce disque, qui ne refuse
+/// aucun format.
 ///
 /// `STRATEGY` force le défragmenteur simulé au lieu de laisser le format le
 /// dater. C'est ainsi que se compare une passe UltraDefrag à celle de l'outil
@@ -73,10 +74,10 @@ enum ScenarioRequest {
             : requested
 
         if let kind = ScenarioKind(rawValue: requested) {
-            return Request(scenario: ScenarioBuilder.build(kind))
+            return Request(scenario: try demo(kind))
         }
         guard let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == profileID }) else {
-            if requested.isEmpty { return Request(scenario: ScenarioBuilder.build(.windowsBoot)) }
+            if requested.isEmpty { return Request(scenario: try demo(.windowsBoot)) }
             let known = ScenarioKind.allCases.map(\.rawValue) + ScenarioLibrary.identifiers
                 + ScenarioLibrary.identifiers.map { "boot:\($0)" }
                 + ScenarioLibrary.identifiers.map { "install:\($0)" }
@@ -100,6 +101,13 @@ enum ScenarioRequest {
             ? ScenarioBuilder.build(boot: disk)
             : try ScenarioBuilder.build(generated: disk, using: strategy())
         return Request(scenario: scenario)
+    }
+
+    /// Une démo : son disque du catalogue est généré ici comme n'importe quel
+    /// profil de la galerie, puisque c'en est un.
+    private static func demo(_ kind: ScenarioKind) throws -> Scenario {
+        FileHandle.standardError.write("génération de \(kind.profileID)…\n".data(using: .utf8)!)
+        return try ScenarioBuilder.build(kind, disk: ScenarioBuilder.disk(of: kind))
     }
 
     static func scenario() throws -> Scenario { try request().scenario }
