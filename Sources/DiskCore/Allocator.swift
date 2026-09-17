@@ -119,12 +119,18 @@ public protocol Allocator {
     /// centaines de milliers de fichiers objets se retrouverait avec une table
     /// de métadonnées de plusieurs gigaoctets.
     mutating func noteFileDeleted()
+
+    /// Ce que le système de fichiers occupe pour lui-même, hors de tout fichier
+    /// du catalogue : `$Boot`, la MFT et sa copie sur NTFS. Vide sur FAT, dont
+    /// les tables vivent avant la zone de données.
+    var metadataExtents: [Extent] { get }
 }
 
 extension Allocator {
 
     public mutating func noteFileCreated(logicalSize: UInt64) {}
     public mutating func noteFileDeleted() {}
+    public var metadataExtents: [Extent] { [] }
 
     /// Place un fichier entier et renseigne son entrée. La résidence est
     /// décidée ici : un fichier résident ne passe jamais par l'allocateur.

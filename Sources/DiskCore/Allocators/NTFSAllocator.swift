@@ -147,6 +147,8 @@ public struct NTFSAllocator: Allocator {
         [Extent(start: 0, length: 1)] + mft.extents + [mftMirror]
     }
 
+    public var metadataExtents: [Extent] { systemExtents }
+
     /// La zone MFT a-t-elle encore toute sa taille d'origine ?
     public var mftZoneIsProtected: Bool { !mftZoneBreached }
 

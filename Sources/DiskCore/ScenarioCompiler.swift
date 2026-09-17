@@ -5,6 +5,9 @@ public struct CompiledScenario: Sendable {
     public var spec: ProfileSpec
     public var catalog: FileCatalog
     public var timeline: EventTimeline
+    /// L'installation du jour 0, étape par étape : ce que chaque logiciel a
+    /// posé, extrait puis effacé. Le fichier d'échange ferme la liste.
+    public var installSteps: [InstallStep] = []
 }
 
 /// Transforme une description déclarative en suite d'événements.
@@ -28,6 +31,16 @@ public struct ScenarioCompiler {
     private var sharedLibraries: [String: UInt32] = [:]
     /// Fichiers appartenant à chaque application, pour pouvoir la désinstaller.
     private var filesByApp: [String: [UInt32]] = [:]
+    /// Les étapes de l'installation, dans l'ordre où elles s'écrivent.
+    private var installSteps: [InstallStep] = []
+    /// Tirages de la mise en place — archives extraites, ruches du registre.
+    ///
+    /// Un générateur à part : ajouter ces fichiers ne doit rien changer aux
+    /// tailles et aux dates de tout le reste de l'histoire, sans quoi chaque
+    /// disque de la galerie serait redessiné pour une raison qui n'a rien à voir
+    /// avec ses fichiers. Seules les places changent, parce que les archives
+    /// ont bel et bien occupé le disque le temps de l'installation.
+    private var setupRng: SeededGenerator
 
     /// Fichiers système qu'une mise à jour peut remplacer.
     private var replaceableSystemFiles: [(id: UInt32, bytes: ByteCount)] = []
@@ -49,6 +62,7 @@ public struct ScenarioCompiler {
         self.spec = spec
         self.manifests = Dictionary(uniqueKeysWithValues: manifests.map { ($0.id, $0) })
         self.rng = SeededGenerator(seed: spec.seed)
+        self.setupRng = SeededGenerator(seed: spec.seed ^ 0x5E70_1A57_A11E_D000)
     }
 
     public static func compile(_ spec: ProfileSpec,
@@ -123,7 +137,8 @@ public struct ScenarioCompiler {
         var timeline = writer.timeline
         timeline.sortByDay()
         timeline.giveUniqueNames()
-        return CompiledScenario(spec: spec, catalog: catalog, timeline: timeline)
+        return CompiledScenario(spec: spec, catalog: catalog, timeline: timeline,
+                                installSteps: installSteps)
     }
 
     // MARK: - Installation
@@ -137,6 +152,20 @@ public struct ScenarioCompiler {
 
     private mutating func install(_ manifest: AppManifest, on day: UInt32) {
         var installed: [UInt32] = []
+        let style = SetupLibrary.style(for: manifest, year: epochYear,
+                                       fileSystem: spec.fileSystem.type)
+        var step = InstallStep(manifestID: manifest.id,
+                               displayName: manifest.displayName,
+                               kind: SetupLibrary.systemManifests.contains(manifest.id) ? .system : .application,
+                               style: style)
+
+        // L'installeur extrait d'abord ce dont il a besoin. Ces fichiers
+        // occupent le disque pendant toute la copie : ce qui s'écrit ensuite
+        // tombe **après** eux, et leur effacement laisse le premier trou du
+        // volume.
+        if let extraction = style.extraction {
+            step.temporaryIDs = extract(extraction, on: day)
+        }
 
         for group in manifest.groups {
             let directory = catalog.makeDirectory(path: group.directory)
@@ -156,6 +185,8 @@ public struct ScenarioCompiler {
                 writer.write(spec, from: day, to: day, touches: 0, rng: &rng)
                 committedBytes += occupancy(of: bytes)
                 installed.append(id)
+                step.fileIDs.append(id)
+                if group.pattern == .rewriteInPlace { step.settingsIDs.append(id) }
                 if group.category == .systemCore || group.category == .application {
                     replaceableSystemFiles.append((id, bytes))
                 }
@@ -174,9 +205,58 @@ public struct ScenarioCompiler {
                                   category: .systemCore, bytes: bytes),
                          from: day, to: day, touches: 0, rng: &rng)
             committedBytes += occupancy(of: bytes)
+            step.fileIDs.append(id)
+        }
+
+        // Le registre naît avec le système. Réécrit en place à chaque
+        // installation, il ne change jamais de clusters : il ne coûte qu'au
+        // bras, et c'est pour le bras qu'il est là.
+        for hive in style.registry {
+            let id = newID()
+            let bytes = ByteCount(Double(hive.bytes) * setupRng.uniform(0.85...1.15))
+            writer.write(FileSpec(id: id, name: hive.name,
+                                  directory: catalog.makeDirectory(path: hive.directory),
+                                  category: .systemCore, pattern: .rewriteInPlace, bytes: bytes),
+                         from: day, to: day, touches: 0, rng: &setupRng)
+            committedBytes += occupancy(of: bytes)
+            step.fileIDs.append(id)
+            step.settingsIDs.append(id)
+        }
+
+        // Le ménage de fin d'installation.
+        for id in step.temporaryIDs {
+            writer.timeline.append(.delete(id: id), on: day)
         }
 
         filesByApp[manifest.id, default: []].append(contentsOf: installed)
+        installSteps.append(step)
+    }
+
+    /// Les archives d'un installeur, tirées sur le générateur de la mise en
+    /// place : un gros CAB et une poignée de petits fichiers de script, ramenés
+    /// au total annoncé.
+    private mutating func extract(_ extraction: SetupStyle.Extraction, on day: UInt32) -> [UInt32] {
+        let count = max(extraction.fileCount, 1)
+        let median = max(extraction.bytes / ByteCount(count), 1)
+        var sizes: [ByteCount] = (0..<count).map { _ in
+            SizeModel.Distribution.logNormal(median: median, sigma: 1.1).sample(&setupRng)
+        }
+        let drawn = sizes.reduce(0, +)
+        if drawn > 0 {
+            let scale = Double(extraction.bytes) / Double(drawn)
+            sizes = sizes.map { max(ByteCount(Double($0) * scale), 512) }
+        }
+
+        let directory = catalog.makeDirectory(path: extraction.directory)
+        var ids: [UInt32] = []
+        for (index, bytes) in sizes.enumerated() {
+            let id = newID()
+            writer.write(FileSpec(id: id, name: "\(extraction.stem)\(index).\(extraction.extension_)",
+                                  directory: directory, category: .temporary, bytes: bytes),
+                         from: day, to: day, touches: 0, rng: &setupRng)
+            ids.append(id)
+        }
+        return ids
     }
 
     private var systemLibraryPath: String {
@@ -209,9 +289,21 @@ public struct ScenarioCompiler {
     /// lui tout seul.
     private mutating func installSwapFile() {
         let size = spec.disk.sizeBytes
+        // Seuls les fichiers d'échange posés le jour de l'installation en font
+        // partie : `WIN386.SWP` naît au premier vrai démarrage, le lendemain.
+        var dayZero: [UInt32] = []
+        defer {
+            installSteps.append(InstallStep(manifestID: "swap",
+                                            displayName: "Fichier d'échange",
+                                            kind: .swap,
+                                            style: SetupStyle(medium: .cdrom, speed: 0, extraction: nil,
+                                                              registry: [], reboots: 0),
+                                            fileIDs: dayZero))
+        }
         switch spec.fileSystem.type {
         case .fat16 where epochYear <= 1994:
             // `386SPART.PAR` : permanent, contigu, jamais retouché.
+            dayZero.append(nextID)
             writer.write(FileSpec(id: newID(), name: "386SPART.PAR",
                                   directory: catalog.rootDirectory,
                                   category: .swap, bytes: min(size / 12, 16 * 1_024 * 1_024)),
@@ -231,11 +323,13 @@ public struct ScenarioCompiler {
         case .ntfs:
             // `pagefile.sys` à taille fixe, et sur Vista `hiberfil.sys` : deux
             // gros blocs qui ne bougent jamais et autour desquels tout se range.
+            dayZero.append(nextID)
             writer.write(FileSpec(id: newID(), name: "pagefile.sys",
                                   directory: catalog.rootDirectory,
                                   category: .swap, bytes: min(size / 40, 1_536 * 1_024 * 1_024)),
                          from: 0, to: 0, touches: 0, rng: &rng)
             if epochYear >= 2007 {
+                dayZero.append(nextID)
                 writer.write(FileSpec(id: newID(), name: "hiberfil.sys",
                                       directory: catalog.rootDirectory,
                                       category: .swap,

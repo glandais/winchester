@@ -11,6 +11,7 @@ enum Explanation: String, CaseIterable, Identifiable {
     case edgeReturn
     case prefetch
     case witness
+    case installation
     case nextFit
     case mftZone
     case fragmentedVsPieces
@@ -28,6 +29,7 @@ enum Explanation: String, CaseIterable, Identifiable {
         case .edgeReturn:         return "Le retour au bord"
         case .prefetch:           return "Le préchargeur"
         case .witness:            return "Le témoin"
+        case .installation:       return "L'installation"
         case .nextFit:            return "L'allocateur next-fit"
         case .mftZone:            return "La zone MFT"
         case .fragmentedVsPieces: return "Fragmentés ou en morceaux"
@@ -58,6 +60,12 @@ enum Explanation: String, CaseIterable, Identifiable {
             return "Les mêmes fichiers, chacun d'un seul tenant, tassés contre le début du volume. L'écart "
                 + "mesure ce que coûte le placement réel. Sur FAT il est presque nul ; sur NTFS, le témoin perd "
                 + "parfois."
+        case .installation:
+            return "Le premier jour du disque, rejoué : chaque fichier est écrit là où l'allocateur l'a posé. "
+                + "La source bride la copie — une disquette se lit à 45 Ko/s, un CD 24x à 3,6 Mo/s. Les "
+                + "installeurs extraient d'abord leurs archives et les relisent en copiant : c'est le "
+                + "va-et-vient qui crépite. Puis ils les effacent, et laissent les premiers trous. Chaque "
+                + "redémarrage relit ce qui vient d'être posé."
         case .nextFit:
             return "Sous Windows 95 et 98, VFAT et FAT32 repartent du dernier cluster alloué. Tant que ce "
                 + "curseur avance, les fichiers sont propres. Arrivé au bout du volume, il revient au début et "
@@ -100,6 +108,7 @@ enum Explanation: String, CaseIterable, Identifiable {
         case .edgeReturn:         return [.seekLaw, .evacuations]
         case .prefetch:           return [.witness, .mftZone]
         case .witness:            return [.prefetch, .nextFit, .mftZone]
+        case .installation:       return [.edgeReturn, .nextFit, .witness]
         case .nextFit:            return [.fragmentedVsPieces, .witness]
         case .mftZone:            return [.prefetch, .fragmentedVsPieces]
         case .fragmentedVsPieces: return [.nextFit, .evacuations]
@@ -113,7 +122,7 @@ enum Explanation: String, CaseIterable, Identifiable {
 
     /// Les fiches par thème, dans l'ordre des Réglages.
     static let groups: [(title: String, topics: [Explanation])] = [
-        ("Le bras et le démarrage", [.seekLaw, .edgeReturn, .prefetch, .witness]),
+        ("Le bras et le démarrage", [.seekLaw, .edgeReturn, .prefetch, .witness, .installation]),
         ("Le volume", [.nextFit, .mftZone, .fragmentedVsPieces, .evacuations, .pagefile]),
         ("Le son", [.headSound, .rotation, .haptics]),
     ]

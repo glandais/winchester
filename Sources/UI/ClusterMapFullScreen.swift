@@ -123,9 +123,9 @@ struct DefragFullScreenMap: View {
                 // surface de la carte ne doit pas changer, sinon la grille se
                 // redécoupe et le bloc touché ne désigne plus rien.
                 .overlay(alignment: .bottom) {
-                    if let selected, let playback = model.defrag {
-                        passCellInfo(selected, clusterCount: playback.partition.clusterCount,
-                                     clusterBytes: playback.partition.clusterBytes)
+                    if let selected, let source = model.mapSource {
+                        passCellInfo(selected, clusterCount: source.partition.clusterCount,
+                                     clusterBytes: source.partition.clusterBytes)
                     }
                 }
             },

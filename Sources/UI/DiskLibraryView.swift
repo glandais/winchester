@@ -299,8 +299,9 @@ struct DiskLibraryView: View {
 
     // MARK: - Passage au simulateur
 
-    /// Les deux ponts entre les écrans : **défragmenter** ce disque, en
-    /// choisissant l'outil sur l'écran suivant, ou le **démarrer**.
+    /// Les trois ponts entre les écrans : **défragmenter** ce disque, en
+    /// choisissant l'outil sur l'écran suivant, le **démarrer**, ou rejouer son
+    /// **installation**.
     ///
     /// Les deux marchent sur les vingt disques : démarrer ne suppose aucune
     /// stratégie de rangement, et chaque format a le défragmenteur de son
@@ -314,6 +315,7 @@ struct DiskLibraryView: View {
         VStack(alignment: .leading, spacing: 8) {
             handoverButton(.defrag, icon: "waveform", for: disk, refusal: refusal, primary: true)
             handoverButton(.boot, icon: "power", for: disk, refusal: nil, primary: false)
+            handoverButton(.install, icon: "opticaldisc", for: disk, refusal: nil, primary: false)
 
             if let refusal {
                 Text(refusal)
@@ -337,13 +339,14 @@ struct DiskLibraryView: View {
         let enabled = refusal == nil
         return Button {
             handoverFailure = nil
-            // Défragmenter demande d'abord avec quel outil ; démarrer, non.
-            guard activity == .boot else {
+            // Défragmenter demande d'abord avec quel outil ; démarrer et
+            // installer, non.
+            guard activity != .defrag else {
                 showsTools = true
                 return
             }
             do {
-                try onHandover(disk, .boot, nil)
+                try onHandover(disk, activity, nil)
             } catch {
                 handoverFailure = "\(error)"
             }

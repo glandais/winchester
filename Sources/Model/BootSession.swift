@@ -447,10 +447,12 @@ enum BootPlanner {
     /// contigu et un fichier haché produiraient le même nombre de requêtes.
     private static let maxRequestSectors = 128
 
-    static func plan(disk: GeneratedDisk) -> BootPlan {
+    /// - Parameter launchesApplication: `false` pour un redémarrage en cours
+    ///   d'installation, où l'on s'arrête au bureau.
+    static func plan(disk: GeneratedDisk, launchesApplication: Bool = true) -> BootPlan {
 
         let partition = GeneratedVolumeBridge.partition(of: disk)
-        let app = launchedApplication(of: disk.spec)
+        let app = launchesApplication ? launchedApplication(of: disk.spec) : nil
         let script = BootScript.forProfile(disk.spec, launching: app)
 
         var builder = Builder(partition: partition,
@@ -498,19 +500,11 @@ enum BootPlanner {
     /// Un profil qui n'a rien installé d'autre que son système — un poste de
     /// 1993 réduit à MS-DOS et Windows — saute simplement cet acte.
     static func launchedApplication(of spec: ProfileSpec) -> AppManifest? {
-        for id in spec.installs where !systemManifests.contains(id) {
+        for id in spec.installs where !SetupLibrary.systemManifests.contains(id) {
             if let manifest = AppLibrary.manifest(id: id) { return manifest }
         }
         return nil
     }
-
-    /// Les manifestes qui **sont** le système, et qu'on ne « lance » donc pas :
-    /// ils sont déjà chargés par les actes précédents. Liste explicite plutôt
-    /// que déduite de la présence de fichiers système — Internet Explorer 5 en
-    /// posait autant qu'un pilote, et reste une application qu'on lance.
-    private static let systemManifests: Set<String> = [
-        "msdos-6", "win31", "win95", "win98se", "winxp", "vista",
-    ]
 
     // MARK: - Choix des fichiers
 

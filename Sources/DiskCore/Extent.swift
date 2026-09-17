@@ -83,4 +83,31 @@ extension Array where Element == Extent {
         }
         return result
     }
+
+    /// Les clusters de cette liste qui ne sont dans aucun extent de `other`,
+    /// dans l'ordre de la liste.
+    ///
+    /// Pour de petites listes seulement — la MFT avant et après une création —
+    /// le coût est le produit des deux tailles.
+    public func subtracting(_ other: [Extent]) -> [Extent] {
+        var result: [Extent] = []
+        for extent in self where !extent.isEmpty {
+            var pieces = [extent]
+            for removed in other where !removed.isEmpty {
+                pieces = pieces.flatMap { piece -> [Extent] in
+                    guard removed.start < piece.end, piece.start < removed.end else { return [piece] }
+                    var kept: [Extent] = []
+                    if piece.start < removed.start {
+                        kept.append(Extent(start: piece.start, length: removed.start - piece.start))
+                    }
+                    if removed.end < piece.end {
+                        kept.append(Extent(start: removed.end, length: piece.end - removed.end))
+                    }
+                    return kept
+                }
+            }
+            for piece in pieces { result.appendRun(start: piece.start, length: piece.length) }
+        }
+        return result
+    }
 }

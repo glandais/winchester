@@ -261,7 +261,8 @@ final class PassPipeline {
         return timing
     }
 
-    /// Une opération de défragmentation, et ce qu'elle change à la carte.
+    /// Une opération qui change la carte — un déplacement de défragmentation,
+    /// une écriture d'installation — et ce qu'elle y change.
     func serve(_ operation: DiskOperation,
                mutations: ArraySlice<MapMutation>,
                progress: Double,
@@ -394,7 +395,8 @@ private struct Chain {
                                         lba: operation.lba,
                                         sectorCount: operation.sectors,
                                         isWrite: operation.isWrite,
-                                        phaseIndex: operation.phase))
+                                        phaseIndex: operation.phase,
+                                        thinkTime: operation.thinkTime))
 
         if abs(progress - lastProgress) >= 0.001 {
             batch.progress.append(ProgressMark(time: timing.start, value: progress))

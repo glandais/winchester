@@ -43,6 +43,9 @@ struct InstrumentsScreen: View {
                     if let playback = model.defrag {
                         sectionTitle("Le volume", note: model.end == nil ? "avant → au bilan" : "avant → après")
                         volumeState(playback)
+                    } else if let install = model.install {
+                        sectionTitle("L'installation", note: model.end == nil ? "arrivée au bilan" : "bilan")
+                        installState(install)
                     } else if let boot = model.boot {
                         sectionTitle("Le démarrage", note: model.end == nil ? "bilan à la fin" : "bilan")
                         bootState(boot)
@@ -234,6 +237,10 @@ struct InstrumentsScreen: View {
                          value: moves.map { FrenchFormat.integer($0.filesMoved) } ?? "0", unit: "")
                 StatTile(label: "Évacuations",
                          value: moves.map { FrenchFormat.integer($0.evacuations) } ?? "0", unit: "")
+            } else if let install = model.install {
+                StatTile(label: "Fichiers posés",
+                         value: moves.map { FrenchFormat.integer($0.filesMoved) } ?? "0",
+                         unit: "sur \(FrenchFormat.integer(install.files))")
             }
         }
     }
@@ -300,6 +307,23 @@ struct InstrumentsScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
+    }
+
+    /// Ce que l'installation laisse : le disque au soir du jour 0, que l'usage
+    /// va vieillir.
+    private func installState(_ install: InstallPlayback) -> some View {
+        let arrival = install.installed.metrics
+        let done = model.end != nil
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+            StatTile(label: "Archives", value: FrenchFormat.integer(install.temporaryFiles),
+                     unit: "extraites puis effacées")
+            StatTile(label: "Redémarrages", value: FrenchFormat.integer(install.reboots), unit: "",
+                     why: .installation)
+            StatTile(label: "Fragmentés", value: done ? FrenchFormat.integer(arrival.fragmentedFileCount) : "…",
+                     unit: done ? "à l'arrivée" : "au bilan")
+            StatTile(label: "Trous libres", value: done ? FrenchFormat.integer(arrival.freeRunCount) : "…",
+                     unit: done ? "à l'arrivée" : "au bilan")
+        }
     }
 
     private func bootState(_ boot: BootPlayback) -> some View {

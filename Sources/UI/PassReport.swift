@@ -92,13 +92,13 @@ private struct PassReportScreen: View {
                       end: (grid: MapGrid, shades: [ClusterShade])) -> some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("AVANT")
+                Text(record.kind == .install ? "VIERGE" : "AVANT")
                     .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 ClusterMapView(grid: start.grid, shades: start.shades)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("APRÈS")
+                Text(record.kind == .install ? "INSTALLÉ" : "APRÈS")
                     .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 ClusterMapView(grid: end.grid, shades: end.shades)
@@ -114,16 +114,27 @@ private struct PassReportScreen: View {
         let others = model.otherDefrags(than: record)
         VStack(spacing: 10) {
             if let disk = record.disk {
-                NavigationLink {
-                    DefragToolChoiceScreen(disk: disk) { disk, activity, strategy in
-                        try model.load(generated: disk, as: activity, using: strategy)
+                if record.installed != nil {
+                    Button {
+                        model.loadInstalledBoot(from: record)
                         model.engine.play()
                         onLaunched()
+                    } label: {
+                        actionLabel("Démarrer ce disque fraîchement installé", systemImage: "power", primary: true)
                     }
-                } label: {
-                    actionLabel("Essayer un autre outil", systemImage: "arrow.triangle.2.circlepath", primary: true)
+                    .buttonStyle(.plain)
+                } else {
+                    NavigationLink {
+                        DefragToolChoiceScreen(disk: disk) { disk, activity, strategy in
+                            try model.load(generated: disk, as: activity, using: strategy)
+                            model.engine.play()
+                            onLaunched()
+                        }
+                    } label: {
+                        actionLabel("Essayer un autre outil", systemImage: "arrow.triangle.2.circlepath", primary: true)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 if !record.arrangement.isEmpty {
                     Button {
@@ -202,8 +213,13 @@ private struct PassReportScreen: View {
             lines.append("Morceaux à recoller : \(before.fragments) → \(after.fragments)")
             lines.append("Trous libres : \(before.freeHoles) → \(after.freeHoles)")
         }
-        lines.append("Déplacé : \(FrenchFormat.megabytes(UInt64(record.movedBytes)))")
-        lines.append("Évacuations : \(record.evacuations)")
+        if record.kind == .install {
+            lines.append("Fichiers posés : \(record.filesMoved)")
+            lines.append("Écrit : \(FrenchFormat.megabytes(UInt64(record.movedBytes)))")
+        } else {
+            lines.append("Déplacé : \(FrenchFormat.megabytes(UInt64(record.movedBytes)))")
+            lines.append("Évacuations : \(record.evacuations)")
+        }
         if let summary = record.summary { lines.append(summary) }
         return lines.joined(separator: "\n")
             .replacingOccurrences(of: "\u{202F}", with: " ")
@@ -225,11 +241,22 @@ private struct ReportRows: View {
                 row("Trous libres",
                     FrenchFormat.integer(before.freeHoles), FrenchFormat.integer(after.freeHoles))
             }
-            single("Déplacé", FrenchFormat.megabytes(UInt64(record.movedBytes))
-                   + (record.contentBytes > 0
-                      ? " (\(FrenchFormat.percent(Double(record.movedBytes) / record.contentBytes)) du contenu)" : ""))
-            single("Fichiers déplacés", FrenchFormat.integer(record.filesMoved))
-            single("Évacuations", FrenchFormat.integer(record.evacuations))
+            if record.kind == .install {
+                // Une installation ne déplace rien : elle écrit ce qu'elle pose,
+                // les tables et le registre en plus.
+                single("Écrit", FrenchFormat.megabytes(UInt64(record.movedBytes)))
+                single("Fichiers posés", FrenchFormat.integer(record.filesMoved))
+                if let metrics = record.installed?.metrics {
+                    single("Fragmentés à l'arrivée", FrenchFormat.integer(metrics.fragmentedFileCount))
+                    single("Trous libres", FrenchFormat.integer(metrics.freeRunCount))
+                }
+            } else {
+                single("Déplacé", FrenchFormat.megabytes(UInt64(record.movedBytes))
+                       + (record.contentBytes > 0
+                          ? " (\(FrenchFormat.percent(Double(record.movedBytes) / record.contentBytes)) du contenu)" : ""))
+                single("Fichiers déplacés", FrenchFormat.integer(record.filesMoved))
+                single("Évacuations", FrenchFormat.integer(record.evacuations))
+            }
             single("Requêtes", FrenchFormat.integer(record.requests))
         }
         .frame(maxWidth: .infinity, alignment: .leading)

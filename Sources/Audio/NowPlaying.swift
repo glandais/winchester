@@ -63,7 +63,7 @@ final class NowPlaying {
             MPNowPlayingInfoPropertyPlaybackRate: engine.isPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyIsLiveStream: true,
         ]
-        if let tool = model.defrag?.strategy.label ?? model.boot?.osName {
+        if let tool = model.defrag?.strategy.label ?? model.install?.osName ?? model.boot?.osName {
             info[MPMediaItemPropertyArtist] = tool
         }
         info[MPMediaItemPropertyAlbumTitle] = "DiskNoise"

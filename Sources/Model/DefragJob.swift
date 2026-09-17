@@ -41,10 +41,15 @@ struct DiskOperation {
     /// de mégaoctets — pour une ou deux mutations par opération.
     let mutationStart: Int32
     let mutationCount: Int32
+    /// Temps passé hors du disque avant l'émission : nul pour un défragmenteur,
+    /// qui enchaîne dès que le disque se libère ; la lecture du CD et la
+    /// décompression pour une installation.
+    let thinkTime: Double
 
     init(kind: Kind, phase: Int, lba: Int, sectors: Int, isWrite: Bool,
          issueTime: Double, cluster: Int?,
-         mutationStart: Int32 = 0, mutationCount: Int32 = 0) {
+         mutationStart: Int32 = 0, mutationCount: Int32 = 0,
+         thinkTime: Double = 0) {
         self.kind = kind
         self.phase = phase
         self.lba = lba
@@ -54,6 +59,7 @@ struct DiskOperation {
         self.cluster = cluster
         self.mutationStart = mutationStart
         self.mutationCount = mutationCount
+        self.thinkTime = thinkTime
     }
 }
 

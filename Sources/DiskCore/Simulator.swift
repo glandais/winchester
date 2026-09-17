@@ -41,6 +41,20 @@ public struct SimulationOutcome: Sendable {
     public var dayCount: UInt32
 }
 
+/// Ce qu'un événement a changé sur le disque, pour qui le rejoue pas à pas.
+public struct SimulationStep: Sendable {
+    /// Le fichier tel qu'il vient d'être posé, extents compris.
+    public var created: FileRecord?
+    /// Le fichier tel qu'il était avant d'être effacé.
+    public var deleted: FileRecord?
+    /// Clusters que la table de métadonnées vient de prendre pour grandir.
+    public var metadataGrew: [Extent] = []
+    /// L'écriture a été refusée faute de place.
+    public var failed = false
+
+    public init() {}
+}
+
 /// Rejoue une timeline en mutant une bitmap et un catalogue.
 ///
 /// Le simulateur ne décide de rien : il applique. Toute la fragmentation qui en
@@ -106,6 +120,36 @@ public struct Simulator<A: Allocator> {
                                  failedWrites: failedWrites,
                                  defragRuns: defragRuns,
                                  dayCount: timeline.dayCount)
+    }
+
+    /// Rejoue un seul événement, et dit ce qu'il a changé sur le disque.
+    ///
+    /// C'est `apply` vu de l'extérieur : même effet, plus un compte rendu. Il
+    /// coûte une copie des extents de métadonnées par appel, ce que `run` ne
+    /// paie pas — on ne s'en sert que pour les quelques milliers d'événements
+    /// d'une installation qu'on veut rejouer à l'oreille.
+    public mutating func step(_ timed: TimedEvent) -> SimulationStep {
+        let metadataBefore = allocator.metadataExtents
+        let failuresBefore = failedWrites
+        var result = SimulationStep()
+
+        switch timed.event {
+        case let .create(spec):
+            apply(timed.event, on: timed.day)
+            result.created = catalog[spec.id]
+        case let .delete(id):
+            result.deleted = catalog[id]
+            apply(timed.event, on: timed.day)
+        default:
+            apply(timed.event, on: timed.day)
+        }
+
+        result.failed = failedWrites > failuresBefore
+        let metadataAfter = allocator.metadataExtents
+        if metadataAfter.clusterCount != metadataBefore.clusterCount {
+            result.metadataGrew = metadataAfter.subtracting(metadataBefore)
+        }
+        return result
     }
 
     private mutating func apply(_ event: FileEvent, on day: UInt32) {

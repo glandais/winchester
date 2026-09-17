@@ -8,7 +8,7 @@ import DiskCore
 /// outil sur le même disque, démarrer le disque rangé.
 struct PassRecord: Identifiable {
 
-    enum Kind { case defrag, boot }
+    enum Kind { case defrag, boot, install }
 
     let id = UUID()
     let passNumber: Int
@@ -16,7 +16,8 @@ struct PassRecord: Identifiable {
     let diskID: String
     let title: String
     let kind: Kind
-    /// L'outil d'une défragmentation, le système d'un démarrage.
+    /// L'outil d'une défragmentation, le système d'un démarrage ou d'une
+    /// installation.
     let toolLabel: String
     let toolID: String?
     /// L'outil qui avait rangé le disque démarré, s'il l'était.
@@ -41,6 +42,9 @@ struct PassRecord: Identifiable {
 
     // Démarrage.
     var freshSeconds: Double?
+
+    // Installation : le disque au soir du jour 0, prêt à démarrer.
+    var installed: GeneratedDisk?
 
     /// Le disque d'origine, quand la passe venait de la galerie.
     var disk: GeneratedDisk?

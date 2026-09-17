@@ -39,7 +39,7 @@ struct SimulatorScreen: View {
     private var isCovered: Bool { showsFullScreenMap || showsAmbient }
 
     /// Une passe de démarrage n'a pas de carte : seul le plateau se montre.
-    private var shownView: View_ { model.defrag == nil ? .platter : view }
+    private var shownView: View_ { model.mapSource == nil ? .platter : view }
 
     var body: some View {
         ZStack {
@@ -50,10 +50,10 @@ struct SimulatorScreen: View {
                     if let interruption = engine.interruption {
                         interruptionCard(interruption)
                     }
-                    if let record = model.currentRecord, record.kind == .defrag {
+                    if let record = model.currentRecord, record.kind != .boot {
                         finishedCard(record)
                     }
-                    if model.defrag != nil {
+                    if model.mapSource != nil {
                         Picker("Vue", selection: $view) {
                             Text("Carte").tag(View_.map)
                             Text("Plateau").tag(View_.platter)
@@ -62,9 +62,13 @@ struct SimulatorScreen: View {
                     }
                     switch shownView {
                     case .map:
+                        if let source = model.mapSource {
+                            mapPanel(partition: source.partition, initialRuns: source.initialRuns)
+                        }
                         if let playback = model.defrag {
-                            mapPanel(playback)
                             defragCounters(playback)
+                        } else if let install = model.install {
+                            installCounters(install)
                         }
                     case .platter:
                         platterPanel
@@ -112,7 +116,8 @@ struct SimulatorScreen: View {
                         .foregroundStyle(Theme.text)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
-                    Text(model.defrag?.strategy.label ?? model.boot.map(bootTitle) ?? model.geometry.model)
+                    Text(model.defrag?.strategy.label ?? model.install.map(installTitle)
+                         ?? model.boot.map(bootTitle) ?? model.geometry.model)
                         .font(.dynamic(size: 12, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .lineLimit(1)
@@ -136,7 +141,7 @@ struct SimulatorScreen: View {
                 }
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 2) {
-                    if model.defrag != nil {
+                    if model.mapSource != nil {
                         Text(FrenchFormat.percent(model.defragProgress ?? 0))
                             .font(.dynamic(size: 24, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.read)
@@ -148,7 +153,7 @@ struct SimulatorScreen: View {
                         .monospacedDigit()
                 }
             }
-            if model.defrag != nil {
+            if model.mapSource != nil {
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.08))
@@ -203,7 +208,8 @@ struct SimulatorScreen: View {
                     Text("Passe terminée")
                         .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
-                    Text("Avant → après, un autre outil, le disque rangé")
+                    Text(record.kind == .install ? "Le disque posé, et son premier démarrage"
+                                                 : "Avant → après, un autre outil, le disque rangé")
                         .font(.dynamic(size: 11))
                         .foregroundStyle(Theme.dim)
                 }
@@ -232,6 +238,10 @@ struct SimulatorScreen: View {
         .accessibilityLabel(label)
     }
 
+    private func installTitle(_ install: InstallPlayback) -> String {
+        "Installation depuis \(install.medium)"
+    }
+
     private func bootTitle(_ boot: BootPlayback) -> String {
         boot.appName.map { "\(boot.osName), puis \($0)" } ?? boot.osName
     }
@@ -256,14 +266,14 @@ struct SimulatorScreen: View {
     /// Carte du volume, rejouée sur l'horloge du moteur audio : ce sont les
     /// mêmes dates que celles des repères sonores, donc l'écriture d'un bloc se
     /// voit exactement quand elle s'entend.
-    private func mapPanel(_ playback: DefragPlayback) -> some View {
+    private func mapPanel(partition: PartitionGeometry, initialRuns: [MapRun]) -> some View {
         let active = model.activeCell()
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 legendDot(Theme.read, "lecture")
                 legendDot(Theme.write, "écriture")
                 Spacer()
-                Text("\(playback.partition.capacityDescription) · \(playback.partition.format.label)")
+                Text("\(partition.capacityDescription) · \(partition.format.label)")
                     .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .lineLimit(1)
@@ -278,9 +288,9 @@ struct SimulatorScreen: View {
                 // qu'on essaie d'abord, et il ne coûte rien de le servir.
                 .contentShape(Rectangle())
                 .onTapGesture { showsFullScreenMap = true }
-            ClusterLegend(categories: presentCategories(in: playback),
+            ClusterLegend(categories: presentCategories(in: initialRuns),
                           clustersPerCell: model.clustersPerCell,
-                          clusterBytes: playback.partition.clusterBytes)
+                          clusterBytes: partition.clusterBytes)
         }
         .panel()
     }
@@ -298,9 +308,15 @@ struct SimulatorScreen: View {
 
     /// Le fichier d'échange et les répertoires ne pèsent que quelques blocs :
     /// inutile de leur réserver une entrée de légende s'ils sont absents.
-    private func presentCategories(in playback: DefragPlayback) -> [ClusterCategory] {
-        var seen = Set<UInt8>(playback.initialRuns.lazy.map(\.category))
+    private func presentCategories(in initialRuns: [MapRun]) -> [ClusterCategory] {
+        var seen = Set<UInt8>(initialRuns.lazy.map(\.category))
         seen.insert(ClusterCategory.free.rawValue)
+        // Une installation part d'un volume vierge : ce qu'elle posera ne se
+        // voit pas au départ, mais c'est ce que la légende doit nommer.
+        if let install = model.install {
+            seen.formUnion(install.installed.catalog.files.lazy.map { ClusterCategory($0.category).rawValue })
+            if install.temporaryFiles > 0 { seen.insert(ClusterCategory.churn.rawValue) }
+        }
         return ClusterCategory.allCases.filter { seen.contains($0.rawValue) }
     }
 
@@ -347,6 +363,40 @@ struct SimulatorScreen: View {
         }
     }
 
+    /// Ce qu'une installation a posé jusqu'ici, et ce qu'elle laissera.
+    private func installCounters(_ install: InstallPlayback) -> some View {
+        let placed = model.live.moves?.filesMoved ?? 0
+        let finished = model.end != nil
+        let arrival = install.installed.metrics
+        return VStack(alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+                StatTile(label: "Fichiers posés",
+                         value: FrenchFormat.integer(placed),
+                         unit: "sur \(FrenchFormat.integer(install.files))")
+                StatTile(label: "Mo écrits",
+                         value: FrenchFormat.integer(Int(model.movedBytes / 1_000_000)),
+                         unit: "jusqu'ici")
+                StatTile(label: "Source", value: install.medium, unit: "le système")
+                StatTile(label: "Redémarrages",
+                         value: FrenchFormat.integer(install.reboots),
+                         unit: "prévus", why: .installation)
+            }
+            Text("À poser : \(FrenchFormat.integer(install.files)) fichiers, "
+                 + "\(FrenchFormat.megabytes(UInt64(install.bytes))), "
+                 + (install.temporaryFiles > 0
+                    ? "et \(FrenchFormat.integer(install.temporaryFiles)) archives extraites puis effacées "
+                        + "(\(FrenchFormat.megabytes(UInt64(install.temporaryBytes)))). "
+                    : "sans rien extraire à côté. ")
+                 + (finished
+                    ? "À l'arrivée : \(FrenchFormat.integer(arrival.fragmentedFileCount)) fichiers fragmentés, "
+                        + "\(FrenchFormat.integer(arrival.freeRunCount)) trous dans l'espace libre."
+                    : ""))
+                .font(.dynamic(size: 12))
+                .foregroundStyle(Theme.dim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     // MARK: - Plateau
 
     private var platterPanel: some View {
@@ -379,7 +429,7 @@ struct SimulatorScreen: View {
         // Une passe entendue jusqu'au bout n'a plus de phase en cours.
         let current = engine.isFinished ? -1 : model.phaseIndex
         return VStack(alignment: .leading, spacing: 8) {
-            Text(model.boot == nil ? "PHASES ÉCOUTÉES" : "ÉTAPES")
+            Text(model.defrag != nil ? "PHASES ÉCOUTÉES" : "ÉTAPES")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             if model.phaseTimes.isEmpty {

@@ -2701,3 +2701,178 @@ L'avance en durée sur XP et UltraDefrag, elle, vient des blocs pleins.
   dispositions et copie le paquet de ressources à côté de l'exécutable. Les
   mesures de ce chantier ont été faites avec l'ancien système ; les bilans sont
   les mêmes avec le nouveau.
+
+## Chantier 16 — installer le disque
+
+### Le problème
+
+Un disque de la galerie se **démarre** et se **défragmente** ; il ne
+s'**installe** pas. Or le jour 0 de son histoire est déjà écrit : le compilateur
+pose le système répertoire par répertoire, puis les applications de
+`spec.installs`, les bibliothèques partagées et le fichier d'échange, et
+l'allocateur leur donne leurs places. Rien ne le faisait entendre.
+
+Rejouer ces créations telles quelles n'aurait pas sonné comme une installation
+d'époque. Ce qui la fait reconnaître se passe autour des fichiers, et le
+modèle n'en avait rien :
+
+- **la source** : disquette à quelques dizaines de ko/s, CD de 4x à 48x. C'est
+  elle qui espace les écritures ;
+- **les archives** : l'installeur extrait son moteur et ses CAB, les relit en
+  copiant, puis les efface. Le va-et-vient crépite, et l'effacement laisse les
+  premiers trous du volume ;
+- **les tables** : écrites à chaque fichier sous MS-DOS, par salves derrière
+  VCACHE ou l'écrivain paresseux ensuite ;
+- **le registre**, réécrit en bloc après chaque logiciel, et absent du
+  catalogue ;
+- **les redémarrages**, qui relisent ce qui vient d'être posé.
+
+### Les décisions
+
+- **Les archives entrent dans le scénario, pas seulement dans le rejeu.** Elles
+  ont occupé le disque le temps de l'installation. Ce qui s'est écrit ensuite
+  est tombé après elles, et leurs trous ont été comblés plus tard. Les poser
+  dans le rejeu seul aurait donné une arrivée différente du disque que la
+  galerie vieillit. Conséquence acceptée : tous les disques d'après 1994
+  changent un peu (tableau plus bas).
+- **Un générateur à part pour la mise en place** (`spec.seed ^ constante`).
+  Archives et ruches ne consomment aucun tirage du générateur principal : tailles
+  et dates du reste de l'histoire sont inchangées, seules les places bougent.
+  Preuve : les quatre profils de 1993 (disquettes, ni archives ni ruches)
+  gardent des bilans identiques.
+- **`SetupStyle` par manifeste** (`Sources/DiskCore/InstallSetup.swift`) :
+
+  | | source | archives | ruches | redémarrages |
+  |---|---|---|---|---|
+  | MS-DOS 6.22, Windows 3.1 | disquettes | — | (INI déjà au manifeste) | 1 |
+  | Windows 95 | CD 4x–8x | `WININST0.400`, 3,6 Mo | `SYSTEM.DAT`, `USER.DAT` | 2 |
+  | Windows 98 SE | CD 24x–32x | `WININST0.400`, 5,8 Mo | idem, plus gros | 3 |
+  | Windows XP | CD 40x–48x | — (phase texte depuis le CD) | 5 ruches + `NTUSER.DAT` | 2 |
+  | Windows Vista | DVD 16x | — | 6 ruches + `NTUSER.DAT` | 3 |
+  | application avant 1995 | disquettes | — | — | 0 |
+  | application sur CD | CD de l'année | `\WINDOWS\TEMP\_ISTMP0.DIR`, 10 % de l'application (1,5 à 60 Mo) | — | 1 si DLL partagées |
+
+  Ce sont des ordres de grandeur, comme les manifestes. Les archives d'une
+  application sont des `cabinets` : chaque fichier posé en relit une part. Celles
+  de Windows 95/98 sont le moteur d'installation, lu d'un bloc au lancement.
+- **`CompiledScenario.installSteps`** décrit le jour 0 en étapes : fichiers,
+  archives, ruches, et une dernière étape pour le fichier d'échange.
+  `WIN386.SWP`, créé au jour 1, n'en fait pas partie.
+- **`DiskGenerator.install(spec)`** rejoue le jour 0 pas à pas
+  (`Simulator.step`). Il rend le disque au soir de l'installation et le journal
+  des créations, effacements et croissances de la MFT, avec les extents exacts.
+  Le choix de l'allocateur est factorisé avec `generate`.
+- **`InstallPlanner`** (`Sources/Model/InstallSession.swift`) traduit le journal
+  en `DiskOperation` et `MapMutation`, comme une stratégie de défragmentation :
+  la carte part d'un volume vierge et se remplit. Le temps hors disque passe par
+  un nouveau `DiskOperation.thinkTime`, relayé au pipeline, et nul pour les
+  défragmenteurs.
+  - **Source** : octets compressés (×1,9) divisés par le débit du support ; une
+    pause de 6 s toutes les 1,44 Mo lus sur disquette.
+  - **Décompression et création** : `ThinkModel` par époque, de 0,08 s par
+    fichier et 0,6 s/Mo sous MS-DOS à 0,006 s et 0,03 s/Mo sous Vista.
+  - **Tables** : `commitAccesses` marque les secteurs sales. Ils sont vidés à
+    chaque fichier sous MS-DOS, toutes les 3 s estimées sous 95/98, toutes les
+    secondes sous NT, avec une écriture de `$LogFile` près de `$MFTMirr`. Le
+    vidage est trié par LBA et fusionné.
+  - **Taille des écritures** : 64 Ko sous MS-DOS, 128 Ko (95), 256 Ko (98),
+    512 Ko (XP), 1 Mo (Vista). Par morceaux de 64 Ko, les 13,5 Go de
+    `gamer-2007` attendaient un demi-tour de plateau deux cent mille fois :
+    1 336 s de disque au lieu de 352.
+  - **Registre** : les ruches posées sont réécrites en bloc à la fin de chaque
+    étape, et après chaque redémarrage d'un système.
+  - **Redémarrage** : `BootPlanner.plan(disk:launchesApplication: false)` sur le
+    catalogue posé jusque-là, POST compris. Le plateau ne s'arrête pas.
+  - **Pauses raccourcies** : détection du matériel de 3 à 12 s, configuration de
+    4 à 12 s, clic sur « Redémarrer » 2 s.
+- **Dans l'app** : « Installer ce disque » sur la fiche (`GeneratedActivity.install`),
+  carte et avancement sur l'écran de la passe, tuiles « fichiers posés / Mo
+  écrits / source / redémarrages », section des Instruments, bilan (« vierge →
+  installé »), historique, fiche ⓘ « L'installation ». Le bilan propose
+  **« Démarrer ce disque fraîchement installé »**, qui démarre le disque du jour 0.
+- **Rendu hors-ligne** : `SCENARIO=install:<profil>`, avec le décompte du
+  planificateur (archives, vidages, réécritures, redémarrages, temps de source).
+
+### Ce qui valide
+
+- **`swift test` : 113 tests `DiskCore` et 194 `DefragKit` passent**, dont 17
+  nouveaux :
+  - archives nées et effacées au jour 0 ;
+  - étapes couvrant toutes les créations du jour 0 ;
+  - ruches de XP ;
+  - époque des disquettes ;
+  - journal rejoué sur une bitmap vierge qui redonne celle du soir, au cluster
+    près ;
+  - un fichier posé au jour 0 et jamais retouché qui garde, sur le disque
+    vieilli, les extents de l'installation ;
+  - soustraction d'extents ;
+  - neuf pour le planificateur : volume, déterminisme, chaque cluster posé
+    écrit, carte finale identique au disque installé, vidage par fichier en
+    1993 et groupé en 1996, redémarrages, disquette plus lente que le CD,
+    archives relues puis effacées, noms des phases ;
+  - l'installation en flux identique au calcul d'un bloc (repères, mutations
+    datées, avancement monotone).
+- **`CalibrationTests` passent sans retouche.**
+- **Les vingt installations** (`PLAN_ONLY=1 SCENARIO=install:…`, release) :
+
+  | | durée | source | posé | archives | redém. | hors disque |
+  |---|---:|---|---|---:|---:|---:|
+  | `gamer-1993` | 728 s | 21 disquettes | 373 fichiers, 39 Mo | 0 | 2 | 659 s |
+  | `dev-1993` | 1 000 s | 26 disquettes | 615 fichiers, 54 Mo | 0 | 2 | 904 s |
+  | `secretaire-1996` | 449 s | CD 8x | 1 008 fichiers, 222 Mo | 46 | 3 | 336 s |
+  | `dev-1996` | 878 s | CD 8x | 1 801 fichiers, 516 Mo | 68 | 4 | 637 s |
+  | `famille-1999` | 560 s | CD 32x | 2 412 fichiers, 574 Mo | 77 | 5 | 397 s |
+  | `gamer-2003` | 827 s | CD 48x | 3 172 fichiers, 5,9 Go | 23 | 2 | 597 s |
+  | `famille-2003` | 528 s | CD 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 378 s |
+  | `famille-2007` | 846 s | DVD 16x | 10 710 fichiers, 4,8 Go | 34 | 5 | 567 s |
+  | `gamer-2007` | 1 262 s | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 911 s |
+
+  De 7 à 21 minutes. Sur disquettes, la source fait plus des trois quarts de
+  l'attente. Sur CD et DVD, ce sont la décompression et les pauses. Chaque
+  arrivée compte au plus 2 fichiers fragmentés et 5 trous libres.
+- **Écarts sur les disques vieillis** (`develop` → branche, bilans de passe) :
+
+  | | fichiers | fragmentés | morceaux | trous | défragmentation | démarrage |
+  |---|---|---|---|---|---|---|
+  | quatre profils de 1993 | = | = | = | = | = | = |
+  | `dev-1996` | 5 529 → 5 533 | 133 → 152 | 1 531 → 2 412 | 588 → 347 | 2 181 → 2 934 s | 57,5 → 58,7 s |
+  | `famille-1999` | 4 048 → 4 037 | 898 → 874 | 21 179 → 22 607 | 821 → 1 862 | 16 130 → 18 001 s | 66,7 → 66,0 s |
+  | `gamer-1999` | 3 796 → 3 836 | 738 → 654 | 7 964 → 7 236 | 484 → 617 | 15 264 → 27 353 s | 57,5 → 54,8 s |
+  | `famille-2003` | 4 194 → 4 200 | 68 → 75 | 47 063 → 43 930 | 1 906 → 1 539 | 155 → 107 s | 31,5 → 28,8 s |
+  | `famille-2007` | 12 222 → 12 229 | 268 → 259 | 163 249 → 176 608 | 6 382 → 6 349 | 1 394 → 1 531 s | 39,3 → 38,3 s |
+  | `gamer-2003` | 3 173 → 3 179 | 0 → 0 | 0 → 0 | 6 → 7 | 7,8 → 7,9 s | 68,9 → 70,0 s |
+
+  Les autres profils bougent dans les mêmes proportions. La texture reste celle
+  de chaque époque : les deux ruches et quelques mégaoctets d'archives
+  déplacent le curseur de l'allocateur, et c'est lui qui décide du reste. Les
+  démarrages varient de −15 % à +7 %. **`gamer-1999` est le cas extrême** : sa
+  passe Windows 95 dure 79 % de plus pour un volume *moins* fragmenté. Le premier
+  trou laissé par les archives change l'ordre dans lequel le tassage trouve ses
+  places.
+- **L'app se construit** en Debug pour le simulateur iPhone 18 Pro Max
+  (`xcodegen generate` d'abord), sans erreur.
+
+### Laissé ouvert
+
+- **Rien n'a été écouté ni regardé dans l'app.** Le simulateur a été lancé,
+  mais `axe` ne touche plus l'écran (« XCUIAutomation couldn't be loaded »), et
+  la machine, saturée par d'autres travaux, n'a pas laissé la session
+  d'interaction Xcode répondre.
+- **Pas de formatage** : ni `FORMAT` complet ni vérification de surface.
+  C'était le son le plus reconnaissable ; il demanderait une phase de lecture
+  séquentielle de toute la partition avant la copie.
+- **Les jeux installés en cours d'usage** (`play`, fichiers `DATA*.PAK`) ne
+  passent pas par les manifestes et ne sont pas rejoués. `WIN386.SWP` naît au
+  jour 1, hors de l'installation.
+- **Les disquettes comptent 38 Mo pour Windows 3.1**, parce que les manifestes
+  décrivent le système installé, pas le jeu de disquettes : une vingtaine de
+  changements de disquette là où il y en avait six ou sept.
+- **L'installation se prépare sur le fil principal** (`DiskGenerator.install`
+  compile toute l'histoire pour en garder le premier jour) : moins d'une seconde
+  en release sur le Mac pour `famille-2007`, à mesurer sur le téléphone. Le
+  démarrage fait déjà de même avec son témoin.
+- **Les écritures ne sonnent pas autrement que les lectures** : `DiskMechanics`
+  leur donne le même coût et `CueStream` ignore les transferts. Ce qu'on entend
+  de l'installation, ce sont ses seeks.
+- **Les réglages** (débits, pauses, part des archives, tailles des ruches) sont
+  des ordres de grandeur d'époque, pas des relevés.

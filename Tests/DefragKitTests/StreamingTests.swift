@@ -160,6 +160,62 @@ struct StreamingTests {
         #expect(recorder.history.phases.map(\.time) == spans.map(\.start))
     }
 
+    /// L'installation mêle ce que les deux autres séparent : des opérations
+    /// qui changent la carte, comme une défragmentation, et du temps passé
+    /// hors du disque entre elles, comme un démarrage.
+    @Test("Les repères et la carte d'une installation sont ceux du calcul d'un bloc")
+    func installMatches() throws {
+        let installed = try DiskGenerator.install(try ScenarioLibrary.load("gamer-1993"))
+        let hardware = GeneratedVolumeBridge.drive(for: installed.disk.spec,
+                                                   atLeast: GeneratedVolumeBridge.partition(of: installed.disk).totalSectors)
+        let rate = hardware.geometry.outerSustainedMBs * 1_000_000
+        let setup = PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
+                              spinUpAt: 0, spinUpDuration: 0.9,
+                              idle: IdleBehavior(parkAfter: 1.0), tail: 3.5)
+
+        let collected = OperationSink()
+        InstallPlanner.plan(installed: installed, diskBytesPerSecond: rate, into: collected)
+        let requests = collected.operations.map {
+            BlockRequest(issueTime: $0.issueTime, lba: $0.lba, sectorCount: $0.sectors,
+                         isWrite: $0.isWrite, phaseIndex: $0.phase, thinkTime: $0.thinkTime)
+        }
+        let trace = DiskSimulator.run(geometry: setup.geometry, seekModel: setup.seekModel,
+                                      requests: requests, totalDuration: 0,
+                                      spinUpAt: setup.spinUpAt, spinUpDuration: setup.spinUpDuration,
+                                      idle: setup.idle)
+        var mutations: [TimedMutation] = []
+        for (index, operation) in collected.operations.enumerated() {
+            for position in Int(operation.mutationStart)..<Int(operation.mutationStart + operation.mutationCount) {
+                let mutation = collected.mutations[position]
+                mutations.append(TimedMutation(time: trace.timings[index].end, start: mutation.start,
+                                               count: mutation.count,
+                                               category: mutation.category.rawValue))
+            }
+        }
+
+        let recorder = PassRecorder()
+        let pipeline = PassPipeline(setup: setup, batchRequests: 29, batchSeconds: 0.5,
+                                    deliver: recorder.receive)
+        let sink = OperationSink { operation, slice, progress, moves in
+            pipeline.serve(operation, mutations: slice, progress: progress, moves: moves)
+        }
+        InstallPlanner.plan(installed: installed, diskBytesPerSecond: rate, into: sink)
+        let end = pipeline.finish()
+        let history = recorder.history
+
+        #expect(requests.count > 1_000)
+        Self.expectSameCues(history.cues, ReferenceCues.build(events: trace.events,
+                                                               cylinders: setup.geometry.cylinders))
+        #expect(end.stats.requestCount == trace.stats.requestCount)
+        #expect(end.stats.bytesWritten == trace.stats.bytesWritten)
+        #expect(history.mutations.count == mutations.count)
+        #expect(zip(history.mutations, mutations).allSatisfy {
+            $0.time == $1.time && $0.start == $1.start && $0.count == $1.count && $0.category == $1.category
+        })
+        let progress = history.progress.map(\.value)
+        #expect(zip(progress, progress.dropFirst()).allSatisfy { $0 <= $1 })
+    }
+
     /// Des trains denses, coupés par la durée maximale en plein milieu, avec
     /// des micro-transitoires qui tombent pile sur leurs bords : c'est là que
     /// le flux doit retenir sa décision le plus longtemps.

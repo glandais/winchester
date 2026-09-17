@@ -16,6 +16,11 @@ import AVFAudio
 //   SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav
 //   SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav
 //
+// Préfixé de `install:`, c'est l'**installation** du disque qui est rendue :
+// le jour 0 de son histoire, rejoué sur un volume vierge.
+//
+//   SCENARIO=install:secretaire-1996 /tmp/rendertrace install1996.wav
+//
 //   SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav
 //   TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
 //
@@ -32,7 +37,10 @@ let outputPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "d
 let requested = ProcessInfo.processInfo.environment["SCENARIO"] ?? ""
 
 let wantsBoot = requested.hasPrefix("boot:")
-let profileID = wantsBoot ? String(requested.dropFirst(5)) : requested
+let wantsInstall = requested.hasPrefix("install:")
+let profileID = wantsBoot ? String(requested.dropFirst(5))
+    : wantsInstall ? String(requested.dropFirst(8))
+    : requested
 
 // `STRATEGY` force le défragmenteur simulé au lieu de laisser le format le
 // dater. C'est ainsi que se compare une passe UltraDefrag à celle de l'outil
@@ -67,19 +75,27 @@ if let strategyID {
 }
 
 let scenario: Scenario
+var installed: InstalledDisk?
 if let kind = ScenarioKind(rawValue: requested) {
     scenario = ScenarioBuilder.build(kind)
 } else if let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == profileID }) {
     FileHandle.standardError.write("génération de \(spec.id)…\n".data(using: .utf8)!)
-    let disk = try DiskGenerator.generate(spec)
-    scenario = wantsBoot
-        ? ScenarioBuilder.build(boot: disk)
-        : try ScenarioBuilder.build(generated: disk, using: strategy)
+    if wantsInstall {
+        let install = try DiskGenerator.install(spec)
+        installed = install
+        scenario = ScenarioBuilder.build(install: install)
+    } else {
+        let disk = try DiskGenerator.generate(spec)
+        scenario = wantsBoot
+            ? ScenarioBuilder.build(boot: disk)
+            : try ScenarioBuilder.build(generated: disk, using: strategy)
+    }
 } else if requested.isEmpty {
     scenario = ScenarioBuilder.build(.windowsBoot)
 } else {
     let known = ScenarioKind.allCases.map(\.rawValue) + ScenarioLibrary.identifiers
         + ScenarioLibrary.identifiers.map { "boot:\($0)" }
+        + ScenarioLibrary.identifiers.map { "install:\($0)" }
     FileHandle.standardError.write(
         "scénario inconnu : \(requested)\nconnus : \(known.joined(separator: ", "))\n"
             .data(using: .utf8)!)
@@ -352,6 +368,31 @@ func describe(_ playback: BootPlayback, duration: Double) -> String {
     """
 }
 
+/// Ce qu'une installation a posé, et ce qui l'a fait durer. Le décompte est
+/// refait par le planificateur seul, sans simuler le disque : c'est lui qui sait
+/// ce qu'ont coûté la source et les tables.
+func describe(_ playback: InstallPlayback, installed: InstalledDisk, duration: Double) -> String {
+    let rate = scenario.geometry.outerSustainedMBs * 1_000_000
+    let plan = InstallPlanner.plan(installed: installed, diskBytesPerSecond: rate,
+                                   into: OperationSink { _, _, _, _ in })
+    let disk = max(duration - plan.thinkSeconds, 0)
+    let metrics = playback.installed.metrics
+    return """
+    système       : \(playback.osName)\(playback.applications.isEmpty ? "" : " puis " + playback.applications.joined(separator: ", "))
+    source        : \(playback.medium)
+    posé          : \(plan.filesWritten) fichiers, \(plan.bytesWritten / 1_000_000) Mo
+    archives      : \(plan.temporaryFiles) extraites (\(plan.temporaryBytes / 1_000_000) Mo), \
+    \(plan.temporaryBytesRead / 1_000_000) Mo relus
+    tables        : \(plan.metadataFlushes) vidages, \(plan.metadataSectors) secteurs
+    registre      : \(plan.settingsRewrites) réécritures
+    redémarrages  : \(plan.reboots)
+    hors disque   : \(String(format: "%.1f", plan.thinkSeconds)) s dont source \(String(format: "%.1f", plan.sourceSeconds)) s
+    disque        : \(String(format: "%.1f", disk)) s
+    arrivée       : \(metrics.fileCount) fichiers, \(metrics.fragmentedFileCount) fragmentés, \
+    \(metrics.freeRunCount) trous libres, \(Int(metrics.fill * 100)) % plein
+    """
+}
+
 /// Ce que chaque étape a duré. Sur un démarrage décrit en fichiers, aucune de
 /// ces durées n'est imposée : elles tombent de la simulation.
 func describePhases(_ spans: [PhaseSpan], throughput: [Double]) -> String {
@@ -378,6 +419,7 @@ repères audio : \(tally.cues)
 durée         : \(String(format: "%.1f", end.duration)) s
 \(end.plan.map(describe) ?? "")
 \(scenario.boot.map { describe($0, duration: end.duration) } ?? "")
+\(scenario.install.flatMap { playback in installed.map { describe(playback, installed: $0, duration: end.duration) } } ?? "")
 \(describePhases(spans, throughput: throughput))
 
 """.data(using: .utf8)!)

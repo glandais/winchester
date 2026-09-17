@@ -154,58 +154,143 @@ public enum DiskGenerator {
         let compiled = ScenarioCompiler.compile(spec, manifests: manifests)
         logger.log("\(spec.id) : \(compiled.timeline.count) événements sur \(spec.timeline.dayCount) jours")
 
-        let clusterCount = spec.clusterCount
-
         switch spec.fileSystem.type {
         case .fat16, .vfat, .fat32:
-            let profile = spec.resolvedFileSystem()
-            let scan: FATAllocator.Scan = spec.fileSystem.type == .fat16
-                ? .fromVolumeStart
-                : .fromLastAllocated
-            var simulator = Simulator(allocator: FATAllocator(profile: profile,
-                                                              clusterCount: clusterCount,
-                                                              scan: scan),
+            var simulator = Simulator(allocator: fatAllocator(for: spec),
                                       catalog: compiled.catalog,
                                       logger: logger)
             let outcome = try simulator.run(compiled.timeline, onProgress: onProgress)
-            return GeneratedDisk(spec: spec,
-                                 catalog: outcome.catalog,
-                                 bitmap: simulator.allocator.bitmap,
-                                 metrics: outcome.metrics,
-                                 clusterBytes: profile.clusterBytes,
-                                 failedWrites: outcome.failedWrites,
-                                 dayCount: outcome.dayCount,
-                                 mftClusters: 0,
-                                 mftExtents: 0,
-                                 mftZone: nil,
-                                 systemExtents: [])
+            return disk(spec: spec, allocator: simulator.allocator, catalog: outcome.catalog,
+                        metrics: outcome.metrics, failedWrites: outcome.failedWrites,
+                        dayCount: outcome.dayCount)
 
         case .ntfs:
-            let profile = NTFSProfile(clusterKB: spec.fileSystem.clusterKB ?? 4)
-            // `$MFTMirr` est au milieu du volume jusqu'à Windows 2000, ramené
-            // près du début ensuite : un aller-retour de moins par écriture de
-            // métadonnées, et ça s'entend.
-            let mirror: NTFSAllocator.MirrorPlacement =
-                spec.timeline.start.year >= 2001 ? .nearStart : .volumeMiddle
-            var simulator = Simulator(allocator: NTFSAllocator(profile: profile,
-                                                               clusterCount: clusterCount,
-                                                               mirrorPlacement: mirror),
+            var simulator = Simulator(allocator: ntfsAllocator(for: spec),
                                       catalog: compiled.catalog,
                                       logger: logger)
             let outcome = try simulator.run(compiled.timeline, onProgress: onProgress)
-            let allocator = simulator.allocator
-            return GeneratedDisk(spec: spec,
-                                 catalog: outcome.catalog,
-                                 bitmap: allocator.bitmap,
-                                 metrics: outcome.metrics,
-                                 clusterBytes: profile.clusterBytes,
-                                 failedWrites: outcome.failedWrites,
-                                 dayCount: outcome.dayCount,
-                                 mftClusters: allocator.mft.clusterCount,
-                                 mftExtents: allocator.mft.extents.count,
-                                 mftZone: allocator.mftZone,
-                                 systemExtents: allocator.systemExtents)
+            return disk(spec: spec, allocator: simulator.allocator, catalog: outcome.catalog,
+                        metrics: outcome.metrics, failedWrites: outcome.failedWrites,
+                        dayCount: outcome.dayCount)
         }
+    }
+
+    // MARK: - Installation
+
+    /// Le disque au soir de l'installation, et comment il y est arrivé.
+    ///
+    /// La même histoire que `generate`, arrêtée à la fin du jour 0 et rejouée
+    /// pas à pas : chaque création et chaque effacement est consigné avec les
+    /// clusters que l'allocateur a donnés ou repris. C'est le même compilateur,
+    /// les mêmes tirages et le même allocateur — le disque qui en sort est donc
+    /// exactement celui dont la galerie montre la version vieillie.
+    public static func install(_ spec: ProfileSpec,
+                               manifests: [AppManifest] = AppLibrary.all) throws -> InstalledDisk {
+        let compiled = ScenarioCompiler.compile(spec, manifests: manifests)
+        switch spec.fileSystem.type {
+        case .fat16, .vfat, .fat32:
+            return try replayInstallation(compiled, allocator: fatAllocator(for: spec))
+        case .ntfs:
+            return try replayInstallation(compiled, allocator: ntfsAllocator(for: spec))
+        }
+    }
+
+    private static func replayInstallation<A: GeneratorAllocator>(_ compiled: CompiledScenario,
+                                                                 allocator: A) throws -> InstalledDisk {
+        var simulator = Simulator(allocator: allocator, catalog: compiled.catalog)
+        let initial = allocator.metadataExtents
+
+        var stepOfFile: [UInt32: Int] = [:]
+        for (index, step) in compiled.installSteps.enumerated() {
+            for id in step.temporaryIDs { stepOfFile[id] = index }
+            for id in step.fileIDs { stepOfFile[id] = index }
+        }
+
+        var journal: [InstallEntry] = []
+        var currentStep = -1
+        var failedWrites = 0
+
+        func enter(_ id: UInt32) {
+            guard let step = stepOfFile[id], step > currentStep else { return }
+            // Une étape sans fichier — un fichier d'échange que ce format pose
+            // plus tard — n'en garde pas moins sa place dans la suite.
+            for skipped in (currentStep + 1)...step { journal.append(.begin(step: skipped)) }
+            currentStep = step
+        }
+
+        for (index, timed) in compiled.timeline.events.enumerated() {
+            // Une passe de défragmentation datée du premier jour n'appartient
+            // pas à l'installation : elle ne commence qu'une fois Windows posé.
+            guard timed.day == 0 else { break }
+            if case .defragment = timed.event { break }
+            if index % 512 == 0 { try Task.checkCancellation() }
+
+            switch timed.event {
+            case let .create(spec): enter(spec.id)
+            case let .delete(id):   enter(id)
+            default: break
+            }
+
+            let step = simulator.step(timed)
+            if step.failed { failedWrites += 1 }
+            if !step.metadataGrew.isEmpty { journal.append(.metadataGrew(step.metadataGrew)) }
+            if let created = step.created { journal.append(.created(created)) }
+            if let deleted = step.deleted { journal.append(.deleted(deleted)) }
+        }
+        if currentStep + 1 < compiled.installSteps.count {
+            for skipped in (currentStep + 1)..<compiled.installSteps.count {
+                journal.append(.begin(step: skipped))
+            }
+        }
+
+        let final = simulator.allocator
+        let metrics = AllocationMetrics.evaluate(files: simulator.catalog.files.map(\.entry),
+                                                 bitmap: final.bitmap,
+                                                 profile: final.profile)
+        return InstalledDisk(disk: disk(spec: compiled.spec, allocator: final,
+                                        catalog: simulator.catalog, metrics: metrics,
+                                        failedWrites: failedWrites, dayCount: 1),
+                             steps: compiled.installSteps,
+                             journal: journal,
+                             initialSystemExtents: initial)
+    }
+
+    // MARK: - Allocateurs
+
+    static func fatAllocator(for spec: ProfileSpec) -> FATAllocator {
+        let scan: FATAllocator.Scan = spec.fileSystem.type == .fat16
+            ? .fromVolumeStart
+            : .fromLastAllocated
+        return FATAllocator(profile: spec.resolvedFileSystem(),
+                            clusterCount: spec.clusterCount,
+                            scan: scan)
+    }
+
+    static func ntfsAllocator(for spec: ProfileSpec) -> NTFSAllocator {
+        // `$MFTMirr` est au milieu du volume jusqu'à Windows 2000, ramené
+        // près du début ensuite : un aller-retour de moins par écriture de
+        // métadonnées, et ça s'entend.
+        let mirror: NTFSAllocator.MirrorPlacement =
+            spec.timeline.start.year >= 2001 ? .nearStart : .volumeMiddle
+        return NTFSAllocator(profile: NTFSProfile(clusterKB: spec.fileSystem.clusterKB ?? 4),
+                             clusterCount: spec.clusterCount,
+                             mirrorPlacement: mirror)
+    }
+
+    private static func disk<A: GeneratorAllocator>(spec: ProfileSpec, allocator: A,
+                                                    catalog: FileCatalog, metrics: AllocationMetrics,
+                                                    failedWrites: Int, dayCount: UInt32) -> GeneratedDisk {
+        GeneratedDisk(spec: spec,
+                      catalog: catalog,
+                      bitmap: allocator.bitmap,
+                      metrics: metrics,
+                      clusterBytes: allocator.profile.clusterBytes,
+                      failedWrites: failedWrites,
+                      dayCount: dayCount,
+                      mftClusters: allocator.generatedMFT.clusters,
+                      mftExtents: allocator.generatedMFT.extents,
+                      mftZone: allocator.generatedMFT.zone,
+                      systemExtents: allocator.generatedMFT.system)
     }
 
     /// Version asynchrone, annulable, qui publie son avancement.
@@ -220,5 +305,23 @@ public enum DiskGenerator {
         try await Task.detached(priority: .userInitiated) {
             try generate(spec, manifests: manifests, logger: logger) { progress($0) }
         }.value
+    }
+}
+
+/// Ce que le générateur lit d'un allocateur pour décrire le disque qu'il a
+/// produit.
+protocol GeneratorAllocator: Allocator {
+    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent]) { get }
+}
+
+extension FATAllocator: GeneratorAllocator {
+    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent]) {
+        (0, 0, nil, [])
+    }
+}
+
+extension NTFSAllocator: GeneratorAllocator {
+    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent]) {
+        (mft.clusterCount, mft.extents.count, mftZone, systemExtents)
     }
 }

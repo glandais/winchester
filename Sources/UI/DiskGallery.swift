@@ -244,6 +244,22 @@ struct DiskDetailScreen: View {
         .onAppear { library.open(id) }
     }
 
+    private func icon(of record: PassRecord) -> String {
+        switch record.kind {
+        case .defrag:  return "waveform"
+        case .boot:    return "power"
+        case .install: return "opticaldisc"
+        }
+    }
+
+    private func title(of record: PassRecord) -> String {
+        switch record.kind {
+        case .defrag:  return record.toolLabel
+        case .install: return "Installation de \(record.toolLabel)"
+        case .boot:    return record.rangedBy.map { "Démarrage, rangé par \($0)" } ?? "Démarrage"
+        }
+    }
+
     /// Ce qu'on a déjà écouté de ce disque, de la plus récente à la plus
     /// ancienne passe.
     private var history: some View {
@@ -253,15 +269,14 @@ struct DiskDetailScreen: View {
                 .foregroundStyle(Theme.dim)
             ForEach(records.reversed()) { record in
                 Button {
-                    if record.kind == .defrag { onOpenRecord(record) }
+                    if record.kind != .boot { onOpenRecord(record) }
                 } label: {
                     HStack {
-                        Image(systemName: record.kind == .defrag ? "waveform" : "power")
+                        Image(systemName: icon(of: record))
                             .foregroundStyle(Theme.dim)
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(record.kind == .defrag ? record.toolLabel
-                                 : record.rangedBy.map { "Démarrage, rangé par \($0)" } ?? "Démarrage")
+                            Text(title(of: record))
                                 .font(.dynamic(size: 13))
                                 .foregroundStyle(Theme.text)
                             if let after = record.after {
@@ -274,7 +289,7 @@ struct DiskDetailScreen: View {
                         Text(FrenchFormat.duration(record.duration))
                             .font(.dynamic(size: 12, design: .monospaced))
                             .foregroundStyle(Theme.dim)
-                        if record.kind == .defrag {
+                        if record.kind != .boot {
                             Image(systemName: "chevron.right")
                                 .font(.dynamic(size: 11, weight: .semibold))
                                 .foregroundStyle(Theme.dim)

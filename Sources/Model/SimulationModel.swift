@@ -48,6 +48,9 @@ final class SimulationModel: ObservableObject {
     var geometry: DriveGeometry { scenario.geometry }
     var defrag: DefragPlayback? { scenario.defrag }
     var boot: BootPlayback? { scenario.boot }
+    var install: InstallPlayback? { scenario.install }
+    /// La carte de la passe : le volume à ranger, ou celui qu'on installe.
+    var mapSource: (partition: PartitionGeometry, initialRuns: [MapRun])? { scenario.map }
 
     init() {
         let scenario = ScenarioBuilder.build(.windowsBoot)
@@ -112,12 +115,28 @@ final class SimulationModel: ObservableObject {
         let selection = ScenarioSelection.generated(disk.spec.id, activity)
         let scenario: Scenario
         switch activity {
-        case .boot:   scenario = ScenarioBuilder.build(boot: disk)
-        case .defrag: scenario = try ScenarioBuilder.build(generated: disk, using: strategy)
+        case .boot:    scenario = ScenarioBuilder.build(boot: disk)
+        case .defrag:  scenario = try ScenarioBuilder.build(generated: disk, using: strategy)
+        // L'installation repart de la fiche, pas du disque vieilli : c'est le
+        // jour 0 de la même histoire qu'on rejoue.
+        case .install: scenario = ScenarioBuilder.build(install: try DiskGenerator.install(disk.spec))
         }
         for key in cache.keys where key.isGenerated { cache[key] = nil }
         cache[selection] = scenario
         self.disk = disk
+        self.rangedBy = nil
+        adopt(scenario, as: selection)
+    }
+
+    /// Démarre le disque qu'une installation vient de poser : le jour 0 de
+    /// l'histoire, avant tout usage.
+    func loadInstalledBoot(from record: PassRecord) {
+        guard let original = record.disk, let installed = record.installed else { return }
+        let scenario = ScenarioBuilder.build(boot: installed, rangedBy: nil, freshlyInstalled: true)
+        let selection = ScenarioSelection.generated(original.spec.id, .boot)
+        for key in cache.keys where key.isGenerated { cache[key] = nil }
+        cache[selection] = scenario
+        self.disk = original
         self.rangedBy = nil
         adopt(scenario, as: selection)
     }
@@ -186,8 +205,8 @@ final class SimulationModel: ObservableObject {
         var record = PassRecord(passNumber: passNumber,
                                 diskID: disk?.spec.id ?? label.title,
                                 title: label.title,
-                                kind: defrag != nil ? .defrag : .boot,
-                                toolLabel: defrag?.strategy.label ?? boot?.osName ?? "",
+                                kind: recordKind,
+                                toolLabel: defrag?.strategy.label ?? install?.osName ?? boot?.osName ?? "",
                                 toolID: defrag?.strategy.id,
                                 rangedBy: rangedBy,
                                 duration: end.duration,
@@ -212,9 +231,24 @@ final class SimulationModel: ObservableObject {
         if let boot {
             record.freshSeconds = boot.freshSeconds
         }
+        if let install {
+            record.installed = install.installed
+            record.filesMoved = install.files
+            record.contentBytes = Double(install.bytes)
+            if let start = startShades, let map = live.map {
+                record.startMap = start
+                record.endMap = (map.grid, map.shades(at: end.duration))
+            }
+        }
         record.disk = disk
         records.append(record)
         if records.count > Self.recordLimit { records.removeFirst(records.count - Self.recordLimit) }
+    }
+
+    private var recordKind: PassRecord.Kind {
+        if defrag != nil { return .defrag }
+        if install != nil { return .install }
+        return .boot
     }
 
     /// Le bilan de la passe en cours, si elle est finie.

@@ -52,12 +52,14 @@ enum ScenarioKind: String, CaseIterable, Identifiable {
 enum GeneratedActivity: String, Hashable, CaseIterable, Sendable {
     case boot
     case defrag
+    case install
 
     /// Ce que le bouton de la galerie dit qu'il va faire.
     var action: String {
         switch self {
-        case .boot:   return "Démarrer cet OS"
-        case .defrag: return "Défragmenter ce disque"
+        case .boot:    return "Démarrer cet OS"
+        case .defrag:  return "Défragmenter ce disque"
+        case .install: return "Installer ce disque"
         }
     }
 }
@@ -148,6 +150,25 @@ struct BootPlayback {
     }
 }
 
+/// Ce qu'on sait d'une installation avant de l'écouter : tout ce qu'elle va
+/// poser, et le disque qu'elle laissera.
+struct InstallPlayback {
+    let partition: PartitionGeometry
+    let osName: String
+    let applications: [String]
+    /// La source du système : « CD-ROM 24x », « 6 disquettes ».
+    let medium: String
+    let files: Int
+    let bytes: Int
+    let temporaryFiles: Int
+    let temporaryBytes: Int
+    let reboots: Int
+    /// La carte d'un volume vierge.
+    let initialRuns: [MapRun]
+    /// Le disque au soir de l'installation, prêt à démarrer.
+    let installed: GeneratedDisk
+}
+
 /// Un scénario : ce qu'il faut pour **produire** une passe, pas la passe.
 ///
 /// Tout était calculé avant que le premier son ne sorte — requêtes, chronologie
@@ -168,6 +189,15 @@ struct Scenario {
 
     let defrag: DefragPlayback?
     let boot: BootPlayback?
+    let install: InstallPlayback?
+
+    /// La carte que montre la passe, si elle en a une : le volume à ranger,
+    /// ou le volume vierge qu'on installe.
+    var map: (partition: PartitionGeometry, initialRuns: [MapRun])? {
+        if let defrag { return (defrag.partition, defrag.initialRuns) }
+        if let install { return (install.partition, install.initialRuns) }
+        return nil
+    }
 
     /// Nourrit la chaîne, requête après requête, et rend le plan s'il y en a
     /// un. Le second argument dit si l'écoute a abandonné la passe.
@@ -200,7 +230,7 @@ struct Scenario {
                             seekModel: seekModel,
                             spindle: setup.spindle,
                             phases: phases,
-                            map: defrag.map { ($0.partition.clusterCount, $0.initialRuns) })
+                            map: map.map { ($0.partition.clusterCount, $0.initialRuns) })
         session.start()
         return live
     }
@@ -263,6 +293,7 @@ enum ScenarioBuilder {
             fixedSpans: spans,
             defrag: nil,
             boot: nil,
+            install: nil,
             feed: { pipeline, isCancelled in
                 for request in requests {
                     guard !isCancelled() else { break }
@@ -289,7 +320,10 @@ enum ScenarioBuilder {
     /// rangement, donc NTFS démarre comme les autres.
     /// `rangedBy` nomme l'outil qui a rangé ce disque, quand on démarre le
     /// volume qu'une passe a laissé : c'est le même disque, et le titre le dit.
-    static func build(boot disk: GeneratedDisk, rangedBy: String? = nil) -> Scenario {
+    /// `freshlyInstalled` dit qu'on démarre le disque qu'une installation vient
+    /// de poser, avant tout usage.
+    static func build(boot disk: GeneratedDisk, rangedBy: String? = nil,
+                      freshlyInstalled: Bool = false) -> Scenario {
         let plan = BootPlanner.plan(disk: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
                                                    atLeast: plan.partition.totalSectors)
@@ -312,7 +346,9 @@ enum ScenarioBuilder {
         let launch = plan.appName.map { " puis lancement de \($0)" } ?? ""
         let note = "« \(disk.spec.displayName) », généré par la galerie : "
             + "\(disk.spec.fileSystem.type.rawValue.uppercased()) de \(disk.spec.disk.sizeMB) Mo "
-            + "en clusters de \(disk.clusterBytes / 1_024) Ko, vieilli sur \(disk.dayCount) jours. "
+            + "en clusters de \(disk.clusterBytes / 1_024) Ko, "
+            + (freshlyInstalled ? "tel que l'installation vient de le poser. "
+                                : "vieilli sur \(disk.dayCount) jours. ")
             + "Le démarrage n'est pas décrit en fractions du plateau mais en fichiers : "
             + "\(plan.filesRead) fichiers du catalogue sont ouverts et lus là où l'allocateur "
             + "les a laissés. Le système compte \(format(seconds: plan.thinkSeconds)) de calcul "
@@ -323,10 +359,12 @@ enum ScenarioBuilder {
         let requests = plan.requests
         return Scenario(
             kind: .windowsBoot,
-            label: ScenarioLabel(title: rangedBy == nil ? disk.spec.displayName
-                                     : "\(disk.spec.displayName), rangé",
+            label: ScenarioLabel(title: rangedBy != nil ? "\(disk.spec.displayName), rangé"
+                                     : freshlyInstalled ? "\(disk.spec.displayName), installé"
+                                     : disk.spec.displayName,
                                  summary: "Démarrage de \(plan.osName)\(launch), "
                                      + (rangedBy.map { "après le passage de \($0), " } ?? "")
+                                     + (freshlyInstalled ? "juste après l'installation, " : "")
                                      + "sur \(hardware.geometry.model)",
                                  volumeNote: note),
             geometry: hardware.geometry,
@@ -354,11 +392,86 @@ enum ScenarioBuilder {
                                readsByPosition: BootScript.Era.matching(disk.spec).prefetch == .byPosition,
                                freshSeeks: freshTrace.stats.seekCount,
                                freshAverageSeek: freshTrace.stats.averageSeekDistance),
+            install: nil,
             feed: { pipeline, isCancelled in
                 for request in requests {
                     guard !isCancelled() else { break }
                     pipeline.serve(request)
                 }
+                return nil
+            }
+        )
+    }
+
+    // MARK: - Installation d'un disque de la galerie
+
+    /// Rejoue l'installation d'un disque : le jour 0 de son histoire, sur un
+    /// volume vierge et le matériel de sa fiche.
+    ///
+    /// Tout est décidé avant : quels fichiers, où, dans quel ordre — c'est le
+    /// générateur qui l'a écrit. Ce qui reste à planifier, et que le fil
+    /// producteur fait pendant l'écoute, c'est ce que la machine en fait :
+    /// lire la source, extraire, écrire les tables, redémarrer.
+    static func build(install installed: InstalledDisk) -> Scenario {
+        let disk = installed.disk
+        let partition = GeneratedVolumeBridge.partition(of: disk)
+        let hardware = GeneratedVolumeBridge.drive(for: disk.spec, atLeast: partition.totalSectors)
+        let phases = InstallPhases(installed)
+        let summary = InstallSummary(installed)
+
+        let systems = installed.steps.filter { $0.kind == .system }
+        let applications = installed.steps.filter { $0.kind == .application }
+        let osName = systems.map(\.displayName).joined(separator: " puis ")
+        let medium = systems.last.map { $0.style.label(bytes: ByteCount(summary.totalBytes)) } ?? "—"
+        let reboots = installed.steps.reduce(0) { $0 + $1.style.reboots }
+
+        let playback = InstallPlayback(partition: partition,
+                                       osName: osName.isEmpty ? disk.spec.os : osName,
+                                       applications: applications.map(\.displayName),
+                                       medium: medium,
+                                       files: summary.totalFiles,
+                                       bytes: summary.totalBytes,
+                                       temporaryFiles: summary.temporaryFiles,
+                                       temporaryBytes: summary.temporaryBytes,
+                                       reboots: reboots,
+                                       initialRuns: InstallPlanner.initialRuns(of: installed),
+                                       installed: disk)
+
+        let apps = applications.isEmpty ? ""
+            : ", puis \(applications.map(\.displayName).joined(separator: ", "))"
+        let note = "« \(disk.spec.displayName) », généré par la galerie : "
+            + "\(disk.spec.fileSystem.type.rawValue.uppercased()) de \(disk.spec.disk.sizeMB) Mo "
+            + "en clusters de \(disk.clusterBytes / 1_024) Ko. L'installation rejoue le premier jour "
+            + "de son histoire : \(summary.totalFiles) fichiers posés là où l'allocateur les a mis, "
+            + "\(summary.temporaryFiles) archives extraites puis effacées, \(reboots) redémarrages. "
+            + "Le disque d'arrivée est celui que la galerie vieillit."
+
+        let bytesPerSecond = hardware.geometry.outerSustainedMBs * 1_000_000
+        return Scenario(
+            kind: .defrag,
+            label: ScenarioLabel(title: disk.spec.displayName,
+                                 summary: "Installation de \(playback.osName)\(apps), "
+                                     + "sur \(hardware.geometry.model)",
+                                 volumeNote: note),
+            geometry: hardware.geometry,
+            seekModel: hardware.seek,
+            // On a démarré sur la disquette ou le CD : le disque tourne déjà.
+            setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
+                             spinUpAt: 0, spinUpDuration: 0.9,
+                             idle: IdleBehavior(parkAfter: parkDelay),
+                             tail: tailDuration),
+            phases: phases.descriptors,
+            fixedSpans: nil,
+            defrag: nil,
+            boot: nil,
+            install: playback,
+            feed: { pipeline, isCancelled in
+                let sink = OperationSink { operation, mutations, progress, moves in
+                    guard !isCancelled() else { return }
+                    pipeline.serve(operation, mutations: mutations, progress: progress, moves: moves)
+                }
+                InstallPlanner.plan(installed: installed, diskBytesPerSecond: bytesPerSecond,
+                                    into: sink, isCancelled: isCancelled)
                 return nil
             }
         )
@@ -476,6 +589,7 @@ enum ScenarioBuilder {
                                    before: volume.stats,
                                    initialRuns: volume.categoryRuns()),
             boot: nil,
+            install: nil,
             feed: { pipeline, isCancelled in
                 // Une passe abandonnée ne s'interrompt pas — les stratégies
                 // n'ont pas de point d'arrêt — mais elle cesse de simuler : le

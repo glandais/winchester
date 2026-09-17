@@ -359,7 +359,7 @@ scénario en route.
 
 ### Démarrer un disque généré
 
-La galerie mène à la passe par deux boutons, qui lancent la lecture et
+La galerie mène à la passe par trois boutons, qui lancent la lecture et
 ouvrent l'onglet **Passe**. Le premier, **Démarrer cet OS**, confie le disque
 affiché au simulateur, qui en joue le démarrage.
 
@@ -439,6 +439,47 @@ fichier — en tête du volume, quand les données sont ailleurs. Sans lecture
 groupée, c'est deux courses quasi complètes du bras par fichier sur un volume de
 320 Go, et un démarrage qui ne ressemble à rien : c'est exactement ce que donne
 le modèle quand on la lui retire, et c'est pour cela qu'elle y est.
+
+### Installer un disque généré
+
+**Installer ce disque** rejoue le premier jour de son histoire : le système,
+puis les applications, dans l'ordre du profil, sur un volume vierge dont la
+carte se remplit. Les places sont celles que l'allocateur a données au
+générateur (`DiskGenerator.install`), et le disque d'arrivée est exactement
+celui que la galerie vieillit. Le bilan propose de le **démarrer tel quel**.
+
+Ce qui fait une installation d'époque est autour des fichiers, et le modèle le
+décrit par logiciel (`SetupStyle`) :
+
+- **la source bride la copie** : 45 ko/s pour une disquette, avec une pause à
+  chaque changement ; CD de 4x en 1995 à 48x en 2003 ; DVD 16x pour Vista. Plus
+  la décompression, par époque ;
+- **les archives** : Windows 95 et 98 extraient `WININST0.400` avant de copier ;
+  une application sur CD extrait ses CAB dans `\WINDOWS\TEMP`, **les relit
+  morceau par morceau** en posant ses fichiers, puis les efface. Ce
+  va-et-vient crépite, et l'effacement laisse les premiers trous du volume. Les
+  archives font partie du scénario : elles ont bel et bien occupé le disque ;
+- **les tables** : sous MS-DOS, la FAT est réécrite à chaque fichier, et le bras
+  revient au bord à chaque fois. Sous Windows, le cache les vide par salves
+  triées. Sous NT, chaque vidage écrit aussi `$LogFile` ;
+- **le registre** (`SYSTEM.DAT` et `USER.DAT`, les ruches de NT) est posé avec le
+  système et réécrit en bloc après chaque logiciel ;
+- **les redémarrages** — deux ou trois pour un système, un pour une application
+  qui remplace des DLL partagées — sont de vrais démarrages, sur ce qui est
+  posé jusque-là.
+
+Les attentes humaines (détection du matériel, questions, clic sur
+« Redémarrer ») sont raccourcies à quelques secondes. Les vingt installations
+durent de 7 à 21 minutes : sur disquettes, la source fait plus des trois quarts
+de l'attente ; sur CD et DVD, ce sont la décompression et les pauses.
+
+| | source | posé | archives | redémarrages | durée |
+|---|---|---|---:|---:|---:|
+| `gamer-1993` | 21 disquettes | 373 fichiers, 39 Mo | 0 | 2 | 12 min 08 |
+| `secretaire-1996` | CD-ROM 8x | 1 008 fichiers, 222 Mo | 46 | 3 | 7 min 29 |
+| `famille-1999` | CD-ROM 32x | 2 412 fichiers, 574 Mo | 77 | 5 | 9 min 20 |
+| `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 8 min 48 |
+| `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 21 min 02 |
 
 ### Défragmenter un disque généré
 
@@ -882,6 +923,7 @@ rapide en boucle d'itération :
 SCENARIO=defrag /tmp/rendertrace defrag.wav         # passe de défragmentation
 SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav      # passe sur un disque généré
 SCENARIO=boot:dev-1993 /tmp/rendertrace boot.wav    # démarrage d'un disque généré
+SCENARIO=install:dev-1993 /tmp/rendertrace inst.wav # installation d'un disque généré
 
 SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav      # isoler une couche
 TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
@@ -944,10 +986,13 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     AllocationMetrics.swift  mesures de sortie
     SizeModel.swift        distributions de tailles, par catégorie
     AppManifest.swift      manifestes d'installation, par règles
+    InstallSetup.swift     mise en place d'époque : source, archives, ruches,
+                           redémarrages ; étapes et journal d'une installation
     ProfileSpec.swift      format déclaratif d'un scénario, calendrier
     ScenarioCompiler.swift  description d'un usage → suite d'événements
     ScenarioLibrary.swift  chargement des scénarios embarqués
-    DiskGenerator.swift    point d'entrée : une description, un disque
+    DiskGenerator.swift    point d'entrée : une description, un disque ; ou
+                           son premier jour, rejoué pas à pas
     Resources/scenarios/   vingt scénarios : cinq époques, quatre profils
 Sources/Model/
     Workload.swift         phases du scénario, générateur de requêtes déterministe
@@ -955,6 +1000,9 @@ Sources/Model/
                            va chercher dans le catalogue, dans quel ordre, et ce
                            que la machine calcule entre deux lectures ; plus le
                            témoin « jamais fragmenté »
+    InstallSession.swift   installation rejouée : source, décompression,
+                           archives relues, tables vidées par salves, registre,
+                           redémarrages ; la carte part d'un volume vierge
     VolumeLayout.swift     plan d'une partition FAT16, FAT32 ou NTFS : où sont
                            les métadonnées, et ce que coûte une validation
     Volume.swift           volume vieilli sur place, allocateur next-fit

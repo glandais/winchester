@@ -102,7 +102,7 @@ struct SettingsScreen: View {
                 .padding(.top, 4)
             VStack(alignment: .leading, spacing: 8) {
                 Text(geometryNote)
-                if model.defrag != nil {
+                if model.defrag != nil || model.install != nil {
                     Text(model.label.volumeNote)
                 }
             }
