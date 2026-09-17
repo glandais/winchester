@@ -2876,3 +2876,125 @@ modèle n'en avait rien :
   de l'installation, ce sont ses seeks.
 - **Les réglages** (débits, pauses, part des archives, tailles des ruches) sont
   des ordres de grandeur d'époque, pas des relevés.
+
+## Chantier 17 — revivre un disque
+
+### Le problème
+
+Un disque de la galerie s'installe, se démarre et se défragmente : trois
+instants. Entre eux, il y a **deux ans**, et c'est là que tout se joue — le
+volume se remplit, les fichiers partent en morceaux, le curseur de l'allocateur
+fait son tour. Cette histoire était écrite depuis le début (`ScenarioCompiler`)
+et rejouée d'un trait par `DiskGenerator.generate`, qui n'en rendait que
+l'arrivée. Rien ne la faisait entendre ni voir.
+
+Deux obstacles :
+
+- **la durée.** L'histoire d'un profil écrit de 0,8 Go (`secretaire-1993`) à
+  585 Go (`dev-2007`), pour 6 600 à 2,7 millions d'événements. En temps réel,
+  `dev-1993` demanderait plus de quatre heures, et les profils de 2007 des
+  jours. Un seek dure ce qu'il dure : on ne peut pas accélérer le son ;
+- **ce que l'histoire ne dit pas.** Elle ne décrit que des **écritures**, datées
+  au jour près. Or une journée lit au moins autant qu'elle écrit : un
+  compilateur relit ses sources, l'éditeur de liens ses objets, un jeu recharge
+  ses niveaux. Et elle ne dit rien de la machine qu'on allume le matin.
+
+### Les décisions
+
+- **Deux vitesses qui s'enchaînent**, plutôt qu'un seul mode : un **défilement**
+  muet où la carte avance de plusieurs jours par seconde, et des **journées
+  écoutées** en temps réel, prises là où le défilement en est. On s'arrête, on
+  écoute, on repart.
+- **`HistoryReplay` (DiskCore)** rejoue l'histoire jour par jour, sur l'allocateur
+  du format et les tirages du profil. Il joue une journée en racontant chaque
+  événement, ou saute les jours sans les raconter — même disque à l'arrivée.
+  Rien n'est gardé : les 2,7 millions d'événements de `dev-2007` ne tiennent
+  jamais en mémoire.
+  - Les deux simulateurs (FAT, NTFS) sont deux propriétés optionnelles et non
+    une énumération : sortir un simulateur d'un `case` pour le muter recopie sa
+    bitmap et son catalogue **à chaque événement**.
+- **`Simulator.step` rend compte de tout** : créations, effacements, ajouts en
+  fin de fichier, troncatures, enregistrements par temporaire, réécritures sur
+  place, et les déplacements d'une défragmentation de l'histoire. Il dit ce qui
+  est écrit, ce qui est pris et ce qui est rendu — d'où se refait la bitmap,
+  cluster par cluster. L'installation du chantier 16 s'appuie désormais dessus,
+  et ses bilans sont inchangés à l'octet.
+- **`DaySession` remet la journée autour des écritures** : un démarrage, une
+  **séance** par activité, l'arrêt. Une journée revient sur ses pas — le cache
+  expire pendant qu'on compile — et chaque retour est une séance de plus, pas la
+  reprise de la précédente.
+  - **Les lectures viennent de l'activité** : le compilateur relit ses sources,
+    l'éditeur de liens relit ses objets avant d'écrire l'exécutable, le
+    navigateur rouvre son cache, on ouvre un document avant de l'enregistrer,
+    lancer un jeu charge un niveau.
+  - **Les sources lentes brident** : carte mémoire ou CD pour les médias, la
+    ligne pour les téléchargements et les correctifs — 1,8 ko/s en 1993,
+    1 Mo/s en 2007. Les attentes sont **plafonnées à 8 s** : un téléchargement
+    de 1999 prenait la nuit, et ce n'est pas la nuit qu'on veut entendre.
+  - Les tables suivent l'époque, comme à l'installation : écrites à chaque
+    fichier sous MS-DOS, par salves derrière le cache ensuite. C'est
+    `MachineWriter`, sorti du planificateur d'installation pour servir aux deux.
+- **`DiskLife` fait défiler**, sans rien jouer : une journée par pas, un relevé
+  par journée (date, remplissage, fichiers, fichiers en morceaux, octets écrits,
+  activités), et les **journées à écouter** nommées au passage : installation,
+  caps de remplissage (50, 75, 90, 95 %), premier refus d'écriture, grosses
+  journées (plus d'un vingtième du disque, espacées d'un mois au moins),
+  défragmentations de l'histoire, pics de fragmentation.
+- **Dans l'app** : « Revivre ce disque » sur la fiche ouvre un écran à part —
+  carte, date et jour, compteurs, deux courbes (remplissage et fichiers en
+  morceaux), la liste des repères, une vitesse (1 jour, 1 semaine, 1 mois par
+  seconde), « repère suivant », et « Écouter le jour N », qui rend la main à la
+  passe. Le bilan d'une journée dit ce qu'elle a lu et écrit, pas ce qu'elle a
+  rangé.
+
+### Ce qui valide
+
+- **`swift test` : 116 tests `DiskCore` et 206 `DefragKit`**, dont 15 nouveaux.
+  - Rejeu : l'histoire rejouée en mêlant jours racontés et jours sautés redonne
+    le disque généré ; ce que chaque événement prend et rend refait la bitmap au
+    cluster près ; sauter jusqu'à un jour équivaut à le jouer.
+  - Journée : accès dans le volume, phases qui avancent, une journée lit plus
+    qu'elle n'écrit, écritures conformes à l'histoire, avancement d'un seul
+    jour, déterminisme, attentes bridées, jour de joueur qui charge son jeu.
+  - Défilement : arrivée sur le disque de la galerie, courbes dans le bon sens,
+    repères sensés et en nombre raisonnable, reprise possible sur le lendemain,
+    carte identique à celle du volume de ce jour-là.
+- **Le rejeu raconté de toute une vie** (release) : `dev-1993` 0,1 s,
+  `famille-2003` 2,5 s, `dev-2007` 2,8 s pour 2,7 millions d'événements et
+  588 Go écrits — et le même disque qu'une génération d'un trait.
+- **Journées rendues** (`SCENARIO=day:<profil>:<jour>`) :
+
+  | journée | activités | lu / écrit | durée |
+  |---|---|---|---:|
+  | `dev-1996`, jour 20 | navigation, compilation, archivage | 215 / 44 Mo | 5 min 46 |
+  | `dev-1996`, jour 300 | idem | 231 / 78 Mo | 7 min 11 |
+  | `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 201 / 16 Mo | 1 min 37 |
+  | `gamer-1999`, jour 365 | navigation, jeu | 547 / 6 Mo | 2 min 35 |
+
+  **L'usure s'entend** : sur `dev-1996`, la même journée passe d'un seek moyen
+  de 273 cylindres au jour 20 à 604 au jour 300.
+- **Défilements** (`SCENARIO=life:<profil>`) : une vie entière en 0,1 s pour un
+  disque de 1996, 3,8 s pour `dev-2007`. De 1 à 39 journées à écouter selon les
+  profils. Sur `secretaire-1996` : installation, disque à 50 % au jour 73, à
+  90 % au jour 232, grosse journée au 277, 95 % au 282.
+- **L'app se construit** en Debug pour le simulateur, sans erreur.
+
+### Laissé ouvert
+
+- **Rien n'a été vu ni écouté dans l'app**, comme au chantier 16 : `axe` ne
+  touche plus l'écran depuis Xcode 27, et la machine était saturée par d'autres
+  travaux pendant tout le chantier.
+- **`famille-2003` et `famille-2007` importent des films tous les jours** : 90
+  médias par semaine, dont un quart de DivX de 700 Mo à 1,4 Go en 2003, soit
+  20 Go par semaine sur un disque de 40 Go, aussitôt effacés par le ménage. Leur
+  vie rejouée est donc surtout une copie de films. C'est le profil qu'il
+  faudrait corriger, et cela redessinerait les quatre disques « famille ».
+- **Le planificateur d'installation garde son propre émetteur** : `MachineWriter`
+  lui a été extrait, mais l'installation n'a pas été récrite dessus, pour ne pas
+  risquer de changer ses bilans. Les deux se ressemblent de près.
+- **Les lectures d'une journée sont des règles, pas des relevés** : le nombre de
+  sources relues, la part du cache rouverte, la taille d'un niveau de jeu.
+- **Le défilement recalcule la carte entière à chaque pas** ; sur un volume de
+  2007 cela coûte quelques millisecondes, mais rien n'est incrémental.
+- **Les jours sautés ne sont pas racontés** : on ne peut pas revenir en arrière
+  dans une vie, seulement la rejouer depuis le début.

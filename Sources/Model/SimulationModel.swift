@@ -49,6 +49,7 @@ final class SimulationModel: ObservableObject {
     var defrag: DefragPlayback? { scenario.defrag }
     var boot: BootPlayback? { scenario.boot }
     var install: InstallPlayback? { scenario.install }
+    var dayPlayback: DayPlayback? { scenario.dayPlayback }
     /// La carte de la passe : le volume à ranger, ou celui qu'on installe.
     var mapSource: (partition: PartitionGeometry, initialRuns: [MapRun])? { scenario.map }
 
@@ -120,7 +121,25 @@ final class SimulationModel: ObservableObject {
         // L'installation repart de la fiche, pas du disque vieilli : c'est le
         // jour 0 de la même histoire qu'on rejoue.
         case .install: scenario = ScenarioBuilder.build(install: try DiskGenerator.install(disk.spec))
+        // Revivre n'est pas une passe : l'écran du défilement mène lui-même à
+        // la journée qu'on veut écouter, par `load(day:of:)`.
+        case .life: throw ActivityError.notAPass
         }
+        for key in cache.keys where key.isGenerated { cache[key] = nil }
+        cache[selection] = scenario
+        self.disk = disk
+        self.rangedBy = nil
+        adopt(scenario, as: selection)
+    }
+
+    /// Écoute une journée de la vie d'un disque, là où le défilement en est.
+    ///
+    /// Le rejeu est celui du défilement : la journée est jouée sur le disque
+    /// tel qu'il est ce matin-là, et le défilement reprendra ensuite au
+    /// lendemain.
+    func load(day: UInt32, of life: DiskLife, disk: GeneratedDisk) throws {
+        let scenario = try ScenarioBuilder.build(day: day, replay: life.replay)
+        let selection = ScenarioSelection.generated(disk.spec.id, .life)
         for key in cache.keys where key.isGenerated { cache[key] = nil }
         cache[selection] = scenario
         self.disk = disk
@@ -206,7 +225,8 @@ final class SimulationModel: ObservableObject {
                                 diskID: disk?.spec.id ?? label.title,
                                 title: label.title,
                                 kind: recordKind,
-                                toolLabel: defrag?.strategy.label ?? install?.osName ?? boot?.osName ?? "",
+                                toolLabel: defrag?.strategy.label ?? install?.osName
+                                    ?? dayPlayback.map { "Jour \($0.day)" } ?? boot?.osName ?? "",
                                 toolID: defrag?.strategy.id,
                                 rangedBy: rangedBy,
                                 duration: end.duration,
@@ -248,6 +268,7 @@ final class SimulationModel: ObservableObject {
     private var recordKind: PassRecord.Kind {
         if defrag != nil { return .defrag }
         if install != nil { return .install }
+        if dayPlayback != nil { return .day }
         return .boot
     }
 

@@ -46,6 +46,9 @@ struct InstrumentsScreen: View {
                     } else if let install = model.install {
                         sectionTitle("L'installation", note: model.end == nil ? "arrivée au bilan" : "bilan")
                         installState(install)
+                    } else if let day = model.dayPlayback {
+                        sectionTitle("La journée", note: day.date)
+                        dayState(day)
                     } else if let boot = model.boot {
                         sectionTitle("Le démarrage", note: model.end == nil ? "bilan à la fin" : "bilan")
                         bootState(boot)
@@ -323,6 +326,19 @@ struct InstrumentsScreen: View {
                      unit: done ? "à l'arrivée" : "au bilan")
             StatTile(label: "Trous libres", value: done ? FrenchFormat.integer(arrival.freeRunCount) : "…",
                      unit: done ? "à l'arrivée" : "au bilan")
+        }
+    }
+
+    /// Le disque au matin de cette journée-là : c'est lui qu'on entend.
+    private func dayState(_ day: DayPlayback) -> some View {
+        let metrics = day.disk.metrics
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+            StatTile(label: "Jour", value: FrenchFormat.integer(Int(day.day)), unit: day.date)
+            StatTile(label: "Remplissage", value: FrenchFormat.percent(metrics.fill), unit: "ce matin")
+            StatTile(label: "En morceaux", value: FrenchFormat.integer(metrics.fragmentedFileCount),
+                     unit: "fichiers", why: .fragmentedVsPieces)
+            StatTile(label: "À écrire", value: FrenchFormat.megabytes(UInt64(day.bytes)),
+                     unit: "aujourd'hui")
         }
     }
 

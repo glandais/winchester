@@ -114,7 +114,11 @@ private struct PassReportScreen: View {
         let others = model.otherDefrags(than: record)
         VStack(spacing: 10) {
             if let disk = record.disk {
-                if record.installed != nil {
+                if record.kind == .day {
+                    // Le défilement a la main sur la suite : le bilan ne
+                    // propose rien d'autre que de le rouvrir.
+                    EmptyView()
+                } else if record.installed != nil {
                     Button {
                         model.loadInstalledBoot(from: record)
                         model.engine.play()
@@ -241,7 +245,12 @@ private struct ReportRows: View {
                 row("Trous libres",
                     FrenchFormat.integer(before.freeHoles), FrenchFormat.integer(after.freeHoles))
             }
-            if record.kind == .install {
+            if record.kind == .day {
+                // Une journée ne range rien : elle écrit ce que l'usage écrit.
+                single("Écrit", FrenchFormat.megabytes(UInt64(record.movedBytes)))
+                single("Requêtes", FrenchFormat.integer(record.requests))
+                single("Seeks", FrenchFormat.integer(record.seeks))
+            } else if record.kind == .install {
                 // Une installation ne déplace rien : elle écrit ce qu'elle pose,
                 // les tables et le registre en plus.
                 single("Écrit", FrenchFormat.megabytes(UInt64(record.movedBytes)))

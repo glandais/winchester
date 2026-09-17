@@ -23,6 +23,8 @@ struct DisksScreen: View {
     @State private var renaming: ProfileSpec?
     @State private var newName = ""
     @State private var deleting: ProfileSpec?
+    /// Le disque dont on fait défiler la vie.
+    @State private var reviving: RevivedDisk?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -64,9 +66,11 @@ struct DisksScreen: View {
             }
             .sheet(item: $wizard) { spec in
                 DiskWizardSheet(library: library, spec: spec) { disk, activity, strategy in
-                    try model.load(generated: disk, as: activity, using: strategy)
-                    play()
+                    try launch(disk, as: activity, using: strategy)
                 }
+            }
+            .fullScreenCover(item: $reviving) { revived in
+                DiskLifeScreen(disk: revived.disk, model: model, onListen: onOpenPass)
             }
             .alert("Renommer le disque", isPresented: Binding(get: { renaming != nil },
                                                               set: { if !$0 { renaming = nil } })) {
@@ -92,11 +96,22 @@ struct DisksScreen: View {
                                  records: model.records.filter { $0.diskID == id },
                                  onOpenRecord: { report = $0 },
                                  onEdit: { wizard = $0 }) { disk, activity, strategy in
-                    try model.load(generated: disk, as: activity, using: strategy)
-                    play()
+                    try launch(disk, as: activity, using: strategy)
                 }
             }
         }
+    }
+
+    /// Ce qu'on demande à un disque : une passe, qu'on écoute tout de suite, ou
+    /// le défilement de sa vie, qui a son propre écran.
+    private func launch(_ disk: GeneratedDisk, as activity: GeneratedActivity,
+                        using strategy: (any DefragStrategy)?) throws {
+        guard activity != .life else {
+            reviving = RevivedDisk(disk: disk)
+            return
+        }
+        try model.load(generated: disk, as: activity, using: strategy)
+        play()
     }
 
     /// Les disques construits dans l'app, enregistrés d'une session à l'autre.
@@ -179,4 +194,11 @@ struct DisksScreen: View {
         if !(engine.isPlaying || engine.isBuffering) { engine.play() }
         onOpenPass()
     }
+}
+
+/// Un disque dont on fait défiler la vie. Le plein écran en veut un
+/// identifiant, et un disque généré n'en porte pas.
+struct RevivedDisk: Identifiable {
+    let disk: GeneratedDisk
+    var id: String { disk.spec.id }
 }

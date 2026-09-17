@@ -63,7 +63,8 @@ final class NowPlaying {
             MPNowPlayingInfoPropertyPlaybackRate: engine.isPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyIsLiveStream: true,
         ]
-        if let tool = model.defrag?.strategy.label ?? model.install?.osName ?? model.boot?.osName {
+        if let tool = model.defrag?.strategy.label ?? model.install?.osName
+            ?? model.dayPlayback.map({ "Jour \($0.day), \($0.date)" }) ?? model.boot?.osName {
             info[MPMediaItemPropertyArtist] = tool
         }
         info[MPMediaItemPropertyAlbumTitle] = "DiskNoise"

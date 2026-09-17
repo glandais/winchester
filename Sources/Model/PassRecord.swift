@@ -8,7 +8,7 @@ import DiskCore
 /// outil sur le même disque, démarrer le disque rangé.
 struct PassRecord: Identifiable {
 
-    enum Kind { case defrag, boot, install }
+    enum Kind { case defrag, boot, install, day }
 
     let id = UUID()
     let passNumber: Int

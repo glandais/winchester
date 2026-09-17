@@ -53,6 +53,9 @@ enum GeneratedActivity: String, Hashable, CaseIterable, Sendable {
     case boot
     case defrag
     case install
+    /// Revivre toute l'histoire du disque : ce n'est pas une passe, mais un
+    /// défilement, dont on sort pour écouter une journée.
+    case life
 
     /// Ce que le bouton de la galerie dit qu'il va faire.
     var action: String {
@@ -60,6 +63,7 @@ enum GeneratedActivity: String, Hashable, CaseIterable, Sendable {
         case .boot:    return "Démarrer cet OS"
         case .defrag:  return "Défragmenter ce disque"
         case .install: return "Installer ce disque"
+        case .life:    return "Revivre ce disque"
         }
     }
 }
@@ -167,6 +171,17 @@ struct InstallPlayback {
     let initialRuns: [MapRun]
     /// Le disque au soir de l'installation, prêt à démarrer.
     let installed: GeneratedDisk
+}
+
+/// Ce qu'une activité ne peut pas donner.
+enum ActivityError: Error, CustomStringConvertible {
+    /// Revivre un disque n'est pas une passe : cela se conduit depuis son
+    /// propre écran.
+    case notAPass
+
+    var description: String {
+        "revivre un disque ne se joue pas comme une passe : passer par son écran"
+    }
 }
 
 /// Ce qu'on sait d'une journée avant de l'écouter.

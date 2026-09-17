@@ -359,7 +359,7 @@ scénario en route.
 
 ### Démarrer un disque généré
 
-La galerie mène à la passe par trois boutons, qui lancent la lecture et
+La galerie mène à la passe par quatre boutons, qui lancent la lecture et
 ouvrent l'onglet **Passe**. Le premier, **Démarrer cet OS**, confie le disque
 affiché au simulateur, qui en joue le démarrage.
 
@@ -480,6 +480,47 @@ de l'attente ; sur CD et DVD, ce sont la décompression et les pauses.
 | `famille-1999` | CD-ROM 32x | 2 412 fichiers, 574 Mo | 77 | 5 | 9 min 20 |
 | `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 8 min 48 |
 | `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 21 min 02 |
+
+### Revivre un disque généré
+
+**Revivre ce disque** rejoue toute son histoire, de l'installation au dernier
+jour. Deux vitesses s'y enchaînent, parce qu'une vie ne s'écoute pas d'un bout
+à l'autre : l'histoire d'un profil écrit de 0,8 Go (`secretaire-1993`) à 585 Go
+(`dev-2007`), et un seek dure ce qu'il dure.
+
+- **Le défilement** ne joue rien. La carte avance d'un jour, d'une semaine ou
+  d'un mois par seconde ; le volume se remplit, les fichiers partent en
+  morceaux, et deux courbes le montrent. Une vie entière défile en 0,1 s pour un
+  disque de 1996, 3,8 s pour les 2,7 millions d'événements de `dev-2007`.
+- **Les journées à écouter** sont nommées au passage : l'installation, les caps
+  de remplissage, le premier refus d'écriture, les grosses journées, les
+  défragmentations de l'histoire, les pics de fragmentation. De 1 à 39 selon les
+  profils.
+- **Une journée s'écoute en temps réel**, sur le disque tel qu'il est ce
+  matin-là. Le défilement reprend ensuite au lendemain.
+
+**Une journée n'est pas une liste d'écritures.** L'histoire du profil ne décrit
+que ce qui change sur le disque, daté au jour près ; le reste est remis autour :
+la machine qu'on allume, une **séance** par activité — et une de plus à chaque
+retour, parce que le cache du navigateur expire pendant qu'on compile —, puis
+l'arrêt. Les lectures viennent de ce que l'activité suppose : le compilateur
+relit ses sources, l'éditeur de liens relit ses objets avant d'écrire
+l'exécutable, on ouvre un document avant de l'enregistrer, lancer un jeu charge
+un niveau. Les sources lentes brident le reste — carte mémoire ou CD pour les
+médias, la ligne pour les téléchargements, de 1,8 ko/s en 1993 à 1 Mo/s en 2007
+— et les attentes sont plafonnées à huit secondes, sans quoi un téléchargement
+de 1999 durerait la nuit.
+
+| journée | activités | lu / écrit | durée |
+|---|---|---|---:|
+| `dev-1996`, jour 20 | navigation, compilation, archivage | 215 / 44 Mo | 5 min 46 |
+| `dev-1996`, jour 300 | idem | 231 / 78 Mo | 7 min 11 |
+| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 201 / 16 Mo | 1 min 37 |
+| `gamer-1999`, jour 365 | navigation, jeu | 547 / 6 Mo | 2 min 35 |
+
+**L'usure s'entend.** Sur `dev-1996`, la même journée de travail passe d'un seek
+moyen de 273 cylindres au jour 20 à 604 au jour 300 : le disque fait la même
+chose, il le fait de plus en plus loin.
 
 ### Défragmenter un disque généré
 
@@ -924,6 +965,8 @@ SCENARIO=defrag /tmp/rendertrace defrag.wav         # passe de défragmentation
 SCENARIO=dev-1993 /tmp/rendertrace dev1993.wav      # passe sur un disque généré
 SCENARIO=boot:dev-1993 /tmp/rendertrace boot.wav    # démarrage d'un disque généré
 SCENARIO=install:dev-1993 /tmp/rendertrace inst.wav # installation d'un disque généré
+SCENARIO=day:dev-1996:300 /tmp/rendertrace jour.wav # une journée d'usage
+SCENARIO=life:dev-1996 /tmp/rendertrace /dev/null   # toute la vie, sans son
 
 SPINDLE_GAIN=0 /tmp/rendertrace tete-seule.wav      # isoler une couche
 TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
@@ -986,6 +1029,8 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     AllocationMetrics.swift  mesures de sortie
     SizeModel.swift        distributions de tailles, par catégorie
     AppManifest.swift      manifestes d'installation, par règles
+    HistoryReplay.swift    l'histoire rejouée jour par jour, sur l'allocateur
+                           du format : une journée racontée, les autres sautées
     InstallSetup.swift     mise en place d'époque : source, archives, ruches,
                            redémarrages ; étapes et journal d'une installation
     ProfileSpec.swift      format déclaratif d'un scénario, calendrier
@@ -1000,6 +1045,12 @@ Sources/Model/
                            va chercher dans le catalogue, dans quel ordre, et ce
                            que la machine calcule entre deux lectures ; plus le
                            témoin « jamais fragmenté »
+    MachineWriter.swift    ce qu'une machine fait subir au disque en écrivant :
+                           tampons, tables sales, temps hors disque, carte
+    DaySession.swift       une journée d'usage : démarrage, séances, lectures de
+                           chaque activité, sources lentes, arrêt
+    DiskLife.swift         la vie du disque en accéléré : un relevé par journée,
+                           et les journées qui valent d'être écoutées
     InstallSession.swift   installation rejouée : source, décompression,
                            archives relues, tables vidées par salves, registre,
                            redémarrages ; la carte part d'un volume vierge

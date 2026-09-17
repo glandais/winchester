@@ -114,6 +114,7 @@ struct AmbientScreen: View {
     private var subtitle: String {
         if let strategy = model.defrag?.strategy { return "\(model.label.title) · \(strategy.label)" }
         if let install = model.install { return "\(model.label.title) · installation de \(install.osName)" }
+        if let day = model.dayPlayback { return "\(model.label.title) · jour \(day.day)" }
         return model.label.title
     }
 

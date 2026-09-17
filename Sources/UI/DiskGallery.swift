@@ -249,6 +249,7 @@ struct DiskDetailScreen: View {
         case .defrag:  return "waveform"
         case .boot:    return "power"
         case .install: return "opticaldisc"
+        case .day:     return "calendar"
         }
     }
 
@@ -257,6 +258,7 @@ struct DiskDetailScreen: View {
         case .defrag:  return record.toolLabel
         case .install: return "Installation de \(record.toolLabel)"
         case .boot:    return record.rangedBy.map { "Démarrage, rangé par \($0)" } ?? "Démarrage"
+        case .day:     return "Journée d'usage, \(record.toolLabel.lowercased())"
         }
     }
 

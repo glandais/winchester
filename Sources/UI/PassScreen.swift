@@ -69,6 +69,8 @@ struct SimulatorScreen: View {
                             defragCounters(playback)
                         } else if let install = model.install {
                             installCounters(install)
+                        } else if let day = model.dayPlayback {
+                            dayCounters(day)
                         }
                     case .platter:
                         platterPanel
@@ -117,7 +119,8 @@ struct SimulatorScreen: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                     Text(model.defrag?.strategy.label ?? model.install.map(installTitle)
-                         ?? model.boot.map(bootTitle) ?? model.geometry.model)
+                         ?? model.dayPlayback.map(dayTitle) ?? model.boot.map(bootTitle)
+                         ?? model.geometry.model)
                         .font(.dynamic(size: 12, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .lineLimit(1)
@@ -240,6 +243,11 @@ struct SimulatorScreen: View {
 
     private func installTitle(_ install: InstallPlayback) -> String {
         "Installation depuis \(install.medium)"
+    }
+
+    private func dayTitle(_ day: DayPlayback) -> String {
+        day.activities.isEmpty ? "Journée sans activité"
+            : day.activities.map(\.label).joined(separator: ", ")
     }
 
     private func bootTitle(_ boot: BootPlayback) -> String {
@@ -391,6 +399,31 @@ struct SimulatorScreen: View {
                     ? "À l'arrivée : \(FrenchFormat.integer(arrival.fragmentedFileCount)) fichiers fragmentés, "
                         + "\(FrenchFormat.integer(arrival.freeRunCount)) trous dans l'espace libre."
                     : ""))
+                .font(.dynamic(size: 12))
+                .foregroundStyle(Theme.dim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Ce qu'une journée fait au disque, à mesure qu'on l'écoute.
+    private func dayCounters(_ day: DayPlayback) -> some View {
+        let detail = model.totals.detail
+        return VStack(alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+                StatTile(label: "Lu", value: FrenchFormat.megabytes(UInt64(detail.readBytes)),
+                         unit: "jusqu'ici")
+                StatTile(label: "Écrit", value: FrenchFormat.megabytes(UInt64(detail.writeBytes)),
+                         unit: "sur \(FrenchFormat.megabytes(UInt64(day.bytes))) annoncés")
+                StatTile(label: "Seek moyen", value: FrenchFormat.integer(model.totals.averageSeekDistance),
+                         unit: "cyl.", why: .seekLaw)
+                StatTile(label: "Volume ce matin", value: FrenchFormat.percent(day.disk.metrics.fill),
+                         unit: "\(FrenchFormat.integer(day.disk.metrics.fragmentedFileCount)) en morceaux")
+            }
+            Text("Jour \(FrenchFormat.integer(Int(day.day))) du disque, \(day.date). "
+                 + (day.activities.isEmpty
+                    ? "Rien n'y est écrit : la machine s'allume et s'éteint."
+                    : "Ce qui s'y écrit vient de l'histoire du profil ; ce qui s'y lit, de ce que "
+                        + "l'activité suppose."))
                 .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)

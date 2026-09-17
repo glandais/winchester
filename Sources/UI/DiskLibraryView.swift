@@ -299,9 +299,9 @@ struct DiskLibraryView: View {
 
     // MARK: - Passage au simulateur
 
-    /// Les trois ponts entre les écrans : **défragmenter** ce disque, en
-    /// choisissant l'outil sur l'écran suivant, le **démarrer**, ou rejouer son
-    /// **installation**.
+    /// Les quatre ponts entre les écrans : **défragmenter** ce disque, en
+    /// choisissant l'outil sur l'écran suivant, le **démarrer**, rejouer son
+    /// **installation**, ou **revivre** toute son histoire.
     ///
     /// Les deux marchent sur les vingt disques : démarrer ne suppose aucune
     /// stratégie de rangement, et chaque format a le défragmenteur de son
@@ -316,6 +316,7 @@ struct DiskLibraryView: View {
             handoverButton(.defrag, icon: "waveform", for: disk, refusal: refusal, primary: true)
             handoverButton(.boot, icon: "power", for: disk, refusal: nil, primary: false)
             handoverButton(.install, icon: "opticaldisc", for: disk, refusal: nil, primary: false)
+            handoverButton(.life, icon: "clock.arrow.circlepath", for: disk, refusal: nil, primary: false)
 
             if let refusal {
                 Text(refusal)
