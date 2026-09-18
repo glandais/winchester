@@ -113,6 +113,13 @@ public struct DriveGeometry: Sendable {
         return Position(cylinder: cylinder, head: offset / spt, sector: offset % spt)
     }
 
+    /// L'inverse de `position(ofLBA:)`.
+    public func lba(of position: Position) -> Int {
+        cylinderStartLBA[min(max(position.cylinder, 0), cylinders)]
+            + position.head * sectorsPerTrack(cylinder: position.cylinder)
+            + position.sector
+    }
+
     public func lba(ofFraction fraction: Double) -> Int {
         let f = min(max(fraction, 0), 0.999_999)
         return Int(f * Double(totalSectors))

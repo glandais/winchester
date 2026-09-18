@@ -118,6 +118,7 @@ struct InstrumentsScreen: View {
             ("seek", detail.seekSeconds, Theme.read),
             ("rotation", detail.rotationSeconds, Theme.arm),
             ("transfert", detail.transferSeconds, Theme.write),
+            ("tampon", detail.bufferSeconds, Theme.write.opacity(0.45)),
             ("calcul", detail.thinkSeconds, Color(red: 0.62, green: 0.48, blue: 0.86)),
             ("attente", detail.waitSeconds, Color.white.opacity(0.18)),
         ]

@@ -107,7 +107,8 @@ enum AudioCueBuilder {
 /// garde est `watermark`.
 ///
 /// Suppose les événements fournis dans l'ordre chronologique, ce que garantit
-/// `DiskMechanics` : chaque requête part quand la précédente est finie.
+/// `DiskMechanics` : le bras ne fait qu'une chose à la fois, et son travail de
+/// fond n'est joué que jusqu'à la requête qui arrive.
 struct CueStream {
 
     private let cylinders: Int

@@ -52,12 +52,16 @@ public struct DriveReference: Sendable {
     /// servir de contrôle supplémentaire aux tests.
     public let isAnchor: Bool
     public let source: String
+    /// Le tampon du disque et ce qu'il en fait : une donnée de fiche, comme le
+    /// régime. C'est elle qui date un disque autant que lui.
+    public let buffer: DriveBuffer
 
     public init(model: String, shortName: String, year: Int, capacityBytes: UInt64, heads: Int,
                 tracksPerFace: Int, rpm: Int, averageSeekMs: Double,
                 trackToTrackMs: Double, sustainedOuterMBs: Double? = nil,
                 isAnchor: Bool = true,
-                source: String) {
+                source: String,
+                buffer: DriveBuffer) {
         self.model = model
         self.shortName = shortName
         self.year = year
@@ -70,6 +74,7 @@ public struct DriveReference: Sendable {
         self.sustainedOuterMBs = sustainedOuterMBs
         self.isAnchor = isAnchor
         self.source = source
+        self.buffer = buffer
     }
 
     /// Octets sur une face du plateau.
@@ -79,6 +84,74 @@ public struct DriveReference: Sendable {
     public var meanSectorsPerTrack: Double {
         bytesPerFace / Double(DriveGeometry.bytesPerSector) / Double(tracksPerFace)
     }
+}
+
+/// Le tampon d'un disque, et la politique que son constructeur y appliquait à
+/// la mise sous tension.
+///
+/// Tout y est de fiche ou de manuel, et les valeurs diffèrent d'un disque à
+/// l'autre : 64 Ko de lecture anticipée seule sur le Conner de 1993, 128 Ko dont
+/// 76 Ko de cache sur le Fireball, 2 Mo sur les Barracuda de 2001 et 2003, 16 Mo
+/// sur le 7200.10. C'est la taille du tampon qui date un disque autant que son
+/// régime.
+///
+/// **La segmentation** n'a pas de champ à elle : un seul manuel du catalogue la
+/// décrit, celui du Fireball TM — « adaptive segmentation […] the cache can be
+/// flexibly divided into several segments […] each segment contains one cache
+/// entry », une entrée étant la lecture demandée plus sa lecture anticipée —, et
+/// celui du Conner Cougar de 1992 annonce un tampon « segmentable » géré au
+/// plus anciennement utilisé. Les manuels Seagate n'en disent rien. Le modèle
+/// applique donc la règle du Fireball à tous : autant d'entrées que la taille en
+/// loge, la moins récemment servie cède la place. Le nombre de flux servis
+/// n'est pas posé ; il tombe de la taille du tampon devant celle d'une piste —
+/// une seule sur le Fireball, dont la piste externe fait 69 Ko, une trentaine
+/// sur le 7200.10.
+public struct DriveBuffer: Sendable, Equatable {
+
+    /// Taille du tampon, en kilo-octets.
+    public let bufferKB: Int
+    /// Ce qui en sert de cache. Le reste tient le microcode et les tables du
+    /// contrôleur : 76 Ko sur 128 pour le Fireball ; les autres manuels ne
+    /// distinguent pas, et donnent le tampon entier pour cache.
+    public let cacheKB: Int
+    /// La lecture anticipée est-elle active à la mise sous tension ?
+    public let readAhead: Bool
+    /// Le cache d'écriture l'est-il ?
+    public let writeCache: Bool
+    /// Lecture sans latence : une requête qui tient sur la piste commence au
+    /// secteur qui se présente, et le tampon remet les morceaux dans l'ordre.
+    public let zeroLatencyRead: Bool
+    /// Débit le plus élevé de l'interface côté disque, en Mo/s : le mode le
+    /// plus rapide que le disque accepte. La machine peut en imposer un plus
+    /// lent.
+    public let interfaceMBs: Double
+    /// Ce que coûte une commande hors mécanique — décodage, interruption,
+    /// mise en place du transfert —, en millisecondes.
+    public let commandOverheadMs: Double
+    /// D'où viennent ces valeurs.
+    public let source: String
+
+    public init(bufferKB: Int, cacheKB: Int? = nil, readAhead: Bool, writeCache: Bool,
+                zeroLatencyRead: Bool, interfaceMBs: Double, commandOverheadMs: Double,
+                source: String) {
+        self.bufferKB = bufferKB
+        self.cacheKB = cacheKB ?? bufferKB
+        self.readAhead = readAhead
+        self.writeCache = writeCache
+        self.zeroLatencyRead = zeroLatencyRead
+        self.interfaceMBs = interfaceMBs
+        self.commandOverheadMs = commandOverheadMs
+        self.source = source
+    }
+
+    /// Le coût de commande de toutes les fiches depuis 1996 : **la seule mesure
+    /// de la période** qui l'isole. Microsoft Research, *IDE Ultra/33
+    /// Performance: Intel PIIX4E* (1999), sur un Pentium II : « The DMA setup /
+    /// cleanup activity takes approximately 200 µs » par requête en lecture,
+    /// moins de 50 µs en écriture. Le modèle prend 200 µs dans les deux sens ;
+    /// aucune source ne donne ce coût sur les machines de 2003 et 2007, plus
+    /// rapides, où il est sans doute surestimé.
+    public static let measuredOverheadMs = 0.2
 }
 
 /// Les disques sur lesquels le modèle est calibré, de 1993 à 2008.
@@ -110,7 +183,13 @@ public enum DriveCatalog {
             year: 1993, capacityBytes: 170_000_000, heads: 4,
             tracksPerFace: 1_806, rpm: 4_011,
             averageSeekMs: 13.0, trackToTrackMs: 3.0,
-            source: "TULARC — 1 806 cylindres natifs, 4 têtes, RLL 1/7"),
+            source: "TULARC — 1 806 cylindres natifs, 4 têtes, RLL 1/7",
+            buffer: DriveBuffer(
+                bufferKB: 64, readAhead: true, writeCache: false, zeroLatencyRead: false,
+                interfaceMBs: 7.0, commandOverheadMs: 0.5,
+                source: "TULARC — « 64 KB READ-AHEAD », 7,0 Mo/s externe ; aucun cache "
+                      + "d'écriture annoncé. Coût de commande : manuel Conner Cougar CP30204 "
+                      + "(1992, même constructeur), « Controller Overhead < 500 µs »")),
 
         DriveReference(
             model: "Quantum Fireball 1080AT",
@@ -118,7 +197,16 @@ public enum DriveCatalog {
             year: 1996, capacityBytes: 1_082_130_432, heads: 4,
             tracksPerFace: 3_835, rpm: 5_400,
             averageSeekMs: 12.0, trackToTrackMs: 3.0,
-            source: "TULARC — 3 835 cylindres natifs, 4 têtes, PRML 16/17"),
+            source: "TULARC — 3 835 cylindres natifs, 4 têtes, PRML 16/17",
+            buffer: DriveBuffer(
+                bufferKB: 128, cacheKB: 76, readAhead: true, writeCache: true,
+                zeroLatencyRead: true,
+                interfaceMBs: 16.67, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "TULARC — « 128 KB READ/WRITE », PIO mode 4. Le détail vient du "
+                      + "manuel du Fireball TM 1080AT (81-111394-02, 1996), celui du "
+                      + "540/1080AT de 1995 étant introuvable : 76 Ko de cache à "
+                      + "segmentation adaptative, « read look-ahead, and write cache "
+                      + "enabled » à la mise sous tension, « Read-on-arrival firmware »")),
 
         DriveReference(
             model: "Seagate U8 ST38410A",
@@ -126,7 +214,13 @@ public enum DriveCatalog {
             year: 1999, capacityBytes: 8_420_000_000, heads: 2,
             tracksPerFace: 20_570, rpm: 5_400,
             averageSeekMs: 8.9, trackToTrackMs: 1.5,
-            source: "Manuel Seagate U8 — 18,7 kTPI, 349 kBPI, 1 plateau"),
+            source: "Manuel Seagate U8 — 18,7 kTPI, 349 kBPI, 1 plateau",
+            buffer: DriveBuffer(
+                bufferKB: 512, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 66.6, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Manuel Seagate U8 (SG35226-001, rév. A, 1999) — « Cache buffer "
+                      + "512 Kbytes », Ultra DMA mode 4, « Power-on default has the read "
+                      + "look-ahead and write caching features enabled »")),
 
         DriveReference(
             model: "Seagate Barracuda ATA IV ST340016A",
@@ -135,7 +229,13 @@ public enum DriveCatalog {
             tracksPerFace: 63_800, rpm: 7_200,
             averageSeekMs: 9.0, trackToTrackMs: 0.95,
             source: "Manuel Seagate Barracuda ATA IV — 58 kTPI, 540 kBPI, 1 plateau, "
-                  + "seek moyen de la variante à un plateau"),
+                  + "seek moyen de la variante à un plateau",
+            buffer: DriveBuffer(
+                bufferKB: 2_048, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Manuel Seagate Barracuda ATA IV (100129212, rév. B) — « Cache "
+                      + "buffer 2 Mbytes », Ultra DMA mode 5, lecture anticipée et cache "
+                      + "d'écriture actifs à la mise sous tension")),
 
         // Même mécanique et même densité que le précédent, sur une seule face :
         // c'est le disque de 20 Go de 2001, celui du scénario de démarrage.
@@ -147,7 +247,13 @@ public enum DriveCatalog {
             averageSeekMs: 9.0, trackToTrackMs: 0.95,
             isAnchor: false,
             source: "Manuel Seagate Barracuda ATA IV — 39 102 336 secteurs garantis, "
-                  + "1 tête, 1 plateau"),
+                  + "1 tête, 1 plateau",
+            buffer: DriveBuffer(
+                bufferKB: 2_048, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Manuel Seagate Barracuda ATA IV (100129212, rév. B) — « Cache "
+                      + "buffer 2 Mbytes », Ultra DMA mode 5, lecture anticipée et cache "
+                      + "d'écriture actifs à la mise sous tension")),
 
         DriveReference(
             model: "Seagate Barracuda 7200.7 ST340014A",
@@ -156,7 +262,13 @@ public enum DriveCatalog {
             tracksPerFace: 104_060, rpm: 7_200,
             averageSeekMs: 8.5, trackToTrackMs: 1.0,
             sustainedOuterMBs: 58,
-            source: "Manuel Seagate Barracuda 7200.7 — 94,6 kTPI, 595 kBPI, 1 plateau"),
+            source: "Manuel Seagate Barracuda 7200.7 — 94,6 kTPI, 595 kBPI, 1 plateau",
+            buffer: DriveBuffer(
+                bufferKB: 2_048, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Manuel Seagate Barracuda 7200.7 (100217279, rév. N) — 2 Mo pour "
+                      + "le ST340014A (8 Mo pour les variantes en …3A), Ultra DMA mode 5, "
+                      + "lecture anticipée et cache d'écriture actifs à la mise sous tension")),
 
         DriveReference(
             model: "Seagate Barracuda 7200.10 ST3320620A",
@@ -166,7 +278,13 @@ public enum DriveCatalog {
             averageSeekMs: 8.5, trackToTrackMs: 1.0,
             sustainedOuterMBs: 78,
             source: "Manuel Seagate Barracuda 7200.10 — 145 kTPI, 813 kBPI, "
-                  + "enregistrement perpendiculaire, 2 plateaux"),
+                  + "enregistrement perpendiculaire, 2 plateaux",
+            buffer: DriveBuffer(
+                bufferKB: 16_384, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Manuel Seagate Barracuda 7200.10 PATA (100402369, rév. F), table 2 "
+                      + "— 16 Mo pour le ST3320620A (8 Mo pour le ST3320820A), Ultra DMA "
+                      + "mode 5, lecture anticipée et cache d'écriture actifs par défaut")),
 
         DriveReference(
             model: "Seagate Barracuda 7200.11 ST31000340AS",
@@ -175,7 +293,13 @@ public enum DriveCatalog {
             tracksPerFace: 165_000, rpm: 7_200,
             averageSeekMs: 8.5, trackToTrackMs: 1.0,
             sustainedOuterMBs: 105,
-            source: "Manuel Seagate Barracuda 7200.11 — 150 kTPI, 1 090 kBPI, 4 plateaux"),
+            source: "Manuel Seagate Barracuda 7200.11 — 150 kTPI, 1 090 kBPI, 4 plateaux",
+            buffer: DriveBuffer(
+                bufferKB: 32_768, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 300, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Manuel Seagate Barracuda 7200.11 (100452348, rév. E), table 1 — "
+                      + "32 Mo pour le ST31000340AS, Serial ATA à 300 Mo/s, lecture "
+                      + "anticipée et cache d'écriture actifs par défaut")),
     ]
 
     /// Rapport entre les secteurs de la piste interne et ceux de la piste

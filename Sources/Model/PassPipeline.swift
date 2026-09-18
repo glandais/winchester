@@ -47,6 +47,9 @@ struct ActivityDetail: Sendable, Equatable {
     var transferSeconds = 0.0
     var thinkSeconds = 0.0
     var waitSeconds = 0.0
+    /// Ce que le tampon du disque a fait attendre : le bus, la commande, la
+    /// lecture anticipée qui n'était pas encore arrivée.
+    var bufferSeconds = 0.0
     /// Seeks par classe de distance (`SeekClass`).
     var seekClasses = [Int](repeating: 0, count: SeekClass.allCases.count)
     /// Requêtes par bande de cylindres, du bord (bande 0) vers le moyeu.
@@ -68,6 +71,7 @@ struct ActivityDetail: Sendable, Equatable {
         transferSeconds += other.transferSeconds
         thinkSeconds += other.thinkSeconds
         waitSeconds += other.waitSeconds
+        bufferSeconds += other.bufferSeconds
         for i in seekClasses.indices { seekClasses[i] += other.seekClasses[i] }
         for i in cylinderBands.indices { cylinderBands[i] += other.cylinderBands[i] }
     }
@@ -197,6 +201,9 @@ struct PassSetup {
     var spinUpAt: Double
     var spinUpDuration: Double
     var idle: IdleBehavior = .none
+    /// Le tampon du disque, son bus, ce que coûte une commande. `.direct` : la
+    /// mécanique seule, comme avant le chantier 26.
+    var drive: DriveInterface = .direct
     /// Ce que dure la passe après sa dernière requête. `nil` : la durée est
     /// celle de la trace — la dernière requête, ou le parcage s'il vient après.
     var tail: Double?
@@ -323,7 +330,8 @@ private struct Chain {
         mechanics = DiskMechanics(geometry: setup.geometry, seekModel: setup.seekModel,
                                   spinUpAt: setup.spinUpAt,
                                   spinUpDuration: setup.spinUpDuration,
-                                  idle: setup.idle)
+                                  idle: setup.idle,
+                                  drive: setup.drive)
         cueStream = CueStream(cylinders: setup.geometry.cylinders)
         mechanics.start(events: &events)
         ingestEvents()
@@ -341,9 +349,8 @@ private struct Chain {
 
     private mutating func simulate(_ request: BlockRequest) -> RequestTiming {
         let before = mechanics.stats
-        let (sample, timing) = mechanics.serve(request, events: &events)
+        let timing = mechanics.serve(request, events: &events, samples: &batch.samples)
         ingestEvents()
-        batch.samples.append(sample)
         workEnd = timing.end
 
         // Datation des phases.
@@ -363,6 +370,7 @@ private struct Chain {
         closeBuckets(before: index)
         let after = mechanics.stats
         let cylinders = setup.geometry.cylinders
+        let requestCylinder = setup.geometry.position(ofLBA: request.lba).cylinder
         let distance = after.totalSeekDistance - before.totalSeekDistance
         updateBucket(index) {
             $0.requests += 1
@@ -382,10 +390,13 @@ private struct Chain {
                 + (after.stepSeconds - before.stepSeconds)
             $0.detail.thinkSeconds += after.thinkSeconds - before.thinkSeconds
             $0.detail.waitSeconds += after.waitSeconds - before.waitSeconds
+            $0.detail.bufferSeconds += after.bufferSeconds - before.bufferSeconds
             if after.seekCount > before.seekCount {
                 $0.detail.seekClasses[SeekClass(distance: distance, cylinders: cylinders).rawValue] += 1
             }
-            $0.detail.cylinderBands[ActivityDetail.band(cylinder: Int(sample.cylinder),
+            // La bande de ce qu'on a demandé, que le tampon l'ait servi ou le
+            // bras.
+            $0.detail.cylinderBands[ActivityDetail.band(cylinder: requestCylinder,
                                                         of: cylinders)] += 1
         }
         return timing
@@ -430,7 +441,7 @@ private struct Chain {
     }
 
     mutating func finish(plan: DefragPlan?) -> PassEnd {
-        let parkAt = mechanics.finish(events: &events)
+        let parkAt = mechanics.finish(events: &events, samples: &batch.samples)
         ingestEvents()
         cueStream.finish()
         closeBuckets(before: .max)
@@ -445,8 +456,10 @@ private struct Chain {
             }
         }
 
-        let duration = setup.tail.map { workEnd + $0 }
-            ?? max(mechanics.clock, parkAt ?? 0)
+        // Le disque ne s'arrête pas à la dernière réponse : il pose encore ce
+        // qu'il a acquitté sans l'avoir écrit.
+        let duration = setup.tail.map { max(workEnd + $0, mechanics.idleAt) }
+            ?? max(mechanics.idleAt, parkAt ?? 0)
         let end = PassEnd(stats: mechanics.stats,
                           requestCount: mechanics.stats.requestCount,
                           eventCount: eventCount,

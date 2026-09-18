@@ -154,6 +154,8 @@ struct BootPlayback {
     /// d'écritures une fois groupées.
     let stampedFiles: Int
     let stampWrites: Int
+    /// Ce que le cache du système a fait, pour le bilan (`BootPlan`).
+    var softwareCache: String? = nil
     /// Ce que le système aurait mis sans disque : la somme des calculs.
     let thinkSeconds: Double
     /// Le silence qui suit la dernière lecture.
@@ -371,7 +373,8 @@ enum ScenarioBuilder {
                                            spinUpAt: 0.35,
                                            spinUpDuration: spinUpDuration,
                                            idle: .desktop(year: disk.spec.timeline.start.year,
-                                                          coldStart: true))
+                                                          coldStart: true),
+                                           drive: .era(year: disk.spec.timeline.start.year))
         let freshSeconds = (freshTrace.timings.last?.end ?? 0) + fresh.tail
 
         let launch = plan.appName.map { " puis lancement de \($0)" } ?? ""
@@ -407,6 +410,7 @@ enum ScenarioBuilder {
                              // moteur : la machine vient de démarrer. Le bras
                              // reste où la dernière lecture l'a laissé.
                              idle: .desktop(year: disk.spec.timeline.start.year, coldStart: true),
+                             drive: .era(year: disk.spec.timeline.start.year),
                              tail: plan.tail,
                              year: disk.spec.timeline.start.year),
             phases: plan.phases,
@@ -417,6 +421,7 @@ enum ScenarioBuilder {
                                residentFiles: plan.residentFiles,
                                stampedFiles: plan.stampedFiles,
                                stampWrites: plan.stampWrites,
+                               softwareCache: plan.softwareCache,
                                thinkSeconds: plan.thinkSeconds,
                                tail: plan.tail,
                                freshSeconds: freshSeconds,
@@ -493,6 +498,7 @@ enum ScenarioBuilder {
             setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
                              spinUpAt: 0, spinUpDuration: 0.9,
                              idle: .desktop(year: disk.spec.timeline.start.year),
+                             drive: .era(year: disk.spec.timeline.start.year),
                              tail: tailDuration,
                              year: disk.spec.timeline.start.year),
             phases: phases.descriptors,
@@ -563,6 +569,7 @@ enum ScenarioBuilder {
                              idle: .desktop(year: disk.spec.timeline.start.year, coldStart: true,
                                             stopAfter: powerOffDelay,
                                             stopDuration: spinDownDuration),
+                             drive: .era(year: disk.spec.timeline.start.year),
                              tail: tailDuration,
                              year: disk.spec.timeline.start.year),
             phases: phases,
@@ -669,6 +676,7 @@ enum ScenarioBuilder {
         let setup = PassSetup(geometry: geometry, seekModel: seekModel,
                               spinUpAt: 0, spinUpDuration: 0.9,
                               idle: .desktop(year: year),
+                              drive: .era(year: year),
                               tail: tailDuration,
                               year: year)
 

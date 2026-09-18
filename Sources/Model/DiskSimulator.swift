@@ -31,7 +31,10 @@ struct DiskEvent {
 
 /// Position de la tête pendant une requête, pour l'affichage.
 ///
-/// Un seul échantillon par requête, mais qui porte **son début et sa fin** :
+/// Un échantillon par geste du bras, qui porte **son début et sa fin** — une
+/// requête servie par le bras, un bout de lecture anticipée, un vidage du cache
+/// d'écriture ; aucun pour une requête que le tampon sert sans que la tête
+/// bouge :
 /// pendant un transfert séquentiel le bras avance d'un cylindre tous les
 /// `heads × spt` secteurs, à cadence constante à l'intérieur d'une zone. Deux
 /// bornes suffisent donc à retrouver la position à n'importe quel instant, là
@@ -65,20 +68,36 @@ struct TraceStats {
     var bytesRead = 0
     var bytesWritten = 0
     var busySeconds = 0.0
-    /// Où passe le temps d'une passe, requête par requête : bras en
-    /// mouvement (commutations de tête comprises), attente du secteur, pas de
-    /// piste pendant un transfert, calcul de la machine entre deux lectures,
-    /// et disque au repos. Avec `busySeconds`, ils recomposent l'horloge.
+    /// Où passe le temps d'une passe : bras en mouvement (commutations de tête
+    /// comprises), attente du secteur, pas de piste pendant un transfert,
+    /// calcul de la machine entre deux lectures, disque au repos, et — depuis le
+    /// tampon du chantier 26 — ce qu'une commande servie par lui a fait attendre
+    /// l'hôte. Sans tampon, ils recomposent l'horloge avec `busySeconds`. Avec
+    /// lui, plus exactement : les vidages et la lecture anticipée font bouger
+    /// le bras pendant que l'hôte calcule, et leurs seeks sont comptés sans que
+    /// personne les ait attendus.
     var seekSeconds = 0.0
     var rotationSeconds = 0.0
     var stepSeconds = 0.0
     var thinkSeconds = 0.0
     var waitSeconds = 0.0
+    var bufferSeconds = 0.0
     /// Temps pendant lequel une requête a attendu que le disque finisse de se
     /// recalibrer, et nombre de recalibrations. Personne ne les a demandées :
     /// elles n'entrent ni dans les seeks ni dans leur distance moyenne.
     var recalibrationSeconds = 0.0
     var recalibrations = 0
+
+    /// Ce que le tampon a fait. Des lectures servies sans que le bras bouge ;
+    /// des secteurs lus d'avance, et le temps que la tête y a passé sans que
+    /// personne le demande ; des écritures acquittées avant d'être posées, et
+    /// les vidages qui les ont posées. Les seeks des vidages sont comptés avec
+    /// les autres : ce sont ceux des écritures, différés.
+    var bufferHits = 0
+    var readAheadSectors = 0
+    var readAheadSeconds = 0.0
+    var cachedWrites = 0
+    var destageWrites = 0
 
     var averageSeekDistance: Int {
         seekCount > 0 ? totalSeekDistance / seekCount : 0
@@ -252,9 +271,10 @@ struct DiskTrace {
 /// Rejoue une liste de requêtes bloc sur la géométrie et le modèle de seek,
 /// et en déduit la chronologie mécanique exacte.
 ///
-/// File d'attente FIFO, sans réordonnancement d'ascenseur : c'est volontaire,
+/// File d'attente FIFO, sans réordonnancement des commandes : c'est volontaire,
 /// un contrôleur IDE de cette époque ne réordonnait quasiment rien, et c'est
-/// précisément ce qui rend le crépitement si dense.
+/// précisément ce qui rend le crépitement si dense. Seul le cache d'écriture du
+/// disque pose ce qu'il a acquitté dans l'ordre de l'ascenseur.
 enum DiskSimulator {
 
     /// Toute une passe d'un coup, et tout ce qu'elle a produit. C'est la
@@ -267,7 +287,8 @@ enum DiskSimulator {
                     totalDuration: Double,
                     spinUpAt: Double,
                     spinUpDuration: Double,
-                    idle: IdleBehavior = .none) -> DiskTrace {
+                    idle: IdleBehavior = .none,
+                    drive: DriveInterface = .direct) -> DiskTrace {
 
         var events: [DiskEvent] = []
         var samples: [HeadSample] = []
@@ -281,36 +302,46 @@ enum DiskSimulator {
 
         var mechanics = DiskMechanics(geometry: geometry, seekModel: seekModel,
                                       spinUpAt: spinUpAt, spinUpDuration: spinUpDuration,
-                                      idle: idle)
+                                      idle: idle, drive: drive)
         mechanics.start(events: &events)
         for request in requests {
-            let served = mechanics.serve(request, events: &events)
-            samples.append(served.sample)
-            timings.append(served.timing)
+            timings.append(mechanics.serve(request, events: &events, samples: &samples))
         }
-        let parkAt = mechanics.finish(events: &events)
+        let parkAt = mechanics.finish(events: &events, samples: &samples)
         // Déjà dans l'ordre, sauf si la coupure du moteur tombe avant la fin du
         // travail — un scénario dont les requêtes débordent sur son extinction.
         events.sort { $0.time < $1.time }
 
-        let end = max(max(totalDuration, mechanics.clock), parkAt ?? 0)
+        let end = max(max(totalDuration, mechanics.idleAt), parkAt ?? 0)
         return DiskTrace(events: events, headSamples: samples, timings: timings,
                          spindle: mechanics.spindle, parkAt: parkAt, duration: end,
                          stats: mechanics.stats)
     }
 }
 
+/// Ce qu'une requête a produit : ce que le bras a fait depuis la précédente et
+/// pour elle, et quand l'hôte a eu sa réponse.
+struct ServedRequest {
+    /// Lecture anticipée, vidages du cache d'écriture, puis la requête
+    /// elle-même si elle a eu besoin du bras. Vide pour une requête servie par
+    /// le tampon sans que la tête bouge.
+    var samples: [HeadSample]
+    let timing: RequestTiming
+}
+
 /// Le disque, une requête après l'autre.
 ///
 /// Rien de ce qu'il calcule ne dépend des requêtes à venir : chacune part quand
-/// la précédente est finie et que le système l'a émise, le bras est là où la
-/// précédente l'a laissé, le plateau à l'angle que donne l'horloge. C'est cette
-/// causalité qui permet de simuler une passe **à mesure qu'on la planifie**,
-/// sans jamais tenir la liste de ses requêtes.
+/// la précédente est acquittée et que le système l'a émise ; entre les deux, le
+/// bras a fait ce que le disque fait de lui-même — lire d'avance, poser ce qu'il
+/// avait acquitté — jusqu'à l'instant où elle arrive, pas au-delà ; le plateau
+/// est à l'angle que donne l'horloge. C'est cette causalité qui permet de
+/// simuler une passe **à mesure qu'on la planifie**, sans jamais tenir la liste
+/// de ses requêtes.
 ///
-/// Les événements sortent dans l'ordre chronologique : la mise en rotation
-/// d'abord, puis ceux de chaque requête, qui commence où la précédente finit,
-/// puis le parcage et la coupure du moteur.
+/// Les événements sortent dans l'ordre chronologique, celui du bras : la mise en
+/// rotation d'abord, puis le travail de fond et chaque requête, puis le parcage
+/// et la coupure du moteur.
 struct DiskMechanics {
 
     let geometry: DriveGeometry
@@ -318,6 +349,8 @@ struct DiskMechanics {
     let spinUpAt: Double
     let spinUpDuration: Double
     let idle: IdleBehavior
+    /// Le tampon du disque, son bus et ce que coûte une commande.
+    let drive: DriveInterface
 
     /// Le décalage angulaire d'une piste à l'autre, déduit de la loi de seek de
     /// ce disque : c'est lui qui rend gratuit le franchissement de piste au
@@ -331,8 +364,9 @@ struct DiskMechanics {
     /// sur trois.
     private static let angularTolerance = 1e-9
 
-    /// Fin de la dernière requête servie — ou fin de la mise en rotation, si
-    /// aucune ne l'a encore été.
+    /// Fin de la dernière requête **acquittée** — ou fin de la mise en rotation,
+    /// si aucune ne l'a encore été. C'est l'horloge de l'hôte : avec un tampon,
+    /// le bras peut encore travailler après elle.
     private(set) var clock: Double
     private(set) var stats = TraceStats()
     private var headCylinder: Int
@@ -344,21 +378,50 @@ struct DiskMechanics {
     /// scénario, ou compté depuis la dernière requête à la fin du travail.
     private(set) var stopAt: Double?
 
+    // MARK: Le bras et le tampon
+
+    /// Fin du travail engagé par le bras. Sans tampon, c'est `clock`.
+    private var armFree: Double
+    /// Secteur qui suit le dernier lu ou écrit : c'est de là que part l'ordre
+    /// d'ascenseur d'un vidage.
+    private var headLBA = 0
+    /// La lecture anticipée en cours, s'il y en a une.
+    private var stream: ReadStream?
+    /// Ce que le tampon tient de propre, du moins au plus récemment servi.
+    private var segments: [BufferedRange] = []
+    /// Les écritures acquittées pas encore posées, triées par secteur.
+    private var pending: [PendingWrite] = []
+    private var pendingSectors = 0
+    private let cacheSectors: Int
+    /// Secteurs qu'une requête n'a pas pu transférer : elle débordait du
+    /// disque, qui la tronque.
+    private var truncatedSectors = 0
+
     init(geometry: DriveGeometry, seekModel: SeekModel,
-         spinUpAt: Double, spinUpDuration: Double, idle: IdleBehavior = .none) {
+         spinUpAt: Double, spinUpDuration: Double, idle: IdleBehavior = .none,
+         drive: DriveInterface = .direct) {
         self.geometry = geometry
         self.seekModel = seekModel
         self.spinUpAt = spinUpAt
         self.spinUpDuration = spinUpDuration
         self.idle = idle
+        self.drive = drive
+        self.cacheSectors = drive.cacheSectors
         self.skew = geometry.skew(seekModel: seekModel)
         self.clock = spinUpAt + spinUpDuration
+        self.armFree = clock
         // Au repos le bras est parqué au diamètre intérieur, sur la zone
         // d'atterrissage. Un plateau qui tournait déjà l'y a laissé ; un disque
         // qu'on allume en part pour chercher sa piste 0 (`start`).
         self.headCylinder = geometry.parkCylinder
+        self.headLBA = geometry.lba(of: DriveGeometry.Position(cylinder: geometry.parkCylinder,
+                                                                head: 0, sector: 0))
         self.nextRecalibration = idle.recalibration.map { clock + $0.firstAfter }
     }
+
+    /// Le disque a fini tout ce qu'on lui a demandé, y compris ce qu'il
+    /// avait acquitté sans l'avoir encore écrit.
+    var idleAt: Double { max(clock, armFree) }
 
     /// La rotation du plateau, connue d'avance : la montée comme la coupure
     /// sont des dates, pas des conséquences des requêtes.
@@ -401,9 +464,11 @@ struct DiskMechanics {
             headCylinder = stop
         }
         headIndex = 0
+        headLBA = 0
         // Une montée trop courte pour la salve retarde le disque prêt ; aucune
         // des rampes des scénarios ne l'est.
         clock = max(clock, t)
+        armFree = clock
     }
 
     /// Une recalibration thermique commencée à `begin` : les repères visités,
@@ -425,6 +490,7 @@ struct DiskMechanics {
             headCylinder = stop
         }
         headIndex = 0
+        headLBA = geometry.lba(of: DriveGeometry.Position(cylinder: headCylinder, head: 0, sector: 0))
         stats.recalibrations += 1
         return t
     }
@@ -445,10 +511,25 @@ struct DiskMechanics {
         return delta * revolution
     }
 
-    mutating func serve(_ request: BlockRequest,
-                        events: inout [DiskEvent]) -> (sample: HeadSample, timing: RequestTiming) {
-        let revolution = geometry.revolutionDuration
+    // MARK: - Une requête
 
+    /// Sert une requête, et rend ce qu'elle a produit. Commode pour les tests ;
+    /// la chaîne passe par la variante qui ne crée pas de tableau.
+    mutating func serve(_ request: BlockRequest, events: inout [DiskEvent]) -> ServedRequest {
+        var samples: [HeadSample] = []
+        let timing = serve(request, events: &events, samples: &samples)
+        return ServedRequest(samples: samples, timing: timing)
+    }
+
+    /// Sert une requête.
+    ///
+    /// Le travail de fond du disque — la lecture anticipée qui continue, les
+    /// écritures acquittées qu'il pose — est d'abord joué jusqu'à l'instant où
+    /// la commande arrive ; puis la commande est servie par le tampon si elle
+    /// peut l'être, par le bras sinon. Rien ne dépend des requêtes à venir.
+    mutating func serve(_ request: BlockRequest,
+                        events: inout [DiskEvent],
+                        samples: inout [HeadSample]) -> RequestTiming {
         // Le disque ne repart pas à la milliseconde où il s'est arrêté :
         // la machine a peut-être quelque chose à faire de ce qu'elle vient
         // de lire. `thinkTime` est nul partout sauf pour un démarrage.
@@ -458,25 +539,163 @@ struct DiskMechanics {
         let thought = max(min(issued, clock + request.thinkTime) - clock, 0)
         stats.thinkSeconds += thought
         stats.waitSeconds += max(issued - clock - thought, 0)
-        var t = issued
 
-        // 0. Une recalibration thermique échue passe avant : le disque finit la
-        //    commande en cours, puis s'interrompt. Échue pendant un repos, elle
-        //    s'y loge et ne retarde personne.
-        if let recalibration = idle.recalibration {
-            var free = clock
-            while let due = nextRecalibration, due <= t {
-                let end = recalibrate(recalibration, at: max(due, free), events: &events)
-                free = end
-                nextRecalibration = due + recalibration.period
-                if end > t {
-                    stats.recalibrationSeconds += end - t
-                    t = end
-                }
-            }
+        let end: Double
+        truncatedSectors = 0
+        if request.isWrite {
+            end = serveWrite(request, at: issued, events: &events, samples: &samples)
+        } else {
+            end = serveRead(request, at: issued, events: &events, samples: &samples)
         }
 
-        let target = geometry.position(ofLBA: request.lba)
+        let bytes = (request.sectorCount - truncatedSectors) * DriveGeometry.bytesPerSector
+        if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
+        stats.requestCount += 1
+        clock = end
+        served = true
+        return RequestTiming(start: issued, end: end)
+    }
+
+    private func busTime(sectors: Int, isWrite: Bool) -> Double {
+        let rate = isWrite ? drive.writeBytesPerSecond : drive.readBytesPerSecond
+        guard rate.isFinite else { return 0 }
+        return Double(sectors * DriveGeometry.bytesPerSector) / rate
+    }
+
+    private mutating func serveRead(_ request: BlockRequest, at issued: Double,
+                                    events: inout [DiskEvent],
+                                    samples: inout [HeadSample]) -> Double {
+        let first = request.lba
+        let last = request.lba + request.sectorCount
+        let overhead = drive.commandOverhead
+        let hostFloor = issued + overhead + busTime(sectors: request.sectorCount, isWrite: false)
+        let sectorBus = busTime(sectors: 1, isWrite: false)
+
+        advanceBackground(until: issued, events: &events, samples: &samples)
+
+        // 1. La lecture anticipée en cours l'a lue, ou va la lire : elle
+        //    continue, et la requête prend les secteurs à mesure qu'ils passent.
+        if var reading = stream, first >= reading.origin, first <= reading.stop {
+            reading.stop = max(reading.stop,
+                               min(last + readAheadDepth(at: last), geometry.totalSectors))
+            let ready = last <= reading.next ? reading.ready : projectedReady(reading, through: last)
+            stream = reading
+            fitBuffer()
+            stats.bufferHits += 1
+            let done = max(hostFloor, ready + sectorBus)
+            stats.bufferSeconds += done - issued
+            return done
+        }
+
+        // 2. Le tampon la tient déjà : le bras ne bouge pas.
+        let covered = coveredPrefix(from: first, to: last)
+        if covered >= last {
+            stats.bufferHits += 1
+            stats.bufferSeconds += hostFloor - issued
+            return hostFloor
+        }
+
+        // 3. Il faut aller la lire. Ce que le tampon tient du début est servi
+        //    par lui ; le bras lit la suite.
+        continueStream(until: issued + overhead, events: &events, samples: &samples)
+        abandonStream()
+        let (mediaEnd, firstReady) = mechanicalAccess(lba: covered, sectors: last - covered,
+                                                      isWrite: false, at: issued + overhead,
+                                                      readAhead: drive.readAhead,
+                                                      origin: first,
+                                                      events: &events, samples: &samples)
+        if !drive.readAhead, cacheSectors > 0 {
+            remember(BufferedRange(start: first, end: last))
+        }
+        // Sans bus à borner — la mécanique seule —, la fin du transfert est la
+        // réponse, au bit près de ce qu'elle était avant le tampon.
+        guard sectorBus > 0 else { return max(hostFloor, mediaEnd) }
+        // Le bus reprend les secteurs à mesure qu'ils arrivent : il ne peut
+        // pas commencer avant le premier, ni finir avant le dernier.
+        return max(hostFloor,
+                   mediaEnd + sectorBus,
+                   firstReady + busTime(sectors: request.sectorCount, isWrite: false))
+    }
+
+    private mutating func serveWrite(_ request: BlockRequest, at issued: Double,
+                                     events: inout [DiskEvent],
+                                     samples: inout [HeadSample]) -> Double {
+        let first = request.lba
+        let last = request.lba + request.sectorCount
+        let overhead = drive.commandOverhead
+        let transfer = busTime(sectors: request.sectorCount, isWrite: true)
+        let hostFloor = issued + overhead + transfer
+
+        advanceBackground(until: issued, events: &events, samples: &samples)
+        forget(first, last)
+
+        // Le cache d'écriture l'acquitte dès qu'il la tient — à condition d'avoir
+        // la place. Sinon il pose d'abord ce qu'il avait.
+        if drive.writeCache, request.sectorCount <= cacheSectors {
+            var room = issued + overhead
+            while pendingSectors + request.sectorCount > cacheSectors {
+                continueStream(until: room, events: &events, samples: &samples)
+                abandonStream()
+                guard let done = destage(at: max(room, armFree),
+                                         events: &events, samples: &samples) else { break }
+                room = done
+            }
+            let accepted = max(hostFloor, room + transfer)
+            insertPending(PendingWrite(start: first, end: last, acceptedAt: accepted))
+            fitBuffer()
+            stats.cachedWrites += 1
+            stats.bufferSeconds += accepted - issued
+            return accepted
+        }
+
+        // Sans cache d'écriture, ou trop grosse pour lui : le bras l'écrit,
+        // et l'hôte attend.
+        continueStream(until: issued + overhead, events: &events, samples: &samples)
+        abandonStream()
+        let (mediaEnd, _) = mechanicalAccess(lba: first, sectors: request.sectorCount,
+                                             isWrite: true, at: issued + overhead,
+                                             readAhead: false, origin: first,
+                                             events: &events, samples: &samples)
+        return max(hostFloor, mediaEnd)
+    }
+
+    // MARK: - Le bras
+
+    /// Le bras est demandé à `t` : une recalibration thermique échue passe
+    /// avant. Le disque finit la commande en cours, puis s'interrompt ; échue
+    /// pendant un repos, elle s'y loge et ne retarde personne.
+    private mutating func armStart(at requested: Double, events: inout [DiskEvent]) -> Double {
+        var t = max(requested, armFree)
+        guard let recalibration = idle.recalibration else { return t }
+        var free = armFree
+        while let due = nextRecalibration, due <= t {
+            let end = recalibrate(recalibration, at: max(due, free), events: &events)
+            free = end
+            nextRecalibration = due + recalibration.period
+            if end > t {
+                stats.recalibrationSeconds += end - t
+                t = end
+            }
+        }
+        armFree = max(armFree, free)
+        return t
+    }
+
+    /// Un accès mécanique : seek, latence, transfert. Rend la fin du transfert
+    /// et l'instant où le premier secteur, dans l'ordre, est dans le tampon.
+    ///
+    /// Une lecture qui tient sur une piste profite de la lecture sans latence
+    /// si le disque la fait : la tête lit ce qui se présente, le tampon remet
+    /// dans l'ordre. Une lecture est suivie de sa lecture anticipée si le
+    /// disque la fait.
+    private mutating func mechanicalAccess(lba: Int, sectors count: Int, isWrite: Bool,
+                                           at requested: Double, readAhead: Bool, origin: Int,
+                                           events: inout [DiskEvent],
+                                           samples: inout [HeadSample]) -> (end: Double, firstReady: Double) {
+        let revolution = geometry.revolutionDuration
+        var t = armStart(at: requested, events: &events)
+
+        let target = geometry.position(ofLBA: lba)
 
         // 1. Déplacement du bras.
         if target.cylinder != headCylinder {
@@ -499,8 +718,49 @@ struct DiskMechanics {
         // 2. Latence rotationnelle : attendre que le secteur visé passe
         //    sous la tête. En moyenne un demi-tour, soit 4,17 ms ici.
         let latency = rotationalWait(to: target, at: t)
+        let spt = geometry.sectorsPerTrack(cylinder: target.cylinder)
+        let sector = Double(revolution) / Double(spt)
+
+        // La lecture sans latence : la tête arrive au milieu de ce qu'on lui
+        // demande, elle en lit la fin, attend le tour, lit le début. Un tour
+        // exactement, au lieu de la latence plus le transfert.
+        let onTrack = min(count, spt - target.sector)
+        if !isWrite, drive.zeroLatencyRead, onTrack == count,
+           latency > revolution - Double(onTrack) * sector + Self.angularTolerance * revolution {
+            let arrival = t
+            let transfer = Double(onTrack) / Double(spt) * revolution
+            events.append(DiskEvent(time: t, kind: .transfer(duration: revolution,
+                                                             sectors: count, isWrite: false)))
+            t += revolution
+            stats.rotationSeconds += revolution - transfer
+            stats.busySeconds += transfer
+            samples.append(HeadSample(time: arrival, duration: Float(revolution),
+                                      cylinder: Int32(headCylinder), endCylinder: Int32(headCylinder),
+                                      head: UInt8(min(headIndex, Int(UInt8.max))), isWrite: false))
+            // Le début de la requête, dans l'ordre, est lu en dernier : les
+            // secteurs d'avant l'arrivée de la tête.
+            let late = Int(((revolution - latency) / sector).rounded(.up))
+            let firstReady = t - Double(max(late - 1, 0)) * sector
+            armFree = t
+            // Pendant ce tour, la tête a aussi lu la fin de la piste : la
+            // lecture anticipée repart de la piste suivante, au prochain
+            // passage de la fin de celle-ci.
+            let trackEnd = geometry.lba(of: DriveGeometry.Position(cylinder: target.cylinder,
+                                                                    head: target.head, sector: 0)) + spt
+            headLBA = trackEnd
+            let untilTrackEnd = latency + Double(spt - target.sector) * sector
+            if readAhead {
+                startStream(origin: origin, next: trackEnd, time: arrival + untilTrackEnd,
+                            ready: t, busyUntil: t)
+            } else if cacheSectors > 0 {
+                remember(BufferedRange(start: origin, end: trackEnd))
+            }
+            return (t, firstReady)
+        }
+
         t += latency
         stats.rotationSeconds += latency
+        let firstReady = t + sector
 
         // L'échantillon d'affichage est refermé après le transfert, une fois
         // connu le cylindre d'arrivée : c'est lui qui fait avancer le bras
@@ -510,22 +770,22 @@ struct DiskMechanics {
         let sampleHead = headIndex
 
         // 3. Transfert, piste par piste.
-        var remaining = request.sectorCount
-        var sector = target.sector
+        var remaining = count
+        var position = target.sector
         var transferSeconds = 0.0
 
         while remaining > 0 {
             let spt = geometry.sectorsPerTrack(cylinder: headCylinder)
-            let onThisTrack = min(remaining, spt - sector)
+            let onThisTrack = min(remaining, spt - position)
             let dt = Double(onThisTrack) / Double(spt) * revolution
 
             events.append(DiskEvent(time: t, kind: .transfer(
-                duration: dt, sectors: onThisTrack, isWrite: request.isWrite)))
+                duration: dt, sectors: onThisTrack, isWrite: isWrite)))
 
             t += dt
             transferSeconds += dt
             remaining -= onThisTrack
-            sector = 0
+            position = 0
 
             guard remaining > 0 else { break }
 
@@ -562,33 +822,293 @@ struct DiskMechanics {
             stats.rotationSeconds += wait
         }
 
-        let sample = HeadSample(time: sampleTime,
-                                duration: Float(t - sampleTime),
-                                cylinder: Int32(sampleCylinder),
-                                endCylinder: Int32(headCylinder),
-                                head: UInt8(min(sampleHead, Int(UInt8.max))),
-                                isWrite: request.isWrite)
-
-        let bytes = (request.sectorCount - remaining) * DriveGeometry.bytesPerSector
-        if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
-        stats.requestCount += 1
+        samples.append(HeadSample(time: sampleTime,
+                                  duration: Float(t - sampleTime),
+                                  cylinder: Int32(sampleCylinder),
+                                  endCylinder: Int32(headCylinder),
+                                  head: UInt8(min(sampleHead, Int(UInt8.max))),
+                                  isWrite: isWrite))
         stats.busySeconds += transferSeconds
-
-        clock = t
-        served = true
-        return (sample, RequestTiming(start: issued, end: t))
+        armFree = t
+        headLBA = lba + (count - remaining)
+        truncatedSectors = remaining
+        if readAhead, remaining == 0 {
+            startStream(origin: origin, next: headLBA, time: t, ready: t, busyUntil: t)
+        }
+        return (t, firstReady)
     }
 
-    /// Le travail est fini ; le disque, lui, ne l'est pas. Rend l'instant où le
-    /// bras repart se parquer, s'il le fait.
+    // MARK: - La lecture anticipée
+
+    /// Ce que la lecture anticipée lit d'avance : une piste, ce que tient le
+    /// cache du Fireball — 76 Ko pour une piste externe de 69 Ko — et l'ordre de
+    /// grandeur que donne la revue (« jusqu'à la fin de la piste »). Borné par
+    /// le cache.
+    private func readAheadDepth(at lba: Int) -> Int {
+        let cylinder = geometry.position(ofLBA: min(lba, geometry.totalSectors - 1)).cylinder
+        return min(geometry.sectorsPerTrack(cylinder: cylinder), cacheSectors)
+    }
+
+    private mutating func startStream(origin: Int, next: Int, time: Double,
+                                      ready: Double, busyUntil: Double) {
+        let stop = min(next + readAheadDepth(at: next), geometry.totalSectors)
+        guard stop > next else {
+            remember(BufferedRange(start: origin, end: next))
+            return
+        }
+        stream = ReadStream(origin: origin, next: next, time: time, ready: ready,
+                            busyUntil: busyUntil, stop: stop)
+        fitBuffer()
+    }
+
+    /// Le pas suivant d'une lecture anticipée : franchir une piste, ou lire ce
+    /// qui reste sur celle-ci jusqu'à `limit`. Rend `false` si rien n'a pu être
+    /// entrepris avant `deadline`.
+    ///
+    /// La même fonction joue la lecture anticipée pour de bon et la prévoit : la
+    /// date à laquelle une requête servie en cours de lecture reçoit ses
+    /// secteurs est celle que le bras atteindra, à l'identique.
+    private func streamStep(_ s: inout ReadStream, cylinder: inout Int, head: inout Int,
+                            limit: Int, deadline: Double,
+                            emit: Bool, events: inout [DiskEvent]) -> (read: Int, reading: Double, moving: Double)? {
+        guard s.next < limit, s.time < deadline else { return nil }
+        let revolution = geometry.revolutionDuration
+        let position = geometry.position(ofLBA: s.next)
+        if position.cylinder != cylinder || position.head != head {
+            // La piste suivante : même franchissement qu'au milieu d'un
+            // transfert, rattrapé par le même skew.
+            let cost: Double
+            if position.cylinder == cylinder {
+                cost = seekModel.headSwitchDuration
+                if emit { events.append(DiskEvent(time: s.time, kind: .headSwitch)) }
+            } else {
+                cost = seekModel.duration(distance: abs(position.cylinder - cylinder))
+                if emit { events.append(DiskEvent(time: s.time, kind: .trackStep)) }
+            }
+            cylinder = position.cylinder
+            head = position.head
+            let arrival = s.time + cost
+            let wait = rotationalWait(to: position, at: arrival)
+            s.busyUntil = arrival
+            s.time = arrival + wait
+            return (0, 0, cost + wait)
+        }
+        let spt = geometry.sectorsPerTrack(cylinder: cylinder)
+        var count = min(limit - s.next, spt - position.sector)
+        if deadline.isFinite {
+            let sector = revolution / Double(spt)
+            count = min(count, max(Int(((deadline - s.time) / sector).rounded(.up)), 1))
+        }
+        let dt = Double(count) / Double(spt) * revolution
+        if emit {
+            events.append(DiskEvent(time: s.time, kind: .transfer(duration: dt, sectors: count,
+                                                                  isWrite: false)))
+        }
+        s.time += dt
+        s.busyUntil = s.time
+        s.ready = s.time
+        s.next += count
+        return (count, dt, 0)
+    }
+
+    /// Quand le secteur `last - 1` sera dans le tampon, si rien n'interrompt
+    /// la lecture anticipée.
+    private func projectedReady(_ reading: ReadStream, through last: Int) -> Double {
+        var s = reading
+        var cylinder = headCylinder
+        var head = headIndex
+        var scratch: [DiskEvent] = []
+        while streamStep(&s, cylinder: &cylinder, head: &head, limit: last,
+                         deadline: .infinity, emit: false, events: &scratch) != nil {}
+        return s.ready
+    }
+
+    /// Joue la lecture anticipée jusqu'à `deadline` : tout ce qu'elle a
+    /// entrepris avant cet instant est fait, et s'entend.
+    private mutating func continueStream(until deadline: Double,
+                                         events: inout [DiskEvent],
+                                         samples: inout [HeadSample]) {
+        guard var s = stream else { return }
+        let startCylinder = headCylinder
+        let startHead = headIndex
+        var began: Double?
+        while let step = streamStep(&s, cylinder: &headCylinder, head: &headIndex,
+                                    limit: s.stop, deadline: deadline,
+                                    emit: true, events: &events) {
+            if began == nil { began = s.time - step.reading - step.moving }
+            stats.readAheadSectors += step.read
+            stats.readAheadSeconds += step.reading + step.moving
+        }
+        if let began {
+            samples.append(HeadSample(time: began, duration: Float(s.busyUntil - began),
+                                      cylinder: Int32(startCylinder), endCylinder: Int32(headCylinder),
+                                      head: UInt8(min(startHead, Int(UInt8.max))), isWrite: false))
+        }
+        headLBA = s.next
+        armFree = max(armFree, s.busyUntil)
+        if s.next >= s.stop {
+            stream = nil
+            remember(BufferedRange(start: s.origin, end: s.next))
+        } else {
+            stream = s
+        }
+    }
+
+    /// La tête est demandée ailleurs : la lecture anticipée s'arrête là où
+    /// elle en est, et ce qu'elle a lu reste dans le tampon.
+    private mutating func abandonStream() {
+        guard let s = stream else { return }
+        stream = nil
+        armFree = max(armFree, s.busyUntil)
+        if s.next > s.origin { remember(BufferedRange(start: s.origin, end: s.next)) }
+    }
+
+    // MARK: - Le travail de fond
+
+    /// Ce que le disque fait de lui-même jusqu'à `deadline`, l'instant où la
+    /// commande suivante arrive : finir sa lecture anticipée, puis poser, dans
+    /// l'ordre de l'ascenseur, les écritures qu'il a acquittées.
+    private mutating func advanceBackground(until deadline: Double,
+                                            events: inout [DiskEvent],
+                                            samples: inout [HeadSample]) {
+        continueStream(until: deadline, events: &events, samples: &samples)
+        guard stream == nil else { return }
+        while !pending.isEmpty {
+            let earliest = pending.map(\.acceptedAt).min() ?? .infinity
+            let start = max(armFree, earliest)
+            guard start < deadline else { return }
+            guard destage(at: start, events: &events, samples: &samples) != nil
+            else { return }
+        }
+    }
+
+    /// Pose un paquet d'écritures acquittées : la première devant la tête dans
+    /// l'ordre des secteurs — ou la plus basse, si la tête est au-delà de toutes
+    /// —, et avec elle celles qui la prolongent sans trou. Rend la fin de
+    /// l'écriture, ou `nil` si rien n'était prêt à `start`.
+    @discardableResult
+    private mutating func destage(at start: Double,
+                                  events: inout [DiskEvent],
+                                  samples: inout [HeadSample]) -> Double? {
+        let readyIndices = pending.indices.filter { pending[$0].acceptedAt <= start }
+        guard !readyIndices.isEmpty else { return nil }
+        let first = readyIndices.first { pending[$0].start >= headLBA } ?? readyIndices[0]
+        var end = pending[first].end
+        var taken = [first]
+        var index = first + 1
+        while index < pending.count, pending[index].start <= end {
+            if pending[index].acceptedAt <= start {
+                end = max(end, pending[index].end)
+                taken.append(index)
+            } else if pending[index].start == end {
+                break
+            }
+            index += 1
+        }
+        let lba = pending[first].start
+        for index in taken.reversed() { pending.remove(at: index) }
+        pendingSectors = pending.reduce(0) { $0 + $1.end - $1.start }
+        let (done, _) = mechanicalAccess(lba: lba, sectors: end - lba, isWrite: true,
+                                         at: start, readAhead: false, origin: lba,
+                                         events: &events, samples: &samples)
+        stats.destageWrites += 1
+        return done
+    }
+
+    // MARK: - Le contenu du tampon
+
+    /// Jusqu'où le tampon tient, d'un seul morceau, ce qui commence à `first`.
+    private func coveredPrefix(from first: Int, to last: Int) -> Int {
+        guard cacheSectors > 0 else { return first }
+        var reach = first
+        for range in segments where range.contains(first) { reach = max(reach, range.end) }
+        for write in pending where write.start <= first && write.end > first {
+            reach = max(reach, write.end)
+        }
+        return min(reach, last)
+    }
+
+    private mutating func remember(_ range: BufferedRange) {
+        guard cacheSectors > 0, range.count > 0 else { return }
+        segments.append(range)
+        fitBuffer()
+    }
+
+    /// Une écriture rend caduc ce que le tampon tenait de ces secteurs.
+    private mutating func forget(_ first: Int, _ last: Int) {
+        guard cacheSectors > 0 else { return }
+        var kept: [BufferedRange] = []
+        kept.reserveCapacity(segments.count + 1)
+        for range in segments {
+            guard range.overlaps(first, last) else { kept.append(range); continue }
+            if range.start < first { kept.append(BufferedRange(start: range.start, end: first)) }
+            if range.end > last { kept.append(BufferedRange(start: last, end: range.end)) }
+        }
+        segments = kept
+        if var s = stream, s.origin < last, s.next > first {
+            s.origin = max(s.origin, min(last, s.next))
+            stream = s
+        }
+        // Une écriture plus récente des mêmes secteurs remplace l'ancienne.
+        pending.removeAll { $0.start >= first && $0.end <= last }
+        pendingSectors = pending.reduce(0) { $0 + $1.end - $1.start }
+    }
+
+    private mutating func insertPending(_ write: PendingWrite) {
+        var low = 0
+        var high = pending.count
+        while low < high {
+            let mid = (low + high) / 2
+            if pending[mid].start < write.start { low = mid + 1 } else { high = mid }
+        }
+        pending.insert(write, at: low)
+        pendingSectors += write.end - write.start
+    }
+
+    /// Le cache ne tient pas plus que sa taille : les écritures en attente
+    /// d'abord, la lecture anticipée ensuite, et ce qui reste de place aux
+    /// entrées les plus récemment servies.
+    private mutating func fitBuffer() {
+        guard cacheSectors > 0 else { return }
+        var room = cacheSectors - pendingSectors
+        if var s = stream {
+            let span = s.stop - s.origin
+            if span > room {
+                s.origin = min(s.next, max(s.origin, s.stop - max(room, 0)))
+                stream = s
+            }
+            room -= s.stop - s.origin
+        }
+        var used = segments.reduce(0) { $0 + $1.count }
+        var drop = 0
+        while used > room && drop < segments.count {
+            let excess = used - room
+            if segments[drop].count > excess && drop == segments.count - 1 {
+                segments[drop].start += excess
+                used -= excess
+                break
+            }
+            used -= segments[drop].count
+            drop += 1
+        }
+        if drop > 0 { segments.removeFirst(drop) }
+    }
+
+    // MARK: - La fin
+
+    /// Le travail est fini ; le disque, lui, ne l'est pas. Il finit sa lecture
+    /// anticipée et pose ce qu'il a acquitté, puis se parque s'il le fait.
+    /// Rend l'instant où le bras repart se parquer, s'il le fait.
     ///
     /// Le parcage n'entre pas dans `stats` : ces compteurs décrivent ce qu'on
     /// a demandé au disque, et personne n'a demandé celui-ci. L'y inclure
     /// décalerait le seek moyen d'une passe sans qu'aucune requête ait bougé.
-    mutating func finish(events: inout [DiskEvent]) -> Double? {
+    mutating func finish(events: inout [DiskEvent], samples: inout [HeadSample]) -> Double? {
+        advanceBackground(until: .infinity, events: &events, samples: &samples)
+        let quiet = idleAt
         var tail: [DiskEvent] = []
         var parkAt: Double?
-        let stopAt = idle.stopAt ?? (served ? idle.stopAfter.map { clock + $0 } : nil)
+        let stopAt = idle.stopAt ?? (served ? idle.stopAfter.map { quiet + $0 } : nil)
         self.stopAt = stopAt
         // Un disque parque toujours ses têtes **avant** de couper le moteur :
         // sans couple, plus de coussin d'air. Un disque de bureau ne le fait
@@ -599,9 +1119,9 @@ struct DiskMechanics {
             let travel = seekModel.duration(distance: distance)
             // Si la coupure vient avant le délai d'inactivité, c'est elle qui
             // déclenche le voyage.
-            var moment = clock + delay
+            var moment = quiet + delay
             if let stopAt { moment = min(moment, stopAt - travel) }
-            moment = max(moment, clock)
+            moment = max(moment, quiet)
             if distance > 0 {
                 tail.append(DiskEvent(
                     time: moment, kind: .seek(seekModel.profile(distance: distance))))
@@ -620,5 +1140,11 @@ struct DiskMechanics {
         tail.sort { $0.time < $1.time }
         events.append(contentsOf: tail)
         return parkAt
+    }
+
+    /// La même chose, pour qui n'a que faire des échantillons.
+    mutating func finish(events: inout [DiskEvent]) -> Double? {
+        var samples: [HeadSample] = []
+        return finish(events: &events, samples: &samples)
     }
 }

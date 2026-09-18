@@ -127,7 +127,7 @@ scénario      : \(scenario.label.title) — \(geometry.model)
 requêtes      : \(end.requestCount)
 seeks         : \(end.stats.seekCount) (moy. \(end.stats.averageSeekDistance) cyl.)
 \(end.stats.recalibrations > 0 ? String(format: "recalibrations : %d, %.1f s d'attente\n", end.stats.recalibrations, end.stats.recalibrationSeconds) : "")lu / écrit    : \(end.stats.bytesRead / 1_000_000) / \(end.stats.bytesWritten / 1_000_000) Mo
-événements    : \(end.eventCount)
+\(scenario.setup.drive.buffer == nil ? "" : String(format: "tampon        : %d lectures servies, %.1f Mo lus d'avance ; %d écritures différées, posées en %d vidages\n", end.stats.bufferHits, Double(end.stats.readAheadSectors * DriveGeometry.bytesPerSector) / 1_000_000, end.stats.cachedWrites, end.stats.destageWrites))événements    : \(end.eventCount)
 repères audio : \(tally.cues)
 durée         : \(String(format: "%.1f", end.duration)) s
 \(end.plan.map(describe) ?? "")
@@ -137,6 +137,17 @@ durée         : \(String(format: "%.1f", end.duration)) s
 \(describePhases(spans, throughput: throughput))
 
 """.data(using: .utf8)!)
+
+// La ventilation du temps de la passe, pour qui cherche où il passe.
+if ScenarioRequest.environment["STATS"] != nil {
+    let s = end.stats
+    FileHandle.standardError.write(String(format: """
+    temps         : seek %.2f s, latence %.2f s, transfert %.2f s, pas de piste %.2f s, \
+    calcul %.2f s, attente %.2f s, tampon %.2f s, lecture anticipée %.2f s
+
+    """, s.seekSeconds, s.rotationSeconds, s.busySeconds, s.stepSeconds,
+         s.thinkSeconds, s.waitSeconds, s.bufferSeconds, s.readAheadSeconds).data(using: .utf8)!)
+}
 
 guard let mixer else { exit(0) }
 

@@ -5036,3 +5036,433 @@ ceux d'après le coude.
   droite par plateau est tirée de l'ATA IV seul.
 - **Une recalibration due pendant la queue d'une passe n'est pas jouée** : le
   mécanisme ne regarde qu'à l'arrivée d'une requête, et à la coupure rien.
+
+## Chantier 26 — le lot 7 : le cache du disque, et le recalage qui solde
+
+**Fait** · branche `experts`
+
+### Le problème
+
+`DiskMechanics` servait tout par la mécanique : pas de tampon, pas de lecture
+anticipée, pas de cache d'écriture, un bus infini et des commandes gratuites.
+L'expert disque classait ce manque troisième (« le plus gros écart conceptuel
+restant », `DISK_EXPERT_REVIEW.md` §4.1), et trois chantiers de suite ont buté
+dessus : le tour de plateau corrigé au lot 1, que la lecture anticipée masquait
+sur un vrai disque ; `SMARTDRV` et l'éviction de VCACHE, écartés au lot 3 faute
+de cache ; et le calage de `ThinkModel`, que les lots 3 et 4 se sont passé.
+
+| | où | ce qui manquait | mesuré avant |
+|---|---|---|---|
+| §4.1 | `DiskMechanics` | lecture anticipée, lecture sans latence, cache d'écriture, taille du tampon | aucune trace de tampon ; toute écriture synchrone |
+| §4.2 | même endroit | le débit du bus n'était jamais une borne, une commande ne coûtait rien | un 1993 derrière un bus ISA lisait comme si son interface suivait tout |
+| M3 (ch. 22) | `BootPlanner` | `SMARTDRV`, que le démarrage de 1993 charge | les lectures de MS-DOS au secteur, sans cache |
+| M1 (ch. 22) | `BootPlanner.followChain` | l'éviction de VCACHE | une page de table FAT32 lue restait en cache tout le démarrage |
+| ch. 22, 23 | `ThinkModel.boot` | le recalage promis | dérive de −3,3 à +7,4 % laissée ouverte |
+
+### Les décisions — les fiches, lues dans les manuels
+
+Le tampon, sa politique par défaut, l'interface et le coût de commande sont
+désormais des champs de `DriveReference` (`DriveBuffer`). Chaque valeur vient
+d'un manuel constructeur ou de sa fiche, et les PDF sont rangés dans
+`~/code/perso/disknoise.resources/manuels/` — le chantier 25 ne les avait pas
+gardés. Un disque de la galerie prend la fiche du catalogue la plus proche de
+son année.
+
+| fiche | tampon | lecture anticipée | cache d'écriture | interface | ce qui tranche |
+|---|---|---|---|---|---|
+| Conner CFA170A, 1993 | 64 Ko | oui | **non** | 7,0 Mo/s | TULARC : « 64 KB READ-AHEAD », « 7.000 MB/S ext » |
+| Fireball 1080AT, 1996 | 128 Ko, **76 de cache** | oui | oui | PIO 4, 16,67 Mo/s | TULARC : « 128 KB READ/WRITE » ; manuel Fireball TM (81-111394-02, 1996) §5.5.1 et §6 : « DisCache, a 76 K disk cache », « read look-ahead, and write cache enabled » à la mise sous tension |
+| Seagate U8, 1999 | 512 Ko | oui | oui | UDMA 4 | manuel U8 (SG35226-001, rév. A) : « Cache buffer 512 Kbytes », « Power-on default has the read look-ahead and write caching features enabled » |
+| Barracuda ATA IV, 2001 (×2) | 2 Mo | oui | oui | UDMA 5 | manuel ATA IV (100129212, rév. B), même phrase |
+| Barracuda 7200.7, 2003 | 2 Mo | oui | oui | UDMA 5 | manuel 7200.7 (100217279, rév. N) : 2 Mo pour le ST340014A, 8 Mo pour les variantes en …3A |
+| Barracuda 7200.10, 2006 | **16 Mo** | oui | oui | UDMA 5 | manuel 7200.10 PATA (100402369, rév. F), table 2 : 16 Mo pour le ST3320620A, 8 Mo pour le ST3320820A |
+| Barracuda 7200.11, 2008 | 32 Mo | oui | oui | SATA 300 | manuel 7200.11 (100452348, rév. E), table 1 |
+
+Trois choses que les manuels ne donnent pas, et qui sont dites comme telles :
+
+- **le manuel du Fireball 540/1080AT de 1995** (81-109318-02), la fiche exacte
+  du catalogue, est introuvable en ligne ; le détail vient du Fireball TM de
+  même capacité, un an plus tard ;
+- **la segmentation** : seul le Fireball la décrit (« adaptive segmentation […]
+  each segment contains one cache entry »), et le Conner Cougar de 1992
+  annonce un tampon « segmentable » géré au plus anciennement utilisé. Les
+  manuels Seagate se taisent. Le modèle applique la règle du Fireball à tous :
+  aucun nombre de segments n'est posé, il tombe de la taille du tampon devant
+  celle d'une piste ;
+- **la lecture sans latence** : seul le Fireball l'annonce (« Read-on-arrival
+  firmware »), et la phrase peut aussi désigner une lecture commencée avant la
+  fin du repositionnement. Les Seagate la reçoivent **par hypothèse**, le Conner
+  non.
+
+**Le coût de commande** a une seule mesure de la période : Microsoft Research,
+*IDE Ultra/33 Performance: Intel PIIX4E* (1999), sur un Pentium II — « The DMA
+setup / cleanup activity takes approximately 200 µs » en lecture, moins de
+50 µs en écriture. Le modèle prend 0,2 ms dans les deux sens à partir de 1996.
+Le Conner reçoit 0,5 ms, la valeur que Conner publie pour le Cougar CP30204 de
+1992 (« Controller Overhead < 500 µs »).
+
+**Le bus de la machine** vient d'une table d'époque (`HostBus`) : 5,0 Mo/s pour
+un IDE sur ISA en PIO (brevet US 5 678 064, « burst rates of 5 MByte/sec on the
+programmed I/O cycles ») ; PIO 4 en 1996, Windows 95 OSR1 n'ayant pas de pilote
+DMA ; en 1999 les salves mesurées par le même rapport, 32,6 Mo/s vers la mémoire
+et 21,9 Mo/s dans l'autre sens ; UDMA/100 nominal ensuite. La revue parlait de
+« 2 à 3 Mo/s utiles derrière un 486 » : aucune source ne le donne, et le brevet
+dit 5 en salve.
+
+### Les décisions — la mécanique
+
+**Deux horloges.** Celle de l'hôte, qui avance à chaque commande acquittée, et
+celle du bras, qui peut encore lire ou écrire après. À chaque commande, le
+travail de fond est joué jusqu'à l'instant où elle arrive — la lecture anticipée
+continue, les écritures acquittées sont posées —, puis la commande est servie par
+le tampon ou par le bras. Rien ne dépend des requêtes à venir. Les événements du
+travail de fond sont émis dans l'ordre du bras, jamais avant la garde de
+`CueStream`, et l'identité flux / bloc tient.
+
+**Sans tampon, rien ne change** (`DriveInterface.direct`) : un binaire dont
+toutes les passes prennent `.direct` rend **340 bilans identiques sur 340** à
+ceux du commit précédent. La refonte est une étape, pas une réécriture.
+
+**La lecture anticipée lit une piste d'avance.** C'est ce que tient le cache du
+Fireball (76 Ko pour une piste externe de 69 Ko), et l'ordre de grandeur de la
+revue (« jusqu'à la fin de la piste »). Une requête qui tombe dans la fenêtre la
+prolonge d'une piste : une lecture séquentielle ne s'arrête jamais. Une requête
+ailleurs l'arrête au secteur près, et ce qu'elle a lu reste une entrée du
+tampon. Le franchissement de piste pendant la lecture anticipée est celui d'un
+transfert, par le même `angleOf`.
+
+**La lecture sans latence ne sert qu'aux requêtes qui tiennent sur une piste.**
+Pour une requête qui déborde, la calculer piste par piste donne exactement le
+temps de la lecture ordinaire à la première piste — le tour d'avance se
+reperd à attendre le secteur 0 de la suivante — et pire ensuite. Le modèle ne
+l'applique donc que là où elle gagne, et le tour qu'elle fait lit aussi la fin
+de la piste.
+
+**Le cache d'écriture pose aussitôt que le bras est libre**, comme le décrit le
+manuel du Fireball (« the drive immediately writes the cached data to the
+disk »), dans l'ordre de l'ascenseur à partir de la tête, en fusionnant ce qui
+se touche et a été acquitté. Il pose aussi quand il manque de place, et une
+écriture plus grosse que lui passe au travers — les écritures de 128 Ko de
+l'installeur de Windows 95 sur le Fireball, par exemple. Une lecture passe avant
+les vidages en attente.
+
+### Les décisions — les caches du système
+
+**`SMARTDRV`** (MS-DOS 6.22, `HELP SMARTDRV`) : éléments de 8 Ko, 16 Ko lus
+d'avance à chaque lecture qui va au disque, 1 Mo sous MS-DOS et 512 Ko sous
+Windows pour une machine de 3 Mo de mémoire étendue. Il est actif à partir de
+l'acte qui suit `AUTOEXEC.BAT`. Deux choix : **la machine a 4 Mo**, la
+configuration courante d'un 486 sous Windows 3.1 — aucun profil ne dit la
+sienne ; et **ses écritures partent aussitôt**, alors que l'aide dit qu'il les
+garde jusqu'à la fin de la commande — un démarrage n'en enchaîne pas assez pour
+que le délai compte. En passant sous Windows, le cache rétrécit sans rien
+garder : le cas le plus défavorable.
+
+**VCACHE** tient les pages de la table FAT32 avec les données des fichiers, dans
+une même file au plus anciennement servi (`PageLRU`). **Sa taille est une
+hypothèse** : Microsoft dit seulement qu'il se dimensionne sur la mémoire
+présente ; le seul chiffre d'époque est la règle de réglage « un quart de la
+mémoire, 16 Mo au plus » pour `MaxFileCache`. Le modèle la prend, sur une machine
+de 64 Mo en 1999. Le suivi de chaîne relit désormais une page que les données
+ont chassée : ce sont les retours périodiques que la revue décrivait.
+
+### Ce qui valide
+
+- **`DriveCacheTests`**, chiffrés en Mo/s, en tours et en vidages :
+  - une lecture contiguë servie par le tampon ne paie ni seek, ni latence, ni pas
+    de piste, et sort au débit du bus coût de commande compris — **9,17 Mo/s** en
+    requêtes de 4 Ko sur le Fireball (bus de 16,6 Mo/s), **17,0 Mo/s** sur le
+    7200.10 (100 Mo/s) : à 4 Ko, c'est le coût de commande qui commande ;
+  - la lecture anticipée lit sans qu'on le lui demande, et ses transferts sont
+    des événements hors de toute requête ;
+  - une lecture plus grosse que le tampon le vide ; un seek vide le Fireball,
+    dont le cache tient une entrée, et pas le 7200.10, qui en tient des
+    dizaines ;
+  - une lecture d'une piste entière : **0,000 tour** de latence moyenne avec la
+    lecture sans latence, **0,429** sans, sur deux cents pistes ;
+  - soixante-quatre écritures de 4 Ko d'affilée : **8 vidages** sur le
+    Fireball, dont le cache en tient dix-neuf, **3** sur le 7200.10 ; posés dans
+    l'ordre de l'ascenseur ;
+  - sans tampon, la mécanique d'avant.
+- **`SoftwareCacheTests`** : la file au plus anciennement servi, `SMARTDRV` qui
+  ne lit plus que des éléments de 8 Ko à partir de son acte et en sert une
+  partie, VCACHE qui relit 99 pages de table sur un démarrage de
+  `secretaire-1999`.
+- **`StreamingTests` tient avec le tampon** : la défragmentation tourne sur le
+  Fireball avec lecture anticipée, lecture sans latence et cache d'écriture, le
+  démarrage et l'installation de `gamer-1993` avec la lecture anticipée du
+  Conner, et les repères, la carte, les échantillons et l'activité sont ceux du
+  calcul d'un bloc, découpés en paquets de 11, 29 et 37 requêtes.
+- **`swift test` : 403 tests passent** (390 avant) ; `DISKCORE_CALIBRATION=1
+  swift test --filter Calibration` passe avec ses **trois** problèmes connus,
+  les mêmes, tous de fragmentation. L'audit d'allocation n'est pas touché : les
+  plans ne dépendent pas de la mécanique, et les 260 bilans de passe ne changent
+  que de durée et de seeks.
+- **Le coût de calcul**, rendu complet WAV compris, meilleur de trois, en
+  release : la défragmentation de la démo (`dev-1993`, 347 → 351 s de son),
+  4,80 → 4,88 s ; le recollage de `dev-2003` (200 → 168 s), 3,62 → 3,35 s ; le
+  démarrage de `gamer-2003` (69 → 68 s), 0,60 → 0,63 s. De +1 à +10 % par
+  seconde de son.
+- **L'app compile** (Debug, iPhone 17 Pro Max, iOS 26.5) ; elle n'a pas été
+  lancée.
+
+### Ce que chaque cache change, mesuré séparément
+
+Chaque étape est un binaire de `Tools/Measure/`, sous
+`MEASURE_DIR=.build/measure-lot7` : `base` (le commit du lot 6), `disk` (tampon,
+lecture anticipée, lecture sans latence, bus, coût de commande ; cache
+d'écriture coupé), `wcache` (+ cache d'écriture), `soft` (+ `SMARTDRV` et
+VCACHE), `recal`. `wcache` a été construit depuis le code final, les deux caches
+logiciels coupés par un `sed` restauré aussitôt.
+
+**Les démarrages**, en secondes (colonnes : écart à la précédente) :
+
+| profil | cible | base | disk | wcache | soft | recal | écart |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `dev-1993` | 41,8 | 41,8 | +0,4 | 0 | +1,7 | 41,8 | +0,0 % |
+| `poweruser-1993` | 42,7 | 42,7 | +0,4 | 0 | +1,6 | 42,7 | +0,0 % |
+| `gamer-1993` | 29,5 | 29,4 | +0,3 | 0 | +1,1 | 29,8 | +1,0 % |
+| `secretaire-1993` | 36,0 | 35,9 | +0,3 | 0 | +1,6 | 36,1 | +0,3 % |
+| `dev-1996` | 58,7 | 58,6 | +1,2 | −1,5 | 0 | 58,9 | +0,3 % |
+| `famille-1996` | 54,4 | 54,1 | +0,7 | −1,0 | 0 | 54,3 | −0,2 % |
+| `gamer-1996` | 44,0 | 45,2 | +0,9 | −0,9 | 0 | 45,7 | +3,9 % |
+| `secretaire-1996` | 55,4 | 54,6 | +0,7 | −0,9 | 0 | 54,9 | −0,9 % |
+| `dev-1999` | 57,0 | 58,0 | +2,1 | −3,1 | +1,2 | 57,4 | +0,7 % |
+| `famille-1999` | 66,0 | 63,8 | +1,4 | −2,6 | +1,2 | 62,8 | −4,8 % |
+| `gamer-1999` | 54,8 | 57,0 | +1,5 | −2,1 | +0,8 | 56,3 | +2,7 % |
+| `secretaire-1999` | 56,7 | 57,6 | +1,4 | −2,3 | +1,3 | 57,1 | +0,7 % |
+| `dev-2003` | 49,1 | 50,4 | −0,5 | −0,6 | 0 | 50,9 | +3,7 % |
+| `famille-2003` | 28,8 | 29,8 | −0,7 | −0,6 | 0 | 29,1 | +1,0 % |
+| `gamer-2003` | 70,0 | 69,4 | −2,2 | −0,9 | 0 | 68,3 | −2,4 % |
+| `secretaire-2003` | 33,8 | 36,0 | −0,9 | −0,7 | 0 | 35,2 | +4,1 % |
+| `dev-2007` | 47,0 | 46,6 | −0,7 | −0,5 | 0 | 46,7 | −0,6 % |
+| `famille-2007` | 38,3 | 39,0 | −1,0 | −0,5 | 0 | 38,6 | +0,8 % |
+| `gamer-2007` | 29,8 | 32,0 | −0,9 | −0,5 | 0 | 31,2 | +4,7 % |
+| `secretaire-2007` | 41,9 | 42,2 | −0,8 | −0,4 | 0 | 42,3 | +1,0 % |
+
+**`disk` allonge les démarrages FAT, et c'est la leçon de l'étape.** De +0,3 à
++2,1 s de 1993 à 1999, pendant que 2003 et 2007 raccourcissent de 0,5 à 2,2 s.
+Requête par requête sur `secretaire-1999`, la perte est presque toute dans les
+**écritures des dates d'accès**, triées et envoyées d'affilée : 216 écritures,
++1,29 s. Sans coût de commande, la suivante tombait sur un secteur qui arrivait
+juste ; avec 0,2 ms de commande, elle le manque d'un cheveu et attend un tour.
+L'étape `disk` mesure donc un disque qui n'a jamais existé — une lecture
+anticipée sans cache d'écriture — et `wcache` rend ce qu'elle avait pris.
+
+**La lecture anticipée vaut de 2,9 à 6,1 s par démarrage.** Un binaire jetable
+(`nora`) garde tout le lot sauf elle : le coût de commande y fait manquer le
+secteur suivant à chaque requête contiguë, et les vingt démarrages durent de
+11,5 à 24,3 s de plus par époque (quatre démarrages). C'est exactement le tour
+que le lot 1 a corrigé : il avait disparu parce que la mécanique était idéale,
+sans coût de commande ; il revient avec la commande, et c'est la lecture
+anticipée qui le masque, comme sur un vrai disque.
+
+**Le cache d'écriture est l'étape qui pèse**, et là où les écritures se
+pressent :
+
+| | `disk` → `wcache` |
+|---|---|
+| installations de 1993 et 1996 | 0 à −2,3 % (Conner sans cache d'écriture ; Fireball de 76 Ko) |
+| installations de 1999 à 2007 | **−7 à −22 %** |
+| journées | −2 à −3 % |
+| passes FAT, somme des douze volumes | Windows 95 4 h 43 → 4 h 00, JkDefrag 1 h 26 → 1 h 07 |
+| passes NTFS, somme des huit volumes | XP 2 h 37 → 1 h 28, UltraDefrag 4 h 04 → 2 h 00, JkDefrag 7 h 03 → 4 h 04, recollage économe 1 h 52 → 1 h 40 |
+
+Il transforme le rythme **là où les écritures arrivent plus vite que le disque
+ne les pose** : l'outil de XP sur `dev-2007` pose ses 146 350 écritures en
+12 347 vidages, douze par salve, et passe de 292 179 seeks à 44 206 et de
+1 h 17 à 38 min. Là où un programme calcule entre deux écritures, il ne groupe
+presque rien : l'installation de `famille-2003` pose 8 647 écritures en 7 300
+vidages, et ne gagne ses 12 % que parce que le disque écrit **pendant** que
+l'installeur décompresse. Le recollage économe, dont les destinations sont
+éparses, n'en fait qu'une et quart par vidage : il n'est plus la passe NTFS la
+plus rapide (1 h 40 contre 1 h 28 pour XP).
+
+**`SMARTDRV` coûte de 1,1 à 1,7 s** à chaque démarrage de 1993 : sur
+`dev-1993` il sert 414 éléments et en lit 1 838, soit 3 Mo de plus que ce qui
+est demandé, sur un disque à 1,5 Mo/s. **VCACHE ajoute de 0,8 à 1,3 s** aux
+quatre démarrages de 1999 : de 68 à 99 pages de table y sont relues après
+éviction, sur 221 à 351 lues. La taille de VCACHE, qui est une hypothèse,
+décide du nombre de ces retours bien plus que de la durée — binaires jetables,
+les quatre démarrages de 1999 :
+
+| VCACHE | pages relues après éviction | durée |
+|---|---:|---:|
+| 8 Mo | 153 à 228 | +1,0 à +1,5 s |
+| **16 Mo** (retenu) | 68 à 99 | — |
+| 32 Mo | 10 à 30 | −0,7 à −1,0 s |
+
+Le retour périodique à la table est donc certain ; sa fréquence ne l'est pas.
+
+### La prédiction qui ne tient pas
+
+L'expert annonçait que la pénalité de fragmentation, mesurée contre le témoin
+« jamais fragmenté », **se creuserait** : la lecture anticipée sert un fichier
+contigu et presque pas un fichier éclaté. C'était la prédiction la plus
+falsifiable du lot. Elle ne tient pas — écart au témoin, somme des quatre
+démarrages de chaque époque :
+
+| époque | `base` | `nora` | `soft` | `recal` |
+|---|---:|---:|---:|---:|
+| 1993 | +0,8 s (+0,5 %) | +1,5 s | +1,5 s | +1,8 s (+1,2 %) |
+| 1996 | +6,6 s (+3,2 %) | +6,9 s | +6,5 s | +6,8 s (+3,3 %) |
+| 1999 | +17,3 s (+7,9 %) | +18,8 s | +18,3 s | +18,6 s (+8,7 %) |
+| 2003 | +1,1 s (+0,6 %) | +0,6 s | +1,1 s | +0,8 s (+0,4 %) |
+| 2007 | +2,5 s (+1,6 %) | +3,0 s | +2,0 s | +1,8 s (+1,1 %) |
+
+Sur FAT l'écart se creuse d'un peu plus d'une seconde, mais c'est VCACHE et
+`SMARTDRV` qui le creusent, pas la lecture anticipée ; sur NTFS il se resserre.
+Même contre un disque sans lecture anticipée (`nora`), elle ne creuse rien :
+1999 a 18,8 s d'écart sans elle, 18,3 s avec. Le cache marche — les tests le
+chiffrent, et `nora` dit ce qu'il vaut. C'est la prémisse qui manque au modèle :
+
+- **l'écart au témoin est fait du placement des fichiers entre eux** et des
+  retours à la table FAT32, pas de fichiers coupés. Sur ces volumes, l'immense
+  majorité des fichiers qu'un démarrage lit est d'un seul tenant, sur le disque
+  vieilli comme sur le témoin, et les deux gagnent autant à la lecture
+  anticipée ;
+- **ce n'est pas le placement du calcul.** Un binaire jetable a réparti le coût
+  au mégaoctet entre les morceaux d'un fichier, comme le ferait un système à
+  pagination à la demande : l'écart ne bouge pas davantage (1999 : +7,1 % sans
+  tampon, +7,6 % avec).
+
+C'est le même manque que les trois cibles de calibration du lot 4 : pas assez de
+fichiers en morceaux là où un démarrage lit. L'entrelacement, écrit et coupé au
+chantier 23, est l'endroit où les deux se jouent.
+
+### Le recalage
+
+Les trois caches en place (`soft`), la dérive est de −5,3 à +5,0 %, et par
+époque +4,8 % (1993), −0,4 %, +1,2 %, −1,8 % et −1,6 % (2007). `fit-think.py`,
+comme au chantier 22 :
+
+| époque | `perMegabyte` seul | résidus | `perFile` seul | résidus |
+|---|---:|---:|---:|---:|
+| MS-DOS et Windows 3.1 | 0,80 → 0,652 | ±0,2 s | 0,045 → 0,029 | ±0,2 s |
+| Windows 95 | 0,41 → 0,417 | ±1,4 s | 0,022 → 0,0226 | ±1,4 s |
+| Windows 98 SE | 0,25 → 0,244 | ±2,8 s | 0,015 → 0,014 | ±2,8 s |
+| Windows XP | 0,19 → 0,199 | ±1,8 s | 0,009 → 0,0114 | ±1,6 s |
+| Windows Vista | 0,15 → 0,157 | ±1,3 s | 0,009 → 0,0101 | ±1,4 s |
+
+**Les résidus ne désignent plus aucune constante** : à un dixième de seconde
+près, l'une ou l'autre seule explique autant. Le chantier 22 avait pu dire
+laquelle avait absorbé le défaut ; celui-ci ne le peut pas. `perMegabyte` bouge
+seul pour une raison physique, et non statistique : ce qu'un cache déplace, c'est
+le coût de la lecture séquentielle, au mégaoctet. Valeurs arrondies au centième,
+comme la table : 0,65, 0,42, 0,24, **0,20**, **0,16**. Chaque époque tient
+ensuite à **±1,1 %** de sa cible en somme (1993 +0,3 %, 1996 +0,6 %, 1999
+−0,4 %, 2003 +1,0 %, 2007 +1,1 %, l'arrondi poussant un peu les deux
+dernières), et les vingt démarrages entre **−4,8 et +4,7 %**. La part du calcul
+passe de 34–70 % à 30–75 %.
+
+**Ce que le recalage révèle.** `perMegabyte` **descend** en 1993 — le bus ISA,
+le coût de commande et `SMARTDRV` y ont rendu le disque plus lent — et **monte**
+en 2003 et 2007 : le disque servi par son tampon révèle un plancher processeur
+plus lourd que celui qu'on lui prêtait. 0,16 s par mégaoctet pour un Vista de
+2007, soit 24 s de calcul pour 150 Mo chargés, et 20 % de moins seulement qu'un
+XP de 2003 sur des processeurs trois ou quatre fois plus rapides : rien dans la
+description ne le justifie. C'était déjà la remarque du chantier 22, elle est
+plus nette maintenant que le disque n'a plus rien à absorber. **Ce sont les
+cibles de 2003 et 2007 qu'il faut rediscuter** : ce ne sont pas des mesures
+d'époque mais les durées que le modèle donnait avant la relecture, et leur
+temps, s'il est réel, n'est pas un coût au mégaoctet — c'est de
+l'initialisation de services, que `perFile` décrirait mieux si les quatre
+profils d'une époque permettaient de séparer les deux. Ils ne le permettent pas.
+
+### Ce qui a été entendu
+
+**Rien n'a encore été écouté par Gabriel.** L'assistant qui a mené ce lot
+n'entend pas : ce qui suit est lu dans les rendus de `base` et `recal`, par
+l'enveloppe des transitoires (dérivée du signal, trames de 1 ms), et écrit
+avant l'écoute pour qu'elle le confirme ou le démente.
+
+| rendu | transitoires | intervalle médian | taille moyenne des salves (écart > 60 ms) | secondes avec une raie de 90–140 Hz |
+|---|---:|---:|---:|---:|
+| `boot:gamer-2003`, avant | 1 014 | 28 ms | 6,3 | 4 sur 70 |
+| après | 1 170 | 18 ms | 8,4 | 2 sur 69 |
+| `install:famille-2003`, avant | 9 925 | 39 ms | 3,3 | 36 sur 521 |
+| après | 10 229 | 25 ms | 3,8 | 23 sur 459 |
+
+- **Le démarrage** : des transitoires plus serrés et regroupés en salves plus
+  longues ; la tête lit aussi pendant que la machine calcule, une piste
+  d'avance, et ses pas de piste tombent hors des requêtes. Le rythme de 110 Hz
+  que le lot 6 a rendu audible est toujours là, sur moins de secondes : les
+  longues lectures sont servies plus vite.
+- **L'installation** : 63 s de moins sur 8 min 41, le crépitement plus dense
+  (intervalle médian de 39 à 25 ms), mais **peu de salves nouvelles** : le
+  disque écrit pendant que l'installeur décompresse, une écriture à la fois.
+  Les salves du cache d'écriture s'entendront plutôt dans une passe de XP sur
+  NTFS, où les écritures se pressent.
+
+À écouter, rendus par `bin-base` et `bin-recal` de `.build/measure-lot7` :
+
+| paire | ce qui doit différer |
+|---|---|
+| `SCENARIO=boot:gamer-2003`, avant / après | lecture pendant le calcul, salves plus longues |
+| `SCENARIO=install:famille-2003`, avant / après | un crépitement plus serré, une minute de moins |
+| `SCENARIO=dev-2007 STRATEGY=windowsXP`, avant / après | les salves : douze écritures par vidage, dans l'ordre du plateau |
+| `SCENARIO=boot:dev-1993`, avant / après | `SMARTDRV` et le bus ISA |
+
+### Le README
+
+Régénéré d'un seul jeu de mesures, `recal`, dont le binaire `final` — celui du
+commit — redonne les 340 bilans à l'identique. `readme-tables.py` a d'abord été
+validé en reproduisant, depuis les bilans de `base`, les 67 lignes de table du
+README précédent et ses chiffres de prose, les journées au texte « activités »
+près. 61 lignes de table changent. La prose reprise :
+
+- un paragraphe **« Le tampon du disque »**, avec la table des fiches, et le
+  schéma de la chaîne qui le nomme ;
+- trois conclusions **qui se renversent** : le recollage économe n'est plus la
+  passe NTFS la plus rapide ; le tassage à la frontière est désormais plus long
+  que Windows 95 sur les douze FAT (4 h 17 contre 4 h 00) ; et sur `dev-2007`,
+  le seek moyen d'UltraDefrag n'est plus plus grand que celui de XP (20 090
+  contre 21 199 cylindres), le cache posant les écritures des deux dans l'ordre
+  de l'ascenseur — l'ancien écart est daté ;
+- le recalage, et ce qu'il révèle ; VCACHE et `SMARTDRV` au démarrage ;
+- « Ce qui ne l'est pas » : le cache existe, et le système ne le vide jamais.
+
+Trois chiffres étaient **déjà périmés avant ce lot**, et ont été remesurés : la
+démo de démarrage de l'en-tête (« 51,0 s, dont 40 % » quand `base` donnait
+57,6 s et 43 %), celle de défragmentation (« 1 414 fichiers » quand le bilan en
+compte 1 450), et le gain du préchargeur sur `famille-2007` (« 1 051 à 660
+seeks » quand `base` en comptait 773), remesuré par un binaire jetable où Vista
+lit dans l'ordre du registre : 890 seeks à 44 114 cylindres sans préchargeur,
+635 à 18 757 avec, 43,6 s contre 38,6.
+
+Hors du README : les **fourchettes de durée de l'écran de choix d'outil**,
+recopiées à la main des bilans comme au chantier 24 ; et l'écran des
+instruments, dont « Où passe le temps » gagne une part **tampon** — le temps
+qu'une commande servie par lui a pris à l'hôte —, sans quoi le transfert y
+aurait fondu sans que rien le dise.
+
+### Laissé ouvert
+
+- **La prédiction de l'écart au témoin** n'est pas confirmée, et la raison est
+  dans les volumes, pas dans le cache : trop peu de fichiers en morceaux là où
+  un démarrage lit. Elle se rejouera avec l'entrelacement.
+- **Les hypothèses de ce lot**, à trancher sur source : la lecture sans latence
+  des Seagate ; leur segmentation ; la profondeur de la lecture anticipée (une
+  piste) ; un coût de commande de 0,2 ms sur les machines de 2003 et 2007, mesuré
+  sur un Pentium II ; l'UDMA/100 nominal de ces machines ; la mémoire de la
+  machine de 1993 (4 Mo) et la taille de VCACHE (16 Mo) ; un disque qui pose
+  ses écritures dès qu'il est libre.
+- **Le système ne vide jamais le cache** : aucun `FLUSH CACHE` aux points de
+  contrôle de NTFS ni à la validation d'un déplacement. Si l'outil de XP le
+  faisait, ses salves seraient bornées à cinq secondes d'écritures, et une part
+  de son gain avec.
+- **Ce que le tampon n'a pas** : la lecture anticipée du système — Windows 95 et
+  98 lisaient 64 Ko d'avance (« optimisation de la lecture anticipée ») —,
+  l'écriture différée de `SMARTDRV`, `SMARTDRV` pendant les installations et les
+  journées de 1993, et le cache de NT, qui garde tout un démarrage.
+- **`InstallEra.writeRequestSectors` n'est toujours pas plafonné** : le lot 1
+  l'avait rendu possible, aucun lot ne l'a fait. Avec un cache d'écriture de
+  76 Ko, les écritures de 128 Ko de Windows 95 passent au travers.
+- **Le planificateur ignore le tampon** : l'horloge estimée des points de
+  contrôle NTFS (`OperationSink.plannedSeconds`) et `AccessCost` supposent
+  toujours un disque sans cache, et les passes NTFS durent désormais moitié
+  moins que ce qu'ils estiment.
+- **L'écoute par Gabriel**, les paires ci-dessus. Le CPU sur l'iPhone n'a pas été
+  mesuré ; le rendu hors-ligne dit +1 à +10 % par seconde de son.
+- **Les cibles de 2003 et 2007** : à rediscuter, ou à remplacer par des
+  mesures d'époque.

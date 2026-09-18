@@ -60,6 +60,7 @@ func describe(_ playback: BootPlayback, duration: Double) -> String {
     système       : \(playback.osName)\(playback.appName.map { " puis \($0)" } ?? "")
     fichiers      : \(playback.filesRead) ouverts, \(playback.residentFiles) résidents
     dates d'accès : \(playback.stampedFiles) réécrites en \(playback.stampWrites) écritures
+    \(playback.softwareCache.map { "cache système : \($0)\n" } ?? "")\
     calcul        : \(String(format: "%.1f", playback.thinkSeconds)) s
     disque        : \(String(format: "%.1f", disk)) s \
     (\(String(format: "%.0f", share)) % de l'attente)

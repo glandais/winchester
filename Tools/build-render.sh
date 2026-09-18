@@ -34,6 +34,8 @@ MODEL_SOURCES="
     Sources/Model/DaySession.swift
     Sources/Model/DiskLife.swift
     Sources/Model/DiskSimulator.swift
+    Sources/Model/DriveCache.swift
+    Sources/Model/SoftwareCache.swift
     Sources/Model/Volume.swift
     Sources/Model/DefragJob.swift
     Sources/Model/DefragStrategy.swift

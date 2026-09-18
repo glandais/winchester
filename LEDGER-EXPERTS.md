@@ -343,3 +343,134 @@ doit être corrigé « au jugé » — c'est justement la règle du projet.
   suivi de chaîne FAT32 et `SMARTDRV` (lot 3), et le calage de `ThinkModel` qu'il
   rouvrira (lots 3 et 4). Une revue dit où regarder ; elle ne dit pas dans quel
   ordre, et l'ordre s'est révélé à l'usage.
+
+---
+
+## Le solde — ce que sept lots ont fait des trois revues
+
+Écrit à la fin du lot 7, le 18 septembre 2026. Les trois relectures ont été
+dépouillées ici en sept lots ; chacun est devenu un chantier de `LEDGER.md`, qui
+dit ses décisions, ses sources et ses mesures. Ce qui suit n'en répète pas le
+détail : c'est le compte de ce que les revues demandaient, et de ce qu'il en
+reste.
+
+| lot | chantier | commit | ce qu'il a fait |
+|---|---|---|---|
+| 1 | 20 | `f6e29dc` | les quatre fautes : le recouvrement de `Windows95Strategy`, le skew et l'arrondi de latence, le curseur système, la MFT en miettes |
+| 2 | 21 | `2f2fb41` | les huit erreurs de fait, de `clusterKB` de 1993 à la commutation de tête |
+| 3 | 22 | `baa33b8` | le montage, la lecture à la page, `$LogFile`, la date de dernier accès, le suivi de chaîne FAT32 ; premier recalage |
+| 4 | 23 | `3a1a250` | l'écriture par paquets et les répertoires ; l'entrelacement écrit, mesuré et coupé |
+| 5 | 24 | `50b5150` | la règle NTFS des clusters retenus portée par le volume, la zone MFT d'UltraDefrag, Windows 95 qui évacue au fond, les répertoires FAT que Windows ne déplace pas, la tranche bornée, les chiffres des docstrings |
+| 6 | 25 | `f4c64d2` | le régime dans le timbre, les trains de micro-transitoires, la mise sous tension en trois temps, la recalibration thermique, la coupure et l'atterrissage |
+| 7 | 26 | ce commit | le tampon du disque et sa fiche, le bus et le coût de commande, `SMARTDRV`, l'éviction de VCACHE ; le recalage final |
+
+### Ce qui a été corrigé
+
+- **Les quatre fautes** (F1 à F4), toutes au lot 1, chacune avec un test qui
+  échouait avant. F2 — le tour de plateau perdu — a été corrigé deux fois : par
+  le skew, au lot 1, qui rendait la mécanique idéale ; puis par la lecture
+  anticipée, au lot 7, quand le coût de commande a rendu le tour au disque et
+  qu'il a fallu ce que les vrais disques avaient pour le masquer.
+- **Les huit erreurs de fait** (E1 à E8), toutes au lot 2, contre une table de
+  `FORMAT`, une fiche ou la documentation de NTFS. Une mesure de la revue a été
+  corrigée au passage : l'inversion de la commutation de tête touchait cinq
+  fiches sur huit, pas six.
+- **Les deux manques structurels** : l'allocation incrémentale et les
+  répertoires, au lot 4 ; l'entrelacement, écrit, n'est pas retenu (plus bas).
+- **Ce que le modèle ne faisait pas, et qui s'entend** : le cache et la lecture
+  anticipée (lot 7), `$LogFile` et l'horodatage d'accès (lot 3), la
+  recalibration thermique, le régime dans le timbre et le filtre à 18 ms (lot 6),
+  le coût de commande et le débit du bus (lot 7). Seul le settle d'écriture
+  manque (plus bas).
+- **Les quatre recoupements** : la calibration qui absorbait les artefacts a été
+  recalée deux fois, aux lots 3 et 7, et une seule fois par lot, après toutes
+  ses corrections ; la règle de volume des clusters retenus est portée par le
+  volume (lot 5) ; les chiffres de docstrings ont une règle (lot 5 : un fait de
+  galerie en sort, un chiffre de réglage reste daté). Le deuxième — le réglage
+  de fragmentation que `NTFSAllocator` porte sans le dire — n'a été ni mesuré
+  ni écrit dans l'en-tête.
+
+**Ce qui était jugé juste** n'a été retiré par aucun lot ; plusieurs points ont
+été revérifiés en passant, et tiennent : la borne de visites de `FindBestItem`
+(pic de 197 609 pour deux millions, lot 5), la sortie de la zone MFT par
+`Fixup`, la garantie du tassage à la frontière (l'audit d'allocation du lot 1
+la rejoue sur les treize plans), les modes acoustiques à fréquences fixes (lot
+6).
+
+### Ce qui a été écarté, et pourquoi
+
+- **L'entrelacement** (lot 4). Mesuré, il donnait à tous les programmes d'une
+  journée le même débit et les faisait écrire ensemble du matin au soir : une
+  borne haute, comme l'écriture en séquence est une borne basse. Trancher entre
+  les deux demande un débit par programme et une heure dans la journée, que la
+  chronologie n'a pas. Décision prise avec Gabriel, sur les mesures.
+- **Le parcage d'une seconde** (lot 6) n'a pas été « nommé comme une licence »,
+  comme la revue le proposait en premier : il a été remplacé par ce qui
+  produisait ce son, la coupure.
+- **La phrase « une bonne minute pour un Vista »** (lot 3) a été retirée plutôt
+  que corrigée : elle promettait ce que les cibles ne disaient pas.
+
+### Ce qui reste
+
+**Les quatre questions à trancher sur source**, une par une :
+
+| question | état |
+|---|---|
+| `FSCTL_MOVE_FILE` et une tranche qui dépasse la fin du fichier | **tranchée** au lot 5 : bornée, pas refusée — `FatComputeMoveFileParameter` (`fastfat`) et la page *Defragmenting Files* de Microsoft |
+| `dfrg.msc` respectait-il la zone MFT ? | **hypothèse**, argumentée au lot 5 (oui) ; un désassemblage ou un témoignage d'époque trancherait |
+| le piste-à-piste du Fireball, 3,0 ms | **tranchée** au lot 7 : c'est la valeur publiée — fiche TULARC du 540/1080AT (« 12.0/3.0 ms »), manuel du Fireball TM (« Track-to-track Typical 3.0 ms, Maximum 4.0 ms »). Les 16 % du temps de lecture passés en franchissements sont ceux de la fiche |
+| la position de `$MFT` selon la version de Windows et la taille du volume | **ouverte** |
+
+**Les trois cibles de calibration** restent manquées depuis le lot 2 :
+`dev-1996` à 8 % de fichiers fragmentés (35 à 50 visés), `secretaire-1999` à 6 %
+(15 à 25), `famille-2003` à 13 % (40 à 60). Elles se jouent entre la borne basse
+livrée et la borne haute de l'entrelacement. Le lot 7 y ajoute une conséquence :
+la pénalité de fragmentation d'un démarrage ne s'est pas creusée avec la lecture
+anticipée, comme la revue le prédisait, parce que les fichiers qu'un démarrage
+lit sont presque tous d'un seul tenant — le même manque, vu d'ailleurs.
+
+**L'entrelacement**, écrit et coupé au lot 4 : le code est là, derrière
+`DiskGenerator.runsProgramsConcurrently`.
+
+**Les estimations du lot 6**, à trancher sur source : la période et le motif de
+la recalibration thermique, les 24 commutations du moteur par tour, le seuil
+d'atterrissage à 40 % du régime, les 50 ms du décollement, le palier fluide en
+2001 pour toute la galerie, la conversion dBA → bels du Conner ; et le niveau
+des seeks, calé sur rien, qui oblige à la seule licence de mixage du plateau.
+
+**Les hypothèses du lot 7** : la lecture sans latence et la segmentation des
+Seagate, la profondeur de la lecture anticipée, le coût de commande après 1999,
+le bus des machines de 2003 et 2007, la mémoire de la machine de 1993 et la
+taille de VCACHE, un cache d'écriture que le système ne vide jamais.
+
+**Les cibles de durée de démarrage** ne sont pas des mesures d'époque, et le
+recalage final le montre : pour tenir celles de 2003 et 2007, le coût de calcul
+au mégaoctet doit monter, à un niveau que rien ne justifie. Ce sont elles qu'il
+faut rediscuter, ou remplacer par des mesures.
+
+**Ce qu'aucun lot n'a pris**, bien que les revues le demandent :
+
+- le **facteur de format** sur le débit (disque §3.3) : le modèle surestime
+  toujours du même côté, jusqu'à +14 % sur le 7200.11 ;
+- le **settle d'écriture** (disque §4.3), dont le manuel du Fireball TM donne
+  maintenant la mesure : 14 ms de seek moyen en écriture, 12 en lecture ;
+- le **plafond de `InstallEra.writeRequestSectors`** à 128 ou 256 secteurs,
+  possible depuis le lot 1 ;
+- la **mesure de `reuseTolerance`** à 2, 4 et `.max` sur `famille-2003`, et
+  l'en-tête de `NTFSAllocator` qui dirait ce réglage ;
+- le docstring de **`.temporary`**, qui promet une texture que le code ne
+  produit pas ;
+- `NTFSProfile.forVolume`, la surcharge de format dans
+  `ProfileSpec.clusterCount`, la place de `$Bitmap` et les numéros
+  d'enregistrement de MFT (système de fichiers §7), l'arrondi au cluster des
+  installations et des journées.
+
+**Ce que les revues n'ont pas relu** : le rendu, la carte et l'interface n'ont
+eu aucun relecteur ; la couche audio ne l'a été que du côté de la mécanique.
+
+**Le défaut que les revues signalaient vaut pour elles.** Leurs chiffres
+dataient du commit qu'elles relisaient, et presque tous ont changé d'ordre de
+grandeur en sept lots — le README a été régénéré d'un seul jeu de mesures à
+chaque chantier, et cinq chantiers sur sept y ont trouvé des chiffres de prose
+déjà périmés avant d'y toucher. Une relecture dit où regarder ; seul un chiffre
+régénéré par l'outil qui le produit reste vrai.

@@ -25,9 +25,15 @@ struct StreamingTests {
         return VolumeFactory.agedWindows95(partition: partition, fill: 0.78).defragVolume()
     }
 
+    /// Le Fireball dans une machine de son année : lecture anticipée, lecture
+    /// sans latence et cache d'écriture. Le tampon est de l'état, et c'est
+    /// exactement le genre d'état qui pourrait dépendre du découpage en paquets.
+    private static let interface = DriveInterface(buffer: drive.buffer, host: .era(year: drive.year))
+
     private static let setup = PassSetup(geometry: drive.geometry, seekModel: drive.seekModel,
                                          spinUpAt: 0, spinUpDuration: 0.9,
                                          idle: IdleBehavior(parkAfter: 1.0),
+                                         drive: interface,
                                          tail: 3.5)
 
     // MARK: - La référence : le calcul d'un bloc
@@ -55,8 +61,8 @@ struct StreamingTests {
                                       requests: requests, totalDuration: 0,
                                       spinUpAt: setup.spinUpAt,
                                       spinUpDuration: setup.spinUpDuration,
-                                      idle: setup.idle)
-        let duration = (trace.timings.last?.end ?? 0) + 3.5
+                                      idle: setup.idle, drive: setup.drive)
+        let duration = max((trace.timings.last?.end ?? 0) + 3.5, trace.duration)
 
         var mutations: [TimedMutation] = []
         var activity: [ClusterActivity] = []
@@ -141,12 +147,13 @@ struct StreamingTests {
                               spinUpAt: 0.35,
                               spinUpDuration: max(plan.post - 0.6, 0.5),
                               idle: IdleBehavior(parkAfter: 1.0),
+                              drive: .era(year: disk.spec.timeline.start.year),
                               tail: plan.tail)
         let trace = DiskSimulator.run(geometry: setup.geometry, seekModel: setup.seekModel,
                                       requests: plan.requests, totalDuration: 0,
                                       spinUpAt: setup.spinUpAt,
                                       spinUpDuration: setup.spinUpDuration,
-                                      idle: setup.idle)
+                                      idle: setup.idle, drive: setup.drive)
         let reference = ReferenceCues.build(events: trace.events,
                                             cylinders: setup.geometry.cylinders)
 
@@ -177,7 +184,9 @@ struct StreamingTests {
         let rate = hardware.geometry.outerSustainedMBs * 1_000_000
         let setup = PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
                               spinUpAt: 0, spinUpDuration: 0.9,
-                              idle: IdleBehavior(parkAfter: 1.0), tail: 3.5)
+                              idle: IdleBehavior(parkAfter: 1.0),
+                              drive: .era(year: installed.disk.spec.timeline.start.year),
+                              tail: 3.5)
 
         let collected = OperationSink()
         InstallPlanner.plan(installed: installed, diskBytesPerSecond: rate, into: collected)
@@ -188,7 +197,7 @@ struct StreamingTests {
         let trace = DiskSimulator.run(geometry: setup.geometry, seekModel: setup.seekModel,
                                       requests: requests, totalDuration: 0,
                                       spinUpAt: setup.spinUpAt, spinUpDuration: setup.spinUpDuration,
-                                      idle: setup.idle)
+                                      idle: setup.idle, drive: setup.drive)
         var mutations: [TimedMutation] = []
         for (index, operation) in collected.operations.enumerated() {
             for position in Int(operation.mutationStart)..<Int(operation.mutationStart + operation.mutationCount) {

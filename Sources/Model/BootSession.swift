@@ -51,7 +51,7 @@ extension ThinkModel {
     /// Le plancher processeur d'un démarrage, par système.
     ///
     /// **C'est le seul endroit où une durée de démarrage est calée**, et il l'a
-    /// été deux fois (`LEDGER.md`, chantiers 20 et 22). Les cibles sont les
+    /// été trois fois (`LEDGER.md`, chantiers 20, 22 et 26). Les cibles sont les
     /// vingt durées que le modèle donnait avant la relecture des experts,
     /// elles-mêmes posées sur les durées d'époque.
     ///
@@ -63,16 +63,25 @@ extension ThinkModel {
     /// requête de transfert. C'est donc `perMegabyte` seul qui a bougé ;
     /// `perFile` décrit toujours ce qu'il décrivait.
     ///
-    /// Le cache disque et la lecture anticipée, quand ils arriveront, feront
-    /// tomber tout le séquentiel une seconde fois : ce recalage-ci sera à
-    /// refaire, ici.
+    /// Le troisième calage suit les trois caches du chantier 26 — celui du
+    /// disque, `SMARTDRV`, VCACHE. Les résidus, cette fois, ne désignent
+    /// aucune constante : `perFile` seul et `perMegabyte` seul laissent les
+    /// mêmes, à un dixième de seconde près, sur quatre époques sur cinq. C'est
+    /// encore `perMegabyte` qui bouge, pour une raison physique et non
+    /// statistique : ce qu'un cache déplace, c'est le coût de la lecture
+    /// séquentielle, au mégaoctet. Et il **monte** pour 2003 et 2007 : le
+    /// disque servi par son tampon révèle un plancher processeur plus lourd
+    /// que celui qu'on lui prêtait, 0,16 s par mégaoctet pour un Vista de
+    /// 2007. Rien dans la description ne le justifie — les cibles de ces deux
+    /// époques ne sont pas des mesures, et c'est elles qu'il faudrait
+    /// rediscuter, pas ce chiffre.
     static func boot(_ os: String) -> ThinkModel {
         switch os {
-        case "msdos-6.22+win31": ThinkModel(perFile: 0.045, perMegabyte: 0.80)  // 0,60 avant le chantier 22
-        case "win95-osr1":       ThinkModel(perFile: 0.022, perMegabyte: 0.41)  // 0,34
-        case "win98se":          ThinkModel(perFile: 0.015, perMegabyte: 0.25)  // 0,22
-        case "winxp-sp1":        ThinkModel(perFile: 0.009, perMegabyte: 0.19)  // 0,13
-        default:                 ThinkModel(perFile: 0.009, perMegabyte: 0.15)  // Vista : 0,09
+        case "msdos-6.22+win31": ThinkModel(perFile: 0.045, perMegabyte: 0.65)  // 0,80 avant le chantier 26, 0,60 avant le 22
+        case "win95-osr1":       ThinkModel(perFile: 0.022, perMegabyte: 0.42)  // 0,41 ; 0,34
+        case "win98se":          ThinkModel(perFile: 0.015, perMegabyte: 0.24)  // 0,25 ; 0,22
+        case "winxp-sp1":        ThinkModel(perFile: 0.009, perMegabyte: 0.20)  // 0,19 ; 0,13
+        default:                 ThinkModel(perFile: 0.009, perMegabyte: 0.16)  // Vista : 0,15 ; 0,09
         }
     }
 }
@@ -165,6 +174,7 @@ struct BootAct: Sendable {
 /// décidait.
 struct BootScript: Sendable {
 
+    let os: String
     let osName: String
     /// Durée du POST : comptage mémoire, détection des disques. Le plateau
     /// monte en régime pendant ce temps et rien n'est encore lu.
@@ -200,7 +210,8 @@ extension BootScript {
         case .everyFile: 0
         case let .every(seconds): seconds
         }
-        return BootScript(osName: era.osName,
+        return BootScript(os: era.os,
+                          osName: era.osName,
                           post: era.post,
                           think: era.think,
                           readGranularity: era.readGranularity,
@@ -508,6 +519,9 @@ struct BootPlan {
     let stampedFiles: Int
     /// Écritures de métadonnées qui les ont portées, une fois groupées.
     let stampWrites: Int
+    /// Ce que le cache du système a fait, en une ligne de bilan : `SMARTDRV`
+    /// en 1993, VCACHE et la table FAT32 en 1999. `nil` sans cache à décrire.
+    let softwareCache: String?
     /// Somme des temps de calcul : la durée qu'aurait le démarrage si le disque
     /// répondait instantanément.
     let thinkSeconds: Double
@@ -537,6 +551,7 @@ enum BootPlanner {
         let script = BootScript.forProfile(disk.spec, launching: app)
 
         var builder = Builder(partition: partition,
+                              os: script.os,
                               think: script.think,
                               readGranularity: script.readGranularity,
                               stampsAccess: script.stampsAccess && firstOfTheDay,
@@ -575,6 +590,7 @@ enum BootPlanner {
                         residentFiles: builder.residentFiles,
                         stampedFiles: builder.stampedFiles,
                         stampWrites: builder.stampWrites,
+                        softwareCache: builder.softwareCacheReport,
                         thinkSeconds: builder.thinkSeconds,
                         post: script.post,
                         tail: script.tail)
@@ -726,8 +742,15 @@ enum BootPlanner {
         /// écrits, et le temps écoulé depuis le dernier vidage.
         private var dirtyStamps: [Int: Int] = [:]
         private var sinceFlush: Double = 0
-        /// Pages de la table FAT32 déjà en cache.
-        private var cachedTablePages: Set<Int> = []
+        /// Les pages de la table FAT32 que VCACHE tient, avec les données qui
+        /// les poussent dehors ; et celles qui ont déjà été lues une fois.
+        private var tableCache: PageLRU
+        private var tablePagesSeen: Set<Int> = []
+        private var tablePagesRead = 0
+        private var tablePagesReread = 0
+        /// `SMARTDRV`, sous MS-DOS.
+        private var smartDrive: SmartDrive?
+        private let vcachePages: Int?
 
         /// Les répertoires du volume, là où l'allocateur les a posés.
         let directories: DirectoryPlacement?
@@ -743,10 +766,17 @@ enum BootPlanner {
         /// fichier ouvert : c'est là que sa date d'accès se réécrit.
         private var entrySector: [UInt32: Int] = [:]
 
-        init(partition: PartitionGeometry, think: ThinkModel, readGranularity: Int,
+        init(partition: PartitionGeometry, os: String = "", think: ThinkModel, readGranularity: Int,
              stampsAccess: Bool, flushSeconds: Double, directories: DirectoryPlacement? = nil,
              seed: UInt64) {
             self.partition = partition
+            // Le cache du système : ce qu'il tient de la table FAT32 cède sous
+            // les données sur Windows 9x ; NT garde tout un démarrage.
+            vcachePages = VCache.pages(os: os)
+            tableCache = PageLRU(capacity: vcachePages ?? .max)
+            // `SMARTDRV` est chargé par `AUTOEXEC.BAT`, à la fin de l'acte des
+            // pilotes ; Windows démarre à l'acte suivant l'invite de commandes.
+            smartDrive = os == "msdos-6.22+win31" ? SmartDrive(loadedFromAct: 4, windowsFromAct: 5) : nil
             self.directories = directories
             self.think = think
             self.readGranularity = readGranularity
@@ -942,6 +972,7 @@ enum BootPlanner {
                 }
                 append(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase)
                 bytesRead += access.sectors * DriveGeometry.bytesPerSector
+                tableCache.fill(anonymous: pages(access.sectors))
             }
             let cluster = partition.directoryAccesses(directory.extents, clusters: last..<(last + 1)).first?.lba
             return cluster.map { $0 + Int(offset % UInt64(partition.clusterBytes) / sectorBytes) }
@@ -962,6 +993,7 @@ enum BootPlanner {
                         let first = Int(extent.start) + offset / partition.clusterSectors
                         let last = Int(extent.start) + (offset + sectors - 1) / partition.clusterSectors
                         followChain(from: first, through: last, phase: phase)
+                        tableCache.fill(anonymous: pages(sectors))
                     }
                     append(lba: partition.lba(ofCluster: Int(extent.start)) + offset,
                            sectors: sectors,
@@ -980,26 +1012,68 @@ enum BootPlanner {
         /// Sur FAT32, la table n'est pas en mémoire (`mountAccesses`) : pour
         /// trouver le cluster suivant d'un fichier, le pilote lit la page de
         /// table qui le décrit — 4 Ko, soit 1 024 entrées —, et la garde en
-        /// cache. Une page déjà lue ne se relit pas : le modèle suppose un
-        /// cache assez grand pour tout un démarrage, ce qui **minore** les
-        /// retours à la table. Un fichier fragmenté y retourne à chaque saut
-        /// vers une page qu'on n'a pas encore vue. FAT16 n'est pas concerné :
-        /// sa table a été lue entière au montage.
+        /// cache — VCACHE, qui la garde avec les données des fichiers et la
+        /// cède quand elles la poussent dehors (`VCache`). Un fichier fragmenté
+        /// retourne à la table à chaque saut vers une page qu'on n'a pas encore
+        /// vue, **ou qu'on a vue il y a trop longtemps** : ce sont les retours
+        /// périodiques d'un Windows 98 qui lit cent mégaoctets. FAT16 n'est pas
+        /// concerné : sa table a été lue entière au montage.
         private mutating func followChain(from first: Int, through last: Int, phase: Int) {
             guard partition.format == .fat32, last >= first else { return }
             let pageSectors = 4_096 / DriveGeometry.bytesPerSector
             let entriesPerPage = pageSectors * DriveGeometry.bytesPerSector / partition.format.fatEntryBytes
             for page in (first / entriesPerPage)...(last / entriesPerPage)
-            where cachedTablePages.insert(page).inserted {
+            where !tableCache.touch(page) {
                 let sector = page * pageSectors
                 guard sector < partition.fatSectors else { continue }
                 let sectors = min(pageSectors, partition.fatSectors - sector)
                 append(lba: partition.fat1LBA + sector, sectors: sectors, isWrite: false, phase: phase)
                 bytesRead += sectors * DriveGeometry.bytesPerSector
+                tablePagesRead += 1
+                if !tablePagesSeen.insert(page).inserted { tablePagesReread += 1 }
             }
         }
 
+        private func pages(_ sectors: Int) -> Int {
+            (sectors * DriveGeometry.bytesPerSector + VCache.pageBytes - 1) / VCache.pageBytes
+        }
+
+        /// Ce que le cache du système a fait, pour le bilan.
+        var softwareCacheReport: String? {
+            if let smartDrive {
+                return "SMARTDRV : \(smartDrive.hits) éléments servis, \(smartDrive.misses) lus "
+                    + "(8 Ko, 16 Ko d'avance ; 1 Mo, 512 Ko sous Windows)"
+            }
+            if partition.format == .fat32 {
+                let size = vcachePages.map { "VCACHE de \($0 * VCache.pageBytes / 1_048_576) Mo" }
+                    ?? "cache sans éviction"
+                return "table FAT32 : \(tablePagesRead) pages lues, dont \(tablePagesReread) relues "
+                    + "après éviction (\(size))"
+            }
+            return nil
+        }
+
         private mutating func append(lba: Int, sectors: Int, isWrite: Bool, phase: Int) {
+            // Sous `SMARTDRV`, une lecture ne va au disque que pour ce qu'il n'a
+            // pas, par éléments, avec sa lecture anticipée. Rien du tout si
+            // tout y est : le calcul en attente part avec la requête suivante.
+            if !isWrite, var cache = smartDrive, cache.isActive(inAct: phase) {
+                let runs = cache.read(lba: lba, sectors: sectors, act: phase)
+                smartDrive = cache
+                for run in runs {
+                    var offset = 0
+                    while offset < run.sectors {
+                        let count = min(run.sectors - offset, maxRequestSectors)
+                        issue(lba: run.lba + offset, sectors: count, isWrite: false, phase: phase)
+                        offset += count
+                    }
+                }
+                return
+            }
+            issue(lba: lba, sectors: sectors, isWrite: isWrite, phase: phase)
+        }
+
+        private mutating func issue(lba: Int, sectors: Int, isWrite: Bool, phase: Int) {
             requests.append(BlockRequest(issueTime: 0,
                                          lba: lba,
                                          sectorCount: sectors,
