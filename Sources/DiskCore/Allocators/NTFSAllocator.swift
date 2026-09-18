@@ -41,6 +41,8 @@ public struct NTFSAllocator: Allocator {
     /// fragmenter.
     public private(set) var mft: FileEntry
     public private(set) var mftMirror: Extent
+    /// `$Boot` : les huit premiers kilo-octets du volume.
+    public private(set) var bootExtent: Extent
     /// Enregistrements en service — ceux des fichiers vivants.
     public private(set) var mftRecordCount: UInt64
     /// Plus grand nombre d'enregistrements simultanés jamais atteint. La MFT ne
@@ -116,33 +118,52 @@ public struct NTFSAllocator: Allocator {
         self.mftRecordCount = initialMFTRecords
         self.mftPeakRecords = initialMFTRecords
 
-        // $Boot occupe le tout début du volume, la MFT le suit immédiatement.
-        let bootClusters: UInt32 = 1
+        // $Boot occupe les huit premiers kilo-octets du volume — deux clusters
+        // à 4 Ko, et non un. La copie du secteur d'amorçage, elle, est au tout
+        // dernier secteur du volume : elle ne coûte aucun cluster ici,
+        // seulement un accès isolé au fond du disque au montage
+        // (`PartitionGeometry.scanAccesses`).
+        let bootClusters = max(profile.clusters(forBytes: 8 * 1_024), 1)
         bitmap.allocate(start: 0, length: bootClusters)
 
-        let mftClusters = max(profile.clusters(forBytes: initialMFTRecords * 1_024), 1)
-        bitmap.allocate(start: bootClusters, length: mftClusters)
-        self.mft = FileEntry(id: 0,
-                             logicalSize: initialMFTRecords * 1_024,
-                             extents: [Extent(start: bootClusters, length: mftClusters)],
-                             hint: .system)
-
-        let zoneEnd = min(clusterCount,
-                          bootClusters + max(UInt32(Double(clusterCount) * profile.mftZoneShare),
-                                             mftClusters))
-        self.mftZone = (bootClusters + mftClusters)..<max(zoneEnd, bootClusters + mftClusters)
-        self.highWater = bootClusters + mftClusters
-
-        // $MFTMirr : quatre clusters, au milieu du volume ou près du début selon
-        // l'époque. Au milieu, il impose un aller-retour à chaque écriture de
-        // métadonnées — c'est audible, et c'est pour cela qu'il a été déplacé.
+        // $MFTMirr : la copie des **quatre premiers enregistrements** de la
+        // MFT, soit 4 Ko, soit un cluster à 4 Ko — et non quatre. Au milieu du
+        // volume jusqu'à Windows 2000, ramené près du début ensuite : au
+        // milieu, il impose un aller-retour à chaque écriture de métadonnées,
+        // c'est audible, et c'est pour cela qu'il a été déplacé.
+        //
+        // « Près du début », c'est derrière `$Boot`, à l'endroit où vivent les
+        // premiers métafichiers — de l'ordre du cluster 16 —, et non à la
+        // frontière de la zone MFT : posé là, il tombait à 31 Go du début d'un
+        // volume de 250 Go, sur le premier cluster où les données ont le droit
+        // d'aller, qu'il coupait en deux.
+        let mirrorClusters = max(profile.clusters(forBytes: 4 * 1_024), 1)
         let mirrorStart: UInt32 = switch mirrorPlacement {
         case .volumeMiddle: clusterCount / 2
-        case .nearStart:    min(self.mftZone.upperBound, clusterCount - 4)
+        case .nearStart:    min(16, clusterCount - mirrorClusters)
         }
-        self.mftMirror = Extent(start: mirrorStart, length: 4)
+        self.mftMirror = Extent(start: max(mirrorStart, bootClusters), length: mirrorClusters)
         bitmap.allocate(self.mftMirror)
-        self.highWater = max(self.highWater, self.mftMirror.end)
+
+        // La MFT suit ce qui la précède : `$Boot` seul quand le miroir est au
+        // milieu du volume, `$Boot` et le miroir quand il est près du début.
+        let mftStart = mirrorPlacement == .nearStart
+            ? max(self.mftMirror.end, bootClusters)
+            : bootClusters
+        let mftClusters = max(profile.clusters(forBytes: initialMFTRecords * 1_024), 1)
+        bitmap.allocate(start: mftStart, length: mftClusters)
+        self.mft = FileEntry(id: 0,
+                             logicalSize: initialMFTRecords * 1_024,
+                             extents: [Extent(start: mftStart, length: mftClusters)],
+                             hint: .system)
+        self.bootExtent = Extent(start: 0, length: bootClusters)
+
+        let zoneStart = mftStart + mftClusters
+        let zoneEnd = min(clusterCount,
+                          mftStart + max(UInt32(Double(clusterCount) * profile.mftZoneShare),
+                                         mftClusters))
+        self.mftZone = zoneStart..<max(zoneEnd, zoneStart)
+        self.highWater = max(zoneStart, self.mftMirror.end)
     }
 
     // MARK: - Zones
@@ -150,7 +171,7 @@ public struct NTFSAllocator: Allocator {
     /// `$Boot`, la MFT et `$MFTMirr` : tout ce que le volume occupe sans
     /// qu'aucun fichier du catalogue ne le décrive.
     public var systemExtents: [Extent] {
-        [Extent(start: 0, length: 1)] + mft.extents + [mftMirror]
+        [bootExtent] + mft.extents + [mftMirror]
     }
 
     public var metadataExtents: [Extent] { systemExtents }

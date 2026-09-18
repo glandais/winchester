@@ -122,6 +122,24 @@ public struct FAT32Profile: FileSystemProfile {
         precondition(clusterKB > 0 && clusterKB.nonzeroBitCount == 1)
         self.clusterBytes = clusterKB * 1_024
     }
+
+    /// Taille de cluster qu'aurait choisie `FORMAT` pour ce volume.
+    ///
+    /// FAT32 n'a pas le plafond de clusters de FAT16, donc pas de calcul à
+    /// faire : la table est écrite en dur dans l'outil de formatage, et elle
+    /// double la taille de cluster à chaque puissance de deux à partir de 8 Go
+    /// — sous 8 Go, 4 Ko ; jusqu'à 16 Go, 8 Ko ; jusqu'à 32 Go, 16 Ko ; au-delà,
+    /// 32 Ko. Les gigaoctets sont ceux de `FORMAT`, c'est-à-dire des
+    /// gibioctets.
+    public static func forVolume(bytes: UInt64) -> FAT32Profile {
+        let gibibyte: UInt64 = 1 << 30
+        switch bytes {
+        case ..<(8 * gibibyte):  return FAT32Profile(clusterKB: 4)
+        case ..<(16 * gibibyte): return FAT32Profile(clusterKB: 8)
+        case ..<(32 * gibibyte): return FAT32Profile(clusterKB: 16)
+        default:                 return FAT32Profile(clusterKB: 32)
+        }
+    }
 }
 
 // MARK: - NTFS

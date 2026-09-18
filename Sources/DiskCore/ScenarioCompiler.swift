@@ -312,9 +312,12 @@ public struct ScenarioCompiler {
         case .fat16, .vfat, .fat32:
             // `WIN386.SWP` : créé au premier démarrage, gonfle et se dégonfle
             // sans arrêt. C'est lui qui déplace tout le reste autour de lui.
+            // Il vit dans `C:\WINDOWS`, et non à la racine — c'est
+            // `386SPART.PAR`, le fichier permanent de Windows 3.1, qui était à
+            // la racine.
             let base = min(size / 16, 40 * 1_024 * 1_024)
             writer.write(FileSpec(id: newID(), name: "WIN386.SWP",
-                                  directory: catalog.rootDirectory,
+                                  directory: catalog.makeDirectory(path: "\\WINDOWS"),
                                   category: .swap,
                                   pattern: .growShrinkDynamic(minBytes: base / 2, maxBytes: base * 2),
                                   bytes: base, hint: .normal),

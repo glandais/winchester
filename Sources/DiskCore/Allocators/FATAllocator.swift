@@ -82,8 +82,15 @@ public struct FATAllocator: Allocator {
         // `IO.SYS` doit tomber au premier cluster libre du volume, quel que soit
         // l'état du curseur : c'est une contrainte du chargeur d'amorçage, pas
         // une préférence.
-        case .boot, .system: return 0
-        case .normal, .temporary, .reservedContiguous:
+        case .boot: return 0
+        // `.system` n'est pas cette contrainte-là. C'est le hint de
+        // `FileCategory.systemCore`, c'est-à-dire de **toutes** les DLL, de tous
+        // les pilotes et de tous les fichiers des vagues de mise à jour — une
+        // population que ni VFAT ni FAT32 ne distinguent du reste : ils servent
+        // leur curseur `next-free`, pour tout le monde. Le forcer au cluster 0
+        // re-mitait le devant du volume en permanence, par un mécanisme qui n'a
+        // jamais existé.
+        case .system, .normal, .temporary, .reservedContiguous:
             return scan == .fromVolumeStart ? 0 : nextFreeHint
         }
     }

@@ -26,7 +26,6 @@
   },
   "displayName": "Joueur, 1999",
   "fileSystem": {
-    "clusterKB": 4,
     "type": "fat32"
   },
   "id": "gamer-1999",

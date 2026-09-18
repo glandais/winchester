@@ -226,6 +226,26 @@ extension SeekModel {
     /// de 1996 quel que soit le disque décrit — un disque de 2003 se retrouvait
     /// avec un piste-à-piste deux fois trop long, c'est-à-dire avec le
     /// crépitement d'un disque d'une décennie plus tôt.
+    /// Commutation de tête, dérivée du piste-à-piste.
+    ///
+    /// Elle n'a rien à voir avec le seek moyen, qui est ce que la mise à
+    /// l'échelle globale lui appliquait : une commutation est un basculement
+    /// électronique du préampli suivi d'une micro-correction d'asservissement,
+    /// sans le moindre déplacement de bras. Elle est donc **toujours plus
+    /// rapide** qu'un pas de piste, et elle décroît comme lui — pas comme la
+    /// course complète de l'actionneur. Mise à l'échelle par le seek moyen,
+    /// elle finissait à 1,48 ms sur un Barracuda ATA IV dont le pas de piste
+    /// vaut 0,95 : changer de tête y coûtait plus cher que déplacer le bras,
+    /// ce qu'aucun disque n'a jamais fait.
+    ///
+    /// Les six dixièmes du pas de piste placent ces disques entre 0,6 et
+    /// 1,8 ms, l'ordre de grandeur annoncé sur la période. Le plancher est le
+    /// repositionnement fin : une commutation se termine par lui, elle ne peut
+    /// donc pas être plus courte.
+    static func headSwitch(trackToTrackMs trackToTrack: Double) -> Double {
+        max(0.6 * trackToTrack / 1_000, 0.000_2)
+    }
+
     public static func calibrated(averageSeekMs average: Double,
                                   trackToTrackMs trackToTrack: Double,
                                   cylinders: Int) -> SeekModel {
@@ -248,7 +268,7 @@ extension SeekModel {
             // plus court : c'est lui qui le domine.
             settleDuration: min(base.settleDuration, trackToTrack / 1_000 * 0.8),
             accelerationCap: base.accelerationCap,
-            headSwitchDuration: base.headSwitchDuration
+            headSwitchDuration: Self.headSwitch(trackToTrackMs: trackToTrack)
         )
     }
 }

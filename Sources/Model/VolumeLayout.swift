@@ -28,6 +28,21 @@ enum VolumeFormat: Sendable {
 
     var isFAT: Bool { self != .ntfs }
 
+    /// Secteurs réservés en tête de partition, avant la première table.
+    ///
+    /// Un seul sur FAT16 — le secteur d'amorçage — mais **trente-deux** sur
+    /// FAT32 : l'amorçage y tient sur trois secteurs, `FSINFO` suit, une copie
+    /// de secours de l'ensemble est posée au secteur 6, et `FORMAT` réserve le
+    /// reste. Sur NTFS, `$Boot` occupe les huit premiers kilo-octets du volume,
+    /// et une copie du secteur d'amorçage est au tout dernier secteur.
+    var reservedSectors: Int {
+        switch self {
+        case .fat16: return 1
+        case .fat32: return 32
+        case .ntfs:  return 16
+        }
+    }
+
     var label: String {
         switch self {
         case .fat16: return "FAT16"
@@ -63,13 +78,9 @@ struct PartitionGeometry {
     /// Secteurs d'une copie de la table d'allocation. Nul sur NTFS.
     let fatSectors: Int
 
-    private static let bootSectors = 1
     /// 512 entrées de 32 octets : la racine d'un FAT16, de taille fixe. FAT32
     /// et NTFS n'en ont pas — leur racine est un fichier ordinaire.
     private static let fat16RootSectors = 32
-    /// `$Boot` occupe les huit premiers kilo-octets du volume, et NTFS en garde
-    /// une copie en fin de volume.
-    private static let ntfsBootSectors = 16
 
     /// Partition occupant un nombre de secteurs donné, dimensionnée comme
     /// l'aurait fait l'outil de formatage du système.
@@ -81,7 +92,7 @@ struct PartitionGeometry {
         switch format {
         case .fat16, .fat32:
             let root = format == .fat16 ? Self.fat16RootSectors : 0
-            let overhead = Self.bootSectors + root
+            let overhead = format.reservedSectors + root
             let entryBytes = format.fatEntryBytes
             var n = (sectors - overhead) / clusterSectors
             var fat = 0
@@ -93,7 +104,7 @@ struct PartitionGeometry {
             self.clusterCount = n
         case .ntfs:
             self.fatSectors = 0
-            self.clusterCount = (sectors - Self.ntfsBootSectors) / clusterSectors
+            self.clusterCount = (sectors - format.reservedSectors) / clusterSectors
         }
 
         precondition(clusterCount > 0, "partition vide")
@@ -118,7 +129,7 @@ struct PartitionGeometry {
 
     // MARK: - Plan du volume
 
-    var fat1LBA: Int { startLBA + Self.bootSectors }
+    var fat1LBA: Int { startLBA + format.reservedSectors }
     var fat2LBA: Int { fat1LBA + fatSectors }
     var rootLBA: Int { fat2LBA + fatSectors }
     var rootSectorCount: Int { format == .fat16 ? Self.fat16RootSectors : 0 }
@@ -126,7 +137,7 @@ struct PartitionGeometry {
     var dataStartLBA: Int {
         switch format {
         case .fat16, .fat32: return rootLBA + rootSectorCount
-        case .ntfs:          return startLBA + Self.ntfsBootSectors
+        case .ntfs:          return startLBA + format.reservedSectors
         }
     }
 
@@ -245,9 +256,16 @@ extension PartitionGeometry {
             }
             return accesses
         case .ntfs:
-            // La MFT se lit d'une traite : c'est elle qui décrit tout le volume.
+            // `$Boot`, puis sa copie — qui est au **tout dernier secteur du
+            // volume**, et non à côté de l'original. Monter un NTFS commence
+            // donc par une course complète du bras jusqu'au fond du disque,
+            // aller et retour : c'est un accès isolé, et il s'entend.
+            //
+            // La MFT se lit ensuite d'une traite : c'est elle qui décrit tout
+            // le volume.
             let mftSectors = max(clusterCount / 8, 1) * mftRecordSectors / 8
             return [MetadataAccess(lba: startLBA, sectors: 16),
+                    MetadataAccess(lba: startLBA + totalSectors - 1, sectors: 1),
                     MetadataAccess(lba: dataStartLBA, sectors: min(mftSectors, 4_096))]
         }
     }

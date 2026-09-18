@@ -195,12 +195,12 @@ struct CalibrationTests {
         let disk = try Self.generate("dev-1996")
         print(Self.describe(disk))
 
-        withKnownIssue("le modèle produit 11 % : voir la note sur la population d'installation") {
+        withKnownIssue("le modèle produit 8 % : voir la note sur la population d'installation") {
             #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.35)
         }
         // Fourchette de non-régression sur ce que le modèle produit réellement.
-        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.07)
-        #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.18)
+        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.04)
+        #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.14)
         // Et le slack de 1996, lui, est bien là.
         #expect(disk.metrics.slackRatio > 0.10)
     }
@@ -215,11 +215,23 @@ struct CalibrationTests {
         #expect(disk.metrics.maxExtentsPerFile == 1)
     }
 
+    /// Cette cible-là était atteinte, et elle ne l'est plus depuis que `.system`
+    /// a cessé de renvoyer les fichiers système au cluster 0 sur VFAT et FAT32.
+    /// Ce n'est pas une régression : c'est un mécanisme qui n'a jamais existé
+    /// et qui fabriquait de la fragmentation — les 1 044 `UPD*.DLL` de ce
+    /// volume avaient une position moyenne à 2,5 % du volume, et rebouchaient
+    /// sans fin les miettes de sa tête. Ce qui manque pour atteindre la
+    /// fourchette est le même que pour `dev-1996` et `famille-2003` :
+    /// l'allocation incrémentale et l'entrelacement, qui fragmentent les
+    /// fichiers **pendant** qu'on les écrit.
     @Test("secretaire-1999 après deux ans : 15 à 25 %")
     func secretary1999() throws {
         let disk = try Self.generate("secretaire-1999")
         print(Self.describe(disk))
-        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.10)
+        withKnownIssue("le modèle produit 6 % depuis que le hint système ne force plus le cluster 0") {
+            #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.10)
+        }
+        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.03)
         #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.25)
     }
 
@@ -231,7 +243,7 @@ struct CalibrationTests {
         // Le remplissage, lui, est bien au rendez-vous.
         #expect(disk.metrics.fill > 0.90)
 
-        withKnownIssue("le modèle produit 6 % : NTFS place bien même à 93 % — voir la note") {
+        withKnownIssue("le modèle produit 11 % : NTFS place bien même à 95 % — voir la note") {
             #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.40)
         }
         #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.01)
@@ -239,21 +251,23 @@ struct CalibrationTests {
         #expect(disk.metrics.maxExtentsPerFile > 500)
     }
 
-    /// Le même profil, la même année, sur FAT32 plutôt que NTFS : 22 % contre
+    /// Le même profil, la même année, sur FAT32 plutôt que NTFS : 17 % contre
     /// 11 %. L'écart entre les deux est l'un des résultats les plus parlants du
     /// modèle — et il montre que ce qui manque à famille-2003 pour atteindre la
     /// fourchette visée n'est pas un réglage, c'est un allocateur qui place
     /// moins bien.
     ///
-    /// Le facteur était de douze, et il n'était pas mérité : `NTFSAllocator`
-    /// renvoyait son curseur système au début de la plage de données à chaque
-    /// échec de placement, ce qui tassait les fichiers système en tête de
-    /// volume et laissait le reste étrangement propre. Le curseur avance
-    /// désormais, comme son commentaire l'annonçait, et NTFS se rapproche de sa
-    /// cible (1,8 % → 11 %, pour 40 à 60 % visés) en même temps que l'écart se
-    /// resserre. Deux, c'est ce que le modèle produit ; ce n'est pas une
-    /// fourchette qu'on élargit pour qu'il y entre.
-    @Test("Le même usage fragmente deux fois plus sur FAT32 que sur NTFS")
+    /// Le facteur a été de douze, puis de deux, et il se resserre encore.
+    /// D'abord parce que `NTFSAllocator` renvoyait son curseur système au début
+    /// de la plage de données à chaque échec, ce qui tassait les fichiers
+    /// système en tête de volume et laissait le reste étrangement propre ;
+    /// ensuite parce que le hint `.system` forçait, sur VFAT et FAT32, le
+    /// cluster 0 pour toutes les DLL et tous les fichiers de mise à jour, ce
+    /// qu'aucun pilote n'a jamais fait — c'était un fragmenteur de plus, du
+    /// côté FAT cette fois. Une fois et demie, c'est ce que le modèle produit
+    /// une fois les deux retirés ; ce n'est pas une fourchette qu'on élargit
+    /// pour qu'il y entre.
+    @Test("Le même usage fragmente une fois et demie plus sur FAT32 que sur NTFS")
     func fileSystemDominatesTheOutcome() throws {
         let fat32 = try Self.generate("famille-1999")
         let ntfs = try Self.generate("famille-2003")
@@ -261,7 +275,7 @@ struct CalibrationTests {
         #expect(fat32.metrics.fill > 0.90)
         #expect(ntfs.metrics.fill > 0.90)
         #expect(fat32.metrics.fragmentedRatioAmongFragmentable
-                > ntfs.metrics.fragmentedRatioAmongFragmentable * 1.9)
+                > ntfs.metrics.fragmentedRatioAmongFragmentable * 1.5)
     }
 
     /// L'asymétrie entre profils est ce qui rend l'application crédible : si

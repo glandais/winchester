@@ -359,7 +359,8 @@ public struct ProfileSpec: Sendable, Codable, Identifiable {
             return fileSystem.clusterKB.map { FAT16Profile(clusterKB: $0) }
                 ?? FAT16Profile.forVolume(bytes: disk.sizeBytes)
         case .fat32:
-            return FAT32Profile(clusterKB: fileSystem.clusterKB ?? 4)
+            return fileSystem.clusterKB.map { FAT32Profile(clusterKB: $0) }
+                ?? FAT32Profile.forVolume(bytes: disk.sizeBytes)
         case .ntfs:
             return NTFSProfile(clusterKB: fileSystem.clusterKB ?? 4)
         }

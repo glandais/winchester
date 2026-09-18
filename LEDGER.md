@@ -3427,3 +3427,250 @@ chiffres ci-dessus sont ceux du commit qui les porte.
 - **Le lot 2 reste entier** : `clusterKB` de 1993, `gamer-1999`, `$MFTMirr`,
   `.system`, la commutation de tête. Aucune n'a été touchée, y compris quand
   elle se trouvait trois lignes plus bas.
+
+## Chantier 21 — les huit erreurs de fait du lot 2
+
+**Fait** · branche `experts`
+
+### Le problème
+
+Le lot 1 a corrigé les quatre endroits où le code produisait quelque chose
+d'impossible. Celui-ci corrige les huit endroits où il **affirme quelque chose
+de faux** — huit points vérifiables contre une source : une table de `FORMAT`,
+une fiche technique, la documentation de NTFS. Aucun n'est un arbitrage, aucun
+ne demande de trancher : il suffit d'aller lire.
+
+Ils sont triviaux un par un. Leur difficulté est ailleurs — trois d'entre eux
+changent la taille des clusters ou la place des fichiers système, donc
+**regénèrent des volumes entiers**, et avec eux tous les chiffres du dépôt.
+
+| | où | ce qui était faux | la source qui tranche |
+|---|---|---|---|
+| E1 | les trois JSON de 1993 | `clusterKB: 8` sur 170 et 210 Mo | table de `FORMAT` : 128–256 Mo → 4 Ko. `FAT16Profile.forVolume`, interrogé, répondait déjà 4 |
+| E2 | `gamer-1999` | 8 400 Mo en clusters de 4 Ko | table FAT32 : au-delà de 8 Gio → 8 Ko. 8 400 Mo = 8,20 Gio |
+| E3 | `NTFSAllocator.init` | `$MFTMirr` de 4 clusters posé à `mftZone.upperBound`, `$Boot` d'un cluster | `$MFTMirr` copie les **quatre premiers enregistrements** de la MFT, soit 4 Ko ; `$Boot` en fait 8 ; la copie du secteur d'amorçage est au dernier secteur du volume |
+| E4 | `DiskGenerator.ntfsAllocator` | miroir ramené au début en `>= 2001` | le déplacement accompagne NTFS 3.0, donc Windows **2000** |
+| E5 | `FATAllocator.origin(for:)` | `.system` force le cluster 0 même en VFAT et FAT32 | le pilote ne connaît pas la catégorie d'un fichier : il sert son curseur `next-free`, pour tout le monde. Seul le chargeur d'amorçage impose le début du volume |
+| E6 | `SeekModel.calibrated(_:trackToTrackMs:)` | commutation de tête mise à l'échelle par le seek **moyen** | une commutation est un basculement électronique suivi d'une micro-correction : elle décroît comme le piste-à-piste, et lui est toujours inférieure |
+| E7 | `ScenarioCompiler.installSwapFile` | `WIN386.SWP` à la racine | il vivait dans `C:\WINDOWS` ; c'est `386SPART.PAR` qui était à la racine, et le modèle le place déjà bien |
+| E8 | `PartitionGeometry` | 1 secteur réservé en FAT32 | FAT32 en réserve **32** : amorçage sur trois secteurs, `FSINFO`, copie de secours au secteur 6 |
+
+### Les décisions
+
+**E1 et E2 — la règle plutôt que la clé.** Les trois JSON de 1993 perdent leur
+`clusterKB`, et avec eux les cinq autres où la clé ne faisait que répéter ce que
+la règle donne : `poweruser-1993` et les quatre FAT32 de 1999. `FAT32Profile`
+reçoit le `forVolume` que `FAT16Profile` avait déjà — la table de l'outil de
+formatage, qui double la taille de cluster à chaque puissance de deux à partir
+de 8 Gio — et `resolvedFileSystem` s'en sert quand la description se tait. Huit
+descriptions sur vingt ne peuvent donc plus se tromper, parce qu'elles ne disent
+plus rien.
+
+**Les huit JSON NTFS gardent leur `clusterKB: 4`**, et c'est une décision, pas un
+oubli : il n'existe pas de `NTFSProfile.forVolume`, et retirer la clé ferait
+reposer la valeur sur un `?? 4` muet à deux endroits du code plutôt que sur une
+règle nommée. Quatre kilo-octets est bien ce que `FORMAT` donne au-delà de
+2 Gio ; le test le vérifie contre sa propre table. Écrire cette table dans le
+modèle est un autre lot.
+
+**E3 — le miroir derrière `$Boot`, et la MFT derrière le miroir.** « Près du
+début » valait `mftZone.upperBound`, c'est-à-dire 12,5 % du volume : 31 Go sur
+`dev-2007`, ni au milieu ni près du début, et pile sur le premier cluster où les
+données ont le droit d'aller, qu'il coupait en deux. Le miroir est désormais au
+cluster 16, là où vivent les premiers métafichiers, et la MFT commence derrière
+lui — sans quoi elle buterait dessus au premier paquet et sortirait en deux
+extents dès la création. `$Boot` passe à deux clusters, le miroir à un seul.
+
+**La copie du secteur d'amorçage est modélisée là où elle s'entend**, et non
+comme des clusters : `scanAccesses` lit maintenant le **dernier secteur du
+volume** au montage d'un NTFS. Une course complète du bras, aller et retour,
+avant la première lecture de la MFT.
+
+**E5 — `.system` suit le curseur.** `FileCategory.systemCore.hint` vaut
+`.system`, et `systemCore` est la catégorie de toutes les DLL, de tous les
+pilotes et de tous les fichiers des vagues de mise à jour. Les forcer au
+cluster 0 revenait à faire trier au pilote VFAT une population qu'il ne
+distingue pas. `.boot` garde sa contrainte — `IO.SYS` au premier cluster libre,
+c'est le chargeur d'amorçage qui l'exige —, `.system` rejoint `.normal` : le
+cluster 0 pour `fromVolumeStart`, le curseur `next-free` sinon.
+
+**E6 — la commutation dérivée du piste-à-piste.** `referenceShape` la fixe à
+2,0 ms et `calibrated` la recopiait telle quelle, mise à l'échelle par le seul
+seek moyen. Elle vaut désormais six dixièmes du piste-à-piste, avec pour
+plancher le repositionnement fin — une commutation se termine par lui, elle ne
+peut pas être plus courte que lui.
+
+| disque | piste-à-piste | commutation, avant | après |
+|---|---:|---:|---:|
+| Conner CFA170A (1993) | 3,00 ms | 2,13 ms | **1,80 ms** |
+| Fireball 1080AT (1996) | 3,00 ms | 1,97 ms | **1,80 ms** |
+| Seagate U8 (1999) | 1,50 ms | 1,46 ms | **0,90 ms** |
+| Barracuda ATA IV (2001) | 0,95 ms | 1,48 ms | **0,57 ms** |
+| Barracuda 7200.7 (2003) | 1,00 ms | 1,39 ms | **0,60 ms** |
+| Barracuda 7200.10 (2006) | 1,00 ms | 1,39 ms | **0,60 ms** |
+| Barracuda 7200.11 (2008) | 1,00 ms | 1,39 ms | **0,60 ms** |
+
+L'inversion touchait **cinq** des huit fiches, et non six comme l'annonce la
+revue : le Seagate U8 de 1999 passait à 1,46 ms pour un pas de piste de 1,50, de
+justesse du bon côté. Le reste de la mesure est exact.
+
+**E6 en cachait une seconde, et c'est la plus intéressante.** Depuis le lot 1,
+`DriveGeometry.skew(seekModel:)` calcule `head = headSwitchDuration / tour` :
+cette durée n'est plus seulement un coût, c'est **la façon dont les pistes sont
+décalées les unes par rapport aux autres**. La changer déplace le skew de tête,
+donc l'angle auquel chaque secteur passe sous la tête. Sur le Fireball, qui a
+quatre têtes, le skew passe de 0,177 à 0,162 tour et une lecture contiguë de
+8 Mo — 76 commutations — passe de 6,09 à 6,14 Mo/s. La continuité, elle, ne
+bouge pas : c'est la garantie même du skew, et `TrackSkewTests` la vérifie
+toujours à 1e-9 près.
+
+### Ce qui valide
+
+- **`swift test` : 341 tests passent** sur les deux cibles (330 avant, onze de
+  plus), et `DISKCORE_CALIBRATION=1 swift test --filter Calibration` passe
+  avec **trois** problèmes connus au lieu de deux — voir plus bas.
+- **Le filet du lot n'est pas un test par correction, c'en est un seul**
+  (`Tests/DiskCoreTests/FormatRulesTests.swift`) : pour les vingt scénarios, la
+  taille de cluster retenue est comparée à celle que la table de `FORMAT` donne
+  pour ce volume et ce système de fichiers. La table du test est **écrite à
+  part**, en FAT16, FAT32 et NTFS — deux copies du même calcul ne prouveraient
+  rien. E1 et E2 ne peuvent plus être réintroduites, et le corollaire est vérifié
+  aussi : imposer la valeur juste donne la même chose que se taire.
+- **La commutation de tête** est confrontée au pas de piste sur les huit fiches
+  du catalogue, et à sa propre loi : deux disques de même seek moyen et de
+  piste-à-piste différent n'ont pas la même commutation.
+- **`$Boot` et `$MFTMirr`** sont vérifiés en taille et en position, dans les deux
+  époques, et **la bascule à 2000** a son test à elle : aucun scénario embarqué
+  ne démarre cette année-là, donc rien d'autre ne la retiendrait.
+- **Un fichier `systemCore` ne tombe plus en tête de volume** sur VFAT et FAT32,
+  et y tombe toujours sous MS-DOS — le même test, deux `Scan`. Le chargeur
+  d'amorçage, lui, a gardé sa contrainte.
+
+### Ce que cela change, mesuré
+
+**E1 et E2 regénèrent quatre volumes.** Les trois disques de 1993 passent à
+4 Ko, `gamer-1999` à 8 Ko ; `poweruser-1993`, seul de son époque à mériter ses
+8 Ko, ne bouge pas d'un cluster — c'est le témoin du lot.
+
+| volume | clusters | remplissage | slack |
+|---|---|---|---|
+| `dev-1993` | 26 880 → **53 760** | 74,0 → 69,0 % | 12,4 → **6,0 %** |
+| `secretaire-1993` | 21 760 → **43 520** | 90,8 → 88,5 % | 5,3 → **2,8 %** |
+| `gamer-1993` | 26 880 → **53 760** | 99,96 → 99,96 % | 1,2 → **0,6 %** |
+| `gamer-1999` | 2 150 400 → **1 075 200** | 93,0 → **97,4 %** | 0,10 → 0,18 % |
+| `poweruser-1993` | 43 520 | 86,8 % | 2,2 % |
+
+**E5 est le correctif qui déplace le plus de choses**, comme annoncé. Les
+fichiers de mise à jour cessent de camper en tête de volume :
+
+| volume | `UPD*.DLL` | position moyenne, avant → après |
+|---|---:|---|
+| `gamer-1999` (FAT32) | 786 | 1,4 % → **58,2 %** |
+| `famille-1999` (FAT32) | 642 | 2,1 % → **56,5 %** |
+| `secretaire-1999` (FAT32) | 1 044 | 2,5 % → **47,1 %** |
+| `dev-1999` (FAT32) | 1 184 | 2,5 % → **49,5 %** |
+| `dev-1996` (VFAT) | 306 | 9,8 % → **63,2 %** |
+
+Conséquence : **la fragmentation des volumes FAT baisse**, parce qu'un mécanisme
+qui la fabriquait a disparu. `dev-1999` passe de 658 à 221 fichiers fragmentés,
+`secretaire-1999` de 748 à 331, `famille-1999` de 874 à 666, `dev-1996` de 152 à
+96. Et la passe de 95 sur `dev-1996`, qui passait son temps à remuer des
+fichiers système coincés en tête, tombe de **33 min 59 à 13 min 42**.
+
+**Trois cibles de calibration sont désormais manquées**, au lieu de deux, et
+c'est la même cause. `secretaire-1999` visait 15 à 25 % de fichiers fragmentés
+et en donnait 13,7 ; il en donne **6,1 %**. Le test le dit en `withKnownIssue`,
+comme les deux autres, avec la raison : la fragmentation qu'il mesurait venait
+pour partie d'un mécanisme qui n'a jamais existé. Dans la même direction, l'écart
+FAT32 / NTFS de `famille-1999` contre `famille-2003` se resserre encore — douze,
+puis deux au lot 1, **une fois et demie** aujourd'hui — et le titre du test suit
+la mesure, comme au lot précédent. Ce qui manque aux trois est le même, et
+`LEDGER-EXPERTS.md` le range au lot 4 : l'allocation incrémentale et
+l'entrelacement, c'est-à-dire des fichiers qui se fragmentent **pendant** qu'on
+les écrit, et non seulement parce que l'espace libre l'était déjà.
+
+**E3 ne change presque rien aux volumes, et c'est attendu** : quatre clusters
+déplacés sur des dizaines de millions. Sur les huit volumes NTFS, le nombre de
+fichiers fragmentés bouge de −14 à +9, et la MFT garde ses extents du lot 1
+(`dev-2003` 39, `secretaire-2007` 23, `dev-2007` 4). Un seul effet mérite d'être
+noté : sur le volume d'essai de `AllocatorComparisonTests`, le décalage de seize
+clusters fait manquer sa place à **un** fichier de 22 Mo, qui sort en 339 extents
+au lieu de 4. Le taux de fragmentation, lui, ne bouge pas (1,0 %), et le p95
+reste à 1 : c'est la moyenne d'extents par fichier qui est dominée par sa queue.
+L'assertion qui la comparait à FAT16 tenait par chance ; elle compare désormais
+les deux volumes **sans leur pire fichier**, ce que les deux autres assertions du
+test disent déjà de la population.
+
+**Les vingt démarrages bougent peu, et dans les deux sens.** Les volumes FAT
+s'allongent — les fichiers système ne sont plus groupés en tête, le bras
+voyage —, les 1993 raccourcissent avec leurs clusters deux fois plus petits, les
+NTFS ne bougent pas. `ThinkModel` n'a **pas** été recalé.
+
+| profil | cible | après lot 1 | après lot 2 | écart à la cible |
+|---|---:|---:|---:|---:|
+| `dev-2007` | 47,0 s | 36,9 s | 36,9 s | −21,5 % |
+| `gamer-2003` | 70,0 s | 56,0 s | 55,8 s | −20,3 % |
+| `secretaire-2007` | 41,9 s | 34,0 s | 33,9 s | −19,1 % |
+| `dev-2003` | 49,1 s | 40,0 s | 40,1 s | −18,3 % |
+| `famille-2007` | 38,3 s | 31,6 s | 31,5 s | −17,8 % |
+| `famille-1999` | 66,0 s | 56,3 s | 57,9 s | −12,3 % |
+| `secretaire-2003` | 33,8 s | 29,9 s | 29,9 s | −11,5 % |
+| `famille-2003` | 28,8 s | 25,7 s | 25,6 s | −11,1 % |
+| `dev-1999` | 57,0 s | 49,7 s | 51,1 s | −10,4 % |
+| `secretaire-1999` | 56,7 s | 50,8 s | 51,0 s | −10,1 % |
+| `gamer-2007` | 29,8 s | 26,9 s | 27,0 s | −9,4 % |
+| `secretaire-1996` | 55,4 s | 50,3 s | 50,6 s | −8,7 % |
+| `dev-1996` | 58,7 s | 53,5 s | 54,9 s | −6,5 % |
+| `dev-1993` | 41,8 s | 39,7 s | 39,2 s | −6,2 % |
+| `famille-1996` | 54,4 s | 50,0 s | 51,1 s | −6,1 % |
+| `gamer-1999` | 54,8 s | 47,9 s | 51,5 s | −6,0 % |
+| `poweruser-1993` | 42,7 s | 40,7 s | 40,2 s | −5,9 % |
+| `secretaire-1993` | 36,0 s | 34,6 s | 34,0 s | −5,6 % |
+| `gamer-1993` | 29,5 s | 28,4 s | 28,0 s | −5,1 % |
+| `gamer-1996` | 44,0 s | 41,4 s | 43,0 s | −2,3 % |
+
+La dérive tient maintenant entre **2,3 et 21,5 %** sous la cible, contre 3,7 à
+21,5 après le lot 1 : E5 travaille dans la direction du recalage sur les volumes
+FAT, sans rien y ramener. Elle n'est **pas** compensée ; c'est le lot 3 qui
+recalera, une fois le montage et l'arrondi au cluster corrigés.
+
+### Le README
+
+Régénéré d'un seul jeu de mesures, comme au chantier 20 : les vingt démarrages,
+les cinq installations, les quatre journées et les vingt volumes croisés avec les
+treize outils, en release et en `PLAN_ONLY` — deux minutes trente avec
+`xargs -P 6`. Trois cent cinq mesures, aucune table à moitié fraîche.
+
+Un paragraphe y a été **réécrit et non rafraîchi** : « Le scénario de
+défragmentation » décrivait encore le volume fixe d'avant le chantier 19 — un
+FAT16 de 180 Mo sur le Fireball, 504 fichiers — alors que la démo tourne sur
+`dev-1993` depuis. La dérive était antérieure à ce lot ; la laisser à côté de
+tables fraîches aurait été pire.
+
+**Un coup d'œil au simulateur, pour E1.** `dev-1993` porte la démo de
+défragmentation de l'accueil, choisie au chantier 19 parce que « sa carte est
+assez petite pour qu'un bloc d'écran vaille 22 clusters ». Ses clusters ayant
+été divisés par deux, ce compte a doublé : l'app affiche « 1 bloc ≈ 43
+clusters = 172 Ko ». La carte reste parfaitement lisible — les bandes de
+catégories, la frontière qui descend, les trous — et aucun bilan ne l'aurait dit.
+
+### Laissé ouvert
+
+- **La dérive de calibration n'est toujours pas compensée**, et elle a bougé :
+  de 2,3 à 21,5 % sous la cible. Le recalage reste au lot 3, une seule fois,
+  après le montage et l'arrondi au cluster — la recaler trois fois reviendrait à
+  cacher les deux corrections suivantes dans la première.
+- **`NTFSProfile` n'a pas de `forVolume`**, et les huit descriptions NTFS gardent
+  donc leur `clusterKB: 4`. Le test porte la table ; le modèle, non.
+- **Le piste-à-piste du Fireball reste à 3,0 ms**, la même valeur ronde que le
+  Conner de 1993, que `DISK_EXPERT_REVIEW.md` §3.2 donne pour suspecte. La
+  commutation de tête en dérive désormais, donc cette constante pèse plus
+  qu'avant — et elle reste à vérifier sur fiche. C'est la seule des quatre
+  questions « à trancher sur source » que ce lot ait rendue plus pressante.
+- **Le fichier de 22 Mo en 339 extents** du volume d'essai n'a pas été creusé :
+  c'est un fichier ordinaire qui n'a pas trouvé sa place à 80 % de remplissage et
+  qui est parti en miettes, comportement documenté de `scatter`. Aucun volume de
+  la galerie ne le montre.
+- **Rien d'autre n'a été corrigé** : `ProfileSpec.clusterCount` ignore toujours
+  la surcharge de format, le montage lit toujours FAT2, la MFT n'a toujours pas
+  de `$LogFile`, et l'allocation reste d'un seul tenant.

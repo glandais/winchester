@@ -271,11 +271,14 @@ public enum DiskGenerator {
     }
 
     static func ntfsAllocator(for spec: ProfileSpec) -> NTFSAllocator {
-        // `$MFTMirr` est au milieu du volume jusqu'à Windows 2000, ramené
-        // près du début ensuite : un aller-retour de moins par écriture de
-        // métadonnées, et ça s'entend.
+        // `$MFTMirr` est au milieu du volume jusqu'à NT 4, ramené près du
+        // début par NTFS 3.0 — c'est-à-dire par Windows 2000, et non par XP :
+        // un aller-retour de moins par écriture de métadonnées, et ça s'entend.
+        // Aucun scénario embarqué ne démarre en 2000 ; c'est un disque
+        // personnalisé daté de cette année-là que la borne d'avant traitait
+        // comme un NT 4.
         let mirror: NTFSAllocator.MirrorPlacement =
-            spec.timeline.start.year >= 2001 ? .nearStart : .volumeMiddle
+            spec.timeline.start.year >= 2000 ? .nearStart : .volumeMiddle
         return NTFSAllocator(profile: NTFSProfile(clusterKB: spec.fileSystem.clusterKB ?? 4),
                              clusterCount: spec.clusterCount,
                              mirrorPlacement: mirror)
