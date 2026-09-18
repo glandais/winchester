@@ -55,6 +55,17 @@ final class OperationSink {
     /// avec l'opération suivante, et le plan final fait foi.
     var moves = MoveCount()
 
+    /// Validations émises jusqu'ici. Sur NTFS, c'est ce compte qui fait avancer
+    /// le journal : une page de `$LogFile` s'écrit quand huit validations
+    /// l'ont remplie, quelle que soit la stratégie qui les a produites.
+    private(set) var validations = 0
+
+    /// Rang de la validation qui commence, et compte d'une de plus.
+    func nextValidation() -> Int {
+        defer { validations += 1 }
+        return validations
+    }
+
     /// Un récepteur qui garde tout.
     init() {
         downstream = nil

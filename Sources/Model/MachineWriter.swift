@@ -28,8 +28,9 @@ struct MachineWriter {
     /// tables. Le planificateur ne connaît pas la mécanique ; il n'a besoin que
     /// d'un ordre de grandeur.
     let diskBytesPerSecond: Double
-    /// Où `$LogFile` a été posé : à côté de `$MFTMirr`.
-    let journalLBA: Int
+    /// Pages de `$LogFile` écrites jusqu'ici : le journal est circulaire, et
+    /// chaque vidage écrit la suivante.
+    private var journalPages = 0
 
     /// Phase dans laquelle tombent les opérations émises.
     var phase = 0
@@ -56,15 +57,11 @@ struct MachineWriter {
     private(set) var bytesRead = 0
 
     init(partition: PartitionGeometry, era: InstallEra, sink: OperationSink,
-         diskBytesPerSecond: Double, systemExtents: [Extent]) {
+         diskBytesPerSecond: Double) {
         self.partition = partition
         self.era = era
         self.sink = sink
         self.diskBytesPerSecond = max(diskBytesPerSecond, 100_000)
-        // `FORMAT` pose le journal à côté de la copie de la MFT : au milieu du
-        // volume jusqu'à Windows 2000, près du début ensuite.
-        let mirror = systemExtents.last.map { Int($0.end) } ?? partition.clusterCount / 2
-        self.journalLBA = partition.lba(ofCluster: min(mirror, max(partition.clusterCount - 1, 0)))
     }
 
     // MARK: - Le temps passé ailleurs
@@ -163,7 +160,8 @@ struct MachineWriter {
         }()
         let clusters = record.extents.isEmpty ? [0] : record.extents.map { Int($0.start) }
         for cluster in clusters {
-            for access in partition.commitAccesses(forCluster: cluster, fileIndex: rank) {
+            for access in partition.commitAccesses(forCluster: cluster, fileIndex: rank,
+                                                   validation: nil) {
                 dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
             }
         }
@@ -186,9 +184,13 @@ struct MachineWriter {
         }
         dirty.removeAll(keepingCapacity: true)
 
+        // Écriture anticipée : la page de journal part avant les tables
+        // qu'elle décrit, une par vidage — c'est le *lazy writer* qui groupe.
         if era.journaled {
-            emit(.metadata, lba: journalLBA, sectors: 8, isWrite: true, cluster: nil)
-            metadataSectors += 8
+            let page = partition.logPage(journalPages)
+            journalPages += 1
+            emit(.metadata, lba: page.lba, sectors: page.sectors, isWrite: true, cluster: nil)
+            metadataSectors += page.sectors
         }
         for run in runs {
             emit(.metadata, lba: run.lba, sectors: run.sectors, isWrite: true, cluster: nil)

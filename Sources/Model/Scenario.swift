@@ -150,6 +150,10 @@ struct BootPlayback {
     let appName: String?
     let filesRead: Int
     let residentFiles: Int
+    /// Fichiers dont la date de dernier accès a été réécrite, et en combien
+    /// d'écritures une fois groupées.
+    let stampedFiles: Int
+    let stampWrites: Int
     /// Ce que le système aurait mis sans disque : la somme des calculs.
     let thinkSeconds: Double
     /// Le silence qui suit la dernière lecture.
@@ -407,6 +411,8 @@ enum ScenarioBuilder {
                                appName: plan.appName,
                                filesRead: plan.filesRead,
                                residentFiles: plan.residentFiles,
+                               stampedFiles: plan.stampedFiles,
+                               stampWrites: plan.stampWrites,
                                thinkSeconds: plan.thinkSeconds,
                                tail: plan.tail,
                                freshSeconds: freshSeconds,

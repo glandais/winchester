@@ -51,7 +51,8 @@ struct PartitionGeometryTests {
     }
 
     /// L'écart qui s'entend : trois écritures au bord du plateau contre deux,
-    /// dont une qui suit le fichier au lieu de revenir au début.
+    /// dont une qui suit le fichier au lieu de revenir au début — plus, une
+    /// validation sur huit, la page de journal (`LogFileTests`).
     @Test("Valider un déplacement coûte trois écritures sur FAT, deux sur NTFS")
     func commitCost() {
         let fat = PartitionGeometry(startLBA: 0, sectors: 400_000,
@@ -59,7 +60,7 @@ struct PartitionGeometryTests {
         let ntfs = PartitionGeometry(startLBA: 0, sectors: 8_000_000,
                                      clusterSectors: 8, format: .ntfs)
 
-        let fatCommit = fat.commitAccesses(forCluster: 20_000, fileIndex: 3)
+        let fatCommit = fat.commitAccesses(forCluster: 20_000, fileIndex: 3, validation: 0)
         #expect(fatCommit.count == 3)
         // Toutes au tout début de la partition, avant la zone de données.
         for access in fatCommit {
@@ -67,7 +68,7 @@ struct PartitionGeometryTests {
                     "une validation FAT ramène le bras au bord du plateau")
         }
 
-        let ntfsCommit = ntfs.commitAccesses(forCluster: 20_000, fileIndex: 3)
+        let ntfsCommit = ntfs.commitAccesses(forCluster: 20_000, fileIndex: 3, validation: 0)
         #expect(ntfsCommit.count == 2)
     }
 

@@ -8,9 +8,17 @@ import DiskCore
 /// l'algorithme. Valider un déplacement sur FAT, c'est trois écritures au tout
 /// début de la partition — les deux copies de la table et l'entrée de
 /// répertoire — donc un retour du bras au bord du plateau à peu près une fois
-/// par fichier : le « clac … clac … clac » régulier. Sur NTFS, c'est un
-/// enregistrement de la MFT, qui est un fichier comme un autre et vit là où il
-/// a été alloué ; le bras n'a aucune raison de revenir au bord.
+/// par fichier : le « clac … clac … clac » régulier.
+///
+/// Sur NTFS, c'est un enregistrement de la MFT et un secteur de `$Bitmap`,
+/// **et le journal**. NTFS journalise en écriture anticipée : aucune
+/// modification de métadonnées n'atteint le disque avant que son
+/// enregistrement de journal y soit, et `$LogFile` est un bloc fixe, posé au
+/// formatage. Le bras y revient donc, lui aussi — mais pas à chaque
+/// validation : le *lazy writer* remplit une page de journal de plusieurs
+/// validations avant de l'écrire. En lecture, rien de tout cela n'existe, et le
+/// bras n'a aucune raison de revenir au bord ; en écriture, il y revient par
+/// **rafales espacées**, et non régulièrement comme sur FAT.
 enum VolumeFormat: Sendable {
     case fat16
     case fat32
@@ -77,6 +85,9 @@ struct PartitionGeometry {
     let format: VolumeFormat
     /// Secteurs d'une copie de la table d'allocation. Nul sur NTFS.
     let fatSectors: Int
+    /// Où `FORMAT` a posé les métafichiers d'un NTFS : près du début depuis
+    /// Windows 2000, au milieu du volume avant. Sans objet sur FAT.
+    var ntfsPlacement: NTFSAllocator.MirrorPlacement = .nearStart
 
     /// 512 entrées de 32 octets : la racine d'un FAT16, de taille fixe. FAT32
     /// et NTFS n'en ont pas — leur racine est un fichier ordinaire.
@@ -162,6 +173,16 @@ struct PartitionGeometry {
         max(1, Int(ceil(Double(bytes) / Double(clusterBytes))))
     }
 
+    /// Secteurs à lire pour obtenir `bytes` octets d'un fichier, quand le
+    /// système lit par unités de `granularity` octets — la page du cache, ou
+    /// le secteur. Le cluster n'y entre pas : c'est l'unité d'allocation, pas
+    /// de lecture.
+    static func readSectors(forBytes bytes: Int, granularity: Int) -> Int {
+        let unit = max(granularity, DriveGeometry.bytesPerSector)
+        let rounded = (max(bytes, 1) + unit - 1) / unit * unit
+        return (rounded + DriveGeometry.bytesPerSector - 1) / DriveGeometry.bytesPerSector
+    }
+
     var capacityDescription: String {
         let bytes = Double(capacityBytes)
         return bytes >= 1_000_000_000
@@ -174,21 +195,84 @@ struct PartitionGeometry {
 
 extension PartitionGeometry {
 
-    /// Emplacement de la MFT : au tout début de la zone de données, juste
-    /// derrière `$Boot`, et suivie de la zone que NTFS lui réserve.
+    /// Taille d'un enregistrement de la MFT.
     ///
     /// Un enregistrement fait un kilo-octet, et c'est cette granularité-là qui
     /// compte : déplacer un fichier réécrit **un** enregistrement, pas une
     /// table entière.
     var mftRecordSectors: Int { max(1_024 / DriveGeometry.bytesPerSector, 1) }
 
+    /// Les métafichiers de NTFS, là où le générateur les a posés : la règle
+    /// est la même (`NTFSAllocator.layout`), et elle ne se recopie pas.
+    var ntfsLayout: NTFSAllocator.Layout {
+        NTFSAllocator.layout(profile: NTFSProfile(clusterKB: UInt32(max(clusterBytes / 1_024, 1))),
+                             clusterCount: UInt32(clusterCount),
+                             mirrorPlacement: ntfsPlacement)
+    }
+
+    /// Premier secteur de `$MFT`. Son enregistrement *n* est `n` kilo-octets
+    /// plus loin.
+    var mftLBA: Int {
+        format == .ntfs ? lba(ofCluster: Int(ntfsLayout.mftStart)) : dataStartLBA
+    }
+
+    // MARK: - Le journal
+
+    /// Une page de journal : 4 Ko, l'unité dans laquelle NTFS écrit
+    /// `$LogFile`.
+    static let logPageSectors = 8
+
+    /// Validations dont les enregistrements remplissent une page de journal.
+    ///
+    /// Déplacer ou créer un fichier journalise la modification de son
+    /// enregistrement de MFT et celle des bits de `$Bitmap`, en *redo* et en
+    /// *undo* : quelques enregistrements de cent à deux cents octets, soit de
+    /// l'ordre du demi-kilo-octet par validation, et huit validations par
+    /// page de 4 Ko. C'est un ordre de grandeur, pas une mesure — et c'est lui
+    /// qui fixe le rythme des rafales.
+    static let validationsPerLogPage = 8
+
+    /// Premier secteur de `$LogFile`, là où le générateur l'a posé. Ses deux
+    /// premières pages sont la zone de redémarrage, que le montage lit et que
+    /// le pilote réécrit quand il déclare le volume propre ou sale.
+    var logFileLBA: Int { lba(ofCluster: Int(ntfsLayout.logFile.start)) }
+
+    /// La page `index` de la zone circulaire du journal, qui suit les deux
+    /// pages de redémarrage et reboucle à la fin du fichier.
+    func logPage(_ index: Int) -> MetadataAccess {
+        let sectors = Int(ntfsLayout.logFile.length) * clusterSectors
+        let pages = max(sectors / Self.logPageSectors - 2, 1)
+        return MetadataAccess(lba: logFileLBA + (2 + index % pages) * Self.logPageSectors,
+                              sectors: Self.logPageSectors)
+    }
+
+    /// La page où tombent les enregistrements de la validation `validation`.
+    func logPage(forValidation validation: Int) -> MetadataAccess {
+        logPage(max(validation, 0) / Self.validationsPerLogPage)
+    }
+
+    /// Ce que le pilote écrit en montant le volume, pour le déclarer en
+    /// service : l'octet d'état de la table sur FAT, la zone de redémarrage du
+    /// journal sur NTFS.
+    var mountWrite: MetadataAccess {
+        format.isFAT
+            ? MetadataAccess(lba: fat1LBA, sectors: 1)
+            : MetadataAccess(lba: logFileLBA, sectors: Self.logPageSectors)
+    }
+
     /// Les écritures qui valident le déplacement d'un fichier.
     ///
     /// - Parameters:
     ///   - cluster: premier cluster de sa nouvelle position — c'est lui qui
     ///     désigne le secteur de table à réécrire ;
-    ///   - fileIndex: rang du fichier, qui désigne son enregistrement MFT.
-    func commitAccesses(forCluster cluster: Int, fileIndex: Int) -> [MetadataAccess] {
+    ///   - fileIndex: rang du fichier, qui désigne son enregistrement MFT ;
+    ///   - validation: rang de cette validation dans la passe. Sur NTFS, la
+    ///     page de journal n'est écrite que par la validation qui la remplit —
+    ///     une sur `validationsPerLogPage` —, et `nil` laisse l'écriture du
+    ///     journal à l'appelant, quand c'est un cache qui vide ses tables à
+    ///     son propre rythme (`MachineWriter`).
+    func commitAccesses(forCluster cluster: Int, fileIndex: Int,
+                        validation: Int?) -> [MetadataAccess] {
         switch format {
         case .fat16, .fat32:
             // Les deux copies de la table et l'entrée de répertoire, toutes au
@@ -203,14 +287,19 @@ extension PartitionGeometry {
             ]
         case .ntfs:
             // Un seul enregistrement MFT réécrit, et la bitmap du volume. La
-            // MFT est au début de la zone de données, mais un enregistrement
-            // n'est pas la table entière : c'est un kilo-octet.
-            return [
-                MetadataAccess(lba: dataStartLBA + fileIndex * mftRecordSectors,
+            // MFT est en tête du volume, mais un enregistrement n'est pas la
+            // table entière : c'est un kilo-octet. Et, une validation sur
+            // huit, la page de journal que les précédentes ont remplie.
+            var accesses = [
+                MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
                                sectors: mftRecordSectors),
                 MetadataAccess(lba: dataStartLBA + bitmapOffsetSectors + cluster / (8 * DriveGeometry.bytesPerSector),
                                sectors: 1),
             ]
+            if let validation, (validation + 1) % Self.validationsPerLogPage == 0 {
+                accesses.append(logPage(forValidation: validation))
+            }
+            return accesses
         }
     }
 
@@ -222,9 +311,11 @@ extension PartitionGeometry {
 
     /// Ce que coûte l'**ouverture** d'un fichier, avant d'en lire un octet.
     ///
-    /// Sur FAT, presque rien : la table est lue une fois au montage et tient en
-    /// mémoire, et l'entrée de répertoire a été lue en même temps que celles de
-    /// ses voisines. Seule la première ouverture dans un répertoire coûte une
+    /// Sur FAT, presque rien : l'entrée de répertoire a été lue en même temps
+    /// que celles de ses voisines. La table, elle, n'est pas lue ici : sur
+    /// FAT16 elle a été lue entière au montage et tient en mémoire ; sur FAT32
+    /// elle se lit par pages au fil des chaînes que suit la lecture des
+    /// données (`BootPlanner`). Seule la première ouverture dans un répertoire coûte une
     /// lecture — et elle se paie là où vit ce répertoire, c'est-à-dire près des
     /// fichiers qu'il contient, faute de savoir où l'allocateur a posé ses
     /// clusters : c'est une approximation, et la seule de ce modèle.
@@ -239,12 +330,70 @@ extension PartitionGeometry {
             guard let cluster = directoryFirstCluster else { return [] }
             return [MetadataAccess(lba: lba(ofCluster: Int(cluster)), sectors: clusterSectors)]
         case .ntfs:
-            return [MetadataAccess(lba: dataStartLBA + fileIndex * mftRecordSectors,
+            return [MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
                                    sectors: mftRecordSectors)]
         }
     }
 
-    /// Ce que lit l'analyse initiale : les tables, puis l'arborescence.
+    /// Ce que lit le pilote pour **monter** le volume, avant d'ouvrir le
+    /// premier fichier.
+    ///
+    /// Ce n'est pas l'analyse d'un défragmenteur (`scanAccesses`), qui a
+    /// besoin de connaître chaque cluster et lit donc toute la table : un
+    /// pilote ne lit que ce qui lui permet de servir la première ouverture, et
+    /// va chercher le reste à la demande.
+    ///
+    /// Sur aucun format la copie de secours n'est lue : FAT2 n'est consultée
+    /// que si FAT1 est illisible.
+    var mountAccesses: [MetadataAccess] {
+        switch format {
+        case .fat16:
+            // Le secteur d'amorçage, la première table **entière**, la racine.
+            // Une table FAT16 fait au plus 128 Ko et tient en mémoire : c'est
+            // pour cela que lire un fichier fragmenté n'y coûte aucun retour à
+            // la table (`openAccesses`). La lire au montage est le prix de
+            // cette hypothèse, et il est payé une fois.
+            return [MetadataAccess(lba: startLBA, sectors: 1),
+                    MetadataAccess(lba: fat1LBA, sectors: fatSectors),
+                    MetadataAccess(lba: rootLBA, sectors: rootSectorCount)]
+        case .fat32:
+            // Le secteur d'amorçage et `FSINFO` — qui donne le nombre de
+            // clusters libres et le curseur `next-free`, précisément pour que
+            // le pilote n'ait pas à parcourir la table —, le premier secteur de
+            // la table, qui porte les bits d'état du volume, et le premier
+            // cluster de la racine. Une table FAT32 fait des mégaoctets : VFAT
+            // en met les secteurs en cache **à la demande**, au fil des
+            // chaînes qu'il suit.
+            return [MetadataAccess(lba: startLBA, sectors: 2),
+                    MetadataAccess(lba: fat1LBA, sectors: 1),
+                    MetadataAccess(lba: dataStartLBA, sectors: clusterSectors)]
+        case .ntfs:
+            // Monter un NTFS, ce n'est pas lire la MFT : c'est lire `$Boot`,
+            // aller vérifier sa copie au **tout dernier secteur du volume**,
+            // lire les seize premiers enregistrements de la MFT — ceux des
+            // métafichiers —, les comparer à `$MFTMirr`, puis ouvrir `$Bitmap`.
+            // Quelques dizaines de kilo-octets, répartis sur trois zones du
+            // volume : le début, la bitmap derrière la zone MFT, et le fond du
+            // disque. Peu de transfert, beaucoup de seeks. Le reste de la MFT
+            // se lit à la demande, enregistrement par enregistrement.
+            //
+            // Entre les deux, la zone de redémarrage de `$LogFile` : c'est elle
+            // qui dit si le volume a été démonté proprement. S'il ne l'a pas
+            // été, le journal est rejoué — un démarrage de la galerie suit
+            // toujours un arrêt propre, et ne rejoue rien.
+            let layout = ntfsLayout
+            return [MetadataAccess(lba: startLBA, sectors: 16),
+                    MetadataAccess(lba: startLBA + totalSectors - 1, sectors: 1),
+                    MetadataAccess(lba: mftLBA, sectors: 16 * mftRecordSectors),
+                    MetadataAccess(lba: lba(ofCluster: Int(layout.mirror.start)),
+                                   sectors: 4 * mftRecordSectors),
+                    MetadataAccess(lba: logFileLBA, sectors: 2 * Self.logPageSectors),
+                    MetadataAccess(lba: dataStartLBA + bitmapOffsetSectors, sectors: 8)]
+        }
+    }
+
+    /// Ce que lit l'analyse initiale d'un défragmenteur : les tables, puis
+    /// l'arborescence.
     var scanAccesses: [MetadataAccess] {
         switch format {
         case .fat16, .fat32:
@@ -257,16 +406,15 @@ extension PartitionGeometry {
             return accesses
         case .ntfs:
             // `$Boot`, puis sa copie — qui est au **tout dernier secteur du
-            // volume**, et non à côté de l'original. Monter un NTFS commence
-            // donc par une course complète du bras jusqu'au fond du disque,
-            // aller et retour : c'est un accès isolé, et il s'entend.
+            // volume**, et non à côté de l'original : une course complète du
+            // bras jusqu'au fond du disque, aller et retour.
             //
             // La MFT se lit ensuite d'une traite : c'est elle qui décrit tout
-            // le volume.
+            // le volume, et un défragmenteur doit la connaître entière.
             let mftSectors = max(clusterCount / 8, 1) * mftRecordSectors / 8
             return [MetadataAccess(lba: startLBA, sectors: 16),
                     MetadataAccess(lba: startLBA + totalSectors - 1, sectors: 1),
-                    MetadataAccess(lba: dataStartLBA, sectors: min(mftSectors, 4_096))]
+                    MetadataAccess(lba: mftLBA, sectors: min(mftSectors, 4_096))]
         }
     }
 
@@ -281,7 +429,7 @@ extension PartitionGeometry {
             }
             return accesses
         case .ntfs:
-            return [MetadataAccess(lba: dataStartLBA, sectors: 64)]
+            return [MetadataAccess(lba: mftLBA, sectors: 64)]
         }
     }
 }

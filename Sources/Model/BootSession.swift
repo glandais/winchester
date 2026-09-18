@@ -28,12 +28,11 @@ enum BootSession {}
 /// disque attend pendant ce temps, et le temps de démarrage est la somme des
 /// deux.
 ///
-/// Les deux constantes sont **calées pour que le total tombe sur les durées de
-/// l'époque** — une trentaine de secondes pour un Windows 95, une bonne minute
-/// pour un Vista — sur un volume fraîchement installé. Elles ne prétendent pas
-/// mesurer un processeur : ce qu'elles fixent, c'est le plancher sous lequel un
-/// démarrage ne descend pas même avec un disque parfait. Tout ce qui dépasse ce
-/// plancher est du disque, et c'est cela qu'on écoute.
+/// Les deux constantes sont **calées pour que le total tombe sur des durées
+/// cibles** (`boot(_:)`, la seule table où elles le sont). Elles ne prétendent
+/// pas mesurer un processeur : ce qu'elles fixent, c'est le plancher sous lequel
+/// un démarrage ne descend pas même avec un disque parfait. Tout ce qui dépasse
+/// ce plancher est du disque, et c'est cela qu'on écoute.
 struct ThinkModel: Sendable {
 
     /// Secondes de calcul par fichier ouvert : décider de l'ouvrir, résoudre
@@ -44,6 +43,37 @@ struct ThinkModel: Sendable {
 
     func seconds(bytes: Int) -> Double {
         perFile + perMegabyte * Double(bytes) / 1_048_576
+    }
+}
+
+extension ThinkModel {
+
+    /// Le plancher processeur d'un démarrage, par système.
+    ///
+    /// **C'est le seul endroit où une durée de démarrage est calée**, et il l'a
+    /// été deux fois (`LEDGER.md`, chantiers 20 et 22). Les cibles sont les
+    /// vingt durées que le modèle donnait avant la relecture des experts,
+    /// elles-mêmes posées sur les durées d'époque.
+    ///
+    /// Le premier calage absorbait, sans le savoir, un défaut du disque : un
+    /// tour de plateau perdu à chaque requête d'une lecture contiguë, et une
+    /// table FAT lue deux fois au montage. Les deux corrigés, ce qui manquait
+    /// aux vingt démarrages s'est révélé **proportionnel aux mégaoctets lus**,
+    /// et non au nombre de fichiers ouverts — la signature d'un coût par
+    /// requête de transfert. C'est donc `perMegabyte` seul qui a bougé ;
+    /// `perFile` décrit toujours ce qu'il décrivait.
+    ///
+    /// Le cache disque et la lecture anticipée, quand ils arriveront, feront
+    /// tomber tout le séquentiel une seconde fois : ce recalage-ci sera à
+    /// refaire, ici.
+    static func boot(_ os: String) -> ThinkModel {
+        switch os {
+        case "msdos-6.22+win31": ThinkModel(perFile: 0.045, perMegabyte: 0.80)  // 0,60 avant le chantier 22
+        case "win95-osr1":       ThinkModel(perFile: 0.022, perMegabyte: 0.41)  // 0,34
+        case "win98se":          ThinkModel(perFile: 0.015, perMegabyte: 0.25)  // 0,22
+        case "winxp-sp1":        ThinkModel(perFile: 0.009, perMegabyte: 0.19)  // 0,13
+        default:                 ThinkModel(perFile: 0.009, perMegabyte: 0.15)  // Vista : 0,09
+        }
     }
 }
 
@@ -140,6 +170,14 @@ struct BootScript: Sendable {
     /// monte en régime pendant ce temps et rien n'est encore lu.
     let post: Double
     let think: ThinkModel
+    /// Granularité d'une lecture de données, en octets (`Era.readGranularity`).
+    let readGranularity: Int
+    /// Chaque lecture met-elle à jour la date de dernier accès
+    /// (`Era.stampsAccess`) ?
+    let stampsAccess: Bool
+    /// Intervalle entre deux vidages des métadonnées salies, en secondes : le
+    /// même cache que pendant une installation (`InstallEra.flush`).
+    let metadataFlushSeconds: Double
     let acts: [BootAct]
     /// Silence final, une fois la machine posée.
     let tail: Double = 4.0
@@ -158,9 +196,16 @@ extension BootScript {
     /// calcule entre deux.
     static func forProfile(_ spec: ProfileSpec, launching app: AppManifest?) -> BootScript {
         let era = Era.matching(spec)
+        let flush: Double = switch InstallEra.matching(spec).flush {
+        case .everyFile: 0
+        case let .every(seconds): seconds
+        }
         return BootScript(osName: era.osName,
                           post: era.post,
                           think: era.think,
+                          readGranularity: era.readGranularity,
+                          stampsAccess: era.stampsAccess,
+                          metadataFlushSeconds: flush,
                           acts: era.acts(launching: app))
     }
 
@@ -171,7 +216,9 @@ extension BootScript {
         let os: String
         let osName: String
         let post: Double
-        let think: ThinkModel
+        /// Le plancher processeur de l'époque, pris dans la seule table où
+        /// une durée de démarrage est calée (`ThinkModel.boot`).
+        var think: ThinkModel { ThinkModel.boot(os) }
         /// Fichiers du noyau, chargés en premier et les plus gros.
         let kernelFiles: Int
         /// Pilotes et bibliothèques système, dans l'ordre de la base de
@@ -198,6 +245,36 @@ extension BootScript {
         /// Étiquettes des huit actes, dans l'ordre.
         let labels: [(String, String, String)]
 
+        /// Ce que le système lit au moins quand il lit un fichier, en octets.
+        ///
+        /// Pas un cluster : le cluster est l'unité d'**allocation**, pas de
+        /// lecture. MS-DOS lisait les secteurs qu'on lui demandait. À partir de
+        /// Windows 95, les lectures passent par le cache, qui travaille par
+        /// **pages de 4 Ko** — sur un volume de 1996 en clusters de 32 Ko, lire
+        /// les 2 Ko d'un `.ini` ne coûte donc que 4 Ko, et non 32.
+        var readGranularity: Int {
+            os == "msdos-6.22+win31" ? DriveGeometry.bytesPerSector : 4_096
+        }
+
+        /// Lire un fichier met-il à jour sa date de dernier accès ?
+        ///
+        /// Sous NT, et jusqu'à XP inclus, **toute lecture** réécrit
+        /// `LastAccessTime` dans l'enregistrement de MFT du fichier ; Vista
+        /// l'a désactivé par défaut (`NtfsDisableLastAccessUpdate`). VFAT a le
+        /// même mécanisme depuis Windows 95 — une date de dernier accès dans
+        /// l'entrée de répertoire, que MS-DOS n'avait pas. Les deux ne
+        /// réécrivent la date que si elle a changé — NTFS ne descend pas sous
+        /// l'heure, FAT ne note que le jour —, ce qui est toujours le cas au
+        /// premier démarrage de la journée, et jamais à un redémarrage
+        /// d'installation.
+        ///
+        /// C'est l'écart d'époque le plus net entre 2003 et 2007, et il ne tient
+        /// à aucun matériel : des centaines d'écritures de métadonnées,
+        /// différées et groupées, **ailleurs** que là où l'on vient de lire.
+        var stampsAccess: Bool {
+            os != "msdos-6.22+win31" && os != "vista"
+        }
+
         static let all: [Era] = [
 
             // 1993 — la machine démarre en deux temps : MS-DOS, puis `WIN`.
@@ -208,7 +285,6 @@ extension BootScript {
             Era(os: "msdos-6.22+win31",
                 osName: "MS-DOS 6.22 et Windows 3.1",
                 post: 8.0,
-                think: ThinkModel(perFile: 0.045, perMegabyte: 0.60),
                 kernelFiles: 5, driverFiles: 16, serviceFiles: 14,
                 shellFiles: 220, appBytes: 6_000_000,
                 prefetch: .declared,
@@ -234,7 +310,6 @@ extension BootScript {
             Era(os: "win95-osr1",
                 osName: "Windows 95",
                 post: 7.0,
-                think: ThinkModel(perFile: 0.022, perMegabyte: 0.34),
                 kernelFiles: 8, driverFiles: 260, serviceFiles: 40,
                 shellFiles: 70, appBytes: 14_000_000,
                 prefetch: .declared,
@@ -260,7 +335,6 @@ extension BootScript {
             Era(os: "win98se",
                 osName: "Windows 98 SE",
                 post: 6.0,
-                think: ThinkModel(perFile: 0.015, perMegabyte: 0.22),
                 kernelFiles: 8, driverFiles: 380, serviceFiles: 60,
                 shellFiles: 110, appBytes: 40_000_000,
                 prefetch: .declared,
@@ -286,7 +360,6 @@ extension BootScript {
             Era(os: "winxp-sp1",
                 osName: "Windows XP",
                 post: 5.0,
-                think: ThinkModel(perFile: 0.009, perMegabyte: 0.13),
                 kernelFiles: 10, driverFiles: 600, serviceFiles: 110,
                 shellFiles: 180, appBytes: 120_000_000,
                 prefetch: .byPosition,
@@ -312,7 +385,6 @@ extension BootScript {
             Era(os: "vista",
                 osName: "Windows Vista",
                 post: 6.0,
-                think: ThinkModel(perFile: 0.009, perMegabyte: 0.09),
                 kernelFiles: 10, driverFiles: 1_200, serviceFiles: 220,
                 shellFiles: 400, appBytes: 340_000_000,
                 prefetch: .byPosition,
@@ -432,6 +504,10 @@ struct BootPlan {
     let bytesRead: Int
     let bytesWritten: Int
     let residentFiles: Int
+    /// Fichiers dont la date de dernier accès a été réécrite.
+    let stampedFiles: Int
+    /// Écritures de métadonnées qui les ont portées, une fois groupées.
+    let stampWrites: Int
     /// Somme des temps de calcul : la durée qu'aurait le démarrage si le disque
     /// répondait instantanément.
     let thinkSeconds: Double
@@ -447,9 +523,14 @@ enum BootPlanner {
     /// contigu et un fichier haché produiraient le même nombre de requêtes.
     private static let maxRequestSectors = 128
 
-    /// - Parameter launchesApplication: `false` pour un redémarrage en cours
-    ///   d'installation, où l'on s'arrête au bureau.
-    static func plan(disk: GeneratedDisk, launchesApplication: Bool = true) -> BootPlan {
+    /// - Parameters:
+    ///   - launchesApplication: `false` pour un redémarrage en cours
+    ///     d'installation, où l'on s'arrête au bureau ;
+    ///   - firstOfTheDay: `false` pour ce même redémarrage : les fichiers qu'il
+    ///     lit viennent d'être écrits ou lus, et leur date d'accès n'a pas à
+    ///     changer.
+    static func plan(disk: GeneratedDisk, launchesApplication: Bool = true,
+                     firstOfTheDay: Bool = true) -> BootPlan {
 
         let partition = GeneratedVolumeBridge.partition(of: disk)
         let app = launchesApplication ? launchedApplication(of: disk.spec) : nil
@@ -457,6 +538,9 @@ enum BootPlanner {
 
         var builder = Builder(partition: partition,
                               think: script.think,
+                              readGranularity: script.readGranularity,
+                              stampsAccess: script.stampsAccess && firstOfTheDay,
+                              flushSeconds: script.metadataFlushSeconds,
                               seed: disk.spec.seed &* 0x9E37_79B9)
         let walk = disk.catalog.directoryWalkOrder()
         // Le chemin d'un fichier se reconstruit en remontant l'arborescence :
@@ -477,6 +561,7 @@ enum BootPlanner {
                 builder.emit(files: chosen, query: query, phase: index)
             }
         }
+        builder.flushStamps(phase: script.acts.count - 1)
 
         return BootPlan(partition: partition,
                         osName: script.osName,
@@ -487,6 +572,8 @@ enum BootPlanner {
                         bytesRead: builder.bytesRead,
                         bytesWritten: builder.bytesWritten,
                         residentFiles: builder.residentFiles,
+                        stampedFiles: builder.stampedFiles,
+                        stampWrites: builder.stampWrites,
                         thinkSeconds: builder.thinkSeconds,
                         post: script.post,
                         tail: script.tail)
@@ -579,6 +666,9 @@ enum BootPlanner {
 
         let partition: PartitionGeometry
         let think: ThinkModel
+        let readGranularity: Int
+        let stampsAccess: Bool
+        let flushSeconds: Double
 
         var requests: [BlockRequest] = []
         var consumed: Set<UInt32> = []
@@ -586,6 +676,8 @@ enum BootPlanner {
         var bytesRead = 0
         var bytesWritten = 0
         var residentFiles = 0
+        var stampedFiles = 0
+        var stampWrites = 0
         var thinkSeconds: Double = 0
 
         /// Répertoires dont l'entrée a déjà été lue : sur FAT, on ne relit pas
@@ -596,24 +688,38 @@ enum BootPlanner {
         private var rng: SeededGenerator
         /// Rang du fichier, qui désigne son enregistrement dans la MFT.
         private var fileIndex = 0
+        /// Où l'on a lu chaque répertoire sur FAT : c'est là que sa date
+        /// d'accès se réécrit.
+        private var directoryLBA: [UInt32: Int] = [:]
+        /// Secteurs de métadonnées salis par les dates d'accès, pas encore
+        /// écrits, et le temps écoulé depuis le dernier vidage.
+        private var dirtyStamps: [Int: Int] = [:]
+        private var sinceFlush: Double = 0
+        /// Pages de la table FAT32 déjà en cache.
+        private var cachedTablePages: Set<Int> = []
 
-        init(partition: PartitionGeometry, think: ThinkModel, seed: UInt64) {
+        init(partition: PartitionGeometry, think: ThinkModel, readGranularity: Int,
+             stampsAccess: Bool, flushSeconds: Double, seed: UInt64) {
             self.partition = partition
             self.think = think
+            self.readGranularity = readGranularity
+            self.stampsAccess = stampsAccess
+            self.flushSeconds = flushSeconds
             self.rng = SeededGenerator(seed: seed)
         }
 
         /// Ce que lit le système avant de savoir lire un fichier.
         mutating func emitMount(phase: Int) {
-            for access in partition.scanAccesses {
+            for access in partition.mountAccesses {
                 append(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase)
                 bytesRead += access.sectors * DriveGeometry.bytesPerSector
             }
-            // Monter un volume, c'est aussi décider qu'il est propre : sur FAT
-            // l'octet d'état de la table est réécrit, sur NTFS le journal.
-            append(lba: partition.format.isFAT ? partition.fat1LBA : partition.dataStartLBA,
-                   sectors: 1, isWrite: true, phase: phase)
-            bytesWritten += DriveGeometry.bytesPerSector
+            // Monter un volume, c'est aussi décider qu'il est en service : sur
+            // FAT l'octet d'état de la table est réécrit, sur NTFS la zone de
+            // redémarrage du journal.
+            let mark = partition.mountWrite
+            append(lba: mark.lba, sectors: mark.sectors, isWrite: true, phase: phase)
+            bytesWritten += mark.sectors * DriveGeometry.bytesPerSector
             pending += think.perFile * 4
         }
 
@@ -630,7 +736,7 @@ enum BootPlanner {
             let bulk = query.order == .byPosition && !partition.format.isFAT
             if bulk, !files.isEmpty {
                 let sectors = files.count * partition.mftRecordSectors
-                append(lba: partition.dataStartLBA + fileIndex * partition.mftRecordSectors,
+                append(lba: partition.mftLBA + fileIndex * partition.mftRecordSectors,
                        sectors: sectors, isWrite: false, phase: phase)
                 bytesRead += sectors * DriveGeometry.bytesPerSector
             }
@@ -658,11 +764,59 @@ enum BootPlanner {
                     }
                 }
 
+                if stampsAccess { stamp(record) }
+
                 filesRead += 1
                 fileIndex += 1
                 let cost = think.seconds(bytes: touched)
                 pending += cost
                 thinkSeconds += cost
+                sinceFlush += cost
+                if sinceFlush >= flushSeconds { flushStamps(phase: phase) }
+            }
+        }
+
+        /// La date de dernier accès du fichier qu'on vient de lire : son
+        /// enregistrement de MFT sur NTFS, son entrée de répertoire sur FAT.
+        /// Rien n'est écrit tout de suite.
+        private mutating func stamp(_ record: FileRecord) {
+            let access: MetadataAccess
+            if partition.format.isFAT {
+                guard let lba = directoryLBA[record.directory] else { return }
+                access = MetadataAccess(lba: lba, sectors: 1)
+            } else {
+                access = MetadataAccess(lba: partition.mftLBA + fileIndex * partition.mftRecordSectors,
+                                        sectors: partition.mftRecordSectors)
+            }
+            dirtyStamps[access.lba] = max(dirtyStamps[access.lba] ?? 0, access.sectors)
+            stampedFiles += 1
+        }
+
+        /// Le cache vide ce que les dates d'accès ont sali : dans l'ordre du
+        /// disque, en fusionnant ce qui se touche.
+        ///
+        /// L'horloge est le temps de calcul, qui minore le temps réel — le
+        /// disque attend aussi — : les vidages sont un peu plus espacés qu'ils
+        /// ne l'étaient. Aucune page de journal ne les accompagne : le modèle
+        /// suppose, sans source qui le tranche, que NTFS ne journalise pas une
+        /// simple date.
+        mutating func flushStamps(phase: Int) {
+            sinceFlush = 0
+            guard !dirtyStamps.isEmpty else { return }
+            var runs: [(lba: Int, sectors: Int)] = []
+            for lba in dirtyStamps.keys.sorted() {
+                let sectors = dirtyStamps[lba] ?? 1
+                if let last = runs.last, lba <= last.lba + last.sectors {
+                    runs[runs.count - 1].sectors = max(last.sectors, lba + sectors - last.lba)
+                } else {
+                    runs.append((lba, sectors))
+                }
+            }
+            dirtyStamps.removeAll(keepingCapacity: true)
+            for run in runs {
+                append(lba: run.lba, sectors: run.sectors, isWrite: true, phase: phase)
+                bytesWritten += run.sectors * DriveGeometry.bytesPerSector
+                stampWrites += 1
             }
         }
 
@@ -672,6 +826,7 @@ enum BootPlanner {
             let directory = openedDirectories.insert(record.directory).inserted
                 ? firstCluster
                 : nil
+            if let directory { directoryLBA[record.directory] = partition.lba(ofCluster: Int(directory)) }
             for access in partition.openAccesses(fileIndex: fileIndex,
                                                  directoryFirstCluster: directory) {
                 append(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase)
@@ -680,23 +835,54 @@ enum BootPlanner {
         }
 
         /// Les extents d'un fichier, découpés en requêtes de taille bornée et
-        /// arrêtés au bout de `limit` octets.
+        /// arrêtés au bout de `limit` octets, arrondis à la granularité de
+        /// lecture de l'époque et non au cluster.
         private mutating func emitData(_ extents: [Extent], limit: Int,
                                        isWrite: Bool, phase: Int) {
-            let perRequest = UInt32(max(maxRequestSectors / partition.clusterSectors, 1))
-            var remaining = partition.clusters(forBytes: max(limit, 1))
+            var remaining = PartitionGeometry.readSectors(forBytes: limit, granularity: readGranularity)
             for extent in extents {
-                var offset: UInt32 = 0
-                while offset < extent.length && remaining > 0 {
-                    let clusters = min(extent.length - offset, perRequest, UInt32(remaining))
-                    append(lba: partition.lba(ofCluster: Int(extent.start + offset)),
-                           sectors: Int(clusters) * partition.clusterSectors,
+                let length = Int(extent.length) * partition.clusterSectors
+                var offset = 0
+                while offset < length && remaining > 0 {
+                    let sectors = min(length - offset, maxRequestSectors, remaining)
+                    if !isWrite {
+                        let first = Int(extent.start) + offset / partition.clusterSectors
+                        let last = Int(extent.start) + (offset + sectors - 1) / partition.clusterSectors
+                        followChain(from: first, through: last, phase: phase)
+                    }
+                    append(lba: partition.lba(ofCluster: Int(extent.start)) + offset,
+                           sectors: sectors,
                            isWrite: isWrite,
                            phase: phase)
-                    offset += clusters
-                    remaining -= Int(clusters)
+                    offset += sectors
+                    remaining -= sectors
                 }
                 if remaining == 0 { break }
+            }
+        }
+
+        /// Les pages de table qu'il faut avoir pour suivre la chaîne d'un
+        /// fichier de `first` à `last`.
+        ///
+        /// Sur FAT32, la table n'est pas en mémoire (`mountAccesses`) : pour
+        /// trouver le cluster suivant d'un fichier, le pilote lit la page de
+        /// table qui le décrit — 4 Ko, soit 1 024 entrées —, et la garde en
+        /// cache. Une page déjà lue ne se relit pas : le modèle suppose un
+        /// cache assez grand pour tout un démarrage, ce qui **minore** les
+        /// retours à la table. Un fichier fragmenté y retourne à chaque saut
+        /// vers une page qu'on n'a pas encore vue. FAT16 n'est pas concerné :
+        /// sa table a été lue entière au montage.
+        private mutating func followChain(from first: Int, through last: Int, phase: Int) {
+            guard partition.format == .fat32, last >= first else { return }
+            let pageSectors = 4_096 / DriveGeometry.bytesPerSector
+            let entriesPerPage = pageSectors * DriveGeometry.bytesPerSector / partition.format.fatEntryBytes
+            for page in (first / entriesPerPage)...(last / entriesPerPage)
+            where cachedTablePages.insert(page).inserted {
+                let sector = page * pageSectors
+                guard sector < partition.fatSectors else { continue }
+                let sectors = min(pageSectors, partition.fatSectors - sector)
+                append(lba: partition.fat1LBA + sector, sectors: sectors, isWrite: false, phase: phase)
+                bytesRead += sectors * DriveGeometry.bytesPerSector
             }
         }
 

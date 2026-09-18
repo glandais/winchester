@@ -3674,3 +3674,329 @@ catégories, la frontière qui descend, les trous — et aucun bilan ne l'aurait
 - **Rien d'autre n'a été corrigé** : `ProfileSpec.clusterCount` ignore toujours
   la surcharge de format, le montage lit toujours FAT2, la MFT n'a toujours pas
   de `$LogFile`, et l'allocation reste d'un seul tenant.
+
+## Chantier 22 — le lot 3, et le recalage qu'il fallait
+
+**Fait** · branche `experts`
+
+### Le problème
+
+Les lots 1 et 2 ont corrigé ce que le code faisait d'impossible et ce qu'il
+affirmait de faux. Tous deux ont refusé de toucher à `ThinkModel`, pour ne pas
+cacher leurs corrections les unes dans les autres, et ils ont laissé les vingt
+démarrages **de 2,3 à 21,5 % sous leur cible**. Ce lot réunit ce qui, dans les
+trois revues, change encore une durée de démarrage — le montage, la granularité
+de lecture, le journal de NTFS, la date de dernier accès — puis recale, une
+fois.
+
+| | où | ce qui était faux | mesuré avant |
+|---|---|---|---|
+| M1 | `PartitionGeometry.scanAccesses`, lu au montage | FAT1 **et** FAT2 lues entières au montage ; FAT2 n'est lue que si FAT1 est illisible, et VFAT met la table FAT32 en cache à la demande | `gamer-1999` : 2 × 4,3 Mo de table lus avant le premier fichier |
+| M2 | même endroit, NTFS | 2 Mo de MFT d'un trait, par une formule sans sens physique | un seul transfert contigu là où le montage réel touche `$Boot`, les seize premiers enregistrements, `$MFTMirr`, `$Bitmap` et le fond du disque |
+| M3 | `BootPlanner.emitData` | toute lecture arrondie au **cluster** | lire 2 Ko sur `dev-1996` émet 32 Ko |
+| M4 | `NTFSAllocator.systemExtents`, `commitAccesses` | pas de `$LogFile` ; l'en-tête de `VolumeFormat` en conclut que le bras ne revient jamais au bord sur NTFS | l'installation et la journée écrivaient « le journal » sur le premier cluster de la MFT |
+| M5 | `BootSession` | aucune date de dernier accès ; `writeBack` réécrit des **données**, au même endroit que la lecture | 2003 et 2007 ne diffèrent que par le préchargeur et les budgets |
+| chaîne | `BootPlanner` | sans table FAT32 lue au montage, plus rien ne la lit : le commentaire d'`openAccesses` la dit en mémoire, ce qui est vrai de FAT16 et faux de FAT32 | — (conséquence de M1) |
+
+### Les décisions
+
+**M1 — le montage n'est pas l'analyse.** `scanAccesses` servait deux lecteurs :
+le démarrage et l'analyse initiale d'un défragmenteur. Le second a besoin de
+chaque cluster, et lit donc bien toute la table ; le premier non. Le montage a
+maintenant ses accès à lui (`mountAccesses`), et l'analyse garde les siens :
+aucune passe de défragmentation ne change d'un octet, ce qui est vérifié plus
+bas. Sur FAT16, le montage lit l'amorçage, la **première** table entière — au
+plus 128 Ko, et c'est ce qui fonde l'affirmation, jugée juste par la revue,
+qu'un fichier fragmenté ne coûte là aucun retour à la table — et la racine. Sur
+FAT32 : l'amorçage et `FSINFO`, qui donne le compte des clusters libres
+précisément pour que le pilote n'ait pas à parcourir la table, le premier
+secteur de table (l'état du volume), et le premier cluster de la racine. **De
+5,5 à 9,5 Ko** selon la taille de cluster, contre 8,6 Mo sur `gamer-1999`.
+
+**M1 appelait la moitié de l'option, et c'est elle qui pèse le plus.** Une
+table qu'on ne lit plus au montage doit être lue quelque part. Le pilote la
+charge par pages de 4 Ko — 1 024 entrées FAT32 — au fil des chaînes qu'il
+suit : chaque requête de données d'un démarrage FAT32 demande d'abord la page
+de table qui décrit ses clusters, si elle n'a pas encore été lue. **Une page lue
+reste en cache pour tout le démarrage** : c'est le seul choix qui n'invente pas
+de taille de cache, et il minore les retours. Le suivi de chaîne tel que la
+revue le décrit — des **retours périodiques** vers la table pendant la lecture
+d'un fichier fragmenté, parce que VCACHE évince — demande une éviction, donc
+une taille de cache, et ce cache-là n'existe dans aucun lot. Il n'est pas fait.
+
+**M2 — trois zones, peu de transfert.** Le montage NTFS lit `$Boot` (8 Ko), la
+copie du secteur d'amorçage au dernier secteur du volume (posée au lot 2), les
+seize premiers enregistrements de la MFT, les quatre de `$MFTMirr`, la zone de
+redémarrage de `$LogFile` (M4) et la première page de `$Bitmap` : 40,5 Ko. Pour
+que ces lectures tombent là où le générateur a posé les fichiers, la règle de
+placement est sortie de `NTFSAllocator.init` en une fonction publique
+(`NTFSAllocator.layout`) que `PartitionGeometry` appelle aussi, avec l'époque
+que `DiskGenerator.mirrorPlacement(for:)` lui passe. La MFT du simulateur, qui
+était posée au cluster 0, sur `$Boot`, suit donc enfin celle du générateur.
+
+**M3 — la page, pas le cluster.** Le cluster est l'unité d'allocation, pas de
+lecture. Une lecture de démarrage est arrondie à la page de 4 Ko du cache de
+Windows, et au secteur sous MS-DOS (`Era.readGranularity`). L'amplification est
+bornée par une page, et ne dépend plus de la taille de cluster. `SMARTDRV`, que
+le démarrage de 1993 charge, lisait par éléments de 8 Ko et anticipait :
+c'est du cache, hors lot.
+
+**M4 — le journal, groupé.** `$LogFile` est posé au formatage derrière
+`$MFTMirr`, comme le fait `mkntfs`, qui reproduit la disposition de Windows :
+en tête depuis Windows 2000 — la MFT le suit —, au milieu du volume avant. Sa
+taille est celle de `mkntfs` : 64 Mio à partir de 12 Gio, ce que tous les NTFS
+de la galerie dépassent. Il entre dans `systemExtents`, et dans
+`commitAccesses` : **une validation sur huit** écrit la page de journal que les
+huit ont remplie, la page suivante à chaque fois, en boucle sur le fichier.
+Huit, c'est un demi-kilo-octet d'enregistrements *redo*/*undo* par validation
+dans une page de 4 Ko — un ordre de grandeur, et c'est lui qui fixe le rythme
+des rafales. La page entamée part en fin de passe, avant les tables, comme le
+veut l'écriture anticipée. Le rang de la validation est tenu par
+`OperationSink`, parce que le journal avance avec les validations de la passe,
+quelle que soit la stratégie qui les produit. L'installation et la journée
+gardent leur écriture de journal **par vidage** — c'est leur *lazy writer* qui
+groupe, au rythme de son cache —, mais elle tombe maintenant dans le journal et
+non sur la MFT, et elle avance d'une page à chaque fois. Le montage déclare le
+volume en service dans la zone de redémarrage.
+
+L'en-tête de `VolumeFormat` est réécrit : sur NTFS, en lecture, le bras n'a
+aucune raison de revenir au bord ; en écriture, il y revient par rafales
+espacées. `$Bitmap` était déjà dans `commitAccesses` ; il n'a pas été touché.
+
+**M5 — la date de dernier accès, ailleurs que la lecture.** Sous NT jusqu'à XP,
+toute lecture réécrit `LastAccessTime` dans l'enregistrement de MFT ; VFAT a le
+même champ depuis Windows 95, dans l'entrée de répertoire ; MS-DOS ne l'avait
+pas, Vista l'a éteint. Les deux ne réécrivent la date que si elle a changé —
+NTFS ne descend pas sous l'heure, FAT ne note que le jour —, ce qui est toujours
+le cas au premier démarrage de la journée, et jamais à un redémarrage
+d'installation (`firstOfTheDay: false`). Les secteurs salis sont écrits par le
+même cache que pendant une installation — toutes les trois secondes sous
+Windows 9x, toutes les secondes sous NT —, triés et fusionnés, sur une horloge
+qui est le temps de calcul : elle minore le temps réel, les vidages sont un peu
+plus espacés qu'en vrai. Le modèle suppose, **sans source qui le tranche**, que
+NTFS ne journalise pas une simple date.
+
+`writeBack` n'a pas été remplacé : il réécrit des ruches, des journaux
+d'application, un fichier de préchargement — de vraies données, qui se
+réécrivent bien là où on les a lues. C'était le bon crochet, pas le même
+mécanisme.
+
+### Ce qui valide
+
+- **`swift test` : 349 tests passent** sur les deux cibles (341 avant), et
+  `DISKCORE_CALIBRATION=1 swift test --filter Calibration` passe avec ses
+  **trois** problèmes connus, les mêmes, tous de fragmentation.
+- **`MountAndJournalTests`**, sept tests, chiffrés en octets et en positions
+  plutôt qu'en durées — parce que le recalage pourrait garder un total juste
+  sur un mécanisme faux :
+  - sur les quatre FAT32 de la galerie, le montage lit entre 4 et 16 Ko, et
+    **aucun accès ne touche FAT2** ; l'analyse du défragmenteur lit toujours les
+    deux tables ;
+  - sur FAT16, la première table entière, pas la seconde ;
+  - sur `dev-2003` et `famille-2007`, le montage NTFS tient sous 64 Ko, aucun
+    accès ne dépasse 16 Ko, et ses accès se rangent en **exactement trois
+    zones** — le dernier secteur du volume en est une ;
+  - le journal que lit le simulateur est l'extent que le générateur a posé, et
+    aucun fichier du catalogue n'est dessus ;
+  - lire 2 Ko émet 8 secteurs sous Windows, 4 sous MS-DOS, et de 1 à 200 000
+    octets l'excès reste sous une page ;
+  - **cent validations NTFS donnent treize écritures de journal**, à treize
+    endroits différents, et trois écritures par validation sur FAT.
+- **« 2003 horodate ses accès, 2007 non »** (`BootSessionTests`) : le même
+  volume réduit de `secretaire-2003`, démarré sous XP, réécrit la date de
+  chaque fichier lu en quatre fois moins d'écritures ; sous Vista, aucune ; en
+  redémarrage d'installation, aucune. C'est le seul filet de cet écart
+  d'époque : aucun total ne le verrait disparaître, le recalage l'absorberait.
+- **Les passes FAT n'ont pas bougé d'un octet** : les 156 bilans des douze
+  volumes FAT croisés avec les treize outils sont identiques avant et après.
+  C'est la vérification de la séparation montage / analyse.
+- **Un coup d'œil au simulateur** (iPhone 17 Pro Max, iOS 26.5) : la démo de
+  démarrage de l'accueil tourne sur `secretaire-1999`, un FAT32, c'est-à-dire
+  le volume que M1 et le suivi de chaîne touchent le plus. Elle se joue jusqu'au
+  bout et son bilan affiche **57 s, dont 31 s de calcul et 16 s de disque** —
+  les chiffres du rendu hors-ligne (56,7 s, 30,8 s).
+
+### Ce que cela change, mesuré — correction par correction
+
+Chaque colonne est l'écart à la précédente, en secondes, sur les vingt
+démarrages, chaque correction mesurée seule avant la suivante, toutes en
+release et en `PLAN_ONLY`.
+
+| profil | cible | lot 2 | M1 | M2 | M3 | M4 | M5 | chaîne | recalé | écart |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `dev-1993` | 41,8 | 39,2 | −0,1 | 0 | −0,1 | 0 | 0 | 0 | 41,8 | +0,0 % |
+| `gamer-1993` | 29,5 | 28,0 | 0 | 0 | −0,1 | 0 | 0 | 0 | 29,1 | −1,4 % |
+| `poweruser-1993` | 42,7 | 40,2 | 0 | 0 | −0,3 | 0 | 0 | 0 | 42,8 | +0,2 % |
+| `secretaire-1993` | 36,0 | 34,0 | 0 | 0 | −0,2 | 0 | 0 | 0 | 36,0 | +0,0 % |
+| `dev-1996` | 58,7 | 54,9 | 0 | 0 | −0,7 | 0 | +0,6 | 0 | 58,7 | +0,0 % |
+| `famille-1996` | 54,4 | 51,1 | 0 | 0 | −0,2 | 0 | +0,5 | 0 | 54,9 | +0,9 % |
+| `gamer-1996` | 44,0 | 43,0 | 0 | 0 | −0,6 | 0 | +0,5 | 0 | 45,3 | +3,0 % |
+| `secretaire-1996` | 55,4 | 50,6 | 0 | 0 | −0,2 | 0 | +0,6 | 0 | 54,5 | −1,6 % |
+| `dev-1999` | 57,0 | 51,1 | −0,7 | 0 | 0 | 0 | +0,3 | +3,7 | 56,9 | −0,2 % |
+| `famille-1999` | 66,0 | 57,9 | −0,8 | 0 | 0 | 0 | +0,6 | +2,3 | 63,0 | −4,5 % |
+| `gamer-1999` | 54,8 | 51,5 | −0,3 | 0 | −0,1 | 0 | +0,7 | +2,2 | 56,8 | +3,6 % |
+| `secretaire-1999` | 56,7 | 51,0 | −0,4 | 0 | 0 | 0 | +0,3 | +3,3 | 56,7 | +0,0 % |
+| `dev-2003` | 49,1 | 40,1 | 0 | 0 | 0 | −0,1 | +0,1 | 0 | 50,1 | +2,0 % |
+| `famille-2003` | 28,8 | 25,6 | 0 | 0 | 0 | +0,2 | +0,2 | 0 | 29,3 | +1,7 % |
+| `gamer-2003` | 70,0 | 55,8 | 0 | 0 | 0 | −0,2 | +0,4 | 0 | 69,0 | −1,4 % |
+| `secretaire-2003` | 33,8 | 29,9 | 0 | 0 | 0 | 0 | +0,2 | 0 | 35,2 | +4,1 % |
+| `dev-2007` | 47,0 | 36,9 | 0 | 0 | 0 | −0,1 | 0 | 0 | 46,0 | −2,1 % |
+| `famille-2007` | 38,3 | 31,5 | 0 | +0,1 | 0 | −0,2 | 0 | 0 | 38,0 | −0,8 % |
+| `gamer-2007` | 29,8 | 27,0 | 0 | +0,1 | 0 | −0,1 | 0 | 0 | 31,1 | +4,4 % |
+| `secretaire-2007` | 41,9 | 33,9 | 0 | 0 | 0 | 0 | 0 | 0 | 41,6 | −0,7 % |
+
+Ce que dit chaque colonne :
+
+- **M1 raccourcit les quatre FAT32**, de 0,3 à 0,8 s, et leur retire 9 à 14 Mo
+  de lecture. Moins qu'annoncé : 8,6 Mo de table se lisent d'un trait, au débit
+  de la piste, et la seconde et demie de la revue supposait un disque plus lent.
+- **M2 ne change aucune durée au dixième**, et c'est le résultat : 2 Mo de
+  transfert en moins, deux seeks de plus par démarrage NTFS. Même temps,
+  profil inverse — ce qui s'entend et ne se chronomètre pas.
+- **M3 raccourcit les volumes à gros clusters** : de 0,2 à 0,7 s sur ceux de
+  1996 (16 et 32 Ko), 0,1 à 0,3 s sur 1993 (lecture au secteur), rien au-delà
+  (clusters de 4 Ko, déjà la page).
+- **M4 ne bouge les démarrages que de ±0,2 s** : un démarrage ne valide presque
+  rien. Sa variation vient surtout de ce que les huit volumes NTFS sont
+  **régénérés** — 64 Mo en tête décalent la MFT et tout ce qui suit.
+- **M5 allonge les FAT de 1996 et 1999** de 0,3 à 0,7 s, **XP** de 0,1 à 0,4 s,
+  et ni MS-DOS ni Vista : 10 à 36 seeks de plus par démarrage, vers les
+  répertoires ou la MFT. `gamer-2003` réécrit 912 dates en 26 écritures.
+- **La chaîne FAT32 est la plus lourde du lot** : de 2,2 à 3,7 s et 165 à 270
+  seeks de plus sur les quatre FAT32, pour 151 à 254 pages de table lues à la
+  demande. Le témoin des FAT32 passe de +7 à +10 % : la fragmentation coûte
+  plus quand chaque saut d'extent peut renvoyer le bras à la table. C'est le
+  va-et-vient qu'on prêtait aux Windows 98 fatigués, **avant éviction**.
+
+Avant recalage, la dérive était de −6,3 % (1993), −5,8 % (1996), −5,1 % (1999),
+−16,2 % (2003) et −17,8 % (2007) en somme par époque. M1 à M5 s'y compensent
+presque ; la chaîne FAT32 referme la moitié de l'écart de 1999 ; celui de 2003 et
+2007 reste entier — c'est celui du lot 1.
+
+### Le recalage
+
+**Ce qui manquait était proportionnel aux mégaoctets, pas aux fichiers.** Avec
+deux constantes par époque, le temps de calcul d'un démarrage est
+`perFile × fichiers + perMegabyte × Mo lus`. En ajustant l'une ou l'autre seule
+sur les quatre profils de chaque époque, les résidus disent laquelle avait
+absorbé les défauts : en 2003, ±1,3 s en ne touchant que `perMegabyte`, ±3,4 s en
+ne touchant que `perFile` ; en 2007, ±1,4 s contre ±3,8 s ; en 1993, ±0,2 s
+contre ±0,4 s. Pour 1996 et 1999 les deux se valent — l'écart y est petit. C'est
+la signature de F2 : un tour de plateau perdu **par requête** d'une lecture
+contiguë, donc payé au mégaoctet, et d'autant plus que le disque est rapide et
+la lecture longue. Le premier calage l'avait rangé dans le coût de calcul par
+mégaoctet. **Seul `perMegabyte` bouge** ; `perFile` décrit toujours ce qu'il
+décrivait.
+
+| époque | `perFile` | `perMegabyte`, avant → après | somme des quatre démarrages / cible |
+|---|---:|---:|---:|
+| MS-DOS et Windows 3.1 | 0,045 | 0,60 → **0,80** | 149,7 / 150,0 s |
+| Windows 95 | 0,022 | 0,34 → **0,41** | 213,4 / 212,5 s |
+| Windows 98 SE | 0,015 | 0,22 → **0,25** | 233,4 / 234,5 s |
+| Windows XP | 0,009 | 0,13 → **0,19** | 183,6 / 181,7 s |
+| Windows Vista | 0,009 | 0,09 → **0,15** | 156,7 / 157,0 s |
+
+Les vingt démarrages tiennent entre **−4,5 et +4,4 %** de leur cible, chaque
+époque à 1 % près en somme. Le reste est la dispersion entre profils d'une
+même époque, qu'une constante par époque ne peut pas suivre et ne doit pas
+suivre.
+
+**Ce qui a changé dans la description** : `perMegabyte` était « décompression et
+relocalisation, plus un défaut du disque qu'on ne voyait pas » ; il n'est plus
+que la première moitié. La part du calcul dans un démarrage monte en
+conséquence, de 30–65 % à **34–71 %** : le disque fait moins, parce qu'il ne
+perd plus de tour, et le plancher processeur porte ce qu'il portait vraiment.
+
+**Ce que la cible seule justifie, et qu'il faut dire.** La décroissance de
+1993 à 1999 suit à peu près les processeurs. Celle de 2003 à 2007 non : 0,19
+puis 0,15 s par mégaoctet, un gain de 20 % là où les processeurs ont été
+multipliés par trois ou quatre. Rien dans la description n'explique ce 0,15 —
+sinon que Vista initialise bien plus de choses par mégaoctet chargé, ce que
+personne ici n'a mesuré. C'est une valeur tirée de la cible, et les cibles
+elles-mêmes sont les durées que le modèle donnait avant la relecture, non des
+mesures d'époque : le docstring de `ThinkModel` promettait « une bonne minute
+pour un Vista » quand les quatre démarrages de 2007 visent 30 à 47 s. La phrase
+a été retirée plutôt que corrigée.
+
+**Le recalage est en un seul endroit** : `ThinkModel.boot(_:)`, une table de
+cinq lignes qui porte chacune sa valeur d'avant en commentaire. Les époques de
+`BootScript.Era` ne portent plus de `ThinkModel` en propre ; elles le lisent là.
+
+**Un effet de bord à connaître** : l'horloge des vidages de dates d'accès est
+le temps de calcul, que le recalage allonge. Le regroupement change donc un peu
+avec lui — quelques seeks, dans un sens ou dans l'autre, sur les FAT de 1996 et
+1999. Ce n'est pas un réglage, c'est la minoration de l'horloge qui se
+réduit.
+
+### Au-delà des démarrages
+
+- **Les installations** bougent de 0 à 0,5 % avant recalage, et de 0,1 à
+  5,5 % en tout après : leurs redémarrages sont de vrais démarrages, et portent le nouveau
+  plancher. `famille-2003` passe de 8 min 12 à 8 min 39. Le journal y est
+  désormais écrit dans `$LogFile`, une page de plus à chaque vidage, au lieu du
+  premier cluster de la MFT.
+- **Les journées** s'allongent d'autant que leur démarrage : `famille-2003`,
+  jour 400, de 1 min 26 à 1 min 38.
+- **Les passes NTFS changent surtout parce que les volumes changent.** Pour
+  isoler le journal, la même version a été mesurée avec et sans écriture de
+  `$LogFile` dans les validations : XP, UltraDefrag, JkDefrag et le recollage
+  économe s'allongent de **0 à 2,3 %** sur les huit volumes, avec exactement
+  une écriture de journal par huit validations. Le reste — de −28 à +55 % selon
+  l'outil et le volume — est la régénération : `famille-2003` passe de 450 à 382
+  fichiers fragmentés, `gamer-2007` de 290 à 334, et la passe de XP sur
+  `famille-2007` tombe de 28 min 54 à 20 min 43.
+- **La table de comparaison des allocateurs** (même histoire sur trois
+  formats) : le pire fichier NTFS passe de 339 à 138 extents, et le nombre de
+  trous de 293 à 441. Le fichier de 22 Mo en 339 extents du chantier 21 a trouvé
+  un autre trou, sur un volume d'essai plus petit de son journal.
+
+### Le README
+
+Régénéré d'un seul jeu de mesures : les vingt démarrages, vingt installations,
+les quatre journées et les vingt volumes croisés avec les treize outils, en
+release et en `PLAN_ONLY`, avec le binaire du commit — plus les seize passes NTFS
+de XP et UltraDefrag en blocs pleins. Le générateur des tables a d'abord été
+validé en reproduisant au chiffre près le README d'avant à partir des mesures
+d'avant. Les tables FAT de défragmentation n'ont pas été réécrites : leurs bilans
+sont identiques.
+
+Deux chiffres de prose étaient **déjà périmés avant ce lot**, et ont été
+remesurés plutôt que recopiés : le gain du préchargeur sur `famille-2007`
+(« 105 289 à 34 974 cylindres », en fait 49 142 à 22 652 aujourd'hui, mesuré en
+retirant le préchargeur à Vista dans un binaire jetable), et les requêtes d'un
+démarrage de `dev-1996` (1 115 annoncées, 1 091 avant ce lot, 1 121 après).
+Trois ne l'ont pas été, faute d'outil qui les produise : les 249 Go et 187 000
+miettes de moins de 4 Mo (12 Go) de `famille-2007`, et le trou de 22 Go de
+`dev-2007`. 64 Mo de journal ne les déplacent pas à cette précision, mais ils
+ne viennent pas de ce jeu de mesures.
+
+### Laissé ouvert
+
+- **Le cache disque et la lecture anticipée rouvriront ce recalage.** Ils ne
+  sont dans aucun lot, l'expert disque les classe troisièmes, et c'est le
+  mécanisme qui masquait sur un vrai disque le tour perdu du lot 1 : quand ils
+  arriveront, tout le séquentiel raccourcira encore, et `ThinkModel.boot` sera
+  à recaler une seconde fois. C'est une décision : recaler maintenant, en un
+  seul endroit, plutôt que laisser vingt démarrages faux jusque-là.
+- **Le suivi de chaîne FAT32 n'évince rien.** Les pages de table lues restent
+  en cache pour tout le démarrage : c'est un minorant. Les retours périodiques
+  d'un Windows 98 fatigué demandent une taille de cache — même lot que
+  ci-dessus.
+- **Les trois cibles manquées de `CalibrationTests` n'ont pas bougé** : ce sont
+  des taux de fragmentation, `ThinkModel` n'a aucune prise dessus, lot 4.
+  `famille-2003` s'en éloigne un peu en se régénérant (450 → 382 fichiers
+  fragmentés).
+- **L'analyse du défragmenteur lit toujours FAT2.** Elle a besoin de toute la
+  table ; qu'elle compare les deux copies, comme `SCANDISK`, ou non, n'a pas
+  été tranché sur source.
+- **L'installation et la journée arrondissent toujours au cluster**
+  (`MachineWriter.transfer`, `InstallSession.readWhole`). M3 ne portait que sur
+  le démarrage ; c'est la même erreur ailleurs, et elle n'a pas été touchée.
+- **Le modèle de volume garde deux approximations NTFS** : `$Bitmap` est posé à
+  12,5 % du volume, derrière la zone MFT, là où le générateur met des données ;
+  et le rang d'un fichier dans l'ordre de lecture sert toujours de numéro
+  d'enregistrement de MFT (`FILESYSTEM_EXPERT_REVIEW.md` §7).
+- **Que NTFS ne journalise pas la date d'accès** est une hypothèse.
+- **Rien d'autre n'a été corrigé** : `ProfileSpec.clusterCount` ignore toujours
+  la surcharge de format, `NTFSProfile` n'a pas de `forVolume`, l'allocation
+  reste d'un seul tenant, les répertoires n'existent pas.

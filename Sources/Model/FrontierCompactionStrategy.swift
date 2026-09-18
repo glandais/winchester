@@ -894,7 +894,8 @@ extension FrontierCompactionStrategy {
             guard !pendingCommits.isEmpty else { return }
             var accesses: [MetadataAccess] = []
             for commit in pendingCommits {
-                accesses += volume.partition.commitAccesses(forCluster: commit.cluster, fileIndex: commit.file)
+                accesses += volume.partition.commitAccesses(forCluster: commit.cluster, fileIndex: commit.file,
+                                                            validation: sink.nextValidation())
             }
             accesses.sort { $0.lba < $1.lba }
             var merged: [MetadataAccess] = []

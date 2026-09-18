@@ -68,10 +68,12 @@ enum GeneratedVolumeBridge {
     /// ici, mais il démarre.
     static func partition(of disk: GeneratedDisk) -> PartitionGeometry {
         let clusterSectors = max(Int(disk.clusterBytes) / DriveGeometry.bytesPerSector, 1)
-        return PartitionGeometry(startLBA: 0,
-                                 clusterCount: Int(disk.clusterCount),
-                                 clusterSectors: clusterSectors,
-                                 format: format(of: disk))
+        var partition = PartitionGeometry(startLBA: 0,
+                                          clusterCount: Int(disk.clusterCount),
+                                          clusterSectors: clusterSectors,
+                                          format: format(of: disk))
+        partition.ntfsPlacement = DiskGenerator.mirrorPlacement(for: disk.spec)
+        return partition
     }
 
     /// Construit le volume à défragmenter à partir du disque généré.

@@ -179,8 +179,7 @@ enum DayPlanner {
         var plan = DayPlan(day: day, partition: partition, phases: phases)
         plan.activities = planned
         var writer = MachineWriter(partition: partition, era: era, sink: sink,
-                                   diskBytesPerSecond: diskBytesPerSecond,
-                                   systemExtents: disk.systemExtents)
+                                   diskBytesPerSecond: diskBytesPerSecond)
         let classifier = Classifier(catalog: replay.catalog, spec: replay.spec)
         var reader = DayReader(script: script, era: era, seed: replay.spec.seed &+ UInt64(day))
 

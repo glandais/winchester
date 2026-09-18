@@ -166,6 +166,43 @@ struct BootSessionTests {
         }
     }
 
+    /// Jusqu'à XP, toute lecture réécrit la date de dernier accès du fichier ;
+    /// Vista l'a désactivé par défaut. C'est l'écart d'époque qui sépare 2003
+    /// de 2007 sans rien devoir au matériel, et seul ce test le retient : aucun
+    /// total de durée ne le verrait disparaître, le recalage l'absorberait.
+    @Test("2003 horodate ses accès, 2007 non")
+    func accessTimestampsAreAnEra() throws {
+        let spec = try #require(try ScenarioLibrary.loadAll().first { $0.id == "secretaire-2003" })
+        var small = spec
+        small.disk.sizeMB = 2_000
+        small.timeline.end = small.timeline.start.adding(days: 120)
+        let disk = try DiskGenerator.generate(small)
+
+        let xp = BootPlanner.plan(disk: disk)
+        #expect(xp.osName == "Windows XP")
+        #expect(xp.stampedFiles == xp.filesRead, "chaque fichier lu a sa date réécrite")
+        // Différées et groupées : bien moins d'écritures que de fichiers.
+        #expect(xp.stampWrites > 0)
+        #expect(xp.stampWrites * 4 < xp.stampedFiles)
+
+        // Le même volume sous Vista : plus rien.
+        var vistaDisk = disk
+        vistaDisk.spec.os = "vista"
+        let vista = BootPlanner.plan(disk: vistaDisk)
+        #expect(vista.osName == "Windows Vista")
+        #expect(vista.filesRead > 0)
+        #expect(vista.stampedFiles == 0 && vista.stampWrites == 0)
+
+        // Un redémarrage d'installation ne réécrit rien : ce qu'il lit vient
+        // d'être écrit, la date n'a pas changé.
+        let reboot = BootPlanner.plan(disk: disk, launchesApplication: false, firstOfTheDay: false)
+        #expect(reboot.stampedFiles == 0)
+
+        // Et la table dit la même chose pour les cinq époques : MS-DOS n'avait
+        // pas de date d'accès, VFAT l'a apportée avec Windows 95.
+        #expect(BootScript.Era.all.map(\.stampsAccess) == [false, true, true, true, false])
+    }
+
     /// Une fiche peut nommer un système que la table ne connaît pas : il vaut
     /// mieux un démarrage approché qu'un refus.
     @Test("Un système inconnu retombe sur l'époque de son année")

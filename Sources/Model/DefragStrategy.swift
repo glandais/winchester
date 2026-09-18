@@ -352,7 +352,8 @@ enum DefragOperations {
                        repaint: (extents: [Extent], category: ClusterCategory, contiguous: Bool)? = nil,
                        into sink: OperationSink) {
         var pending = repaint
-        for access in partition.commitAccesses(forCluster: cluster, fileIndex: fileIndex) {
+        for access in partition.commitAccesses(forCluster: cluster, fileIndex: fileIndex,
+                                               validation: sink.nextValidation()) {
             let first = sink.mutationMark
             if let file = pending {
                 for extent in file.extents where !extent.isEmpty {
@@ -370,11 +371,23 @@ enum DefragOperations {
 
     /// Réécriture complète des tables, en fin de passe.
     static func final(partition: PartitionGeometry, phase: Int, into sink: OperationSink) {
-        sink.emit(contentsOf: final(partition: partition, phase: phase))
+        sink.emit(contentsOf: final(partition: partition, phase: phase,
+                                    validations: sink.validations))
     }
 
-    static func final(partition: PartitionGeometry, phase: Int) -> [DiskOperation] {
-        var ops = partition.finalAccesses.map {
+    /// - Parameter validations: validations de la passe. Sur NTFS, la page de
+    ///   journal entamée part avant les tables, sans attendre d'être pleine :
+    ///   c'est la règle de l'écriture anticipée.
+    static func final(partition: PartitionGeometry, phase: Int,
+                      validations: Int = 0) -> [DiskOperation] {
+        var ops: [DiskOperation] = []
+        if partition.format == .ntfs, validations % PartitionGeometry.validationsPerLogPage != 0 {
+            let page = partition.logPage(forValidation: validations - 1)
+            ops.append(DiskOperation(kind: .metadata, phase: phase, lba: page.lba,
+                                     sectors: page.sectors, isWrite: true,
+                                     issueTime: 0, cluster: nil))
+        }
+        ops += partition.finalAccesses.map {
             DiskOperation(kind: .metadata, phase: phase, lba: $0.lba, sectors: $0.sectors,
                           isWrite: true, issueTime: 0, cluster: nil)
         }

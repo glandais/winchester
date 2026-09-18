@@ -585,7 +585,8 @@ enum InstallPlanner {
             var partial = installed.disk
             partial.catalog = catalog
 
-            let boot = BootPlanner.plan(disk: partial, launchesApplication: false)
+            let boot = BootPlanner.plan(disk: partial, launchesApplication: false,
+                                        firstOfTheDay: false)
             pendingThink += boot.post
             for request in boot.requests {
                 pendingThink += request.thinkTime
@@ -604,7 +605,8 @@ enum InstallPlanner {
             let rank = ranks[record.id] ?? 16
             let clusters = record.extents.isEmpty ? [0] : record.extents.map { Int($0.start) }
             for cluster in clusters {
-                for access in partition.commitAccesses(forCluster: cluster, fileIndex: rank) {
+                for access in partition.commitAccesses(forCluster: cluster, fileIndex: rank,
+                                                       validation: nil) {
                     dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
                 }
             }
@@ -627,9 +629,14 @@ enum InstallPlanner {
             }
             dirty.removeAll(keepingCapacity: true)
 
+            // Écriture anticipée : la page de journal part avant les tables
+            // qu'elle décrit, une par vidage — c'est le *lazy writer* qui
+            // groupe.
             if era.journaled {
-                emit(.metadata, lba: journalLBA, sectors: 8, isWrite: true, cluster: nil)
-                plan.metadataSectors += 8
+                let page = partition.logPage(journalPages)
+                journalPages += 1
+                emit(.metadata, lba: page.lba, sectors: page.sectors, isWrite: true, cluster: nil)
+                plan.metadataSectors += page.sectors
             }
             for run in runs {
                 emit(.metadata, lba: run.lba, sectors: run.sectors, isWrite: true, cluster: nil)
@@ -639,12 +646,9 @@ enum InstallPlanner {
             lastFlush = clock
         }
 
-        /// `$LogFile`, que `FORMAT` pose à côté de `$MFTMirr` : au milieu du
-        /// volume jusqu'à Windows 2000, près du début ensuite.
-        private var journalLBA: Int {
-            let mirror = installed.initialSystemExtents.last.map { Int($0.end) } ?? partition.clusterCount / 2
-            return partition.lba(ofCluster: min(mirror, max(partition.clusterCount - 1, 0)))
-        }
+        /// Pages de `$LogFile` écrites jusqu'ici : le journal est circulaire,
+        /// et chaque vidage écrit la suivante.
+        private var journalPages = 0
 
         // MARK: Sortie
 
