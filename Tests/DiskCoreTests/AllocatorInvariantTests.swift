@@ -23,15 +23,14 @@ struct AllocatorInvariantTests {
         func newID() -> UInt32 { id += 1; return id }
 
         events.append(.create(id: newID(), bytes: Self.volumeBytes / 20, hint: .reservedContiguous))
-        events.append(.create(id: newID(), bytes: 64_000, hint: .boot))
+        events.append(.create(id: newID(), bytes: 64_000, hint: .system))
 
-        for step in 0..<2_500 {
+        for _ in 0..<2_500 {
             switch rng.below(10) {
             case 0...5:
                 let bytes = UInt64(max(700, rng.logNormal(median: 20_000, sigma: 1.5)))
                 let newFile = newID()
-                events.append(.create(id: newFile, bytes: bytes,
-                                      hint: step % 7 == 0 ? .temporary : .normal))
+                events.append(.create(id: newFile, bytes: bytes, hint: .normal))
                 live.append(newFile)
             case 6:
                 let bytes = UInt64(max(200_000, rng.logNormal(median: 2_000_000, sigma: 0.7)))

@@ -251,7 +251,7 @@ struct CalibrationTests {
         // Le remplissage, lui, est bien au rendez-vous.
         #expect(disk.metrics.fill > 0.90)
 
-        withKnownIssue("le modèle produit 13 % : NTFS place bien même à 95 % — voir la note") {
+        withKnownIssue("le modèle produit 8 % : NTFS place bien même à 95 % — voir la note") {
             #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.40)
         }
         #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.01)
@@ -259,8 +259,8 @@ struct CalibrationTests {
         #expect(disk.metrics.maxExtentsPerFile > 500)
     }
 
-    /// Le même profil, la même année, sur FAT32 plutôt que NTFS : 17 % contre
-    /// 13 %. L'écart entre les deux est l'un des résultats les plus parlants du
+    /// Le même profil, la même année, sur FAT32 plutôt que NTFS : 19 % contre
+    /// 8 %. L'écart entre les deux est l'un des résultats les plus parlants du
     /// modèle — et il montre que ce qui manque à famille-2003 pour atteindre la
     /// fourchette visée n'est pas un réglage, c'est un allocateur qui place
     /// moins bien.
@@ -281,7 +281,13 @@ struct CalibrationTests {
     /// qui les recevait déjà cluster par cluster au curseur, n'y change rien.
     /// Ce n'est pas une fourchette qu'on élargit pour que le modèle y entre :
     /// c'est la mesure, et le titre la suit.
-    @Test("Le même usage fragmente un quart de plus sur FAT32 que sur NTFS")
+    ///
+    /// Deux fois et demie depuis le lot 8, et ce n'est pas l'allocateur qui a
+    /// changé de nature : `famille-2003` est un volume chaotique, à 95 % de
+    /// remplissage, que trois cents clusters de `$Bitmap` enfin réservés ont
+    /// fait passer de 10,5 à 7,6 % (`NTFSAllocator`). La borne reste celle du
+    /// quart, qui tient quel que soit le hasard des trous.
+    @Test("Le même usage fragmente au moins un quart de plus sur FAT32 que sur NTFS")
     func fileSystemDominatesTheOutcome() throws {
         let fat32 = try Self.generate("famille-1999")
         let ntfs = try Self.generate("famille-2003")
@@ -350,13 +356,14 @@ struct CalibrationTests {
 // fichiers système que les trois vagues de mises à jour par an qu'a reçues
 // Windows 95.
 //
-// `famille-2003` : 13 % au lieu de 40 à 60 %, à 95 % de remplissage. Ici la
+// `famille-2003` : 8 % au lieu de 40 à 60 %, à 95 % de remplissage. Ici la
 // cause est ailleurs, et elle est cohérente avec le reste du modèle : le
 // best-fit de NTFS trouve encore des trous à la bonne taille sur un volume à
 // 93 %, et il ne coupe un fichier que lorsqu'il n'a vraiment plus le choix.
 // C'est exactement ce que le cahier des charges décrit par ailleurs — « NTFS :
 // fichiers bien plus contigus ». Le même usage, la même durée, la même
-// saturation, rejoués sur le FAT32 de 1999, donnent plus de vingt fois mieux.
+// saturation, rejoués sur le FAT32 de 1999, donnent deux fois et demie plus de
+// fichiers fragmentés.
 // La fourchette de 40 à 60 % correspondrait à un volume poussé au-delà de 98 %,
 // ou à un allocateur qui place moins bien que celui modélisé ici.
 //

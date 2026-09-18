@@ -52,8 +52,7 @@ extension ProfileSpec {
         let clusterSizeIsValid = fileSystem.clusterKB.map { $0 > 0 && $0.nonzeroBitCount == 1 && $0 <= 64 } ?? true
         if clusterSizeIsValid && disk.sizeMB >= 10 {
             let profile = resolvedFileSystem()
-            let wanted = disk.sizeBytes / UInt64(profile.clusterBytes)
-            if wanted > UInt64(profile.maxClusterCount) {
+            if unclampedClusterCount > UInt64(profile.maxClusterCount) {
                 let reachable = UInt64(profile.maxClusterCount) * UInt64(profile.clusterBytes) / 1_048_576
                 warn("\(fileSystem.type.rawValue.uppercased()) n'adresse que \(reachable) Mo avec des clusters de "
                      + "\(profile.clusterBytes / 1_024) Ko : le reste du disque ne servira pas.")

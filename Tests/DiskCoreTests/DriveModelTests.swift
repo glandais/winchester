@@ -58,12 +58,19 @@ struct DriveModelTests {
         }
     }
 
-    /// Vérification croisée : le débit n'entre dans aucun calcul du modèle, il
-    /// est entièrement déterminé par la géométrie déduite. S'il retombe sur
-    /// celui qu'annonce le manuel, c'est que la répartition entre pistes et
-    /// densité linéaire est la bonne — et pas seulement leur produit.
-    @Test("Le débit de la piste externe retombe sur celui des manuels")
-    func outerThroughputMatchesTheDatasheets() {
+    /// Le débit **brut** de la piste externe — ses secteurs à chaque tour —
+    /// borne par le haut le débit soutenu des manuels, et de peu.
+    ///
+    /// Les deux ne mesurent pas la même chose. Le débit soutenu d'une fiche est
+    /// celui d'une lecture séquentielle, qui paie ses commutations de tête et
+    /// ses pas de piste ; le débit brut ne les paie pas. C'est la comparaison
+    /// de ce débit brut au débit soutenu qui donnait, jusqu'au lot 8, un écart
+    /// toujours du même côté — +5, +10 et +14 % —, que la revue lisait comme
+    /// un facteur de format manquant. La vérification à 10 % se fait sur la
+    /// lecture séquentielle simulée (`SequentialThroughputTests`) ; ici, on
+    /// garde la borne.
+    @Test("Le débit brut de la piste externe borne celui des manuels")
+    func outerThroughputBoundsTheDatasheets() {
         for reference in DriveCatalog.all {
             guard let published = reference.sustainedOuterMBs else { continue }
             let drive = DriveGeometry.era(model: reference.model,
@@ -71,9 +78,42 @@ struct DriveModelTests {
                                           rpm: reference.rpm,
                                           year: reference.year)
             let measured = drive.outerSustainedMBs
-            #expect(abs(measured - published) / published < 0.20,
-                    "\(reference.model) : \(Int(measured)) Mo/s contre \(Int(published)) annoncés")
+            #expect(measured > published,
+                    "\(reference.model) : \(Int(measured)) Mo/s bruts contre \(Int(published)) soutenus")
+            #expect(measured < published * 1.20,
+                    "\(reference.model) : \(Int(measured)) Mo/s bruts contre \(Int(published)) soutenus")
         }
+    }
+
+    /// Les fiches qui publient un seek d'écriture le donnent plus long que
+    /// celui de lecture, et le modèle aussi : un tiers de course coûte ce que
+    /// la fiche annonce de plus, au centième près.
+    @Test("Le seek d'écriture est plus long que celui de lecture")
+    func writeSeekIsLonger() {
+        let references = DriveCatalog.all.filter { $0.writeSeek != nil }
+        #expect(references.count >= 7)
+        for reference in references {
+            let write = reference.writeSeek!
+            #expect(write.writeAverageMs > write.readAverageMs, "\(reference.model)")
+            let seek = reference.seekModel
+            let third = max(reference.geometry.cylinders / 3, 1)
+            let read = seek.duration(distance: third)
+            let written = seek.duration(distance: third, isWrite: true)
+            #expect(written > read, "\(reference.model)")
+            #expect(abs(written / read - write.averageRatio) < 0.01,
+                    "\(reference.model) : \(written / read) contre \(write.averageRatio)")
+            // Le piste-à-piste aussi, sauf là où la fiche ne le publie pas.
+            #expect(seek.duration(distance: 1, isWrite: true) >= seek.duration(distance: 1))
+            // Le bras ne va pas plus vite : seul le settle s'allonge.
+            let profile = seek.profile(distance: third)
+            let longer = seek.profile(distance: third, isWrite: true)
+            #expect(longer.speedup == profile.speedup && longer.coast == profile.coast
+                    && longer.slowdown == profile.slowdown)
+            #expect(longer.settle > profile.settle)
+        }
+        // Une lecture ne change pas.
+        let plain = DriveCatalog.fireball1996.seekModel
+        #expect(plain.duration(distance: 100, isWrite: false) == plain.duration(distance: 100))
     }
 
     /// Une capacité donnée ne décrit pas un disque : il faut l'année. Le même

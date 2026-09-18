@@ -361,9 +361,14 @@ extension DriveGeometry {
 
 extension DriveGeometry {
 
-    /// Débit soutenu sur une piste donnée, en Mo/s — ce que le disque lit d'une
-    /// traite, une fois la tête posée. Sert à confronter une géométrie déduite
-    /// aux taux de transfert que publient les fiches.
+    /// Débit **brut** d'une piste, en Mo/s : ses secteurs à chaque tour, une
+    /// fois la tête posée. Tout le tour est de la donnée — non parce que les
+    /// rafales servo et les en-têtes n'existent pas, mais parce que les
+    /// secteurs par piste sont déduits de la capacité, et que ce sont donc déjà
+    /// des secteurs de données. Une lecture séquentielle paie en plus ses
+    /// commutations de tête et ses pas de piste : c'est elle, et non ce débit,
+    /// que mesure le « sustained data transfer rate » d'un manuel
+    /// (`DriveReference`), et que ce débit borne par le haut.
     public func sustainedMBs(cylinder: Int) -> Double {
         Double(sectorsPerTrack(cylinder: cylinder)) * Double(Self.bytesPerSector) * rpm / 60 / 1_000_000
     }

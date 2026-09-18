@@ -70,7 +70,8 @@ struct FragmentMergeStrategyTests {
         #expect(plan.after.freeHoles < plan.before.freeHoles)
         #expect(report.rounds < FragmentMergeStrategy().maximumRounds)
 
-        let end = plan.partition.lba(ofCluster: plan.partition.clusterCount)
+        // La copie du secteur d'amorçage suit le dernier cluster.
+        let end = plan.partition.startLBA + plan.partition.totalSectors
         for operation in plan.operations {
             #expect(operation.lba + operation.sectors <= end, "opération hors de la partition")
         }

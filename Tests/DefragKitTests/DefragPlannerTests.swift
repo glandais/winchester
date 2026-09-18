@@ -47,7 +47,11 @@ struct PartitionGeometryTests {
                                           clusterSectors: 8, format: .ntfs)
         #expect(partition.fatSectors == 0)
         #expect(partition.rootSectorCount == 0)
-        #expect(partition.dataStartLBA > partition.startLBA, "$Boot occupe le début")
+        // `$Boot` est le cluster 0 ; seule la copie du secteur d'amorçage est
+        // hors des clusters, derrière le dernier.
+        #expect(partition.dataStartLBA == partition.startLBA, "$Boot est un cluster du volume")
+        #expect(partition.totalSectors == partition.clusterCount * 8 + 1)
+        #expect(partition.clusterCount == (8_000_000 - 1) / 8)
     }
 
     /// L'écart qui s'entend : trois écritures au bord du plateau contre deux,

@@ -208,18 +208,54 @@ struct FATSystemHintTests {
                     "le curseur `next-free` est à 10 000 ; le fichier système est tombé en \(placed[0].start)")
         }
     }
+}
 
-    /// Le chargeur d'amorçage, lui, garde sa contrainte : `IO.SYS` doit tomber
-    /// au premier cluster libre du volume, quel que soit l'état du curseur.
-    @Test("Le chargeur d'amorçage, lui, reste au premier cluster libre")
-    func bootFilesStayAtTheStart() {
-        var allocator = FATAllocator(profile: FAT32Profile(clusterKB: 4),
-                                     clusterCount: 20_000,
-                                     scan: .fromLastAllocated)
-        _ = allocator.allocate(clusterCount: 10_000, hint: .normal)
-        allocator.free([Extent(start: 100, length: 200)])
-        let placed = allocator.allocate(clusterCount: 8, hint: .boot)
-        #expect(placed.first?.start == 100)
+/// Ce que le format pose devant la zone de données, déduit du volume.
+@Suite("Place du format")
+struct FormatOverheadTests {
+
+    /// Le générateur et le simulateur décrivent le même volume : les clusters
+    /// et leurs tables tiennent sur le disque décrit, sans un secteur de trop,
+    /// et sans qu'il en reste assez pour un cluster de plus.
+    @Test("Les clusters et leurs tables tiennent sur le disque")
+    func clustersAndTablesFit() throws {
+        for spec in try ScenarioLibrary.loadAll() {
+            let sectors = Int(spec.disk.sizeBytes / 512)
+            let clusterSectors = Int(spec.resolvedFileSystem().clusterBytes) / 512
+            let count = Int(spec.clusterCount)
+            let kind = spec.fileSystem.type
+            let used = FormatOverhead.overheadSectors(clusterCount: count, kind: kind)
+                + count * clusterSectors
+            #expect(used <= sectors, "\(spec.id) : \(used) secteurs pour \(sectors)")
+            let more = FormatOverhead.overheadSectors(clusterCount: count + 1, kind: kind)
+                + (count + 1) * clusterSectors
+            #expect(more > sectors, "\(spec.id) : un cluster de plus tenait")
+            // Aucun profil du catalogue n'est tronqué par le plafond du format.
+            #expect(spec.unclampedClusterCount == UInt64(count), "\(spec.id)")
+        }
+    }
+
+    /// Le cas que la revue citait : 8,2 Gio en FAT32, dont les deux tables
+    /// faisaient 17 Mo en clusters de 4 Ko — 8,4 Mo depuis que le lot 2 lui a
+    /// rendu ses clusters de 8 Ko.
+    @Test("Les deux tables de gamer-1999 ne sont plus des clusters")
+    func gamer1999LosesItsTables() throws {
+        let spec = try ScenarioLibrary.load("gamer-1999")
+        let naive = spec.disk.sizeBytes / UInt64(spec.resolvedFileSystem().clusterBytes)
+        let tables = 2 * FormatOverhead.tableSectors(clusterCount: Int(spec.clusterCount), kind: .fat32)
+        #expect(tables * 512 > 8 << 20)
+        #expect(naive - UInt64(spec.clusterCount) >= UInt64(tables * 512) / 8_192)
+    }
+
+    /// `$Bitmap` est posée derrière la zone MFT, et elle couvre le volume.
+    @Test("La table d'occupation NTFS a sa place, derrière la zone MFT")
+    func ntfsBitmapHasItsPlace() {
+        let clusters: UInt32 = 1_000_000
+        let ntfs = NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: clusters)
+        #expect(ntfs.volumeBitmap.start == ntfs.mftZone.upperBound)
+        #expect(UInt64(ntfs.volumeBitmap.length) * 4_096 * 8 >= UInt64(clusters))
+        #expect(ntfs.systemExtents.contains(ntfs.volumeBitmap))
+        #expect(ntfs.bitmap.isAllocated(ntfs.volumeBitmap.start))
     }
 }
 

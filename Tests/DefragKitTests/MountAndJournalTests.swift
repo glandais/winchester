@@ -118,6 +118,38 @@ struct MountAndJournalTests {
         #expect(partition.mftLBA == partition.lba(ofCluster: Int(layout.mftStart)))
         // 2 Go : sous les 12 Gio au-delà desquels le journal fait 64 Mio.
         #expect(Int(layout.logFile.length) * partition.clusterBytes == 4 << 20)
+
+        // `$Bitmap`, que la validation d'un déplacement réécrit : posée par le
+        // générateur, lue au même endroit, et aucun fichier dessus.
+        #expect(disk.systemExtents.contains(layout.bitmap))
+        let bitmap = layout.bitmap.start..<layout.bitmap.end
+        #expect(disk.catalog.files.allSatisfy { record in
+            !record.extents.contains { bitmap.overlaps($0.start..<$0.end) }
+        }, "un fichier est posé sur $Bitmap")
+        #expect(partition.bitmapLBA == partition.lba(ofCluster: Int(layout.bitmap.start)))
+        // `$Boot` est le cluster 0 : le montage le lit là, et nulle part avant.
+        #expect(partition.dataStartLBA == partition.startLBA)
+        #expect(partition.mountAccesses.contains { $0.lba == partition.lba(ofCluster: 0) })
+    }
+
+    /// Le générateur et le simulateur décrivent le même volume : la partition
+    /// posée autour des clusters générés, tables comprises, tient sur le
+    /// disque que décrit le profil — sur `gamer-1999`, elle le dépassait des
+    /// 17 Mo de ses deux tables.
+    @Test("La partition tient sur le disque du profil")
+    func partitionFitsTheDisk() throws {
+        for spec in try ScenarioLibrary.loadAll() {
+            let partition = try Self.partition(spec.id)
+            let sectors = Int(spec.disk.sizeBytes) / DriveGeometry.bytesPerSector
+            #expect(partition.totalSectors <= sectors,
+                    "\(spec.id) : \(partition.totalSectors) secteurs pour \(sectors)")
+            // Et la partition dimensionnée par le simulateur à partir du disque
+            // compte les mêmes clusters que le générateur.
+            let rebuilt = PartitionGeometry(startLBA: 0, sectors: sectors,
+                                            clusterSectors: partition.clusterSectors,
+                                            format: partition.format)
+            #expect(rebuilt.clusterCount == partition.clusterCount, "\(spec.id)")
+        }
     }
 
     // MARK: - La granularité de lecture

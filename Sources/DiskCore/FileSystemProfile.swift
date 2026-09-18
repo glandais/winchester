@@ -208,4 +208,20 @@ public struct NTFSProfile: FileSystemProfile {
         self.clusterBytes = clusterKB * 1_024
         self.mftZoneShare = mftZoneShare
     }
+
+    /// Taille de cluster qu'aurait choisie `FORMAT` pour ce volume.
+    ///
+    /// La table par défaut de NTFS, de NT 4 à Vista (Microsoft, *Default
+    /// cluster size for NTFS, FAT, and exFAT*) : 512 octets jusqu'à 512 Mo,
+    /// 1 Ko jusqu'à 1 Go, 2 Ko jusqu'à 2 Go, 4 Ko au-delà et jusqu'à 16 To.
+    /// Le modèle compte ses clusters en kilo-octets : sous 512 Mo, il prend
+    /// 1 Ko, et aucun volume de la galerie n'y descend.
+    public static func forVolume(bytes: UInt64) -> NTFSProfile {
+        let gibibyte: UInt64 = 1 << 30
+        switch bytes {
+        case ..<gibibyte:       return NTFSProfile(clusterKB: 1)
+        case ..<(2 * gibibyte): return NTFSProfile(clusterKB: 2)
+        default:                return NTFSProfile(clusterKB: 4)
+        }
+    }
 }

@@ -28,6 +28,9 @@ struct DefragFile {
     /// répertoire qui la porte — un autre élément du volume, puisque sur FAT un
     /// répertoire est un fichier qu'on défragmente aussi — et à quel octet.
     var entry: DirectoryEntryPlace? = nil
+    /// Sur NTFS, son enregistrement dans la MFT, quand la source le sait
+    /// (`MFTNumbering`) : c'est lui que la validation d'un déplacement réécrit.
+    var mftRecord: Int? = nil
 
     var clusterCount: UInt32 { extents.reduce(0) { $0 + $1.length } }
 
@@ -257,6 +260,12 @@ struct DefragVolume {
             wanted -= extent.length
         }
         return nil
+    }
+
+    /// L'enregistrement de MFT du fichier `position`. Un volume qui ne le sait
+    /// pas — ceux que les tests fabriquent — prend son rang dans le parcours.
+    func mftRecord(of position: Int) -> Int {
+        files[position].mftRecord ?? 16 + position
     }
 
     init(partition: PartitionGeometry, files: [DefragFile],

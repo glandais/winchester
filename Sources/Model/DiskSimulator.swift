@@ -697,10 +697,11 @@ struct DiskMechanics {
 
         let target = geometry.position(ofLBA: lba)
 
-        // 1. Déplacement du bras.
+        // 1. Déplacement du bras. Avant une écriture, la tête doit être mieux
+        //    posée : le settle dure plus (`SeekModel.writeLaw`).
         if target.cylinder != headCylinder {
             let distance = abs(target.cylinder - headCylinder)
-            let profile = seekModel.profile(distance: distance)
+            let profile = seekModel.profile(distance: distance, isWrite: isWrite)
             events.append(DiskEvent(time: t, kind: .seek(profile)))
             stats.seekCount += 1
             stats.totalSeekDistance += distance

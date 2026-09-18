@@ -50,6 +50,18 @@ public struct SeekModel: Sendable {
     /// Commutation de tête sans déplacement de bras.
     public let headSwitchDuration: Double // s
 
+    /// La loi d'un seek **d'écriture**, quand la fiche la publie.
+    ///
+    /// Écrire exige une tête mieux posée que lire : une écriture décalée
+    /// détruirait la piste voisine, et l'asservissement attend que l'erreur de
+    /// position tombe sous un seuil plus serré avant d'autoriser le courant
+    /// d'écriture. Le bras ne va pas plus vite ; c'est le repositionnement
+    /// final qui dure plus. Les manuels le publient par deux durées de plus :
+    /// seek moyen et piste-à-piste « write », une à deux millisecondes au-dessus
+    /// de celles de lecture (`DriveReference.writeSeek`). L'excédent de cette
+    /// loi sur celle de lecture, distance par distance, s'ajoute au settle.
+    public var writeLaw: WriteSeekLaw?
+
     public init(shortIntercept: Double,
                 shortSqrtCoefficient: Double,
                 longIntercept: Double,
@@ -79,6 +91,27 @@ public struct SeekModel: Sendable {
             ms = longIntercept + longLinearCoefficient * Double(d)
         }
         return ms / 1000.0
+    }
+
+    /// Durée d'un seek qui précède une écriture : celle d'une lecture, plus
+    /// le settle plus long qu'exige la tête avant d'écrire.
+    public func duration(distance: Int, isWrite: Bool) -> Double {
+        duration(distance: distance) + (isWrite ? writeSettleExtra(distance: distance) : 0)
+    }
+
+    /// Ce que le settle d'une écriture dure de plus que celui d'une lecture.
+    public func writeSettleExtra(distance: Int) -> Double {
+        guard let writeLaw, distance != 0 else { return 0 }
+        return max(writeLaw.duration(distance: distance, crossover: crossover)
+                   - duration(distance: distance), 0)
+    }
+
+    public func profile(distance: Int, isWrite: Bool) -> SeekProfile {
+        let read = profile(distance: distance)
+        guard isWrite else { return read }
+        return SeekProfile(distance: read.distance, speedup: read.speedup, coast: read.coast,
+                           slowdown: read.slowdown,
+                           settle: read.settle + writeSettleExtra(distance: distance))
     }
 
     public func profile(distance: Int) -> SeekProfile {
@@ -113,6 +146,48 @@ public struct SeekModel: Sendable {
     public func travelMix(distance: Int, cylinders: Int) -> Double {
         let f = Double(abs(distance)) / Double(max(cylinders - 1, 1))
         return min(max(f, 0), 1)
+    }
+}
+
+/// Les constantes d'une loi de seek d'écriture : les deux branches de
+/// `SeekModel`, au même cylindre de croisement que la loi de lecture dont elle
+/// dérive.
+public struct WriteSeekLaw: Sendable, Equatable {
+    public let shortIntercept: Double
+    public let shortSqrtCoefficient: Double
+    public let longIntercept: Double
+    public let longLinearCoefficient: Double
+
+    func duration(distance: Int, crossover: Int) -> Double {
+        let d = abs(distance)
+        guard d > 0 else { return 0 }
+        let ms = d < crossover
+            ? shortIntercept + shortSqrtCoefficient * Double(d).squareRoot()
+            : longIntercept + longLinearCoefficient * Double(d)
+        return ms / 1000.0
+    }
+}
+
+extension SeekModel {
+
+    /// La même loi, avec le seek d'écriture que publie la fiche.
+    ///
+    /// La loi d'écriture est calée comme celle de lecture, sur les deux durées
+    /// « write » de la fiche, et sur la même course. Les deux ne diffèrent
+    /// que par leurs constantes : le croisement des branches est celui de la
+    /// course, pas celui de la fiche.
+    public func withWriteSeek(averageSeekMs: Double, trackToTrackMs: Double,
+                              cylinders: Int) -> SeekModel {
+        let write = SeekModel.calibrated(averageSeekMs: averageSeekMs,
+                                         trackToTrackMs: trackToTrackMs,
+                                         cylinders: cylinders)
+        var model = self
+        guard write.crossover == crossover else { return model }
+        model.writeLaw = WriteSeekLaw(shortIntercept: write.shortIntercept,
+                                      shortSqrtCoefficient: write.shortSqrtCoefficient,
+                                      longIntercept: write.longIntercept,
+                                      longLinearCoefficient: write.longLinearCoefficient)
+        return model
     }
 }
 

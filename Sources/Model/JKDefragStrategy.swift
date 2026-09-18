@@ -748,7 +748,7 @@ extension JKDefragStrategy {
                                   partition: volume.partition,
                                   bufferBytes: strategy.bufferBytes,
                                   fullBlocks: strategy.fullBlocks, into: sink)
-            DefragOperations.commit(cluster: Int(lcn), fileIndex: index,
+            DefragOperations.commit(cluster: Int(lcn), fileIndex: volume.mftRecord(of: index),
                                     entrySector: volume.entrySector(of: index), phase: phase,
                                     partition: volume.partition,
                                     // Un fichier déplacé en entier est déjà tout

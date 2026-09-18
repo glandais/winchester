@@ -47,6 +47,36 @@ struct InstallSessionTests {
         #expect(zip(phases, phases.dropFirst()).allSatisfy { $0 <= $1 })
     }
 
+    /// Une commande ATA sans LBA48 ne porte pas plus de 256 secteurs, et
+    /// aucune installation n'en demande davantage — à aucune époque.
+    @Test("Aucune requête ne dépasse 256 secteurs", arguments: InstallSessionTests.profiles)
+    func requestsFitAnATACommand(id: String) throws {
+        let planned = try Self.planned(id)
+        let largest = planned.operations.map(\.sectors).max() ?? 0
+        #expect(largest <= 256, "\(id) : \(largest) secteurs")
+    }
+
+    @Test("Aucune époque n'écrit plus de 128 Ko d'une commande")
+    func everyEraFitsAnATACommand() throws {
+        for spec in try ScenarioLibrary.loadAll() {
+            #expect(InstallEra.matching(spec).writeRequestSectors <= 256, "\(spec.id)")
+        }
+    }
+
+    /// Le dernier cluster d'un fichier n'est écrit que sur ce qu'il porte :
+    /// les pages de 4 Ko sous Windows, les secteurs sous MS-DOS.
+    @Test("La fin d'un fichier s'écrit à la page, pas au cluster")
+    func lastClusterIsWrittenByThePage() throws {
+        let planned = try Self.planned("secretaire-1996")
+        let clusterSectors = planned.partition.clusterSectors
+        #expect(clusterSectors > 8)
+        let partial = planned.operations.filter {
+            $0.kind == .writeExtent && $0.sectors % clusterSectors != 0
+        }
+        #expect(!partial.isEmpty)
+        #expect(partial.allSatisfy { $0.sectors % 8 == 0 })
+    }
+
     @Test("Deux installations du même disque sont identiques")
     func deterministic() throws {
         let a = try Self.planned("secretaire-1996")
@@ -64,8 +94,12 @@ struct InstallSessionTests {
         let partition = planned.partition
         var written = [Bool](repeating: false, count: partition.clusterCount)
         for operation in planned.operations where operation.kind == .writeExtent {
+            // Une écriture peut ne toucher qu'une partie de son dernier
+            // cluster : les pages que le fichier remplit.
             let first = (operation.lba - partition.dataStartLBA) / partition.clusterSectors
-            for cluster in first..<(first + operation.sectors / partition.clusterSectors) {
+            let last = (operation.lba + operation.sectors - 1 - partition.dataStartLBA)
+                / partition.clusterSectors
+            for cluster in first...last {
                 written[cluster] = true
             }
         }

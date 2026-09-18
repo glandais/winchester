@@ -97,7 +97,7 @@ func developerHistory(seed: UInt64, volumeBytes: UInt64) -> [FSEvent] {
                 let id = newID()
                 events.append(.create(id: id,
                                       bytes: UInt64(max(1_000, rng.logNormal(median: 14_000, sigma: 1.1))),
-                                      hint: .temporary))
+                                      hint: .normal))
                 objects.append(id)
             }
         }

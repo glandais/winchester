@@ -37,6 +37,42 @@ extension ClusterCategory {
 /// construisait autrefois un volume FAT16 dont chaque fichier portait la liste
 /// de ses clusters, ce qu'un volume de 320 Go — quatre-vingts millions de
 /// clusters pour cent soixante-dix-huit mille extents — ne pouvait pas payer.
+/// Le numéro d'enregistrement de MFT de chaque élément d'un volume NTFS.
+///
+/// Le catalogue ne garde pas le numéro qu'aurait eu chaque fichier — NTFS
+/// reprend le plus petit enregistrement libre, et il faudrait rejouer toute
+/// l'histoire —, mais il garde l'ordre de création. Le modèle en tire une
+/// approximation qui a les deux propriétés qui comptent : le numéro est celui
+/// **du volume**, le même quel que soit le scénario qui lit le fichier, et il
+/// **n'est pas l'ordre de lecture** — les fichiers qu'un démarrage ou une passe
+/// touchent à la suite sont épars dans la MFT.
+///
+/// Derrière les seize métafichiers, les répertoires, qu'un installeur crée
+/// avant d'y copier, puis les fichiers vivants, dans l'ordre de leur création.
+/// Jusqu'au lot 8, le numéro était le rang dans l'ordre de lecture : les
+/// enregistrements lus se suivaient toujours.
+struct MFTNumbering {
+    let files: [UInt32: Int]
+    let directories: [UInt32: Int]
+
+    init(disk: GeneratedDisk) {
+        var directories: [UInt32: Int] = [:]
+        var next = 16
+        for directory in disk.catalog.directories where directory.exists {
+            directories[directory.id] = next
+            next += 1
+        }
+        var files: [UInt32: Int] = [:]
+        files.reserveCapacity(disk.catalog.liveCount)
+        for id in disk.catalog.liveIDs {
+            files[id] = next
+            next += 1
+        }
+        self.files = files
+        self.directories = directories
+    }
+}
+
 enum GeneratedVolumeBridge {
 
     enum BridgeError: Error, CustomStringConvertible {
@@ -101,6 +137,7 @@ enum GeneratedVolumeBridge {
         let format = DiskGenerator.directoryFormat(for: disk.spec)
         let offsets = disk.catalog.entryOffsets(format: format)
         let knowsDirectories = disk.catalog.directories.contains(where: \.exists)
+        let numbering = MFTNumbering(disk: disk)
         var positionOf: [UInt32: Int] = [:]
         func entry(in directory: UInt32?, at offset: UInt64) -> DirectoryEntryPlace? {
             guard knowsDirectories, let directory else { return nil }
@@ -122,7 +159,8 @@ enum GeneratedVolumeBridge {
                                         isMovable: true,
                                         bytes: directory.peakEntryBytes,
                                         entry: entry(in: directory.parent,
-                                                     at: offsets.directories[Int(directory.id)])))
+                                                     at: offsets.directories[Int(directory.id)]),
+                                        mftRecord: numbering.directories[directory.id]))
             case let .file(record):
                 guard !record.isResident, !record.extents.isEmpty else { continue }
                 let category = ClusterCategory(record.category)
@@ -135,7 +173,8 @@ enum GeneratedVolumeBridge {
                                         bytes: record.logicalSize,
                                         createdDay: record.createdDay,
                                         modifiedDay: record.modifiedDay,
-                                        entry: entry(in: record.directory, at: offsets.files[record.id] ?? 0)))
+                                        entry: entry(in: record.directory, at: offsets.files[record.id] ?? 0),
+                                        mftRecord: numbering.files[record.id]))
             }
         }
         // La zone MFT du générateur est reprise telle quelle : c'est bien la
@@ -205,10 +244,14 @@ extension GeneratedVolumeBridge {
                                          rpm: spec.disk.rpm,
                                          year: year,
                                          zbr: spec.disk.zbr)
-        let seek = SeekModel.calibrated(averageSeekMs: spec.disk.averageSeekMs,
-                                        trackToTrackMs: spec.disk.trackToTrackMs
-                                            ?? DriveCatalog.trackToTrackMs(year: year),
+        let trackToTrack = spec.disk.trackToTrackMs ?? DriveCatalog.trackToTrackMs(year: year)
+        let read = SeekModel.calibrated(averageSeekMs: spec.disk.averageSeekMs,
+                                        trackToTrackMs: trackToTrack,
                                         cylinders: geometry.cylinders)
+        // Le seek d'écriture : le supplément de la fiche la plus proche.
+        let seek = DriveCatalog.writeSeek(year: year)?
+            .applied(to: read, averageSeekMs: spec.disk.averageSeekMs,
+                     trackToTrackMs: trackToTrack, cylinders: geometry.cylinders) ?? read
         return (geometry, seek)
     }
 }

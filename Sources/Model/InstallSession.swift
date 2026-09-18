@@ -57,11 +57,32 @@ struct InstallEra: Sendable {
     let configuration: Double
     /// Cliquer sur « Redémarrer » à la fin d'une étape.
     let restartPrompt: Double
-    /// Taille des écritures de données. MS-DOS écrit par tampons de quelques
-    /// dizaines de kilo-octets ; un cache de Windows vide des mégaoctets d'une
-    /// traite. Écrire un DVD par morceaux de 64 Ko, c'était attendre un demi-tour
-    /// de plateau deux cent mille fois.
+    /// Taille des écritures de données, en secteurs : **jamais plus de 256**.
+    ///
+    /// Une commande ATA sans LBA48 porte son compte de secteurs sur huit bits,
+    /// zéro valant 256 : 128 Ko par commande, quoi que le cache ait à vider.
+    /// Le pilote de port de Windows XP découpait même à 64 Ko
+    /// (`DISK_EXPERT_REVIEW.md` §3.3) ; MS-DOS écrit par ses tampons de
+    /// 64 Ko. Vista garde ici le plafond de l'ATA : les disques de 2007 sont en
+    /// LBA48, qui le lève, mais rien ne dit ce que faisait son pilote.
+    ///
+    /// Le modèle faisait jusqu'au lot 8 des requêtes de 512 Ko à 1 Mo, au
+    /// motif qu'écrire un DVD par morceaux de 64 Ko, c'était attendre un
+    /// demi-tour de plateau à chaque morceau. Ce n'est plus vrai depuis que le
+    /// disque a son cache d'écriture (lot 7) : il acquitte le morceau et pose
+    /// la suite sans attendre le tour. Ce que coûte le plafond est mesuré au
+    /// chantier 27.
     let writeRequestSectors: Int
+
+    /// Ce que le système lit ou écrit au moins d'un fichier, en octets : les
+    /// secteurs demandés sous MS-DOS, des pages de 4 Ko derrière le cache de
+    /// Windows — pas des clusters, qui sont l'unité d'allocation
+    /// (`BootScript.Era.readGranularity`, le même choix pour le démarrage).
+    /// Écrire les 2 Ko d'un `.ini` sur un volume en clusters de 32 Ko coûte
+    /// 4 Ko, et non 32.
+    var granularity: Int {
+        name == "MS-DOS" ? DriveGeometry.bytesPerSector : 4_096
+    }
 
     static func matching(_ spec: ProfileSpec) -> InstallEra {
         let year = spec.timeline.start.year
@@ -80,17 +101,17 @@ struct InstallEra: Sendable {
             return InstallEra(name: "Windows 98", think: ThinkModel(perFile: 0.02, perMegabyte: 0.12),
                               flush: .every(seconds: 3), journaled: false,
                               floppySwap: 6, detection: 10, configuration: 8, restartPrompt: 2,
-                              writeRequestSectors: 512)
+                              writeRequestSectors: 256)
         case 2001...2005:
             return InstallEra(name: "Windows XP", think: ThinkModel(perFile: 0.012, perMegabyte: 0.05),
                               flush: .every(seconds: 1), journaled: spec.fileSystem.type == .ntfs,
                               floppySwap: 6, detection: 8, configuration: 10, restartPrompt: 2,
-                              writeRequestSectors: 1_024)
+                              writeRequestSectors: 128)
         default:
             return InstallEra(name: "Windows Vista", think: ThinkModel(perFile: 0.006, perMegabyte: 0.03),
                               flush: .every(seconds: 1), journaled: spec.fileSystem.type == .ntfs,
                               floppySwap: 6, detection: 6, configuration: 12, restartPrompt: 2,
-                              writeRequestSectors: 2_048)
+                              writeRequestSectors: 256)
         }
     }
 }
@@ -287,7 +308,9 @@ enum InstallPlanner {
 
         /// Archives de l'étape, relues en tourniquet pendant la copie.
         private var cabinets: [Extent] = []
-        private var cabinetCursor = (extent: 0, offset: UInt32(0))
+        /// Où l'installeur en est dans ses archives : l'extent, et le secteur
+        /// dans cet extent.
+        private var cabinetCursor = (extent: 0, offset: 0)
         private var cabinetRatio = 0.0
         private var engineLaunched = false
 
@@ -487,21 +510,21 @@ enum InstallPlanner {
         }
 
         private mutating func writeData(of record: FileRecord, compressed: Bool) {
-            var remaining = partition.clusters(forBytes: max(Int(record.logicalSize), 1))
-            let perRequest = UInt32(max(era.writeRequestSectors / partition.clusterSectors, 1))
+            var remaining = PartitionGeometry.readSectors(forBytes: Int(record.logicalSize),
+                                                          granularity: era.granularity)
             for extent in record.extents {
-                var offset: UInt32 = 0
-                while offset < extent.length && remaining > 0 {
-                    let clusters = min(extent.length - offset, perRequest, UInt32(remaining))
-                    let bytes = Int(clusters) * partition.clusterSectors * DriveGeometry.bytesPerSector
+                let length = Int(extent.length) * partition.clusterSectors
+                var offset = 0
+                while offset < length && remaining > 0 {
+                    let sectors = min(length - offset, era.writeRequestSectors, remaining)
+                    let bytes = sectors * DriveGeometry.bytesPerSector
                     pendingThink += sourceTime(bytes: min(bytes, Int(record.logicalSize)),
                                                compressed: compressed)
-                    let cluster = Int(extent.start + offset)
-                    emit(.writeExtent, lba: partition.lba(ofCluster: cluster),
-                         sectors: Int(clusters) * partition.clusterSectors,
-                         isWrite: true, cluster: cluster)
-                    offset += clusters
-                    remaining -= Int(clusters)
+                    let cluster = Int(extent.start) + offset / partition.clusterSectors
+                    emit(.writeExtent, lba: partition.lba(ofCluster: Int(extent.start)) + offset,
+                         sectors: sectors, isWrite: true, cluster: cluster)
+                    offset += sectors
+                    remaining -= sectors
                 }
                 if remaining == 0 { break }
             }
@@ -510,21 +533,21 @@ enum InstallPlanner {
         /// Relit un morceau d'archive, là où l'installeur en était.
         private mutating func readCabinet(bytes: Int) {
             guard !cabinets.isEmpty else { return }
-            var clusters = UInt32(max(partition.clusters(forBytes: max(bytes, 1)), 1))
-            let perRequest = UInt32(max(maxRequestSectors / partition.clusterSectors, 1))
+            var sectors = PartitionGeometry.readSectors(forBytes: bytes, granularity: era.granularity)
             var guardSteps = 0
-            while clusters > 0, guardSteps < 64 {
+            while sectors > 0, guardSteps < 64 {
                 guardSteps += 1
                 if cabinetCursor.extent >= cabinets.count { cabinetCursor = (0, 0) }
                 let extent = cabinets[cabinetCursor.extent]
-                let take = min(extent.length - cabinetCursor.offset, clusters, perRequest)
-                let cluster = Int(extent.start + cabinetCursor.offset)
-                emit(.readExtent, lba: partition.lba(ofCluster: cluster),
-                     sectors: Int(take) * partition.clusterSectors, isWrite: false, cluster: cluster)
-                plan.temporaryBytesRead += Int(take) * partition.clusterSectors * DriveGeometry.bytesPerSector
-                clusters -= take
+                let length = Int(extent.length) * partition.clusterSectors
+                let take = min(length - cabinetCursor.offset, sectors, maxRequestSectors)
+                let cluster = Int(extent.start) + cabinetCursor.offset / partition.clusterSectors
+                emit(.readExtent, lba: partition.lba(ofCluster: Int(extent.start)) + cabinetCursor.offset,
+                     sectors: take, isWrite: false, cluster: cluster)
+                plan.temporaryBytesRead += take * DriveGeometry.bytesPerSector
+                sectors -= take
                 cabinetCursor.offset += take
-                if cabinetCursor.offset >= extent.length {
+                if cabinetCursor.offset >= length {
                     cabinetCursor = (cabinetCursor.extent + 1, 0)
                 }
             }
@@ -557,18 +580,19 @@ enum InstallPlanner {
         }
 
         private mutating func readWhole(_ record: FileRecord, isWrite: Bool) {
-            var remaining = partition.clusters(forBytes: max(Int(record.logicalSize), 1))
-            let perRequest = UInt32(max(maxRequestSectors / partition.clusterSectors, 1))
+            var remaining = PartitionGeometry.readSectors(forBytes: Int(record.logicalSize),
+                                                          granularity: era.granularity)
             for extent in record.extents {
-                var offset: UInt32 = 0
-                while offset < extent.length && remaining > 0 {
-                    let clusters = min(extent.length - offset, perRequest, UInt32(remaining))
-                    let cluster = Int(extent.start + offset)
-                    emit(isWrite ? .metadata : .readExtent, lba: partition.lba(ofCluster: cluster),
-                         sectors: Int(clusters) * partition.clusterSectors,
-                         isWrite: isWrite, cluster: cluster)
-                    offset += clusters
-                    remaining -= Int(clusters)
+                let length = Int(extent.length) * partition.clusterSectors
+                var offset = 0
+                while offset < length && remaining > 0 {
+                    let sectors = min(length - offset, maxRequestSectors, remaining)
+                    let cluster = Int(extent.start) + offset / partition.clusterSectors
+                    emit(isWrite ? .metadata : .readExtent,
+                         lba: partition.lba(ofCluster: Int(extent.start)) + offset,
+                         sectors: sectors, isWrite: isWrite, cluster: cluster)
+                    offset += sectors
+                    remaining -= sectors
                 }
                 if remaining == 0 { break }
             }

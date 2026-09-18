@@ -106,6 +106,41 @@ struct BootSessionTests {
         }
     }
 
+    /// Un fichier a son enregistrement de MFT, le même pour le démarrage et
+    /// pour le défragmenteur ; et un démarrage ne lit pas des enregistrements
+    /// consécutifs, puisqu'il ne lit pas les fichiers dans l'ordre où ils ont
+    /// été créés.
+    @Test("Un fichier a le même enregistrement de MFT quel que soit le scénario")
+    func mftRecordsBelongToTheVolume() throws {
+        let spec = try #require(try ScenarioLibrary.loadAll().first { $0.id == "secretaire-2003" })
+        var small = spec
+        small.disk.sizeMB = 2_000
+        small.timeline.end = small.timeline.start.adding(days: 120)
+        let disk = try DiskGenerator.generate(small)
+
+        let numbering = MFTNumbering(disk: disk)
+        let records = Array(numbering.files.values) + Array(numbering.directories.values)
+        #expect(Set(records).count == records.count)
+        #expect(records.allSatisfy { $0 >= 16 })
+
+        let volume = try GeneratedVolumeBridge.volume(from: disk)
+        for (position, file) in volume.files.enumerated() where file.category != .directory {
+            #expect(volume.mftRecord(of: position) == numbering.files[file.id])
+        }
+
+        // Les enregistrements qu'ouvre le démarrage, dans l'ordre où il les lit.
+        let plan = BootPlanner.plan(disk: disk)
+        let partition = plan.partition
+        let mftEnd = partition.mftLBA + (records.max()! + 1) * partition.mftRecordSectors
+        let opened = plan.requests
+            .filter { !$0.isWrite && $0.sectorCount == partition.mftRecordSectors
+                      && $0.lba >= partition.mftLBA && $0.lba < mftEnd }
+            .map { ($0.lba - partition.mftLBA) / partition.mftRecordSectors }
+        #expect(opened.count > 20)
+        let consecutive = zip(opened, opened.dropFirst()).filter { $1 == $0 + 1 }.count
+        #expect(consecutive < opened.count / 2, "\(consecutive) sur \(opened.count)")
+    }
+
     // MARK: - Le témoin
 
     /// Le point de comparaison n'a de valeur que s'il ne change qu'une chose :
@@ -181,9 +216,13 @@ struct BootSessionTests {
         let xp = BootPlanner.plan(disk: disk)
         #expect(xp.osName == "Windows XP")
         #expect(xp.stampedFiles == xp.filesRead, "chaque fichier lu a sa date réécrite")
-        // Différées et groupées : bien moins d'écritures que de fichiers.
+        // Différées et groupées : moins d'écritures que de fichiers. Le
+        // rapport était de plus de quatre tant que les enregistrements lus se
+        // suivaient (le numéro était le rang de lecture) ; dans l'ordre de
+        // création, ils sont épars, et seuls ceux d'une même page de 4 Ko ou de
+        // pages voisines partagent une écriture — 994 fichiers, 430 écritures.
         #expect(xp.stampWrites > 0)
-        #expect(xp.stampWrites * 4 < xp.stampedFiles)
+        #expect(xp.stampWrites * 2 < xp.stampedFiles)
 
         // Le même volume sous Vista : plus rien.
         var vistaDisk = disk

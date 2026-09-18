@@ -30,8 +30,6 @@ public enum FileCategory: UInt8, Sendable, CaseIterable, Codable {
         switch self {
         case .systemCore:            return .system
         case .swap:                  return .reservedContiguous
-        case .temporary, .cache:     return .temporary
-        case .buildArtifact:         return .temporary
         default:                     return .normal
         }
     }

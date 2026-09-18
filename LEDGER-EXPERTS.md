@@ -346,10 +346,11 @@ doit être corrigé « au jugé » — c'est justement la règle du projet.
 
 ---
 
-## Le solde — ce que sept lots ont fait des trois revues
+## Le solde — ce que huit lots ont fait des trois revues
 
-Écrit à la fin du lot 7, le 18 septembre 2026. Les trois relectures ont été
-dépouillées ici en sept lots ; chacun est devenu un chantier de `LEDGER.md`, qui
+Écrit à la fin du lot 7, le 18 septembre 2026, et soldé au lot 8 le même jour.
+Les trois relectures ont été dépouillées ici en sept lots, plus un huitième
+fait de ce qu'aucun n'avait pris ; chacun est devenu un chantier de `LEDGER.md`, qui
 dit ses décisions, ses sources et ses mesures. Ce qui suit n'en répète pas le
 détail : c'est le compte de ce que les revues demandaient, et de ce qu'il en
 reste.
@@ -362,7 +363,8 @@ reste.
 | 4 | 23 | `3a1a250` | l'écriture par paquets et les répertoires ; l'entrelacement écrit, mesuré et coupé |
 | 5 | 24 | `50b5150` | la règle NTFS des clusters retenus portée par le volume, la zone MFT d'UltraDefrag, Windows 95 qui évacue au fond, les répertoires FAT que Windows ne déplace pas, la tranche bornée, les chiffres des docstrings |
 | 6 | 25 | `f4c64d2` | le régime dans le timbre, les trains de micro-transitoires, la mise sous tension en trois temps, la recalibration thermique, la coupure et l'atterrissage |
-| 7 | 26 | ce commit | le tampon du disque et sa fiche, le bus et le coût de commande, `SMARTDRV`, l'éviction de VCACHE ; le recalage final |
+| 7 | 26 | `a2af0e6` | le tampon du disque et sa fiche, le bus et le coût de commande, `SMARTDRV`, l'éviction de VCACHE ; le recalage final |
+| 8 | 27 | ce commit | le reste : les constantes de `NTFSAllocator` mesurées et dites, l'extension cherchée près du fichier, le débit comparé à ce que la fiche mesure, le settle d'écriture, le plafond des requêtes, les deux indices morts, la place du format, `$Bitmap`, les numéros de MFT, l'arrondi à la page |
 
 ### Ce qui a été corrigé
 
@@ -380,15 +382,18 @@ reste.
 - **Ce que le modèle ne faisait pas, et qui s'entend** : le cache et la lecture
   anticipée (lot 7), `$LogFile` et l'horodatage d'accès (lot 3), la
   recalibration thermique, le régime dans le timbre et le filtre à 18 ms (lot 6),
-  le coût de commande et le débit du bus (lot 7). Seul le settle d'écriture
-  manque (plus bas).
+  le coût de commande et le débit du bus (lot 7), le settle d'écriture (lot 8),
+  lu dans les colonnes « Write » des manuels.
 - **Les quatre recoupements** : la calibration qui absorbait les artefacts a été
   recalée deux fois, aux lots 3 et 7, et une seule fois par lot, après toutes
   ses corrections ; la règle de volume des clusters retenus est portée par le
   volume (lot 5) ; les chiffres de docstrings ont une règle (lot 5 : un fait de
   galerie en sort, un chiffre de réglage reste daté). Le deuxième — le réglage
-  de fragmentation que `NTFSAllocator` porte sans le dire — n'a été ni mesuré
-  ni écrit dans l'en-tête.
+  de fragmentation que `NTFSAllocator` portait sans le dire — est mesuré et
+  écrit dans son en-tête au lot 8. La mesure corrige la revue sur un point :
+  les constantes ne poussent pas toutes vers la contiguïté — élargir la
+  tolérance ou l'horizon réduit la fragmentation —, et c'est l'horizon qui
+  décide le plus (de 4,6 à 21,2 % sur `famille-2003`).
 
 **Ce qui était jugé juste** n'a été retiré par aucun lot ; plusieurs points ont
 été revérifiés en passant, et tiennent : la borne de visites de `FindBestItem`
@@ -409,6 +414,15 @@ la rejoue sur les treize plans), les modes acoustiques à fréquences fixes (lot
   produisait ce son, la coupure.
 - **La phrase « une bonne minute pour un Vista »** (lot 3) a été retirée plutôt
   que corrigée : elle promettait ce que les cibles ne disaient pas.
+- **Le facteur de format sur le débit** (lot 8). Mesuré, il n'avait pas lieu
+  d'être : les secteurs par piste du modèle sont déduits de la capacité, ce
+  sont déjà des secteurs de données. L'écart toujours du même côté venait de
+  la comparaison — un débit brut contre le débit d'une lecture séquentielle,
+  qui paie ses commutations. Comparée à ce que la fiche mesure, la lecture
+  simulée tombe à −6,5, +3,1 et +5,7 %, et la tolérance est passée à 10 %. Un
+  0,90 aurait mis deux disques sur trois à −16 %.
+- **`growthMarginClusters`** (lot 8) a été retiré, pas mesuré à 0 et 16 : il
+  ne changeait aucun cluster, les huit empreintes NTFS le prouvent.
 
 ### Ce qui reste
 
@@ -423,7 +437,8 @@ la rejoue sur les treize plans), les modes acoustiques à fréquences fixes (lot
 
 **Les trois cibles de calibration** restent manquées depuis le lot 2 :
 `dev-1996` à 8 % de fichiers fragmentés (35 à 50 visés), `secretaire-1999` à 6 %
-(15 à 25), `famille-2003` à 13 % (40 à 60). Elles se jouent entre la borne basse
+(15 à 25), `famille-2003` à 8 % (40 à 60 ; 13 % jusqu'au lot 7). Le lot 8 a
+montré qu'aucune des constantes de `NTFSAllocator` n'en rapproche la dernière. Elles se jouent entre la borne basse
 livrée et la borne haute de l'entrelacement. Le lot 7 y ajoute une conséquence :
 la pénalité de fragmentation d'un démarrage ne s'est pas creusée avec la lecture
 anticipée, comme la revue le prédisait, parce que les fichiers qu'un démarrage
@@ -448,22 +463,23 @@ recalage final le montre : pour tenir celles de 2003 et 2007, le coût de calcul
 au mégaoctet doit monter, à un niveau que rien ne justifie. Ce sont elles qu'il
 faut rediscuter, ou remplacer par des mesures.
 
-**Ce qu'aucun lot n'a pris**, bien que les revues le demandent :
+**Ce qu'aucun lot n'a pris** : plus rien. Le lot 8 a fait ce que les revues
+demandaient et que les sept premiers s'étaient passé. Il laisse deux choses
+qu'il a trouvées en le faisant, et qui ne sont pas des demandes des revues :
 
-- le **facteur de format** sur le débit (disque §3.3) : le modèle surestime
-  toujours du même côté, jusqu'à +14 % sur le 7200.11 ;
-- le **settle d'écriture** (disque §4.3), dont le manuel du Fireball TM donne
-  maintenant la mesure : 14 ms de seek moyen en écriture, 12 en lecture ;
-- le **plafond de `InstallEra.writeRequestSectors`** à 128 ou 256 secteurs,
-  possible depuis le lot 1 ;
-- la **mesure de `reuseTolerance`** à 2, 4 et `.max` sur `famille-2003`, et
-  l'en-tête de `NTFSAllocator` qui dirait ce réglage ;
-- le docstring de **`.temporary`**, qui promet une texture que le code ne
-  produit pas ;
-- `NTFSProfile.forVolume`, la surcharge de format dans
-  `ProfileSpec.clusterCount`, la place de `$Bitmap` et les numéros
-  d'enregistrement de MFT (système de fichiers §7), l'arrondi au cluster des
-  installations et des journées.
+- **les requêtes des défragmenteurs** — 4 Mo pour XP et JkDefrag — ne sont pas
+  découpées à 256 secteurs comme celles de l'installeur ; le découpage
+  appartient à l'interface du disque, où il vaudrait pour tous ;
+- **les constantes de `NTFSAllocator`** sont dites et mesurées, pas sourcées,
+  et `famille-2003` s'y montre chaotique : trois cents clusters de `$Bitmap`
+  l'ont fait passer de 10,5 à 7,6 %.
+
+Le lot 8 a aussi trouvé **une erreur de fait** dans le catalogue — le 7200.10
+portait les seeks et le débit des 750 Go —, corrigée sur son manuel, et ajouté
+**une hypothèse** : le seek d'écriture du Conner de 1993, que rien ne publie,
+est pris au Fireball. Il déplace les démarrages NTFS de +3,3 % (2003) et +4,1 %
+(2007) par la seule numérotation MFT, sans recalage : c'est la question des
+cibles de 2003 et 2007, déjà ouverte.
 
 **Ce que les revues n'ont pas relu** : le rendu, la carte et l'interface n'ont
 eu aucun relecteur ; la couche audio ne l'a été que du côté de la mécanique.

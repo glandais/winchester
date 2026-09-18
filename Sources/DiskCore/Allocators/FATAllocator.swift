@@ -79,18 +79,14 @@ public struct FATAllocator: Allocator {
 
     private func origin(for hint: AllocationHint) -> UInt32 {
         switch hint {
-        // `IO.SYS` doit tomber au premier cluster libre du volume, quel que soit
-        // l'état du curseur : c'est une contrainte du chargeur d'amorçage, pas
-        // une préférence.
-        case .boot: return 0
-        // `.system` n'est pas cette contrainte-là. C'est le hint de
+        // `.system` n'est pas une contrainte de placement. C'est le hint de
         // `FileCategory.systemCore`, c'est-à-dire de **toutes** les DLL, de tous
         // les pilotes et de tous les fichiers des vagues de mise à jour — une
         // population que ni VFAT ni FAT32 ne distinguent du reste : ils servent
         // leur curseur `next-free`, pour tout le monde. Le forcer au cluster 0
         // re-mitait le devant du volume en permanence, par un mécanisme qui n'a
         // jamais existé.
-        case .system, .normal, .temporary, .reservedContiguous:
+        case .system, .normal, .reservedContiguous:
             return scan == .fromVolumeStart ? 0 : nextFreeHint
         }
     }
@@ -178,11 +174,11 @@ public struct FATAllocator: Allocator {
 
     /// Le même raisonnement, pour plusieurs fichiers : chaque cluster est le
     /// premier libre après le curseur, quel que soit le fichier qui le
-    /// demande. Seuls `.boot` et `.reservedContiguous` échappent au curseur, et
+    /// demande. Seul `.reservedContiguous` échappe au curseur, et
     /// aucun programme n'écrit ceux-là par paquets.
     public mutating func takeInWritingOrder(_ count: UInt32, hints: [AllocationHint]) -> [Extent]? {
         guard profile.writePacketClusters == 1,
-              !hints.contains(where: { $0 == .boot || $0 == .reservedContiguous }) else { return nil }
+              !hints.contains(.reservedContiguous) else { return nil }
         let taken = allocate(clusterCount: count, hint: .normal)
         return taken.isEmpty ? nil : taken
     }

@@ -5466,3 +5466,323 @@ aurait fondu sans que rien le dise.
   mesuré ; le rendu hors-ligne dit +1 à +10 % par seconde de son.
 - **Les cibles de 2003 et 2007** : à rediscuter, ou à remplacer par des
   mesures d'époque.
+
+## Chantier 27 — le lot 8 : le reste
+
+**Fait** · branche `experts`
+
+### Le problème
+
+Le solde de `LEDGER-EXPERTS.md` rangeait sous « ce qu'aucun lot n'a pris »
+six demandes des revues, et deux points que les lots 4 et 7 s'étaient passés :
+
+| | où | ce qui manquait | mesuré avant |
+|---|---|---|---|
+| système §3, recoupement 2 | `NTFSAllocator` | quatre constantes de calcul qui règlent la fragmentation, ni mesurées ni dites | — |
+| ch. 23 | même endroit | la recherche d'une extension partait du curseur, pas du fichier | `famille-2003` : 3 187 ms de génération, ×5,2 depuis le lot 4 |
+| disque §3.3 | `sustainedMBs` | un écart au débit des fiches toujours du même côté | +5, +2, +14 %, à 20 % de tolérance |
+| disque §4.3 | `SeekProfile.settle` | le même settle en lecture et en écriture | — |
+| disque §3.3, ch. 26 | `InstallEra.writeRequestSectors` | 512 Ko et 1 Mo par requête | — |
+| système §6.4 | `AllocationHint` | `.temporary` promet un placement à part ; `.boot` n'est produit par rien | — |
+| système §6.7, §7 | `ProfileSpec.clusterCount`, `PartitionGeometry`, `BootSession` | ni tables ni `$Boot` déduites ; `$Bitmap` lue là où un fichier est posé ; l'enregistrement MFT est le rang de lecture ; installations et journées arrondies au cluster | `gamer-1999` : 8,4 Mo de tables comptés en clusters |
+
+### Les décisions
+
+**Les constantes de `NTFSAllocator` sont mesurées, et dites dans son en-tête,
+pas changées.** Un binaire jetable les lisait dans l'environnement ; chacune a
+été bougée seule, sur les huit volumes NTFS (fichiers fragmentés parmi les
+fragmentables, code final) :
+
+| réglage | `famille-2003` | `secretaire-2003` | `dev-2007` | `famille-2007` |
+|---|---:|---:|---:|---:|
+| tel quel (2, 64, 65 536) | 7,6 % | 13,6 % | 9,1 % | 21,1 % |
+| `reuseTolerance` = 4 | 9,4 % | 12,4 % | 9,2 % | 20,2 % |
+| `reuseTolerance` = `.max` | 5,8 % | 13,1 % | 8,1 % | 16,5 % |
+| `searchWindow` = 16 | 12,8 % | 13,6 % | 7,6 % | 18,3 % |
+| `searchWindow` = 256 | 11,1 % | 14,2 % | 8,6 % | 19,8 % |
+| `searchHorizon` = 16 384 | 21,2 % | 14,7 % | 6,9 % | 21,6 % |
+| `searchHorizon` = 262 144 | 4,6 % | 12,6 % | 7,2 % | 12,9 % |
+
+- La revue disait qu'elles « poussent toutes vers la contiguïté ». **Pas
+  toutes** : élargir la tolérance jusqu'au best-fit pur, ou l'horizon, *réduit*
+  la fragmentation — la borne renonce au trou juste qui était plus loin.
+- **L'horizon décide le plus** : ×4,6 sur `famille-2003`, quand la tolérance ne
+  va que de 5,8 à 9,4 %.
+- **Aucune ne rejoint la cible** de 40 à 60 %.
+- **`famille-2003` est chaotique** : réserver `$Bitmap` (trois cents clusters,
+  plus bas) l'a fait passer de 10,5 à 7,6 % sans toucher à l'allocateur. Le
+  premier balayage, fait avant cette étape, donnait d'autres chiffres pour les
+  mêmes conclusions ; la table est celle du code livré.
+- Le coût est sans ambiguïté : sans tolérance, la génération de `dev-2007` passe
+  de 1,7 à 14,6 s.
+- **`growthMarginClusters` a été retiré** : au-delà du `highWater` il n'y a
+  qu'un trou, et chercher 64 Ko de marge y rend le même premier cluster. Les
+  huit empreintes NTFS étaient identiques à 0 et à 16. Retirer une constante
+  inerte n'est pas changer une valeur.
+
+**Une extension cherche près du fichier.** Quand le prolongement en place
+échoue, la recherche part du cluster qui suit ce qui vient d'être pris, et non
+du curseur ; les fenêtres de repli partent de là et reviennent au début. C'est
+ce que fait le pilote NTFS de Linux (`fs/ntfs/attrib.c`,
+`ntfs_attr_extend_allocation` : « We want to begin allocating clusters starting
+at the last allocated cluster to reduce fragmentation ») ; `ntfs_cluster_alloc`
+ne prend la position courante que sans cette indication. Au passage, le
+`commit` d'un seul extent ne crée plus de tableau. Les deux ensemble :
+
+| volume | avant | après | |
+|---|---:|---:|---:|
+| `dev-1993` (démo) | 50 ms | 50 ms | ×1,00 |
+| `secretaire-1999` (démo) | 32 ms | 32 ms | ×1,00 |
+| `dev-1996` | 193 ms | 194 ms | ×1,01 |
+| `dev-1999` | 274 ms | 271 ms | ×0,99 |
+| `secretaire-2003` | 171 ms | 164 ms | ×0,96 |
+| `dev-2003` | 1 098 ms | 1 061 ms | ×0,97 |
+| `gamer-2007` | 468 ms | 384 ms | ×0,82 |
+| `dev-2007` | 1 763 ms | 1 647 ms | ×0,93 |
+| `famille-2007` | 2 133 ms | 1 488 ms | ×0,70 |
+| `famille-2003` | 3 187 ms | 2 113 ms | ×0,66 |
+
+(meilleure de neuf, en alternance, binaires `base` et `fs`, machine au calme.)
+FAT n'est pas touché : empreintes identiques. Sur NTFS, les volumes de 2007
+gagnent la traîne de fichiers en deux à seize morceaux que la revue système
+(§2) réclamait — `dev-2007` de 0,5 à 5,5 % des fragmentables, `famille-2007` de
+5,3 à 15,8 % — et `famille-2003` perd un peu de la sienne. `famille-2003` reste
+à ×3,4 de ce qu'il coûtait avant l'écriture par paquets : chaque paquet qui ne
+prolonge pas lance toujours une recherche bornée.
+
+**Pas de facteur de format.** La mesure l'a écarté. Les secteurs par piste du
+modèle sont déduits de la capacité et du nombre de pistes : ce sont déjà des
+secteurs de données, et un tour les lit tous, rafales servo comprises. Le biais
+était dans la comparaison : `sustainedMBs` est un débit brut, alors que le
+« sustained data transfer rate » d'un manuel est celui d'une lecture
+séquentielle, qui paie commutations de tête et pas de piste — ce que
+`DiskMechanics` simule depuis le lot 1. Lecture simulée de vingt cylindres au
+bord, tête posée :
+
+| disque | brut | simulé | fiche | écart |
+|---|---:|---:|---:|---:|
+| 7200.7 (2003) | 60,8 | 54,3 | 58 | −6,5 % |
+| 7200.10 (2006) | 79,3 | 74,3 | **72** | +3,1 % |
+| 7200.11 (2008) | 119,7 | 111,0 | 105 | +5,7 % |
+
+Des deux côtés, et dans les 10 % : **la tolérance descend à 10 %**
+(`SequentialThroughputTests`), et le test du débit brut devient une borne
+(brut > fiche, à moins de 20 %). Un 0,90 appliqué au transfert aurait mis deux
+disques sur trois à −16 %. Les manuels Seagate donnent d'ailleurs le débit du
+canal (« internal data transfer rate », 85,4 Mo/s sur le 7200.7, 1 287 Mbit/s
+sur le 7200.11) : 0,65 à 0,68 du soutenu, format, codage et commutations
+mêlés — rien qui ressemble au 0,90 de la revue, et rien qui s'applique à des
+secteurs déjà de données.
+
+**Une erreur de fait, trouvée en relisant la table du 7200.10.** Le catalogue
+donnait au ST3320620A 78 Mo/s, 8,5 ms et 1,0 ms : ce sont les chiffres des
+750 et 500 Go. La table 2 du manuel (100402369, rév. F), celle des 400 et
+320 Go, dit 72 Mo/s (colonnes d'unités interverties dans le PDF),
+« Average seek, read <11.0 » et « <0.8 (read) ». Corrigé en étape à part
+(`fiche`) : le piste-à-piste des disques de 2007, interpolé entre 2006 et 2008,
+passe de 1,0 à 0,9 ms, et les démarrages de 2007 bougent de 0,2 s au plus.
+
+**Le settle d'écriture, pris dans les manuels.** Tous ceux du catalogue sauf le
+Conner publient une colonne « Write », relevée dans les PDF de
+`disknoise.resources/manuels` :
+
+| fiche | seek moyen L / É | piste-à-piste L / É |
+|---|---|---|
+| Fireball TM (1080 Mo, un plateau) | 12,0 / 14,0 | 3,0 / — |
+| U8 | 10,5 / 11,5 | 1,5 / 2,1 |
+| Barracuda ATA IV (un plateau) | 9,0 / 10,0 | 1,0 / 1,2 |
+| 7200.7 | 8,5 / 9,5 | 1,0 / 1,2 |
+| 7200.10 (320 Go) | 11,0 / 12,0 | 0,8 / 1,0 |
+| 7200.11 | 8,5 / 9,5 | 1,0 / 1,2 |
+
+Une seconde loi est calée sur les deux durées d'écriture, sur la même course ;
+son excédent sur la loi de lecture, distance par distance, allonge le settle
+d'un seek qui précède une écriture — le bras ne va pas plus vite. Le modèle
+garde les **rapports** de la table : le U8 annonce 8,9 ms en tête de manuel et
+10,5 dans sa table, et un disque de la galerie a son propre seek moyen. Il
+prend le rapport de la fiche la plus proche qui le publie ; le Conner n'en a pas
+(le manuel du Cougar non plus), et 1993 prend celui du Fireball — hypothèse.
+L'ATA IV se contredit (0,95 / 0,76 dans une table, 1,0 / 1,2 dans l'autre) :
+l'écriture sous la lecture n'étant pas physique, la seconde est retenue. Seuls
+les seeks de positionnement changent ; les pas de piste d'un transfert restent
+ceux du skew.
+
+**Le plafond des requêtes d'installation** : 128 secteurs sous MS-DOS (ses
+tampons de 64 Ko) et sous XP (le découpage à 64 Ko de la revue), 256 sous
+Windows 95, 98 et Vista — la limite d'une commande ATA sans LBA48, que Vista
+garde faute de source sur son pilote alors que les disques de 2007 sont en
+LBA48. Le docstring justifiait les grandes requêtes par « attendre un demi-tour
+de plateau deux cent mille fois » ; il dit maintenant ce que le cache a changé,
+mesuré par deux binaires jetables sans cache d'écriture :
+
+| installations (somme des quatre) | sans cache : sans → avec plafond | avec cache (livré) |
+|---|---:|---:|
+| 1999 | +0,9 % | +0,1 % |
+| 2003 | **+12,4 %** | +1,5 % |
+| 2007 | **+9,0 %** | +1,2 % |
+
+**`.temporary` et `.boot` sont retirés.** Le premier était traité comme
+`.normal` par les deux allocateurs ; le second n'était rendu par aucune
+catégorie. La documentation de `AllocationHint` dit pourquoi ni l'un ni l'autre
+n'avait à exister. Empreintes des volumes identiques ; le test du chargeur
+d'amorçage FAT, qui exerçait une mécanique que rien n'employait, est retiré, et
+`AllocatorInvariantTests` passe son fichier contraint en `.system`.
+
+**Le format a sa place, la même pour les deux modules** (`FormatOverhead`,
+nouveau fichier du noyau) :
+
+- `ProfileSpec.clusterCount` déduit les secteurs réservés, les deux tables (avec
+  leurs deux entrées réservées) et la racine d'un FAT16, par le calcul
+  circulaire de `FORMAT` ; `PartitionGeometry` fait le même calcul. Les tables
+  de `gamer-1999` font 8,4 Mo, et non 17 : la revue comptait en clusters de
+  4 Ko, que le lot 2 a portés à 8. Le plafond du format reste une troncature
+  (c'est ce que ferait le disque), mais un test vérifie qu'aucun profil du
+  catalogue n'y tombe ;
+- sur NTFS, **`$Boot` est le cluster 0** : le modèle réservait seize secteurs
+  *en plus* des deux clusters que le générateur lui donne, et décalait tout le
+  volume de 8 Ko. La copie du secteur d'amorçage suit le dernier cluster ;
+- **`$Bitmap` est posée derrière la zone MFT d'origine**, un bit par cluster,
+  arrondi à huit octets — là où `mkntfs` pose ses métafichiers non résidents
+  (`allocate_scattered_clusters`, qui part de `g_mft_zone_end`) et où le
+  simulateur la lisait déjà, sur des clusters que le générateur donnait au
+  premier fichier venu ;
+- **`NTFSProfile.forVolume`** porte la table de `FORMAT` que seul
+  `FormatRulesTests` connaissait, et les huit descriptions NTFS perdent leur
+  `clusterKB`.
+
+**L'enregistrement MFT est celui du volume** (`MFTNumbering`) : derrière les
+seize métafichiers, les répertoires puis les fichiers vivants, dans l'ordre de
+création. Le démarrage, les dates d'accès et les cinq outils NTFS l'emploient.
+La lecture groupée du préchargeur lit les enregistrements triés, une requête
+par suite continue. Une date d'accès salit désormais la **page** de 4 Ko de
+`$MFT` qui porte l'enregistrement, pas l'enregistrement : `$MFT` passe par le
+gestionnaire de cache comme un fichier. Sur un démarrage de `secretaire-2003`
+réduit, 994 fichiers horodatés font 430 écritures — 815 à la granularité de
+l'enregistrement, moins de 250 quand les numéros suivaient l'ordre de lecture.
+Le test qui exigeait un rapport de quatre le tenait d'un artefact ; il exige
+deux, et dit pourquoi.
+
+**Installations et journées à la page** : `InstallEra.granularity`, le choix
+de `Era.readGranularity` au lot 3 — le secteur sous MS-DOS, 4 Ko ensuite. La
+journée 20 de `dev-1996`, en clusters de 32 Ko, lit 142 Mo au lieu de 210.
+
+### Ce que chaque étape change
+
+Binaires sous `MEASURE_DIR=.build/measure-lot8` : `base` (le commit du lot 7,
+identique octet pour octet à son `bin-final`, dont les 340 bilans ont été
+repris), `hint` (ancrage et `commit`), `settle`, `fiche`, `req`, `fs` (points 6
+et 7), `final` (le code du commit, 340 bilans identiques à `fs`). Jetables :
+`knobs`, `knobs3` (les constantes), `nowc-cap` et `nowc-nocap` (sans cache
+d'écriture), `nomft` (sans numérotation MFT).
+
+| groupe (somme) | base | hint | settle | fiche | req | final |
+|---|---:|---:|---:|---:|---:|---:|
+| installations 1993 | 56 min 02 | 0 | +0,1 % | 0 | 0 | −0,6 % |
+| installations 1996 | 37 min 40 | 0 | 0 | 0 | 0 | −1,2 % |
+| installations 1999 | 37 min 11 | 0 | 0 | 0 | +0,1 % | 0 |
+| installations 2003 | 37 min 00 | 0 | 0 | 0 | +1,5 % | +2,2 % |
+| installations 2007 | 51 min 13 | 0 | 0 | 0 | +1,2 % | +2,6 % |
+| journées | 16 min 01 | 0 | 0 | 0 | 0 | −2,5 % |
+| Windows 95, douze FAT | 4 h 00 | 0 | +2,2 % | | | +6,6 % |
+| tassage à la frontière | 4 h 17 | 0 | +2,3 % | | | −1,7 % |
+| XP, huit NTFS | 1 h 28 | +34,5 % | +35,1 % | | | +32,8 % |
+| UltraDefrag | 2 h 00 | +16,0 % | | | | +14,4 % |
+| JkDefrag NTFS | 4 h 04 | +10,8 % | | | | +12,5 % |
+| recollage économe | 1 h 40 | −10,7 % | | | | −11,8 % |
+
+(colonnes : écart cumulé à `base` ; vide = inchangé depuis la précédente.)
+
+- **L'ancrage** ne change que les passes NTFS, parce qu'il change les volumes
+  de 2007 : plus de fichiers en quelques morceaux, que XP recopie en entier
+  (+33 %) et que le recollage recolle vite (−12 %). Le recollage redevient la
+  passe NTFS la plus rapide, conclusion que le lot 7 avait renversée.
+- **Le settle d'écriture** pèse peu : +2 % sur les passes FAT, +0,1 % sur les
+  installations. Le cache d'écriture du lot 7 pose les écritures en fond ; le
+  settle s'allonge sur des seeks que l'hôte n'attend plus. Il s'entend dans
+  les vidages, pas dans les durées.
+- **Le plafond** coûte ce que la table plus haut mesure.
+- **L'étape `fs`** régénère tous les volumes FAT (moins de clusters) et décale
+  NTFS : Windows 95 +4 %, le tassage à la frontière −4 %, qui repasse devant
+  (4 h 12 contre 4 h 16) — une conclusion du lot 7 renversée par des volumes à
+  peine plus petits. `dev-1999` sous Windows 95 passe de 46 min à 1 h 00,
+  11 218 Mo déplacés au lieu de 8 602 : à 93 % de remplissage, trois mégaoctets
+  de tables en moins suffisent.
+
+### Les démarrages, et ce qui n'a pas été recalé
+
+| époque | cible | lot 7 | lot 8 | écart |
+|---|---:|---:|---:|---:|
+| 1993 | 150,0 | 150,4 | 149,6 | −0,3 % |
+| 1996 | 212,5 | 213,8 | 213,6 | +0,5 % |
+| 1999 | 234,5 | 233,6 | 234,3 | −0,1 % |
+| 2003 | 181,7 | 183,5 | 187,7 | **+3,3 %** |
+| 2007 | 157,0 | 158,8 | 163,4 | **+4,1 %** |
+
+Par profil, de −4,1 % (`famille-1999`) à +8,4 % (`gamer-2007`), contre −4,8 à
++4,7 % au lot 7. **La dérive de 2003 et 2007 vient entière de la numérotation
+MFT** : le binaire `nomft`, qui a tout le lot sauf elle, ne bouge aucun
+démarrage NTFS de plus de 0,1 s. Avec elle, chaque ouverture va chercher un
+enregistrement épars : 503 → 681 seeks sur `dev-2003`, +0,4 à +1,7 s par
+démarrage. C'est le sautillement que la revue annonçait, et il coûte.
+
+**`ThinkModel.boot` n'est pas recalé**, comme demandé : la dérive rejoint des
+cibles de 2003 et 2007 que le lot 7 disait suspectes. Si on les garde, un
+recalage monterait encore le coût au mégaoctet de XP et de Vista, ce que rien
+ne justifie ; c'est aux cibles, pas aux constantes, qu'il faut toucher.
+
+**`InstallEra.think` non plus.** Ses constantes n'ont jamais été calées sur
+rien — les installations n'ont pas de cible — et le lot les déplace de −1,2 à
++2,6 % par époque. Un recalage n'aurait rien à viser : il demande d'abord des
+durées d'installation d'époque.
+
+### Ce qui valide
+
+- **`swift test` : 413 tests passent** (403 avant) : le débit séquentiel à
+  10 %, le seek d'écriture plus long sur les sept fiches qui le publient (et
+  seulement son settle), aucune requête d'installation au-delà de 256 secteurs
+  ni aucune époque qui en demande plus, la fin d'un fichier écrite à la page,
+  les clusters et leurs tables qui tiennent sur le disque pour les vingt
+  profils (sans un cluster de libre de plus), la partition du simulateur qui
+  compte les mêmes clusters, `$Bitmap` réservée et lue au même endroit,
+  `$Boot` au cluster 0, un même enregistrement MFT pour le démarrage et le
+  défragmenteur, et des ouvertures qui ne lisent plus des enregistrements
+  consécutifs.
+- L'audit d'allocation (`AllocationInvariantTests`) et l'identité flux / bloc
+  (`StreamingTests`) passent sans retouche.
+- `DISKCORE_CALIBRATION=1 swift test --filter Calibration` : trois problèmes
+  connus, les mêmes — `dev-1996` 8,1 %, `secretaire-1999` 5,5 %,
+  `famille-2003` 7,6 % (13,0 avant ; le message du test suit).
+- **Le lancement de l'app** (Debug, iPhone 17 Pro Max, iOS 26.5, build de ce
+  lot contre celui du lot 7 dans un worktree jetable, en alternance) : premier
+  écran en 4,5 à 6,1 s avant, 3,9 à 5,1 s après, et 3,9 à 4,5 s de processeur
+  jusqu'au repos pour les deux. Les démos ne changent pas (FAT) ; ce que le
+  lot rend, il le rend aux disques NTFS de la galerie, à leur ouverture.
+
+### Le README
+
+Régénéré d'un seul jeu de mesures, `final`. `readme-tables.py` a d'abord
+reproduit depuis `base` les 67 lignes de table du README précédent (les
+journées au texte « activités » près) ; 57 lignes changent, plus les quatre
+journées. La table des trois allocateurs vient d'`AllocatorComparison` (NTFS :
+pire fichier 138 → 390 extents, trous 441 → 216). La prose reprise : le seek
+d'écriture ; le contrôle du débit à 10 % ; l'exception des constantes NTFS au
+principe du résidu ; l'extension près du fichier et `$Bitmap` ; le coût de
+génération ; les renversements (recollage économe, frontière contre 95) ; les
+requêtes de 4 Mo des défragmenteurs dans « Ce qui ne l'est pas ». Hors du
+README, les fourchettes de l'écran de choix d'outil sont recopiées des bilans
+de `final`.
+
+### Laissé ouvert
+
+- **Les requêtes des défragmenteurs** — 4 Mo pour XP et JkDefrag, 256 Ko pour
+  Windows 95 — ne sont pas découpées. Le plafond est posé dans l'installeur ;
+  à sa place logique, l'interface du disque, il vaudrait pour tous.
+- **Les constantes de `NTFSAllocator`** sont dites, pas sourcées ; et
+  `famille-2003` se montre chaotique à trois cents clusters près.
+- **Le Conner de 1993** reçoit le seek d'écriture du Fireball, par hypothèse.
+- **Les cibles de démarrage de 2003 et 2007**, plus loin encore (+3,3 et
+  +4,1 %), et **des durées d'installation** d'époque, que rien ne donne.
+- **La numérotation MFT** est une approximation : NTFS reprend le plus petit
+  enregistrement libre, et le rejeu ne le suit pas.
+- **Les trois cibles de fragmentation**, toujours entre la borne basse livrée
+  et l'entrelacement.

@@ -218,7 +218,7 @@ struct WindowsXPStrategy: DefragStrategy {
                                   category: file.category, contiguous: true, phase: 1,
                                   partition: partition, bufferBytes: bufferBytes,
                                   fullBlocks: fullBlocks, into: sink)
-            DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
+            DefragOperations.commit(cluster: Int(target.start), fileIndex: volume.mftRecord(of: position),
                                     entrySector: volume.entrySector(of: position),
                                     phase: 1, partition: partition, into: sink)
             // Ce que le fichier quitte n'est libre qu'au point de contrôle

@@ -14,7 +14,60 @@ import Foundation
 ///   La MFT, dont la réserve fond, finit par se fragmenter à son tour ;
 /// - **prolongement en place** : agrandir un fichier, c'est d'abord essayer les
 ///   clusters qui suivent immédiatement son dernier extent. Un `.doc`
-///   réenregistré reste contigu là où FAT en aurait fait trois morceaux.
+///   réenregistré reste contigu là où FAT en aurait fait trois morceaux. Et
+///   quand la place derrière lui est prise, le complément est cherché **à
+///   partir de lui**, pas à la position courante de l'allocateur : c'est ce
+///   que fait le pilote NTFS de Linux (`ntfs_attr_extend_allocation`, « we
+///   want to begin allocating clusters starting at the last allocated cluster
+///   to reduce fragmentation »), qui ne prend la position courante que pour un
+///   fichier qui n'a encore rien.
+///
+/// **Trois constantes de ce fichier règlent la fragmentation**, et c'est la
+/// seule entorse du noyau au principe qu'elle n'est jamais un paramètre. Elles
+/// ont été introduites pour le coût de calcul ; chacune se défend — voir leurs
+/// commentaires —, et aucune ne vient d'une source. Le lot 8 les a mesurées,
+/// une à la fois, en fichiers fragmentés parmi les fragmentables :
+///
+/// | réglage                      | `famille-2003` | `secretaire-2003` | `dev-2007` | `famille-2007` |
+/// |------------------------------|-------:|-------:|------:|-------:|
+/// | tel quel (2, 64, 65 536)      | 7,6 %  | 13,6 % | 9,1 % | 21,1 % |
+/// | `reuseTolerance` = 4          | 9,4 %  | 12,4 % | 9,2 % | 20,2 % |
+/// | `reuseTolerance` = `.max`     | 5,8 %  | 13,1 % | 8,1 % | 16,5 % |
+/// | `searchWindow` = 16           | 12,8 % | 13,6 % | 7,6 % | 18,3 % |
+/// | `searchWindow` = 256          | 11,1 % | 14,2 % | 8,6 % | 19,8 % |
+/// | `searchHorizon` = 16 384      | 21,2 % | 14,7 % | 6,9 % | 21,6 % |
+/// | `searchHorizon` = 262 144     | 4,6 %  | 12,6 % | 7,2 % | 12,9 % |
+///
+/// Quatre choses en sortent :
+///
+/// - **elles ne poussent pas toutes vers la contiguïté.** Élargir la tolérance
+///   jusqu'au best-fit pur, ou l'horizon, *réduit* la fragmentation : ce que
+///   la borne fait, c'est renoncer au trou juste qui était un peu plus loin.
+///   Seuls un horizon plus court ou une fenêtre changée la font monter sur
+///   `famille-2003` ;
+/// - **l'horizon décide le plus** : de 4,6 à 21,2 % sur `famille-2003`, quand
+///   la tolérance ne va que de 5,8 à 9,4. Un facteur quatre tient à une borne
+///   de recherche, et c'est ce qu'il faut dire quand on cite ce que le modèle
+///   produit sur ce volume ;
+/// - **ce volume est chaotique** : poser `$Bitmap` à sa place — trois cents
+///   clusters derrière la zone MFT, rien d'autre — l'a fait passer de 10,5 à
+///   7,6 %. Au-delà du premier chiffre, son taux ne dit rien ; les volumes
+///   moins pleins bougent d'un point ou deux ;
+/// - **aucune ne rejoint la cible** de 40 à 60 % sur `famille-2003`
+///   (`CalibrationTests`). Le manque est ailleurs — dans l'écriture en
+///   séquence de la chronologie, que l'entrelacement lèverait
+///   (`DiskGenerator.runsProgramsConcurrently`).
+///
+/// Leur coût, lui, est sans ambiguïté : sans tolérance, la génération de
+/// `dev-2007` passe de 1,7 à 14,6 s, celle de `secretaire-2007` de 0,4 à 2,2.
+/// Les valeurs restent celles qu'elles étaient ; ce qui a changé, c'est qu'on
+/// sait ce qu'elles pèsent.
+///
+/// Une quatrième, `growthMarginClusters` — 64 Ko de marge cherchés derrière un
+/// fichier neuf —, a été retirée au lot 8 : au-delà du `highWater` il n'y a
+/// qu'un trou, et chercher la marge y donnait toujours le même premier
+/// cluster. Les huit volumes NTFS de la galerie ressortaient à l'identique
+/// sans elle, empreinte comprise.
 ///
 /// La « réutilisation paresseuse » des clusters libérés est modélisée par une
 /// préférence pour l'espace jamais servi : la libération, elle, est immédiate,
@@ -43,6 +96,9 @@ public struct NTFSAllocator: Allocator {
     public private(set) var mftMirror: Extent
     /// `$LogFile` : le journal, de taille fixe et immobile.
     public private(set) var logFile: Extent
+    /// `$Bitmap` : la table d'occupation, un bit par cluster, posée derrière
+    /// la zone MFT.
+    public private(set) var volumeBitmap: Extent
     /// `$Boot` : les huit premiers kilo-octets du volume.
     public private(set) var bootExtent: Extent
     /// Enregistrements en service — ceux des fichiers vivants.
@@ -68,18 +124,17 @@ public struct NTFSAllocator: Allocator {
     /// Un trou n'est repris que si sa taille ne dépasse pas ce multiple du
     /// besoin. Au-delà, l'allocateur préfère l'espace vierge plutôt que de
     /// couper un grand bloc en deux.
+    ///
+    /// Un réglage de fragmentation, mesuré dans l'en-tête.
     private let reuseTolerance: UInt32 = 2
-
-    /// Marge cherchée derrière un fichier neuf, pour que ses extensions futures
-    /// tombent à sa suite. Elle n'est **pas** allouée : elle ne sert qu'à
-    /// choisir le trou.
-    private let growthMarginClusters: UInt32 = 16
 
     /// Trous examinés avant de se décider. NTFS ne connaît pas l'état complet de
     /// son volume à chaque écriture : il tient un cache partiel de sa table
     /// d'occupation et prend le meilleur trou qu'il y voit. C'est ce que fait
     /// cette fenêtre — et sans elle, chaque allocation parcourrait les dizaines
     /// de milliers de trous d'un volume de 80 Go.
+    ///
+    /// Un réglage de fragmentation, mesuré dans l'en-tête.
     private let searchWindow = 64
 
     /// Distance maximale parcourue dans la bitmap à la recherche d'un trou :
@@ -90,6 +145,8 @@ public struct NTFSAllocator: Allocator {
     /// C'est la borne qui décide du coût de la génération : sans elle, chaque
     /// écriture traverse les zones pleines qui séparent les trous, et un volume
     /// de 80 Go devient quadratique.
+    ///
+    /// Un réglage de fragmentation, mesuré dans l'en-tête.
     private let searchHorizon: UInt32 = 1 << 16
 
     /// Bloc par lequel `$MFT` s'agrandit hors de sa zone. NTFS n'étend jamais
@@ -102,6 +159,12 @@ public struct NTFSAllocator: Allocator {
     /// qui évite que toutes les écritures se disputent les mêmes trous en tête
     /// de volume.
     private var searchCursor: UInt32 = 0
+
+    /// Premier cluster derrière le dernier extent du fichier qu'on agrandit,
+    /// le temps d'une extension. C'est là, et non au curseur, que la recherche
+    /// commence : un système de fichiers qui étend un fichier cherche près de
+    /// lui (voir l'en-tête).
+    private var extensionHint: UInt32?
 
     /// Où en est l'écriture des fichiers système. Une installation de Windows
     /// pose quarante-cinq mille fichiers à la suite : elle ne redémarre pas du
@@ -121,7 +184,8 @@ public struct NTFSAllocator: Allocator {
         self.mftPeakRecords = initialMFTRecords
 
         let layout = Self.layout(profile: profile, clusterCount: clusterCount,
-                                 mirrorPlacement: mirrorPlacement)
+                                 mirrorPlacement: mirrorPlacement,
+                                 initialMFTRecords: initialMFTRecords)
         bitmap.allocate(layout.boot)
         self.mftMirror = layout.mirror
         bitmap.allocate(self.mftMirror)
@@ -129,7 +193,7 @@ public struct NTFSAllocator: Allocator {
         bitmap.allocate(self.logFile)
 
         let mftStart = layout.mftStart
-        let mftClusters = max(profile.clusters(forBytes: initialMFTRecords * 1_024), 1)
+        let mftClusters = layout.mftClusters
         bitmap.allocate(start: mftStart, length: mftClusters)
         self.mft = FileEntry(id: 0,
                              logicalSize: initialMFTRecords * 1_024,
@@ -138,11 +202,10 @@ public struct NTFSAllocator: Allocator {
         self.bootExtent = layout.boot
 
         let zoneStart = mftStart + mftClusters
-        let zoneEnd = min(clusterCount,
-                          mftStart + max(UInt32(Double(clusterCount) * profile.mftZoneShare),
-                                         mftClusters))
-        self.mftZone = zoneStart..<max(zoneEnd, zoneStart)
-        self.highWater = max(zoneStart, self.mftMirror.end, self.logFile.end)
+        self.mftZone = zoneStart..<max(layout.mftZoneEnd, zoneStart)
+        self.volumeBitmap = layout.bitmap
+        bitmap.allocate(layout.bitmap)
+        self.highWater = max(zoneStart, self.mftMirror.end, self.logFile.end, layout.bitmap.end)
     }
 
     /// Où `FORMAT` pose les métafichiers d'un volume neuf.
@@ -161,10 +224,23 @@ public struct NTFSAllocator: Allocator {
         public let logFile: Extent
         /// Premier cluster de `$MFT`.
         public let mftStart: UInt32
+        /// Taille initiale de `$MFT`, en clusters.
+        public let mftClusters: UInt32
+        /// Fin de la zone MFT d'origine, la place qu'elle réserve comprise.
+        public let mftZoneEnd: UInt32
+        /// `$Bitmap` : un bit par cluster, arrondi à huit octets comme le pose
+        /// `mkntfs`, et **derrière la zone MFT** — la première place libre qui
+        /// ne soit pas réservée à la MFT. C'est là que `mkntfs` pose ses
+        /// métafichiers non résidents (`allocate_scattered_clusters`, qui part
+        /// de `g_mft_zone_end`), et là que le simulateur lit et écrit la
+        /// table. Jusqu'au lot 8, il l'y lisait sans que le générateur l'y ait
+        /// posée : le premier fichier de données prenait sa place.
+        public let bitmap: Extent
     }
 
     public static func layout(profile: NTFSProfile, clusterCount: UInt32,
-                              mirrorPlacement: MirrorPlacement) -> Layout {
+                              mirrorPlacement: MirrorPlacement,
+                              initialMFTRecords: UInt64 = 32) -> Layout {
         // $Boot occupe les huit premiers kilo-octets du volume — deux clusters
         // à 4 Ko, et non un. La copie du secteur d'amorçage, elle, est au tout
         // dernier secteur du volume : elle ne coûte aucun cluster ici,
@@ -211,16 +287,25 @@ public struct NTFSAllocator: Allocator {
         let mftStart = mirrorPlacement == .nearStart
             ? max(logFile.end, bootClusters)
             : bootClusters
+        let mftClusters = max(profile.clusters(forBytes: initialMFTRecords * 1_024), 1)
+        let zoneEnd = min(clusterCount,
+                          mftStart + max(UInt32(Double(clusterCount) * profile.mftZoneShare),
+                                         mftClusters))
+        let bitmapBytes = ((UInt64(clusterCount) + 7) / 8 + 7) / 8 * 8
+        let bitmapClusters = max(profile.clusters(forBytes: bitmapBytes), 1)
+        let bitmapStart = min(zoneEnd, clusterCount - min(bitmapClusters, clusterCount))
         return Layout(boot: Extent(start: 0, length: bootClusters),
-                      mirror: mirror, logFile: logFile, mftStart: mftStart)
+                      mirror: mirror, logFile: logFile, mftStart: mftStart,
+                      mftClusters: mftClusters, mftZoneEnd: zoneEnd,
+                      bitmap: Extent(start: bitmapStart, length: bitmapClusters))
     }
 
     // MARK: - Zones
 
-    /// `$Boot`, la MFT, `$MFTMirr` et `$LogFile` : tout ce que le volume
-    /// occupe sans qu'aucun fichier du catalogue ne le décrive.
+    /// `$Boot`, la MFT, `$MFTMirr`, `$LogFile` et `$Bitmap` : tout ce que le
+    /// volume occupe sans qu'aucun fichier du catalogue ne le décrive.
     public var systemExtents: [Extent] {
-        [bootExtent] + mft.extents + [mftMirror, logFile]
+        [bootExtent] + mft.extents + [mftMirror, logFile, volumeBitmap]
     }
 
     public var metadataExtents: [Extent] { systemExtents }
@@ -289,16 +374,6 @@ public struct NTFSAllocator: Allocator {
                 return commit([run])
             }
 
-        case .boot:
-            // Le chargeur d'amorçage veut ses fichiers au plus près du début du
-            // volume, et ils sont assez peu nombreux pour qu'un scan complet
-            // n'ait aucune importance.
-            if let run = bitmap.firstFitRun(minLength: count, maxLength: count,
-                                            from: range.lowerBound),
-               run.end <= range.upperBound {
-                return commit([run])
-            }
-
         case .system:
             // Les fichiers système s'écrivent à la suite les uns des autres, en
             // tête de la zone de données, là où les pistes sont les plus
@@ -316,7 +391,7 @@ public struct NTFSAllocator: Allocator {
             systemCursor = min(max(systemCursor, range.lowerBound) &+ searchHorizon,
                                range.upperBound)
 
-        case .normal, .temporary:
+        case .normal:
             break
         }
 
@@ -328,8 +403,11 @@ public struct NTFSAllocator: Allocator {
 
     /// Choix du trou : best-fit d'abord, mais sans casser un grand bloc pour un
     /// petit fichier tant qu'il reste du vierge derrière le `highWater`.
+    ///
+    /// Le parcours commence au curseur pour un fichier neuf, derrière le
+    /// dernier extent du fichier pour une extension.
     private func preferredRun(for count: UInt32, in range: Range<UInt32>) -> Extent? {
-        let wanted = count &+ growthMarginClusters
+        let origin = extensionHint ?? searchCursor
 
         // Le best-fit ne travaille que sur la partie du volume déjà servie :
         // au-delà du `highWater` il n'y a qu'un seul trou, celui qui reste, et
@@ -344,7 +422,7 @@ public struct NTFSAllocator: Allocator {
 
         if used.lowerBound < used.upperBound,
            let fit = bitmap.bestFitRun(minLength: count, in: used,
-                                       from: searchCursor,
+                                       from: origin,
                                        maxRunsExamined: searchWindow,
                                        maxClustersScanned: searchHorizon,
                                        measureLimit: tolerable),
@@ -352,26 +430,35 @@ public struct NTFSAllocator: Allocator {
             return Extent(start: fit.start, length: count)
         }
 
-        // Espace vierge : on y cherche de quoi loger le fichier **et** sa marge
-        // de croissance, pour que ses extensions futures tombent à sa suite.
+        // Espace vierge : au-delà du `highWater`, il n'y a qu'un seul trou, et
+        // le fichier se pose à son début.
         let virgin = max(highWater, range.lowerBound)..<range.upperBound
-        if virgin.lowerBound < virgin.upperBound {
-            if let run = bitmap.firstFitRun(minLength: wanted, maxLength: wanted,
-                                            from: virgin.lowerBound)
-                ?? bitmap.firstFitRun(minLength: count, maxLength: count,
-                                      from: virgin.lowerBound),
-               run.start < virgin.upperBound {
-                return Extent(start: run.start, length: count)
-            }
+        if virgin.lowerBound < virgin.upperBound,
+           let run = bitmap.firstFitRun(minLength: count, maxLength: count,
+                                        from: virgin.lowerBound),
+           run.start < virgin.upperBound {
+            return Extent(start: run.start, length: count)
         }
 
-        // Plus de vierge : on reprend le volume par fenêtres successives, en
-        // repartant de là où le curseur en est. Rescanner tout le volume à
-        // chaque écriture coûterait, sur un disque de 2007, plus d'une minute
-        // pour une seule génération — et surtout, aucun pilote ne fait cela.
+        // Plus de vierge : on reprend le volume par fenêtres successives. Pour
+        // un fichier neuf, depuis le début de la zone de données ; pour une
+        // extension, depuis le fichier, en revenant au début une fois la fin
+        // du volume atteinte. Rescanner tout le volume à chaque écriture
+        // coûterait, sur un disque de 2007, plus d'une minute pour une seule
+        // génération — et surtout, aucun pilote ne fait cela.
         var probe = range.lowerBound
+        var wrapped = true
+        if let hint = extensionHint, hint > range.lowerBound, hint < range.upperBound {
+            probe = hint
+            wrapped = false
+        }
         var windows = 0
-        while probe < range.upperBound, windows < 16 {
+        while windows < 16 {
+            if probe >= range.upperBound {
+                guard !wrapped else { break }
+                wrapped = true
+                probe = range.lowerBound
+            }
             if let fit = bitmap.bestFitRun(minLength: count, in: range,
                                            from: probe,
                                            maxRunsExamined: searchWindow,
@@ -406,15 +493,16 @@ public struct NTFSAllocator: Allocator {
     }
 
     private mutating func commit(_ extents: [Extent]) -> [Extent] {
-        guard !extents.isEmpty else { return [] }
-        for extent in extents {
-            bitmap.allocate(extent)
-            highWater = max(highWater, extent.end)
-            // Le curseur suit l'écriture : la place suivante est cherchée à
-            // partir d'ici, pas depuis le début du volume.
-            searchCursor = extent.end < bitmap.clusterCount ? extent.end : 0
-        }
+        for extent in extents { commit(extent) }
         return extents
+    }
+
+    private mutating func commit(_ extent: Extent) {
+        bitmap.allocate(extent)
+        highWater = max(highWater, extent.end)
+        // Le curseur suit l'écriture : la place suivante est cherchée à
+        // partir d'ici, pas depuis le début du volume.
+        searchCursor = extent.end < bitmap.clusterCount ? extent.end : 0
     }
 
     /// Prolonger d'abord, chercher ensuite. C'est toute la différence de texture
@@ -429,14 +517,19 @@ public struct NTFSAllocator: Allocator {
             let contiguous = min(bitmap.freeRunLength(at: last.end, limit: remaining), remaining)
             if contiguous > 0 {
                 let run = Extent(start: last.end, length: contiguous)
-                _ = commit([run])
+                commit(run)
                 prolonged = run
                 remaining -= contiguous
             }
         }
 
         if remaining > 0 {
+            // Le complément est cherché à partir du fichier : c'est le « last
+            // allocated cluster » du pilote de Linux, et non la position
+            // courante de l'allocateur.
+            extensionHint = file.extents.last.map { prolonged?.end ?? $0.end }
             let added = allocate(clusterCount: remaining, hint: file.hint)
+            extensionHint = nil
             guard !added.isEmpty else {
                 // Le complément n'a pas pu être placé : on rend ce qui venait
                 // d'être pris, pour que le fichier ressorte intact.

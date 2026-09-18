@@ -23,6 +23,21 @@ import Foundation
 /// géométrie « native » du Quantum Fireball ST 6.4AT, qui donnerait 6,5 Mo/s
 /// là où sa fiche en annonce 16 — les 13 328 cylindres publiés sont ceux d'une
 /// translation, pas des pistes.
+///
+/// Le débit qu'un manuel appelle « sustained » est celui d'une lecture
+/// séquentielle, qui paie ses commutations de tête et ses pas de piste ; le
+/// débit brut de la piste (`DriveGeometry.sustainedMBs`) ne les paie pas, et
+/// le borne donc par le haut. C'est la lecture simulée qui se compare à la
+/// fiche, à 10 % (`SequentialThroughputTests`).
+///
+/// Il n'y a pas de facteur de format à appliquer au débit : les secteurs par
+/// piste ne sont pas déduits d'une densité de bits, où les rafales servo, les
+/// en-têtes et l'ECC prendraient leur part, mais de la capacité et du nombre
+/// de pistes — ce sont déjà des secteurs de données. Les manuels Seagate
+/// publient d'ailleurs l'autre grandeur, le débit du canal (« internal data
+/// transfer rate ») : 85,4 Mo/s sur le 7200.7 pour 58 soutenus, 1 287 Mbit/s
+/// sur le 7200.11 pour 105 Mo/s. Leur rapport, 0,65 à 0,68, mêle format,
+/// codage et commutations ; ce n'est pas le 0,90 qu'on aurait appliqué.
 public struct DriveReference: Sendable {
 
     public let model: String
@@ -55,13 +70,16 @@ public struct DriveReference: Sendable {
     /// Le tampon du disque et ce qu'il en fait : une donnée de fiche, comme le
     /// régime. C'est elle qui date un disque autant que lui.
     public let buffer: DriveBuffer
+    /// Les seeks d'écriture que publie le manuel, quand il les publie.
+    public let writeSeek: WriteSeek?
 
     public init(model: String, shortName: String, year: Int, capacityBytes: UInt64, heads: Int,
                 tracksPerFace: Int, rpm: Int, averageSeekMs: Double,
                 trackToTrackMs: Double, sustainedOuterMBs: Double? = nil,
                 isAnchor: Bool = true,
                 source: String,
-                buffer: DriveBuffer) {
+                buffer: DriveBuffer,
+                writeSeek: WriteSeek? = nil) {
         self.model = model
         self.shortName = shortName
         self.year = year
@@ -75,6 +93,7 @@ public struct DriveReference: Sendable {
         self.isAnchor = isAnchor
         self.source = source
         self.buffer = buffer
+        self.writeSeek = writeSeek
     }
 
     /// Octets sur une face du plateau.
@@ -83,6 +102,44 @@ public struct DriveReference: Sendable {
     /// Secteurs par piste, en moyenne sur la face.
     public var meanSectorsPerTrack: Double {
         bytesPerFace / Double(DriveGeometry.bytesPerSector) / Double(tracksPerFace)
+    }
+}
+
+/// Les seeks d'écriture d'une fiche, avec ceux de lecture **de la même table**.
+///
+/// Les manuels publient deux colonnes, « Read » et « Write » : le seek moyen et
+/// le piste-à-piste d'une écriture sont d'une à deux millisecondes plus longs,
+/// parce que la tête doit être mieux posée avant d'écrire (`SeekModel.writeLaw`).
+/// Le modèle en garde les **rapports** et non les valeurs : la colonne de
+/// lecture d'une table n'est pas toujours le chiffre commercial retenu par la
+/// fiche — le U8 annonce 8,9 ms en tête de manuel et 10,5 dans sa table de
+/// seeks —, et c'est ainsi qu'un disque de la galerie, qui a son propre seek
+/// moyen, reçoit le supplément de la fiche la plus proche.
+public struct WriteSeek: Sendable, Equatable {
+    public let readAverageMs: Double
+    public let writeAverageMs: Double
+    public let readTrackToTrackMs: Double
+    public let writeTrackToTrackMs: Double
+    public let source: String
+
+    public init(readAverageMs: Double, writeAverageMs: Double,
+                readTrackToTrackMs: Double, writeTrackToTrackMs: Double, source: String) {
+        self.readAverageMs = readAverageMs
+        self.writeAverageMs = writeAverageMs
+        self.readTrackToTrackMs = readTrackToTrackMs
+        self.writeTrackToTrackMs = writeTrackToTrackMs
+        self.source = source
+    }
+
+    public var averageRatio: Double { writeAverageMs / readAverageMs }
+    public var trackToTrackRatio: Double { writeTrackToTrackMs / readTrackToTrackMs }
+
+    /// Une loi de lecture, et le seek d'écriture qui va avec.
+    public func applied(to seek: SeekModel, averageSeekMs: Double, trackToTrackMs: Double,
+                        cylinders: Int) -> SeekModel {
+        seek.withWriteSeek(averageSeekMs: averageSeekMs * averageRatio,
+                           trackToTrackMs: trackToTrackMs * trackToTrackRatio,
+                           cylinders: cylinders)
     }
 }
 
@@ -206,7 +263,13 @@ public enum DriveCatalog {
                       + "manuel du Fireball TM 1080AT (81-111394-02, 1996), celui du "
                       + "540/1080AT de 1995 étant introuvable : 76 Ko de cache à "
                       + "segmentation adaptative, « read look-ahead, and write cache "
-                      + "enabled » à la mise sous tension, « Read-on-arrival firmware »")),
+                      + "enabled » à la mise sous tension, « Read-on-arrival firmware »"),
+            writeSeek: WriteSeek(
+                readAverageMs: 12.0, writeAverageMs: 14.0,
+                readTrackToTrackMs: 3.0, writeTrackToTrackMs: 3.0,
+                source: "Manuel Fireball TM (81-111394-02), table 4-3 — « Random Average "
+                      + "(Write) 14.0 ms for one-disk drives » contre 12,0 en lecture ; le "
+                      + "piste-à-piste n'a pas de colonne d'écriture")),
 
         DriveReference(
             model: "Seagate U8 ST38410A",
@@ -220,7 +283,12 @@ public enum DriveCatalog {
                 interfaceMBs: 66.6, commandOverheadMs: DriveBuffer.measuredOverheadMs,
                 source: "Manuel Seagate U8 (SG35226-001, rév. A, 1999) — « Cache buffer "
                       + "512 Kbytes », Ultra DMA mode 4, « Power-on default has the read "
-                      + "look-ahead and write caching features enabled »")),
+                      + "look-ahead and write caching features enabled »"),
+            writeSeek: WriteSeek(
+                readAverageMs: 10.5, writeAverageMs: 11.5,
+                readTrackToTrackMs: 1.5, writeTrackToTrackMs: 2.1,
+                source: "Manuel Seagate U8, §1.5 — « Track-to-track 1.5 / 2.1 », "
+                      + "« Average 10.5 / 11.5 » (lecture / écriture)")),
 
         DriveReference(
             model: "Seagate Barracuda ATA IV ST340016A",
@@ -235,7 +303,14 @@ public enum DriveCatalog {
                 interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
                 source: "Manuel Seagate Barracuda ATA IV (100129212, rév. B) — « Cache "
                       + "buffer 2 Mbytes », Ultra DMA mode 5, lecture anticipée et cache "
-                      + "d'écriture actifs à la mise sous tension")),
+                      + "d'écriture actifs à la mise sous tension"),
+            writeSeek: WriteSeek(
+                readAverageMs: 9.0, writeAverageMs: 10.0,
+                readTrackToTrackMs: 1.0, writeTrackToTrackMs: 1.2,
+                source: "Manuel Seagate Barracuda ATA IV, table 1 — « Average seek, write "
+                      + "10.0 » contre 9,0 pour un plateau, « 1.0 (read), 1.2 (write) » en "
+                      + "piste-à-piste. La table du §1.5 donne 0,95 / 0,76, l'écriture sous "
+                      + "la lecture : c'est la table 1 qui est retenue")),
 
         // Même mécanique et même densité que le précédent, sur une seule face :
         // c'est le disque de 20 Go de 2001, celui du scénario de démarrage.
@@ -253,7 +328,14 @@ public enum DriveCatalog {
                 interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
                 source: "Manuel Seagate Barracuda ATA IV (100129212, rév. B) — « Cache "
                       + "buffer 2 Mbytes », Ultra DMA mode 5, lecture anticipée et cache "
-                      + "d'écriture actifs à la mise sous tension")),
+                      + "d'écriture actifs à la mise sous tension"),
+            writeSeek: WriteSeek(
+                readAverageMs: 9.0, writeAverageMs: 10.0,
+                readTrackToTrackMs: 1.0, writeTrackToTrackMs: 1.2,
+                source: "Manuel Seagate Barracuda ATA IV, table 1 — « Average seek, write "
+                      + "10.0 » contre 9,0 pour un plateau, « 1.0 (read), 1.2 (write) » en "
+                      + "piste-à-piste. La table du §1.5 donne 0,95 / 0,76, l'écriture sous "
+                      + "la lecture : c'est la table 1 qui est retenue")),
 
         DriveReference(
             model: "Seagate Barracuda 7200.7 ST340014A",
@@ -268,23 +350,36 @@ public enum DriveCatalog {
                 interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
                 source: "Manuel Seagate Barracuda 7200.7 (100217279, rév. N) — 2 Mo pour "
                       + "le ST340014A (8 Mo pour les variantes en …3A), Ultra DMA mode 5, "
-                      + "lecture anticipée et cache d'écriture actifs à la mise sous tension")),
+                      + "lecture anticipée et cache d'écriture actifs à la mise sous tension"),
+            writeSeek: WriteSeek(
+                readAverageMs: 8.5, writeAverageMs: 9.5,
+                readTrackToTrackMs: 1.0, writeTrackToTrackMs: 1.2,
+                source: "Manuel Seagate Barracuda 7200.7, §2.7 — « Track-to-track <1.0 / "
+                      + "<1.2 », « Average 8.5 / 9.5 » (lecture / écriture)")),
 
         DriveReference(
             model: "Seagate Barracuda 7200.10 ST3320620A",
             shortName: "Barracuda 7200.10",
             year: 2006, capacityBytes: 320_072_933_376, heads: 4,
             tracksPerFace: 159_500, rpm: 7_200,
-            averageSeekMs: 8.5, trackToTrackMs: 1.0,
-            sustainedOuterMBs: 78,
+            averageSeekMs: 11.0, trackToTrackMs: 0.8,
+            sustainedOuterMBs: 72,
             source: "Manuel Seagate Barracuda 7200.10 — 145 kTPI, 813 kBPI, "
-                  + "enregistrement perpendiculaire, 2 plateaux",
+                  + "enregistrement perpendiculaire, 2 plateaux. Seeks et débit de la "
+                  + "table 2 (400 et 320 Go) : « <0.8 (read) », « Average seek, read "
+                  + "<11.0 », 72 Mo/s soutenus — les 78 Mo/s et 8,5 ms sont ceux des "
+                  + "750 et 500 Go",
             buffer: DriveBuffer(
                 bufferKB: 16_384, readAhead: true, writeCache: true, zeroLatencyRead: true,
                 interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
                 source: "Manuel Seagate Barracuda 7200.10 PATA (100402369, rév. F), table 2 "
                       + "— 16 Mo pour le ST3320620A (8 Mo pour le ST3320820A), Ultra DMA "
-                      + "mode 5, lecture anticipée et cache d'écriture actifs par défaut")),
+                      + "mode 5, lecture anticipée et cache d'écriture actifs par défaut"),
+            writeSeek: WriteSeek(
+                readAverageMs: 11.0, writeAverageMs: 12.0,
+                readTrackToTrackMs: 0.8, writeTrackToTrackMs: 1.0,
+                source: "Manuel Seagate Barracuda 7200.10 PATA, table 2 — « <0.8 (read), "
+                      + "<1.0 (write) », « Average seek, read <11.0 », « write <12.0 »")),
 
         DriveReference(
             model: "Seagate Barracuda 7200.11 ST31000340AS",
@@ -299,7 +394,12 @@ public enum DriveCatalog {
                 interfaceMBs: 300, commandOverheadMs: DriveBuffer.measuredOverheadMs,
                 source: "Manuel Seagate Barracuda 7200.11 (100452348, rév. E), table 1 — "
                       + "32 Mo pour le ST31000340AS, Serial ATA à 300 Mo/s, lecture "
-                      + "anticipée et cache d'écriture actifs par défaut")),
+                      + "anticipée et cache d'écriture actifs par défaut"),
+            writeSeek: WriteSeek(
+                readAverageMs: 8.5, writeAverageMs: 9.5,
+                readTrackToTrackMs: 1.0, writeTrackToTrackMs: 1.2,
+                source: "Manuel Seagate Barracuda 7200.11, §2.5 — « Track-to-track <1.0 / "
+                      + "<1.2 » (1 To), « Average <8.5 / <9.5 » (lecture / écriture)")),
     ]
 
     /// Rapport entre les secteurs de la piste interne et ceux de la piste
@@ -323,6 +423,20 @@ public enum DriveCatalog {
     /// Le disque du catalogue le plus proche d'une année donnée.
     public static func nearest(year: Int) -> DriveReference {
         all.min { abs($0.year - year) < abs($1.year - year) } ?? all[0]
+    }
+
+    /// Les seeks d'écriture d'un disque de cette année : ceux de sa fiche si
+    /// elle les publie, sinon ceux de la fiche la plus proche qui les publie.
+    ///
+    /// Le Conner de 1993 est le seul du catalogue à ne pas en avoir — le
+    /// manuel du Cougar, son voisin, ne publie qu'un seek moyen. Les disques
+    /// de 1993 reçoivent donc le rapport du Fireball de 1996 : **une
+    /// hypothèse**, celle qu'un disque de 1993 n'écrivait pas plus vite qu'il
+    /// ne lisait, ce qu'aucun disque à asservissement ne fait.
+    public static func writeSeek(year: Int, reference: DriveReference? = nil) -> WriteSeek? {
+        if let own = reference?.writeSeek { return own }
+        return all.filter { $0.writeSeek != nil }
+            .min { abs($0.year - year) < abs($1.year - year) }?.writeSeek
     }
 }
 
@@ -438,11 +552,16 @@ extension DriveReference {
                           heads: heads)
     }
 
-    /// La loi de seek de ce disque-là, calée sur les deux durées de sa fiche.
+    /// La loi de seek de ce disque-là, calée sur les deux durées de sa fiche,
+    /// et sur celles d'écriture quand elle les publie.
     public var seekModel: SeekModel {
-        SeekModel.calibrated(averageSeekMs: averageSeekMs,
-                             trackToTrackMs: trackToTrackMs,
-                             cylinders: geometry.cylinders)
+        let cylinders = geometry.cylinders
+        let read = SeekModel.calibrated(averageSeekMs: averageSeekMs,
+                                        trackToTrackMs: trackToTrackMs,
+                                        cylinders: cylinders)
+        return DriveCatalog.writeSeek(year: year, reference: self)?
+            .applied(to: read, averageSeekMs: averageSeekMs, trackToTrackMs: trackToTrackMs,
+                     cylinders: cylinders) ?? read
     }
 }
 

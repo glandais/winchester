@@ -94,21 +94,21 @@ struct MachineWriter {
                                    kind: DiskOperation.Kind, perRequestSectors: Int,
                                    cost: (Int) -> Double) {
         guard bytes > 0 else { return }
-        var remaining = partition.clusters(forBytes: bytes)
-        let perRequest = UInt32(max(perRequestSectors / partition.clusterSectors, 1))
+        // Des pages ou des secteurs, pas des clusters (`InstallEra.granularity`).
+        var remaining = PartitionGeometry.readSectors(forBytes: bytes, granularity: era.granularity)
         for extent in extents {
-            var offset: UInt32 = 0
-            while offset < extent.length && remaining > 0 {
-                let clusters = min(extent.length - offset, perRequest, UInt32(remaining))
-                let sectors = Int(clusters) * partition.clusterSectors
+            let length = Int(extent.length) * partition.clusterSectors
+            var offset = 0
+            while offset < length && remaining > 0 {
+                let sectors = min(length - offset, perRequestSectors, remaining)
                 let chunk = min(sectors * DriveGeometry.bytesPerSector, bytes)
                 think(cost(chunk))
-                let cluster = Int(extent.start + offset)
-                emit(kind, lba: partition.lba(ofCluster: cluster), sectors: sectors,
+                let cluster = Int(extent.start) + offset / partition.clusterSectors
+                emit(kind, lba: partition.lba(ofCluster: Int(extent.start)) + offset, sectors: sectors,
                      isWrite: isWrite, cluster: cluster)
                 if isWrite { bytesWritten += chunk } else { bytesRead += chunk }
-                offset += clusters
-                remaining -= Int(clusters)
+                offset += sectors
+                remaining -= sectors
             }
             if remaining == 0 { break }
         }

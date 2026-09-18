@@ -24,15 +24,19 @@ enum VolumeFormat: Sendable {
     case fat32
     case ntfs
 
-    /// Octets décrivant un cluster dans la table d'allocation. NTFS n'a pas de
-    /// table de chaînage : il décrit les fichiers par extents dans la MFT.
-    var fatEntryBytes: Int {
+    /// Le format tel que le générateur le nomme : la place que prennent ses
+    /// tables se calcule au même endroit pour les deux (`FormatOverhead`).
+    var kind: FileSystemKind {
         switch self {
-        case .fat16: return 2
-        case .fat32: return 4
-        case .ntfs:  return 0
+        case .fat16: return .fat16
+        case .fat32: return .fat32
+        case .ntfs:  return .ntfs
         }
     }
+
+    /// Octets décrivant un cluster dans la table d'allocation. NTFS n'a pas de
+    /// table de chaînage : il décrit les fichiers par extents dans la MFT.
+    var fatEntryBytes: Int { FormatOverhead.entryBytes(kind) }
 
     var isFAT: Bool { self != .ntfs }
 
@@ -41,15 +45,12 @@ enum VolumeFormat: Sendable {
     /// Un seul sur FAT16 — le secteur d'amorçage — mais **trente-deux** sur
     /// FAT32 : l'amorçage y tient sur trois secteurs, `FSINFO` suit, une copie
     /// de secours de l'ensemble est posée au secteur 6, et `FORMAT` réserve le
-    /// reste. Sur NTFS, `$Boot` occupe les huit premiers kilo-octets du volume,
-    /// et une copie du secteur d'amorçage est au tout dernier secteur.
-    var reservedSectors: Int {
-        switch self {
-        case .fat16: return 1
-        case .fat32: return 32
-        case .ntfs:  return 16
-        }
-    }
+    /// reste. Sur NTFS, aucun : `$Boot` est le cluster 0 du volume, un
+    /// métafichier comme les autres, et seule la copie du secteur d'amorçage,
+    /// au tout dernier secteur, est hors des clusters. Jusqu'au lot 8, le
+    /// modèle réservait ici les seize secteurs de `$Boot` **en plus** des deux
+    /// clusters que le générateur lui donne.
+    var reservedSectors: Int { FormatOverhead.reservedSectors(kind) }
 
     var label: String {
         switch self {
@@ -89,34 +90,18 @@ struct PartitionGeometry {
     /// Windows 2000, au milieu du volume avant. Sans objet sur FAT.
     var ntfsPlacement: NTFSAllocator.MirrorPlacement = .nearStart
 
-    /// 512 entrées de 32 octets : la racine d'un FAT16, de taille fixe. FAT32
-    /// et NTFS n'en ont pas — leur racine est un fichier ordinaire.
-    private static let fat16RootSectors = 32
-
     /// Partition occupant un nombre de secteurs donné, dimensionnée comme
-    /// l'aurait fait l'outil de formatage du système.
+    /// l'aurait fait l'outil de formatage du système — et comme le générateur
+    /// compte ses clusters (`FormatOverhead`).
     init(startLBA: Int, sectors: Int, clusterSectors: Int, format: VolumeFormat = .fat16) {
         self.startLBA = startLBA
         self.clusterSectors = clusterSectors
         self.format = format
-
-        switch format {
-        case .fat16, .fat32:
-            let root = format == .fat16 ? Self.fat16RootSectors : 0
-            let overhead = format.reservedSectors + root
-            let entryBytes = format.fatEntryBytes
-            var n = (sectors - overhead) / clusterSectors
-            var fat = 0
-            for _ in 0..<3 {
-                fat = Int(ceil(Double(n) * Double(entryBytes) / Double(DriveGeometry.bytesPerSector)))
-                n = (sectors - overhead - 2 * fat) / clusterSectors
-            }
-            self.fatSectors = fat
-            self.clusterCount = n
-        case .ntfs:
-            self.fatSectors = 0
-            self.clusterCount = (sectors - format.reservedSectors) / clusterSectors
-        }
+        let count = FormatOverhead.clusterCount(volumeSectors: sectors,
+                                                clusterSectors: clusterSectors,
+                                                kind: format.kind)
+        self.clusterCount = count
+        self.fatSectors = FormatOverhead.tableSectors(clusterCount: count, kind: format.kind)
 
         precondition(clusterCount > 0, "partition vide")
         precondition(format != .fat16 || clusterCount < 65_525, "hors des bornes FAT16")
@@ -131,10 +116,7 @@ struct PartitionGeometry {
         self.clusterSectors = clusterSectors
         self.clusterCount = clusterCount
         self.format = format
-        self.fatSectors = format.isFAT
-            ? Int(ceil(Double(clusterCount) * Double(format.fatEntryBytes)
-                       / Double(DriveGeometry.bytesPerSector)))
-            : 0
+        self.fatSectors = FormatOverhead.tableSectors(clusterCount: clusterCount, kind: format.kind)
         precondition(clusterCount > 0, "partition vide")
     }
 
@@ -143,7 +125,7 @@ struct PartitionGeometry {
     var fat1LBA: Int { startLBA + format.reservedSectors }
     var fat2LBA: Int { fat1LBA + fatSectors }
     var rootLBA: Int { fat2LBA + fatSectors }
-    var rootSectorCount: Int { format == .fat16 ? Self.fat16RootSectors : 0 }
+    var rootSectorCount: Int { FormatOverhead.rootSectors(format.kind) }
 
     var dataStartLBA: Int {
         switch format {
@@ -156,8 +138,11 @@ struct PartitionGeometry {
     var capacityBytes: Int { clusterCount * clusterBytes }
 
     /// Secteurs occupés par la partition, tables comprises : le disque qui la
-    /// porte doit en compter au moins autant.
-    var totalSectors: Int { dataStartLBA - startLBA + clusterCount * clusterSectors }
+    /// porte doit en compter au moins autant. Sur NTFS, la copie du secteur
+    /// d'amorçage suit le dernier cluster.
+    var totalSectors: Int {
+        dataStartLBA - startLBA + clusterCount * clusterSectors + (format == .ntfs ? 1 : 0)
+    }
 
     func lba(ofCluster cluster: Int) -> Int {
         dataStartLBA + cluster * clusterSectors
@@ -300,7 +285,7 @@ extension PartitionGeometry {
             var accesses = [
                 MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
                                sectors: mftRecordSectors),
-                MetadataAccess(lba: dataStartLBA + bitmapOffsetSectors + cluster / (8 * DriveGeometry.bytesPerSector),
+                MetadataAccess(lba: bitmapLBA + cluster / (8 * DriveGeometry.bytesPerSector),
                                sectors: 1),
             ]
             if let validation, (validation + 1) % Self.validationsPerLogPage == 0 {
@@ -310,11 +295,9 @@ extension PartitionGeometry {
         }
     }
 
-    /// Décalage de `$Bitmap` depuis le début de la zone de données : elle vient
-    /// après la MFT et la zone qui lui est réservée.
-    private var bitmapOffsetSectors: Int {
-        Int(Double(clusterCount) * 0.125) * clusterSectors
-    }
+    /// Premier secteur de `$Bitmap`, là où le générateur l'a posée : derrière
+    /// la zone MFT d'origine (`NTFSAllocator.Layout.bitmap`).
+    var bitmapLBA: Int { lba(ofCluster: Int(ntfsLayout.bitmap.start)) }
 
     /// Ce que coûte l'**ouverture** d'un fichier, une fois son répertoire lu.
     ///
@@ -422,7 +405,7 @@ extension PartitionGeometry {
                     MetadataAccess(lba: lba(ofCluster: Int(layout.mirror.start)),
                                    sectors: 4 * mftRecordSectors),
                     MetadataAccess(lba: logFileLBA, sectors: 2 * Self.logPageSectors),
-                    MetadataAccess(lba: dataStartLBA + bitmapOffsetSectors, sectors: 8)]
+                    MetadataAccess(lba: bitmapLBA, sectors: 8)]
         }
     }
 

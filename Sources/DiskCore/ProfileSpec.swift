@@ -362,13 +362,38 @@ public struct ProfileSpec: Sendable, Codable, Identifiable {
             return fileSystem.clusterKB.map { FAT32Profile(clusterKB: $0) }
                 ?? FAT32Profile.forVolume(bytes: disk.sizeBytes)
         case .ntfs:
-            return NTFSProfile(clusterKB: fileSystem.clusterKB ?? 4)
+            return fileSystem.clusterKB.map { NTFSProfile(clusterKB: $0) }
+                ?? NTFSProfile.forVolume(bytes: disk.sizeBytes)
         }
     }
 
+    /// Clusters de données du volume : ce que le disque porte, moins ce que le
+    /// format pose devant — secteurs réservés, deux tables et racine d'un FAT,
+    /// copie du secteur d'amorçage d'un NTFS (`FormatOverhead`). C'est le même
+    /// calcul que la partition du simulateur, et le même volume.
+    ///
+    /// Au-delà de ce que le format adresse, le reste du disque ne sert pas : un
+    /// FAT16 de 4 Go en clusters de 32 Ko n'en voit que 2. C'est ce que
+    /// ferait le disque, et `ProfileIssues` le dit ; aucun profil du catalogue
+    /// n'y tombe (`FormatRulesTests`).
     public var clusterCount: UInt32 {
         let profile = resolvedFileSystem()
-        let count = disk.sizeBytes / UInt64(profile.clusterBytes)
-        return UInt32(min(count, UInt64(profile.maxClusterCount)))
+        let clusterSectors = Int(profile.clusterBytes) / DriveGeometry.bytesPerSector
+        let sectors = Int(disk.sizeBytes / UInt64(DriveGeometry.bytesPerSector))
+        let count = FormatOverhead.clusterCount(volumeSectors: sectors,
+                                                clusterSectors: max(clusterSectors, 1),
+                                                kind: fileSystem.type)
+        return UInt32(min(UInt64(count), UInt64(profile.maxClusterCount)))
+    }
+
+    /// Le nombre de clusters que le format aurait laissé sans son plafond :
+    /// plus grand que `clusterCount` si le volume est tronqué.
+    public var unclampedClusterCount: UInt64 {
+        let profile = resolvedFileSystem()
+        let clusterSectors = Int(profile.clusterBytes) / DriveGeometry.bytesPerSector
+        let sectors = Int(disk.sizeBytes / UInt64(DriveGeometry.bytesPerSector))
+        return UInt64(FormatOverhead.clusterCount(volumeSectors: sectors,
+                                                  clusterSectors: max(clusterSectors, 1),
+                                                  kind: fileSystem.type))
     }
 }

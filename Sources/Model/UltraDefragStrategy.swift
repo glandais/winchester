@@ -283,7 +283,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                       category: file.category, contiguous: true, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
                                       fullBlocks: fullBlocks, into: sink)
-                DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
+                DefragOperations.commit(cluster: Int(target.start), fileIndex: volume.mftRecord(of: position),
                                         entrySector: volume.entrySector(of: position),
                                         phase: phase, partition: partition, into: sink)
                 apply(position, to: [target], in: &volume)
@@ -443,7 +443,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                       category: category, contiguous: contiguous, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
                                       fullBlocks: fullBlocks, into: sink)
-                DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
+                DefragOperations.commit(cluster: Int(target.start), fileIndex: volume.mftRecord(of: position),
                                         entrySector: volume.entrySector(of: position),
                                         phase: phase, partition: partition,
                                         repaint: contiguous == volume.files[position].isContiguous

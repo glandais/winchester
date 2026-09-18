@@ -557,6 +557,7 @@ enum BootPlanner {
                               stampsAccess: script.stampsAccess && firstOfTheDay,
                               flushSeconds: script.metadataFlushSeconds,
                               directories: DirectoryPlacement(disk: disk),
+                              mftRecords: partition.format.isFAT ? [:] : MFTNumbering(disk: disk).files,
                               seed: disk.spec.seed &* 0x9E37_79B9)
         let walk = disk.catalog.directoryWalkOrder()
         // Le chemin d'un fichier se reconstruit en remontant l'arborescence :
@@ -733,8 +734,12 @@ enum BootPlanner {
         /// Temps de calcul dû au fichier précédent, à placer devant le suivant.
         private var pending: Double = 0
         private var rng: SeededGenerator
-        /// Rang du fichier, qui désigne son enregistrement dans la MFT.
+        /// Rang du fichier dans l'ordre de lecture.
         private var fileIndex = 0
+        /// L'enregistrement de MFT de chaque fichier vivant (`MFTNumbering`).
+        /// Dans l'ordre de création, les fichiers qu'un démarrage lit sont
+        /// épars dans la MFT, et le bras y sautille.
+        let mftRecords: [UInt32: Int]
         /// Où l'on a lu chaque répertoire sur FAT : c'est là que sa date
         /// d'accès se réécrit.
         private var directoryLBA: [UInt32: Int] = [:]
@@ -768,8 +773,9 @@ enum BootPlanner {
 
         init(partition: PartitionGeometry, os: String = "", think: ThinkModel, readGranularity: Int,
              stampsAccess: Bool, flushSeconds: Double, directories: DirectoryPlacement? = nil,
-             seed: UInt64) {
+             mftRecords: [UInt32: Int] = [:], seed: UInt64) {
             self.partition = partition
+            self.mftRecords = mftRecords
             // Le cache du système : ce qu'il tient de la table FAT32 cède sous
             // les données sur Windows 9x ; NT garde tout un démarrage.
             vcachePages = VCache.pages(os: os)
@@ -783,6 +789,12 @@ enum BootPlanner {
             self.stampsAccess = stampsAccess
             self.flushSeconds = flushSeconds
             self.rng = SeededGenerator(seed: seed)
+        }
+
+        /// L'enregistrement de MFT d'un fichier. Un fichier que le volume ne
+        /// connaît pas — un test qui en fabrique — garde son rang de lecture.
+        private func mftRecord(of record: FileRecord, readingRank: Int) -> Int {
+            mftRecords[record.id] ?? 16 + readingRank
         }
 
         /// Ce que lit le système avant de savoir lire un fichier.
@@ -810,12 +822,38 @@ enum BootPlanner {
             // en tête du volume, et un fichier posé trois cents gigaoctets plus
             // loin — deux courses complètes du bras par fichier, et un
             // démarrage qui ne ressemble à rien de ce qu'on a entendu.
+            //
+            // Les enregistrements sont lus dans l'ordre de la MFT, ceux qui se
+            // suivent d'une seule requête : les fichiers d'un démarrage n'ont
+            // pas été créés à la suite.
             let bulk = query.order == .byPosition && !partition.format.isFAT
             if bulk, !files.isEmpty {
-                let sectors = files.count * partition.mftRecordSectors
-                append(lba: partition.mftLBA + fileIndex * partition.mftRecordSectors,
-                       sectors: sectors, isWrite: false, phase: phase)
-                bytesRead += sectors * DriveGeometry.bytesPerSector
+                var index = fileIndex
+                var numbers: [Int] = []
+                numbers.reserveCapacity(files.count)
+                for record in files {
+                    numbers.append(mftRecord(of: record, readingRank: index))
+                    index += 1
+                }
+                numbers.sort()
+                var first = numbers[0]
+                var last = first
+                func readRun() {
+                    let sectors = (last - first + 1) * partition.mftRecordSectors
+                    append(lba: partition.mftLBA + first * partition.mftRecordSectors,
+                           sectors: sectors, isWrite: false, phase: phase)
+                    bytesRead += sectors * DriveGeometry.bytesPerSector
+                }
+                for number in numbers.dropFirst() where number != last {
+                    if number == last + 1 {
+                        last = number
+                    } else {
+                        readRun()
+                        first = number
+                        last = number
+                    }
+                }
+                readRun()
             }
 
             for record in files {
@@ -862,8 +900,14 @@ enum BootPlanner {
                 guard let lba = entrySector[record.id] ?? directoryLBA[record.directory] else { return }
                 access = MetadataAccess(lba: lba, sectors: 1)
             } else {
-                access = MetadataAccess(lba: partition.mftLBA + fileIndex * partition.mftRecordSectors,
-                                        sectors: partition.mftRecordSectors)
+                // `$MFT` passe par le gestionnaire de cache comme un fichier :
+                // la date salit la **page** de 4 Ko qui porte l'enregistrement,
+                // et c'est la page que le vidage réécrit. Quatre fichiers créés
+                // à la suite partagent une page.
+                let pageSectors = 4_096 / DriveGeometry.bytesPerSector
+                let offset = mftRecord(of: record, readingRank: fileIndex) * partition.mftRecordSectors
+                access = MetadataAccess(lba: partition.mftLBA + offset / pageSectors * pageSectors,
+                                        sectors: pageSectors)
             }
             dirtyStamps[access.lba] = max(dirtyStamps[access.lba] ?? 0, access.sectors)
             stampedFiles += 1
@@ -913,7 +957,7 @@ enum BootPlanner {
                 append(lba: lba, sectors: partition.clusterSectors, isWrite: false, phase: phase)
                 bytesRead += partition.clusterSectors * DriveGeometry.bytesPerSector
             }
-            for access in partition.openAccesses(fileIndex: fileIndex) {
+            for access in partition.openAccesses(fileIndex: mftRecord(of: record, readingRank: fileIndex)) {
                 append(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase)
                 bytesRead += access.sectors * DriveGeometry.bytesPerSector
             }
