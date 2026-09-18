@@ -225,9 +225,10 @@ enum DayPlanner {
             }
 
             if let record {
-                writer.markDirty(record)
+                writer.markDirty(record, directory: replay.catalog.directories[Int(record.directory)])
             }
             if !step.metadataGrew.isEmpty { writer.grow(metadata: step.metadataGrew) }
+            if !step.directoryGrew.isEmpty { writer.grow(metadata: step.directoryGrew, as: .directory) }
 
             switch timed.event {
             case .delete:
@@ -478,7 +479,7 @@ private final class Classifier {
         case .media:                  return .media
         case .gameAsset:              return .game
         case .systemCore, .application: return .update
-        case .swap, .metadata, .temporary: return .system
+        case .swap, .metadata, .temporary, .directory: return .system
         case .document:
             return path().lowercased().hasPrefix(saves) ? .game : .office
         case .archive:

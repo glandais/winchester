@@ -54,6 +54,7 @@ struct HistoryReplayTests {
                 _ = bitmap.free(step.released)
                 for extent in step.allocated { bitmap.allocate(extent) }
                 for extent in step.metadataGrew { bitmap.allocate(extent) }
+                for extent in step.directoryGrew { bitmap.allocate(extent) }
                 if !step.moves.isEmpty {
                     for move in step.moves { _ = bitmap.free(move.from) }
                     for move in step.moves { for extent in move.to { bitmap.allocate(extent) } }

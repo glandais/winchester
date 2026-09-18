@@ -61,6 +61,8 @@ enum ClusterPalette {
         case .churn:       return ClusterColor(red: 0.86, green: 0.58, blue: 0.30)
         case .swap:        return ClusterColor(red: 0.84, green: 0.36, blue: 0.40)
         case .reserved:    return ClusterColor(white: 0.72)
+        // Le jaune des dossiers de l'Explorateur.
+        case .directory:   return ClusterColor(red: 0.92, green: 0.82, blue: 0.38)
         }
     }
 

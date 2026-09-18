@@ -221,9 +221,17 @@ struct CalibrationTests {
     /// et qui fabriquait de la fragmentation — les 1 044 `UPD*.DLL` de ce
     /// volume avaient une position moyenne à 2,5 % du volume, et rebouchaient
     /// sans fin les miettes de sa tête. Ce qui manque pour atteindre la
-    /// fourchette est le même que pour `dev-1996` et `famille-2003` :
-    /// l'allocation incrémentale et l'entrelacement, qui fragmentent les
-    /// fichiers **pendant** qu'on les écrit.
+    /// fourchette était, selon le lot 2, le même que pour `dev-1996` et
+    /// `famille-2003` : l'allocation incrémentale et l'entrelacement.
+    ///
+    /// Le lot 4 a mesuré les deux. Sur FAT, l'allocation par paquets ne change
+    /// rien — un programme seul prend cluster par cluster ce qu'il aurait pris
+    /// d'un coup — et le volume reste à 6 %. L'entrelacement, lui, le portait à
+    /// 32 %, au-dessus de la fourchette ; mais il donnait à tous les programmes
+    /// d'une journée le même débit et les faisait tourner ensemble du matin au
+    /// soir, ce qui n'est pas un fait d'époque, et il n'est pas retenu
+    /// (`DiskGenerator.runsProgramsConcurrently`). La cible se trouve entre les
+    /// deux bornes ; la trancher demande des débits.
     @Test("secretaire-1999 après deux ans : 15 à 25 %")
     func secretary1999() throws {
         let disk = try Self.generate("secretaire-1999")
@@ -243,7 +251,7 @@ struct CalibrationTests {
         // Le remplissage, lui, est bien au rendez-vous.
         #expect(disk.metrics.fill > 0.90)
 
-        withKnownIssue("le modèle produit 11 % : NTFS place bien même à 95 % — voir la note") {
+        withKnownIssue("le modèle produit 13 % : NTFS place bien même à 95 % — voir la note") {
             #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.40)
         }
         #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.01)
@@ -252,7 +260,7 @@ struct CalibrationTests {
     }
 
     /// Le même profil, la même année, sur FAT32 plutôt que NTFS : 17 % contre
-    /// 11 %. L'écart entre les deux est l'un des résultats les plus parlants du
+    /// 13 %. L'écart entre les deux est l'un des résultats les plus parlants du
     /// modèle — et il montre que ce qui manque à famille-2003 pour atteindre la
     /// fourchette visée n'est pas un réglage, c'est un allocateur qui place
     /// moins bien.
@@ -264,10 +272,16 @@ struct CalibrationTests {
     /// ensuite parce que le hint `.system` forçait, sur VFAT et FAT32, le
     /// cluster 0 pour toutes les DLL et tous les fichiers de mise à jour, ce
     /// qu'aucun pilote n'a jamais fait — c'était un fragmenteur de plus, du
-    /// côté FAT cette fois. Une fois et demie, c'est ce que le modèle produit
-    /// une fois les deux retirés ; ce n'est pas une fourchette qu'on élargit
-    /// pour qu'il y entre.
-    @Test("Le même usage fragmente une fois et demie plus sur FAT32 que sur NTFS")
+    /// côté FAT cette fois. Une fois et demie, c'est ce que le modèle produisait
+    /// une fois les deux retirés.
+    ///
+    /// Puis un quart de plus seulement, depuis le lot 4 : NTFS reçoit par
+    /// paquets de 64 Ko les fichiers dont le programme ne connaît pas la
+    /// taille, et chaque paquet va dans le trou le plus juste pour lui ; FAT,
+    /// qui les recevait déjà cluster par cluster au curseur, n'y change rien.
+    /// Ce n'est pas une fourchette qu'on élargit pour que le modèle y entre :
+    /// c'est la mesure, et le titre la suit.
+    @Test("Le même usage fragmente un quart de plus sur FAT32 que sur NTFS")
     func fileSystemDominatesTheOutcome() throws {
         let fat32 = try Self.generate("famille-1999")
         let ntfs = try Self.generate("famille-2003")
@@ -275,7 +289,7 @@ struct CalibrationTests {
         #expect(fat32.metrics.fill > 0.90)
         #expect(ntfs.metrics.fill > 0.90)
         #expect(fat32.metrics.fragmentedRatioAmongFragmentable
-                > ntfs.metrics.fragmentedRatioAmongFragmentable * 1.5)
+                > ntfs.metrics.fragmentedRatioAmongFragmentable * 1.25)
     }
 
     /// L'asymétrie entre profils est ce qui rend l'application crédible : si
@@ -316,7 +330,15 @@ struct CalibrationTests {
 // diagnostic tient en une phrase : **le taux de fichiers fragmentés mesure
 // d'abord la population du volume, et seulement ensuite l'allocateur.**
 //
-// `dev-1996` : 11 % au lieu de 35 à 50 %. Sur les 5 500 fichiers du volume,
+// Le lot 4 leur a donné ce qui leur manquait selon le lot 2 : des fichiers
+// écrits par paquets quand leur programme n'en connaît pas la taille. Sur FAT
+// cela ne change rien — un programme seul prend cluster par cluster ce qu'il
+// aurait pris d'un coup — et sur NTFS peu. L'entrelacement de plusieurs
+// programmes, qui en aurait refermé une et dépassé une autre, n'est pas retenu
+// faute de débits (`DiskGenerator.runsProgramsConcurrently`). Elles restent
+// manquées.
+//
+// `dev-1996` : 8 % au lieu de 35 à 50 %. Sur les 5 500 fichiers du volume,
 // 3 000 viennent de l'installation de Windows 95, de Visual C++ et d'Office —
 // écrits d'affilée sur un disque vierge, donc parfaitement contigus, et jamais
 // retouchés ensuite. Même si *tout le reste* était fragmenté, le taux
@@ -328,7 +350,7 @@ struct CalibrationTests {
 // fichiers système que les trois vagues de mises à jour par an qu'a reçues
 // Windows 95.
 //
-// `famille-2003` : 2 % au lieu de 40 à 60 %, à 93 % de remplissage. Ici la
+// `famille-2003` : 13 % au lieu de 40 à 60 %, à 95 % de remplissage. Ici la
 // cause est ailleurs, et elle est cohérente avec le reste du modèle : le
 // best-fit de NTFS trouve encore des trous à la bonne taille sur un volume à
 // 93 %, et il ne coupe un fichier que lorsqu'il n'a vraiment plus le choix.

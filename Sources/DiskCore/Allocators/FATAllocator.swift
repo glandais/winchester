@@ -160,9 +160,31 @@ public struct FATAllocator: Allocator {
         guard count > 0 else { return true }
         let added = allocate(clusterCount: count, hint: file.hint)
         guard !added.isEmpty else { return false }
-        file.extents.append(contentsOf: added)
-        file.extents = file.extents.coalesced()
+        for extent in added { file.extents.appendRun(start: extent.start, length: extent.length) }
         return true
+    }
+
+    /// Cluster par cluster, un programme seul prend exactement ce qu'un
+    /// `allocate` du total aurait pris : chaque cluster est le premier libre
+    /// après le curseur, et le curseur est là où le précédent l'a laissé. Les
+    /// deux ne diffèrent que si un autre programme prend un cluster entre deux
+    /// paquets — c'est l'entrelacement, et il se joue au-dessus
+    /// (`Simulator`). D'où un seul appel, qui évite des millions de parcours
+    /// de bitmap d'un cluster.
+    @discardableResult
+    public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+        extend(file: &file, byClusters: count)
+    }
+
+    /// Le même raisonnement, pour plusieurs fichiers : chaque cluster est le
+    /// premier libre après le curseur, quel que soit le fichier qui le
+    /// demande. Seuls `.boot` et `.reservedContiguous` échappent au curseur, et
+    /// aucun programme n'écrit ceux-là par paquets.
+    public mutating func takeInWritingOrder(_ count: UInt32, hints: [AllocationHint]) -> [Extent]? {
+        guard profile.writePacketClusters == 1,
+              !hints.contains(where: { $0 == .boot || $0 == .reservedContiguous }) else { return nil }
+        let taken = allocate(clusterCount: count, hint: .normal)
+        return taken.isEmpty ? nil : taken
     }
 
 

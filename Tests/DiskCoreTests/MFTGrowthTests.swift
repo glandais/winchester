@@ -13,9 +13,15 @@ import Foundation
 /// `dev-2003` : une MFT de 18 Mo en 348 morceaux, qu'aucun volume réel ne
 /// montre.
 ///
-/// Les deux volumes retenus sont les seuls de la galerie dont la MFT déborde
-/// de sa zone. Les six autres la gardent d'un seul tenant, et c'est aussi une
-/// non-régression.
+/// Les quatre volumes retenus sont les seuls de la galerie dont la MFT déborde
+/// de sa zone. Les quatre autres la gardent d'un seul tenant, et c'est aussi
+/// une non-régression.
+///
+/// `famille-2003` et `famille-2007` ont changé de liste au lot 4 : leurs
+/// médias et leurs téléchargements, écrits par paquets de 64 Ko, prennent
+/// chacun le trou le plus juste pour un paquet plutôt que pour tout le
+/// fichier, et remplissent le reste du volume jusqu'à entamer la zone. La MFT
+/// en sort en une vingtaine ou une trentaine de morceaux.
 @Suite("Croissance de la MFT")
 struct MFTGrowthTests {
 
@@ -23,7 +29,7 @@ struct MFTGrowthTests {
     /// cibles : ce sont les bornes en deçà desquelles le résultat cesse de
     /// décrire un volume possible.
     @Test("Une MFT hors zone se compte en dizaines d'extents, pas en centaines",
-          arguments: [("dev-2003", 80), ("secretaire-2007", 60)])
+          arguments: [("dev-2003", 80), ("secretaire-2007", 60), ("famille-2003", 80), ("famille-2007", 60)])
     func overflowingMFTStaysInTensOfExtents(id: String, ceiling: Int) throws {
         let disk = try DiskGenerator.generate(try ScenarioLibrary.load(id))
         let perExtent = Double(disk.mftClusters) / Double(max(disk.mftExtents, 1))
@@ -38,8 +44,7 @@ struct MFTGrowthTests {
     /// Les volumes dont la zone a tenu : la MFT y est d'un seul tenant, et
     /// aucune correction de la croissance hors zone ne doit la casser.
     @Test("Une MFT qui tient dans sa zone reste d'un seul tenant",
-          arguments: ["secretaire-2003", "famille-2003", "famille-2007",
-                      "gamer-2003", "gamer-2007"])
+          arguments: ["secretaire-2003", "gamer-2003", "gamer-2007"])
     func containedMFTIsContiguous(id: String) throws {
         let disk = try DiskGenerator.generate(try ScenarioLibrary.load(id))
         #expect(disk.mftExtents == 1, "\(id) : \(disk.mftExtents) extents")

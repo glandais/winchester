@@ -12,6 +12,17 @@ public struct FileSpec: Sendable {
     /// format : 2 Ko en FAT16 32 Ko, c'est 32 Ko.
     public var bytes: ByteCount
     public var hint: AllocationHint?
+    /// Le programme qui écrit ce fichier savait-il quelle taille il ferait ?
+    ///
+    /// C'est une question de fait sur un programme, et la seule qu'on pose :
+    /// une copie (`CopyFile` appelle `SetEndOfFile` avant d'écrire), un
+    /// installeur qui lit la taille dans son catalogue, un éditeur qui écrit un
+    /// tampon qu'il a en mémoire la connaissent ; un compilateur qui produit
+    /// son `.obj` au fil du code, un navigateur qui reçoit une page, un
+    /// logiciel de téléchargement, un compresseur ne la connaissent pas. Les
+    /// premiers obtiennent leur place en une fois, les seconds par paquets
+    /// (`Allocator.stream`). Aucun taux de fragmentation n'entre ici.
+    public var sizeKnownInAdvance: Bool
 
     public init(id: UInt32,
                 name: String,
@@ -19,7 +30,8 @@ public struct FileSpec: Sendable {
                 category: FileCategory,
                 pattern: WritePattern = .createOnce,
                 bytes: ByteCount,
-                hint: AllocationHint? = nil) {
+                hint: AllocationHint? = nil,
+                sizeKnownInAdvance: Bool = true) {
         self.id = id
         self.name = name
         self.directory = directory
@@ -27,6 +39,7 @@ public struct FileSpec: Sendable {
         self.pattern = pattern
         self.bytes = bytes
         self.hint = hint
+        self.sizeKnownInAdvance = sizeKnownInAdvance
     }
 
     public var resolvedHint: AllocationHint { hint ?? category.hint }
@@ -61,6 +74,39 @@ public enum FileEvent: Sendable {
     case defragment
 }
 
+/// Le programme qui écrit.
+///
+/// Un programme écrit ses fichiers l'un après l'autre ; deux programmes
+/// ouverts le même jour écrivent en même temps, et se disputent le curseur de
+/// l'allocateur (`Simulator`). Les cas sont des programmes, pas des
+/// catégories de fichiers : l'environnement de développement écrit les sources,
+/// les objets et l'exécutable dans cet ordre-là, sans jamais les mêler.
+///
+/// L'ordre des cas est celui du tourniquet, et il ne sert qu'à le rendre
+/// reproductible.
+public enum Program: UInt8, Sendable, CaseIterable {
+    /// Installeurs, mises à jour, désinstallations.
+    case setup
+    /// L'utilisateur qui fait de la place dans l'Explorateur.
+    case explorer
+    /// Le gestionnaire de mémoire, qui gonfle et dégonfle le fichier d'échange.
+    case pager
+    /// L'environnement de développement : éditeur, compilateur, éditeur de
+    /// liens, et l'archive qu'on fait d'une version.
+    case developer
+    case browser
+    /// Le traitement de texte.
+    case office
+    /// La messagerie, et sa boîte aux lettres qui grossit.
+    case mail
+    /// Encodeur MP3, import de l'appareil photo, capture vidéo.
+    case media
+    case download
+    case game
+    /// Ce que l'utilisateur entasse : archives, images de CD, sauvegardes.
+    case collector
+}
+
 /// Un événement, et le jour où il se produit.
 public struct TimedEvent: Sendable {
     /// Jour écoulé depuis le début du scénario. Le noyau ne connaît pas les
@@ -68,10 +114,14 @@ public struct TimedEvent: Sendable {
     /// déclarative, au-dessus.
     public var day: UInt32
     public var event: FileEvent
+    /// Qui l'écrit : c'est ce qui dit, dans une journée, ce qui se passe en
+    /// même temps.
+    public var program: Program
 
-    public init(day: UInt32, event: FileEvent) {
+    public init(day: UInt32, event: FileEvent, program: Program = .setup) {
         self.day = day
         self.event = event
+        self.program = program
     }
 }
 
@@ -98,8 +148,8 @@ public struct EventTimeline: Sendable {
     public var count: Int { events.count }
     public var isEmpty: Bool { events.isEmpty }
 
-    public mutating func append(_ event: FileEvent, on day: UInt32) {
-        events.append(TimedEvent(day: day, event: event))
+    public mutating func append(_ event: FileEvent, on day: UInt32, by program: Program = .setup) {
+        events.append(TimedEvent(day: day, event: event, program: program))
         dayCount = max(dayCount, day + 1)
     }
 
@@ -258,9 +308,16 @@ public struct EventTimeline: Sendable {
 public struct PatternWriter {
 
     public var timeline: EventTimeline
+    /// Le programme qui écrit ce qu'on déroule en ce moment.
+    public var program: Program = .setup
 
     public init(timeline: EventTimeline = EventTimeline()) {
         self.timeline = timeline
+    }
+
+    /// Un événement isolé, au nom du programme courant.
+    public mutating func append(_ event: FileEvent, on day: UInt32) {
+        timeline.append(event, on: day, by: program)
     }
 
     /// Déroule la vie d'un fichier, du jour `from` au jour `to`.
@@ -273,14 +330,14 @@ public struct PatternWriter {
                                to endDay: UInt32,
                                touches: Int,
                                rng: inout SeededGenerator) {
-        timeline.append(.create(spec), on: startDay)
+        append(.create(spec), on: startDay)
 
         // La mort d'un fichier éphémère ne dépend pas du nombre de fois qu'on y
         // touche : un `.obj` est supprimé à la fin de la compilation, qu'il ait
         // été relu ou non.
         if case let .createDeleteShortLived(lifetime) = spec.pattern {
             let death = startDay &+ max(lifetime, 1)
-            timeline.append(.delete(id: spec.id), on: endDay > startDay ? min(death, endDay) : death)
+            append(.delete(id: spec.id), on: endDay > startDay ? min(death, endDay) : death)
             return
         }
 
@@ -307,12 +364,12 @@ public struct PatternWriter {
                 // d'octets : la dispersion évite un motif d'allocation
                 // artificiellement régulier.
                 size += ByteCount(Double(growth) * rng.uniform(0.6...1.4))
-                timeline.append(.append(id: spec.id, toBytes: size), on: day)
+                append(.append(id: spec.id, toBytes: size), on: day)
             }
 
         case .rewriteInPlace:
             for day in days {
-                timeline.append(.rewrite(id: spec.id), on: day)
+                append(.rewrite(id: spec.id), on: day)
             }
 
         case .writeTempThenRename:
@@ -340,7 +397,7 @@ public struct PatternWriter {
                 } else {
                     saved += ByteCount(Double(increment) * rng.uniform(0.5...1.5))
                 }
-                timeline.append(.replaceViaTemporary(id: spec.id, newBytes: saved), on: day)
+                append(.replaceViaTemporary(id: spec.id, newBytes: saved), on: day)
             }
 
         case let .growShrinkDynamic(minBytes, maxBytes):
@@ -348,9 +405,9 @@ public struct PatternWriter {
             for day in days {
                 let target = minBytes + ByteCount(rng.unitInterval() * Double(maxBytes - minBytes))
                 if target > size {
-                    timeline.append(.append(id: spec.id, toBytes: target), on: day)
+                    append(.append(id: spec.id, toBytes: target), on: day)
                 } else if target < size {
-                    timeline.append(.truncate(id: spec.id, toBytes: target), on: day)
+                    append(.truncate(id: spec.id, toBytes: target), on: day)
                 }
                 size = target
             }

@@ -444,8 +444,7 @@ public struct NTFSAllocator: Allocator {
                 return false
             }
             if let prolonged { file.extents.appendRun(start: prolonged.start, length: prolonged.length) }
-            file.extents.append(contentsOf: added)
-            file.extents = file.extents.coalesced()
+            for extent in added { file.extents.appendRun(start: extent.start, length: extent.length) }
             return true
         }
 

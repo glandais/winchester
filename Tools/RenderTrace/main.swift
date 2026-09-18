@@ -74,6 +74,29 @@ if requested.hasPrefix("life:") {
     exit(0)
 }
 
+// `disk:<profil>` ne rend aucun son non plus : il génère le volume et dit ce
+// qu'il contient — l'histogramme du nombre d'extents par fichier, dans les
+// colonnes de `FILESYSTEM_EXPERT_REVIEW.md` §2, les répertoires, et ce que la
+// génération a coûté. La durée est la meilleure de `GEN_REPEAT` générations
+// (trois par défaut) : c'est elle que paie l'ouverture de l'application.
+if requested.hasPrefix("disk:") {
+    let id = String(requested.dropFirst(5))
+    guard let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == id }) else {
+        FileHandle.standardError.write("profil inconnu : \(id)\n".data(using: .utf8)!)
+        exit(1)
+    }
+    let repeats = max(Int(ScenarioRequest.environment["GEN_REPEAT"] ?? "") ?? 3, 1)
+    var best = Double.infinity
+    var generated: GeneratedDisk?
+    for _ in 0..<repeats {
+        let started = Date()
+        generated = try DiskGenerator.generate(spec)
+        best = min(best, Date().timeIntervalSince(started))
+    }
+    FileHandle.standardError.write(describeDisk(generated!, generation: best).data(using: .utf8)!)
+    exit(0)
+}
+
 let request = try ScenarioRequest.request()
 let scenario = request.scenario
 

@@ -22,10 +22,17 @@ struct RearrangedDiskTests {
         let disk = try DiskGenerator.generate(try ScenarioLibrary.load("gamer-1993"))
         var places: [UInt32: [Extent]] = [:]
         var cursor: UInt32 = disk.systemExtents.map(\.end).max() ?? 0
-        for record in disk.catalog.directoryWalkOrder() where !record.isResident {
-            let length = record.extents.clusterCount
+        // Les répertoires se tassent avec le reste, chacun devant ce qu'il
+        // contient : laissés en place, ils seraient recouverts.
+        for item in disk.catalog.treeWalkOrder() {
+            let (id, extents): (UInt32, [Extent])
+            switch item {
+            case let .directory(directory): (id, extents) = (FileCatalog.itemID(ofDirectory: directory.id), directory.extents)
+            case let .file(record): (id, extents) = (record.id, record.isResident ? [] : record.extents)
+            }
+            let length = extents.clusterCount
             guard length > 0 else { continue }
-            places[record.id] = [Extent(start: cursor, length: length)]
+            places[id] = [Extent(start: cursor, length: length)]
             cursor += length
         }
         let packed = disk.rearranged(extents: places)

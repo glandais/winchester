@@ -264,6 +264,9 @@ public enum InstallEntry: Sendable {
     case deleted(FileRecord)
     /// La table de métadonnées a pris ces clusters pour grandir.
     case metadataGrew([Extent])
+    /// Des répertoires ont pris ces clusters : ils naissent, ou leurs
+    /// entrées débordent.
+    case directoryGrew([Extent])
 }
 
 /// Une installation rejouée : le disque tel qu'il est à la fin du jour 0, et

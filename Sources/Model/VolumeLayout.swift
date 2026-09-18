@@ -266,24 +266,31 @@ extension PartitionGeometry {
     ///   - cluster: premier cluster de sa nouvelle position — c'est lui qui
     ///     désigne le secteur de table à réécrire ;
     ///   - fileIndex: rang du fichier, qui désigne son enregistrement MFT ;
+    ///   - entrySector: sur FAT, le secteur de son répertoire qui porte son
+    ///     entrée, là où l'allocateur a posé ce répertoire
+    ///     (`DefragVolume.entrySector`). `nil` pour un volume qui ne connaît pas
+    ///     ses répertoires — un volume d'essai : l'entrée est alors écrite dans
+    ///     la racine, comme le faisait le modèle avant d'en avoir ;
     ///   - validation: rang de cette validation dans la passe. Sur NTFS, la
     ///     page de journal n'est écrite que par la validation qui la remplit —
     ///     une sur `validationsPerLogPage` —, et `nil` laisse l'écriture du
     ///     journal à l'appelant, quand c'est un cache qui vide ses tables à
     ///     son propre rythme (`MachineWriter`).
-    func commitAccesses(forCluster cluster: Int, fileIndex: Int,
+    func commitAccesses(forCluster cluster: Int, fileIndex: Int, entrySector: Int? = nil,
                         validation: Int?) -> [MetadataAccess] {
         switch format {
         case .fat16, .fat32:
-            // Les deux copies de la table et l'entrée de répertoire, toutes au
-            // tout début de la partition : le bras y revient une fois par
-            // fichier déplacé.
+            // Les deux copies de la table, au tout début de la partition, puis
+            // l'entrée de répertoire, là où vit le répertoire : dans la racine
+            // pour un fichier de la racine d'un FAT16, ailleurs pour tous les
+            // autres — souvent loin du bord, parfois tout près du fichier.
             let sector = fatSector(forCluster: cluster)
+            let entry = entrySector
+                ?? rootLBA + (rootSectorCount > 0 ? cluster % rootSectorCount : 0)
             return [
                 MetadataAccess(lba: fat1LBA + sector, sectors: 2),
                 MetadataAccess(lba: fat2LBA + sector, sectors: 2),
-                MetadataAccess(lba: rootLBA + (rootSectorCount > 0 ? cluster % rootSectorCount : 0),
-                               sectors: 1),
+                MetadataAccess(lba: entry, sectors: 1),
             ]
         case .ntfs:
             // Un seul enregistrement MFT réécrit, et la bitmap du volume. La
@@ -309,30 +316,57 @@ extension PartitionGeometry {
         Int(Double(clusterCount) * 0.125) * clusterSectors
     }
 
-    /// Ce que coûte l'**ouverture** d'un fichier, avant d'en lire un octet.
+    /// Ce que coûte l'**ouverture** d'un fichier, une fois son répertoire lu.
     ///
-    /// Sur FAT, presque rien : l'entrée de répertoire a été lue en même temps
-    /// que celles de ses voisines. La table, elle, n'est pas lue ici : sur
-    /// FAT16 elle a été lue entière au montage et tient en mémoire ; sur FAT32
-    /// elle se lit par pages au fil des chaînes que suit la lecture des
-    /// données (`BootPlanner`). Seule la première ouverture dans un répertoire coûte une
-    /// lecture — et elle se paie là où vit ce répertoire, c'est-à-dire près des
-    /// fichiers qu'il contient, faute de savoir où l'allocateur a posé ses
-    /// clusters : c'est une approximation, et la seule de ce modèle.
+    /// Sur FAT, rien de plus : l'entrée est dans le répertoire qu'on vient de
+    /// parcourir. La table, elle, n'est pas lue ici : sur FAT16 elle a été lue
+    /// entière au montage et tient en mémoire ; sur FAT32 elle se lit par pages
+    /// au fil des chaînes que suit la lecture des données (`BootPlanner`).
     ///
     /// Sur NTFS, chaque ouverture lit l'enregistrement de MFT qui décrit le
     /// fichier. La MFT est en tête de la zone de données, les données sont
     /// ailleurs : c'est cet aller-retour, une fois par fichier, qui donne à un
     /// démarrage NTFS son bruit à lui.
-    func openAccesses(fileIndex: Int, directoryFirstCluster: UInt32?) -> [MetadataAccess] {
+    ///
+    /// Le répertoire se lit avant, là où l'allocateur l'a posé
+    /// (`directoryAccesses`) : c'est l'appelant qui sait lequel, et jusqu'où.
+    func openAccesses(fileIndex: Int) -> [MetadataAccess] {
         switch format {
         case .fat16, .fat32:
-            guard let cluster = directoryFirstCluster else { return [] }
-            return [MetadataAccess(lba: lba(ofCluster: Int(cluster)), sectors: clusterSectors)]
+            return []
         case .ntfs:
             return [MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
                                    sectors: mftRecordSectors)]
         }
+    }
+
+    /// Sur FAT, le secteur où s'écrit l'entrée d'un fichier créé ou modifié
+    /// dans ce répertoire, quand on ne sait pas à quel octet : son dernier
+    /// cluster, là où s'ajoutent les nouvelles entrées — ou la racine d'un
+    /// FAT16. `nil` hors FAT, ou pour un répertoire qui n'est pas sur le
+    /// disque.
+    func entrySector(inDirectory directory: DirectoryRecord?) -> Int? {
+        guard format.isFAT, let directory, directory.exists else { return nil }
+        if let last = directory.extents.last { return lba(ofCluster: Int(last.end - 1)) }
+        if directory.parent == nil, rootSectorCount > 0 { return rootLBA }
+        return nil
+    }
+
+    /// La lecture des clusters `range` d'un répertoire — rangs dans sa chaîne,
+    /// dans l'ordre du répertoire —, morceau par morceau : un répertoire en
+    /// trois morceaux coûte trois lectures, et deux déplacements du bras.
+    func directoryAccesses(_ extents: [Extent], clusters range: Range<UInt32>) -> [MetadataAccess] {
+        var accesses: [MetadataAccess] = []
+        var offset: UInt32 = 0
+        for extent in extents {
+            defer { offset += extent.length }
+            let low = max(range.lowerBound, offset)
+            let high = min(range.upperBound, offset + extent.length)
+            guard low < high else { continue }
+            accesses.append(MetadataAccess(lba: lba(ofCluster: Int(extent.start + (low - offset))),
+                                           sectors: Int(high - low) * clusterSectors))
+        }
+        return accesses
     }
 
     /// Ce que lit le pilote pour **monter** le volume, avant d'ouvrir le

@@ -24,6 +24,10 @@ struct DefragFile {
     /// autre outil ne s'en sert.
     var createdDay: UInt32 = 0
     var modifiedDay: UInt32 = 0
+    /// Où est son entrée de répertoire, quand la source le sait : le
+    /// répertoire qui la porte — un autre élément du volume, puisque sur FAT un
+    /// répertoire est un fichier qu'on défragmente aussi — et à quel octet.
+    var entry: DirectoryEntryPlace? = nil
 
     var clusterCount: UInt32 { extents.reduce(0) { $0 + $1.length } }
 
@@ -59,6 +63,15 @@ struct DefragFile {
     var isContiguous: Bool { fragmentCount <= 1 }
 
     var firstCluster: UInt32? { extents.first?.start }
+}
+
+/// L'entrée d'un nom dans son répertoire.
+struct DirectoryEntryPlace {
+    /// Rang du répertoire dans `DefragVolume.files` ; `nil` pour la racine d'un
+    /// FAT16, qui vit dans sa région à elle, avant les données.
+    let directory: Int?
+    /// Octet de l'entrée depuis le début du répertoire.
+    let offset: UInt64
 }
 
 /// Index des extents occupés, par blocs.
@@ -221,6 +234,30 @@ struct DefragVolume {
     /// rétrécit, une MFT hors zone paraissait libre, et un défragmenteur
     /// pouvait écrire dessus.
     let systemExtents: [Extent]
+
+    /// Le secteur qui porte l'entrée de répertoire du fichier `position`, là
+    /// où son répertoire est **en ce moment** — il a pu être déplacé plus tôt
+    /// dans la passe. `nil` hors FAT, ou si le volume ne connaît pas ses
+    /// répertoires.
+    func entrySector(of position: Int) -> Int? {
+        guard partition.format.isFAT, let entry = files[position].entry else { return nil }
+        let sectorBytes = UInt64(DriveGeometry.bytesPerSector)
+        guard let directory = entry.directory else {
+            let root = max(partition.rootSectorCount, 1)
+            return partition.rootLBA + Int(entry.offset / sectorBytes) % root
+        }
+        let extents = files[directory].extents
+        let clusterBytes = UInt64(partition.clusterBytes)
+        var wanted = UInt32(min(entry.offset / clusterBytes, UInt64(max(files[directory].clusterCount, 1) - 1)))
+        for extent in extents {
+            if wanted < extent.length {
+                return partition.lba(ofCluster: Int(extent.start + wanted))
+                    + Int(entry.offset % clusterBytes / sectorBytes)
+            }
+            wanted -= extent.length
+        }
+        return nil
+    }
 
     init(partition: PartitionGeometry, files: [DefragFile],
          mftZone: Range<UInt32>? = nil, systemExtents: [Extent] = []) {

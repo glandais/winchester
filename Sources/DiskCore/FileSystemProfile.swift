@@ -32,6 +32,14 @@ public protocol FileSystemProfile: Sendable {
     /// Octets consommés par l'entrée de métadonnées d'un fichier — un
     /// enregistrement MFT de 1 Ko, une entrée de répertoire de 32 octets.
     var directoryEntryBytes: UInt64 { get }
+
+    /// Ce qu'un programme qui ne connaît pas la taille finale de son fichier
+    /// fait allouer d'un coup : le paquet par lequel ce fichier grandit.
+    ///
+    /// C'est une propriété du **format** — de son pilote et du cache qui le
+    /// sert —, pas du programme : le programme écrit, et c'est le système de
+    /// fichiers qui décide quand il prend des clusters (`Allocator.stream`).
+    var writePacketBytes: UInt64 { get }
 }
 
 extension FileSystemProfile {
@@ -42,6 +50,11 @@ extension FileSystemProfile {
         guard bytes > 0 else { return 0 }
         let cluster = UInt64(clusterBytes)
         return UInt32((bytes + cluster - 1) / cluster)
+    }
+
+    /// Le paquet d'écriture en clusters, jamais moins d'un.
+    public var writePacketClusters: UInt32 {
+        max(clusters(forBytes: writePacketBytes), 1)
     }
 
     public func isResident(bytes: UInt64) -> Bool {
@@ -82,6 +95,15 @@ public struct FAT16Profile: FileSystemProfile {
     public var residentThresholdBytes: UInt64 { 0 }
     public var directoryEntryBytes: UInt64 { 32 }
 
+    /// Un cluster. VFAT, comme le pilote de MS-DOS, prolonge la chaîne d'un
+    /// fichier au moment de l'écriture qui franchit la fin de son dernier
+    /// cluster — pas au moment où le fichier sera fermé. Et un programme
+    /// écrit par le tampon de sa bibliothèque C, 4 Ko chez Microsoft, 512
+    /// octets sous MS-DOS : jamais plus d'un cluster d'un coup. Chaque cluster
+    /// est donc pris par une écriture distincte, au curseur tel que l'ont
+    /// laissé toutes les écritures d'avant, de ce programme ou d'un autre.
+    public var writePacketBytes: UInt64 { UInt64(clusterBytes) }
+
     public init(clusterKB: UInt32) {
         precondition(clusterKB > 0 && clusterKB.nonzeroBitCount == 1,
                      "une taille de cluster est une puissance de deux")
@@ -117,6 +139,9 @@ public struct FAT32Profile: FileSystemProfile {
     public var supportsResidentFiles: Bool { false }
     public var residentThresholdBytes: UInt64 { 0 }
     public var directoryEntryBytes: UInt64 { 32 }
+
+    /// Un cluster, pour la même raison qu'en FAT16 (`FAT16Profile`).
+    public var writePacketBytes: UInt64 { UInt64(clusterBytes) }
 
     public init(clusterKB: UInt32 = 4) {
         precondition(clusterKB > 0 && clusterKB.nonzeroBitCount == 1)
@@ -161,6 +186,14 @@ public struct NTFSProfile: FileSystemProfile {
     /// octets pour les données.
     public var residentThresholdBytes: UInt64 { 700 }
     public var directoryEntryBytes: UInt64 { 1_024 }
+
+    /// 64 Ko. NTFS ne prend pas ses clusters à chaque écriture du programme :
+    /// les écritures tombent dans le cache, et c'est le *lazy writer* du
+    /// gestionnaire de cache qui les vide, par paquets de 64 Ko au plus, en
+    /// étendant l'allocation du fichier à chaque vidage. Un fichier dont
+    /// personne n'a déclaré la taille (`SetEndOfFile`) grandit donc de 64 Ko
+    /// en 64 Ko.
+    public var writePacketBytes: UInt64 { 64 * 1_024 }
 
     /// Part du volume que NTFS réserve à la croissance de la MFT et tient à
     /// l'écart des données ordinaires.

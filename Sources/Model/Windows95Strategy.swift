@@ -141,6 +141,7 @@ struct Windows95Strategy: DefragStrategy {
                                       partition: partition, bufferBytes: bufferBytes,
                                       into: sink)
                 DefragOperations.commit(cluster: Int(refuge[0].start), fileIndex: occupantPosition,
+                                        entrySector: volume.entrySector(of: occupantPosition),
                                         phase: phase, partition: partition, into: sink)
                 volume.relocate(occupantPosition, to: refuge)
                 movedClusters += Int(occupant.clusterCount)
@@ -174,6 +175,7 @@ struct Windows95Strategy: DefragStrategy {
                                   partition: partition, bufferBytes: bufferBytes,
                                   into: sink)
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
+                                    entrySector: volume.entrySector(of: position),
                                     phase: phase, partition: partition, into: sink)
             volume.relocate(position, to: [target])
             movedClusters += Int(need)

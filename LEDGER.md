@@ -4000,3 +4000,398 @@ ne viennent pas de ce jeu de mesures.
 - **Rien d'autre n'a été corrigé** : `ProfileSpec.clusterCount` ignore toujours
   la surcharge de format, `NTFSProfile` n'a pas de `forVolume`, l'allocation
   reste d'un seul tenant, les répertoires n'existent pas.
+
+## Chantier 23 — le lot 4 : écrire sans connaître la taille, et les répertoires
+
+**Fait** · branche `experts`
+
+### Le problème
+
+`LEDGER-EXPERTS.md` range au lot 4 les deux manques structurels que deux
+relectures voyaient depuis deux étages. Le premier : **tout fichier naît d'un
+seul tenant**. `Allocator.place` alloue chaque fichier en un appel, à sa taille
+finale, et l'allocateur sert le meilleur trou pour ce total ; un fichier ne peut
+donc se fragmenter que si l'espace libre l'était déjà. Le second : **les
+répertoires n'existent pas**. `DirectoryRecord` porte un nom, un parent, un
+rang, et aucun cluster ; `dev-2003` compte trente répertoires pour 13 951
+fichiers, et aucun ne s'écrit jamais.
+
+L'histogramme du nombre d'extents par fichier, régénéré avant le lot dans les
+colonnes de `FILESYSTEM_EXPERT_REVIEW.md` §2 (les chiffres de la revue dataient
+d'avant les lots 1 à 3) :
+
+| | 1 extent | 2 | 3–4 | 5–16 | 17–64 | > 64 |
+|---|---:|---:|---:|---:|---:|---:|
+| `dev-2003` | **13 047** | 2 | 0 | 1 | 3 | 34 |
+| `dev-1996` | **5 437** | 38 | 15 | 18 | 15 | 10 |
+
+Bimodale et vide au milieu, comme la revue le disait : sur `dev-2003`, trois
+fichiers en 2 à 16 morceaux, trente-quatre en plus de 64.
+
+Trois cibles de `CalibrationTests` étaient manquées, toutes de fragmentation,
+et le lot 2 désignait ce lot pour les refermer.
+### Les décisions — l'allocation incrémentale
+
+**Un booléen, une question de fait.** `FileSpec.sizeKnownInAdvance` répond à
+une seule question : *le programme qui écrit ce fichier savait-il quelle taille
+il ferait ?* Il vaut `true` par défaut, et chaque endroit du compilateur de
+scénario qui crée un fichier le pose pour **le programme** qui l'écrit — jamais
+pour la catégorie, jamais pour le volume.
+
+| fichier | programme | taille connue ? | ce que faisait le programme |
+|---|---|---|---|
+| fichiers d'une installation, archives d'installation, DLL partagées, ruches | l'installeur | oui | il lit la taille de chaque fichier dans le catalogue de ses archives (`.INF`, répertoire du CAB) |
+| `UPD*.DLL` | la mise à jour | oui | un installeur, pour la même raison |
+| `DATA*.PAK` d'un jeu | l'installeur du jeu | oui | copiés depuis le CD, la taille est sur le CD |
+| `386SPART.PAR`, `pagefile.sys`, `hiberfil.sys` | l'installation | oui | posés à taille fixe |
+| `WIN386.SWP` | le gestionnaire de mémoire | oui | il décide d'une taille et la demande — création comme croissance |
+| `MODULE.C` | l'éditeur | oui | il écrit un tampon qu'il a en mémoire |
+| `PROJET.EXE` | l'éditeur de liens | oui | il a calculé l'adresse de chaque section avant d'émettre un octet |
+| photos (2003, 2007) | l'assistant d'import | oui | une copie depuis la carte de l'appareil |
+| `M*.OBJ`, `VC.PCH` | le compilateur | **non** | il écrit son objet au fil du code qu'il génère |
+| `BUILD.ZIP`, archives entassées | le compresseur, le logiciel de gravure | **non** | la taille d'une archive ne se connaît qu'en la finissant ; une image de CD s'écrit au fil de la lecture |
+| cache du navigateur, `index.dat` | le navigateur | **non** | il écrit ce qu'il reçoit, un serveur de l'époque n'annonçant pas toujours sa longueur |
+| `DOC*.DOC`, et chaque réenregistrement | Word | **non** | il sérialise son document composé au fil de l'écriture |
+| `Outlook.pst` | la messagerie | **non** | une boîte qui grossit au fil du courrier |
+| `SAVE.DAT` | le jeu | **non** | il sérialise son état |
+| MP3, DivX, vidéo de famille | l'encodeur, le téléchargement, la capture | **non** | trois fichiers dont la fin n'est connue qu'à la fin |
+| `PART*.RAR`, `DL`, `EXTRAIT` | le téléchargement, le décompresseur | **non** | écrits à mesure qu'ils arrivent, ou qu'on les décompresse |
+
+Les événements qui suivent la création suivent la même logique sans nouveau
+drapeau : un **ajout par la fin** (`append`) est toujours écrit par paquets —
+personne ne déclare la taille d'un ajout —, sauf celui du fichier d'échange ;
+un **réenregistrement par temporaire** l'est toujours, puisque c'est
+l'application qui enregistre qui l'écrit.
+
+**Le paquet est une propriété du format** (`FileSystemProfile.writePacketBytes`).
+Sur FAT, un cluster : VFAT, comme MS-DOS, prolonge la chaîne à l'écriture qui
+franchit la fin du dernier cluster, et un programme écrit par le tampon de sa
+bibliothèque C — 4 Ko chez Microsoft, 512 octets sous MS-DOS —, jamais plus
+d'un cluster d'un coup. Sur NTFS, 64 Ko : le *lazy writer* vide le cache par
+paquets de cette taille et étend l'allocation du fichier à chaque vidage.
+`Allocator.stream` écrit ces paquets comme autant d'`extend` successifs, tout
+ou rien.
+
+**Sur FAT, un programme seul ne change rien, et c'est vérifié.** Cluster par
+cluster, chacun est le premier libre après le curseur, et le curseur est là où
+le précédent l'a laissé : c'est exactement ce qu'un `allocate` du total aurait
+pris. `FATAllocator.stream` ne fait donc qu'un appel — un test le confronte au
+cluster par cluster sur un volume mité — et les 220 bilans FAT de l'étape
+`incr` sont identiques à ceux de `base`, texte pour texte. Tout l'effet est sur
+NTFS, où chaque paquet qui ne peut pas prolonger le précédent va dans le trou
+le plus juste **pour lui**.
+
+### Les décisions — l'entrelacement, écrit et non retenu
+
+Deux programmes qui écrivent en même temps se disputent le curseur. Le
+mécanisme est dans `Simulator` : chaque événement porte le **programme** qui
+l'écrit (`Program` — installeur, Explorateur, gestionnaire de mémoire,
+environnement de développement, navigateur, traitement de texte, messagerie,
+médias, téléchargement, jeu, ce qu'on entasse), une journée se joue en
+tourniquet sur les programmes, un tour étant un événement entier ou **un
+paquet** d'une écriture par paquets, et un programme écrit ses fichiers l'un
+après l'autre. Aucun tirage : l'ordre du tourniquet est celui de l'énumération.
+Quand tous les programmes occupés sont au milieu d'une écriture par paquets sur
+FAT, les tours jusqu'à la fin de la première sont joués d'un bloc
+(`Allocator.takeInWritingOrder`) ; les empreintes des vingt volumes sont les
+mêmes qu'en jouant les tours un à un. Le rejeu pas à pas (`HistoryReplay`)
+passe par le même ordonnanceur, et raconte les événements dans l'ordre où ils
+finissent.
+
+**Il n'est pas retenu** : `DiskGenerator.runsProgramsConcurrently` vaut `false`
+pour tous les volumes, avec sa raison. Mesuré (étape `entre`), il donnait à tous
+les programmes d'une journée **le même débit** et les faisait tourner ensemble
+du matin au soir — ni l'un ni l'autre n'est un fait d'époque, et les deux
+ensemble alternaient cluster par cluster un compresseur de 40 Mo et un
+compilateur. Résultat, sur `dev-1999` : 437 802 morceaux avant la passe contre
+12 739, et une passe de Windows 95 de 58 h 09 au lieu de 6 h 16 ;
+`secretaire-1999` montait à 32 %, au-dessus de sa fourchette. C'est une borne
+haute, comme l'ordre séquentiel est une borne basse ; trancher entre les deux
+demande un débit par programme et une heure dans la journée, que la
+chronologie n'a pas. Restreindre aux programmes de fond n'aurait pas suffi : un
+téléchargement sur modem contre un compilateur s'alternerait encore cluster par
+cluster. La décision a été prise avec Gabriel, sur ces mesures.
+
+### Les décisions — les répertoires
+
+**Un répertoire a sa place** : `DirectoryRecord` porte un `FileEntry`, les
+octets de ses entrées en service et leur pointe. Il naît au premier nom qu'on y
+écrit — c'est là que le programme fait son `mkdir` — et ses parents avant lui,
+chacun recevant l'entrée de son enfant. Il ne rend jamais ses clusters : une
+entrée effacée resservira, la chaîne ne raccourcit pas.
+
+- **FAT** : un sous-répertoire naît avec un cluster (`.` et `..`), pris au
+  curseur comme n'importe quel fichier, et grandit d'un cluster quand ses
+  entrées débordent — au curseur, donc loin des précédents. La racine d'un
+  FAT16 vit dans sa région fixe et ne prend rien (ses 512 entrées ne sont pas
+  bornées) ; celle d'un FAT32 est un fichier, posé au premier cluster.
+- **Noms longs** (`DirectoryFormat`) : sous VFAT et FAT32, une entrée de 32
+  octets par tranche de treize caractères du nom long, plus celle du nom court,
+  dès que le nom n'est pas un nom court valide en majuscules —
+  `Rapport trimestriel 1996.doc` en coûte quatre, `index.dat` deux. Sous MS-DOS,
+  une.
+- **NTFS** : une entrée d'index de 82 octets plus deux par caractère, arrondie à
+  huit, et une seconde pour le nom court que XP et Vista génèrent. L'index tient
+  dans l'enregistrement de MFT tant qu'il ne dépasse pas la place d'un fichier
+  résident (700 octets, le même kilo-octet), puis prend des tampons de 4 Ko. Le
+  remplissage partiel d'un arbre B n'est pas modélisé. Un répertoire consomme
+  un enregistrement de MFT.
+- Word écrit son temporaire à côté du document : une entrée de plus le temps de
+  l'enregistrement.
+
+**L'arborescence gagne deux règles, sans tirage.** Internet Explorer range son
+cache dans quatre sous-dossiers — `Cache1` à `Cache4` sous IE 3, quatre noms
+tirés au hasard sous `Content.IE5` ensuite — et `index.dat` au-dessus d'eux. Un
+logiciel d'extraction range chaque disque encodé dans son dossier, l'assistant
+d'import de l'appareil photo chaque transfert : un dossier par séance d'import.
+Les manifestes d'installation, eux, gardent un dossier par groupe de fichiers.
+
+**Les trois couches.**
+
+1. `VolumeLayout` perd son approximation. La validation d'un déplacement sur
+   FAT écrit l'entrée **là où est le répertoire** — `DefragVolume.entrySector`
+   la suit même si le répertoire a été déplacé plus tôt dans la passe —, et
+   seules les deux copies de la table restent au début du volume. Au démarrage,
+   ouvrir un fichier, c'est lire son chemin depuis la racine : sur FAT chaque
+   répertoire est parcouru depuis son début jusqu'au cluster qui porte le nom
+   suivant, en suivant sa chaîne (et la table sur FAT32), et gardé en cache ;
+   sur NTFS seul le tampon d'index qui porte le nom est lu. `openAccesses` ne
+   garde que l'enregistrement de MFT. Les journées et les installations écrivent
+   l'entrée au bout de son répertoire, là où s'ajoutent les nouvelles.
+2. La carte a une catégorie de plus, `ClusterCategory.directory`, en dernier pour
+   que les sept autres gardent leur octet, du jaune des dossiers de
+   l'Explorateur, nommée « Répertoires » par la légende et par VoiceOver. Les
+   répertoires qui grandissent pendant une journée ou une installation sont
+   rapportés à part (`SimulationStep.directoryGrew`, `InstallEntry.directoryGrew`)
+   pour prendre cette couleur et non celle de la MFT.
+3. Les répertoires sont des éléments de défragmentation, juste avant ce qu'ils
+   contiennent, sous un identifiant à bit de poids fort
+   (`FileCatalog.itemID(ofDirectory:)`). JkDefrag les range en **zone 0** : son
+   découpage en trois bandes en est un de nouveau. `GeneratedDisk.rearranged`
+   repose aussi leurs places — sans cela, le démarrage d'un disque rangé aurait
+   vu libres les clusters des répertoires. La défragmentation de l'histoire
+   (`Simulator.defragment`) les tasse avec le reste, chacun devant son contenu.
+
+### Ce qui valide
+
+- **L'histogramme**, l'observable du lot, étape par étape : `base`, `incr`
+  (paquets seuls), `entre` (paquets et entrelacement, non retenu), `dirs` (ce qui
+  est livré : paquets et répertoires). Traîne = fichiers en 2 à 16 morceaux,
+  rapportés aux fichiers de plus d'un cluster.
+
+  | volume | étape | 1 | 2 | 3–4 | 5–16 | 17–64 | > 64 | traîne |
+  |---|---|---:|---:|---:|---:|---:|---:|---:|
+  | `dev-2003` | base | 13 047 | 2 | 0 | 1 | 3 | 34 | 0,0 % |
+  | | incr | 12 979 | 8 | 5 | 37 | 25 | 33 | 0,5 % |
+  | | entre | 12 892 | 4 | 1 | 3 | 15 | 172 | 0,1 % |
+  | | **dirs** | **12 966** | 13 | 10 | 30 | 30 | 38 | **0,6 %** |
+  | `dev-1996` | base | 5 437 | 38 | 15 | 18 | 15 | 10 | 6,1 % |
+  | | incr | 5 437 | 38 | 15 | 18 | 15 | 10 | 6,1 % |
+  | | entre | 5 378 | 46 | 16 | 33 | 28 | 19 | 8,2 % |
+  | | **dirs** | **5 453** | 26 | 20 | 15 | 23 | 4 | **5,3 %** |
+  | `secretaire-2003` | base | 8 962 | 47 | 51 | 74 | 34 | 116 | 1,9 % |
+  | | incr | 8 233 | 354 | 309 | 225 | 64 | 99 | 9,6 % |
+  | | entre | 5 770 | 1 277 | 859 | 563 | 139 | 676 | 29,2 % |
+  | | **dirs** | **8 118** | 378 | 299 | 277 | 96 | 116 | **10,3 %** |
+  | `gamer-2007` | base | 13 199 | 38 | 47 | 45 | 40 | 164 | 1,0 % |
+  | | **dirs** | **12 783** | 197 | 190 | 213 | 54 | 96 | **4,5 %** |
+  | `famille-2007` | base | 11 667 | 89 | 93 | 109 | 60 | 211 | 2,4 % |
+  | | **dirs** | **11 374** | 167 | 196 | 276 | 99 | 117 | **5,3 %** |
+
+  Sur NTFS, la traîne se remplit et le mode à un extent baisse — de
+  `secretaire-2003` (8 962 → 8 118, traîne ×5) à `famille-2007` —, et les
+  miettes au-delà de 64 morceaux **diminuent** : un gros fichier écrit par
+  paquets trouve des trous à la taille d'un paquet là où, d'un bloc, il n'en
+  trouvait aucun à la sienne et partait en `scatter`. Sur `dev-2003`, presque
+  rien : les fichiers qu'un programme y écrit sans en connaître la taille — les
+  objets du compilateur — font moins de 64 Ko, un seul vidage du cache. Sur FAT,
+  rien ne vient des paquets, et ce qui bouge vient des répertoires. **La traîne
+  ne se remplit pas là où le lot 2 l'attendait** : c'est l'entrelacement qui la
+  remplissait sur FAT (`dev-1996` 8,2 %, `secretaire-1999` 17,3 %), et il n'est
+  pas retenu.
+- **Le déterminisme** : deux générations de `secretaire-1999` et de
+  `secretaire-2003` donnent les mêmes extents, fichier par fichier et répertoire
+  par répertoire (`WritingWhileItGrowsTests`). Le bilan d'un volume porte une
+  empreinte de toutes ses extents ; elle a aussi servi à prouver que le jeu d'un
+  bloc des tours FAT ne change aucun cluster.
+- **Les trois cibles de `CalibrationTests` restent manquées**, les mêmes :
+  `dev-1996` à 8 % (au lieu de 35 à 50), `secretaire-1999` à 6 % (15 à 25),
+  `famille-2003` à 13 % (40 à 60, 9 % avant le lot). C'est l'information du lot :
+  écrire sans connaître la taille ne les referme pas ; les refermer demandait
+  l'entrelacement, qui dépassait l'une d'elles pour une raison qui n'est pas un
+  fait. Un test change de titre, comme aux lots 1 et 2 : l'écart
+  `famille-1999` / `famille-2003` tombe d'une fois et demie à **un quart**
+  (16,9 contre 13,0 %), parce que NTFS reçoit désormais par paquets ce que FAT
+  recevait déjà cluster par cluster.
+- **Les répertoires existent et se fragmentent.** 12 à 46 par volume, et 761,
+  1 128 et 1 127 sur `famille-1999`, `famille-2003` et `famille-2007` (un par
+  séance d'import). Sur `famille-1999`, 12 sont en plusieurs clusters, les 12
+  en morceaux ; sur `famille-2007`, le pire en 447 extents — le cache du
+  navigateur, un index qui a grandi par tampons de 4 Ko pendant trois ans.
+  **« Plusieurs milliers » sur un FAT vieilli n'est pas atteint** : le générateur
+  pose 1 000 à 7 500 fichiers sur un volume FAT, là où un vrai Windows 98 en
+  porte dix fois plus, et les installeurs y rangent chaque groupe dans un seul
+  dossier. Les répertoires manquants sont ceux des fichiers manquants. Un nom
+  long VFAT coûte bien ses quatre entrées, et un répertoire FAT de cent noms
+  courts, deux clusters en deux morceaux (`WritingWhileItGrowsTests`).
+- **`swift test` : 366 tests passent** (349 avant, dix-sept de plus dans
+  `WritingWhileItGrowsTests` et `DirectoryItemsTests`), et
+  `DISKCORE_CALIBRATION=1 swift test --filter Calibration` passe avec ses trois
+  problèmes connus. Cinq tests existants ont été touchés, chacun pour une raison
+  qui tient au lot : la carte d'arrivée d'une installation compte les
+  répertoires ; le tassage de `RearrangedDiskTests` les range avec le reste ; le
+  démarrage rangé passe de `gamer-1993` à `dev-1993`, où la passe de 95 a de
+  quoi déplacer (voir plus bas) ; `CellContents` liste les répertoires d'un
+  bloc ; `MFTGrowthTests` voit deux MFT de plus déborder (plus bas).
+- **Les treize outils sur les vingt volumes** produisent leurs 260 bilans, et
+  l'audit d'allocation du lot 1 (`AllocationInvariantTests`) passe sur des
+  volumes qui ont maintenant des répertoires. JkDefrag range les répertoires en
+  zone 0 (`DirectoryItemsTests`), la validation FAT écrit l'entrée dans le
+  répertoire du fichier, et un démarrage de `secretaire-1999` lit ses
+  répertoires là où ils sont.
+- **Le simulateur n'a pas pu être regardé.** Le build Release de l'app compile
+  (les trois fichiers exclus du paquet compris), mais CoreSimulator s'est figé
+  sur la machine pendant la session : même Réglages ne s'y lançait plus. La
+  légende et la couleur des répertoires n'ont donc pas été vues à l'écran, ni le
+  lancement chronométré — le coût des deux démos vient du rendu hors-ligne,
+  même code.
+
+### Ce que chaque mécanisme change, mesuré séparément
+
+Chaque étape est un binaire construit depuis le code final, le mécanisme suivant
+coupé, sous `Tools/Measure/` ; `base` vient du commit précédent, avec les
+outils de mesure de ce lot.
+
+**Les paquets (`base` → `incr`)** : 220 bilans FAT identiques ; sur NTFS, les
+démarrages bougent de −0,4 à +0,3 s et les passes de −54 à +122 % selon l'outil
+et le volume, médiane 0 — les volumes sont régénérés. Deux zones MFT de plus
+cèdent : `famille-2003` (MFT en 31 extents au lieu d'un) et `famille-2007` (18),
+dont les médias et les téléchargements, écrits par paquets, prennent chacun le
+trou le plus juste pour un paquet et remplissent autrement le reste du volume.
+
+**L'entrelacement (`incr` → `entre`, non retenu)** : ci-dessus. En plus des
+morceaux, il rendait quadratique le planificateur du tassage à la frontière —
+`physical()` et `vcn()` parcourent les extents d'un fichier à chaque pas — : 30
+minutes de calcul pour la passe de `dev-2007`, sur 1 097 059 morceaux.
+
+**Les répertoires (`incr` → `dirs`)** : les démarrages bougent de −0,7 à
++1,1 s ; les passes de −37 à +175 % selon l'outil et le volume, médiane +1 à
++13 % selon l'outil — `jkDefragMoveUp` est le plus touché. Sur la passe de 95,
+le seek moyen baisse sur neuf FAT sur douze (`famille-1999` : 2 059 → 1 604
+cylindres, `gamer-1999` : 4 709 → 3 571), l'entrée ne renvoyant plus le bras au
+bord ; le nombre de seeks, lui, monte là où les répertoires sont des éléments de
+plus à ranger (`dev-1996` : 24 820 → 42 304, la passe de 13 min 42 à 21 min 54).
+Et `gamer-1993` passe de 99,96 à 100 % : ses répertoires ont pris les cinq
+derniers trous, et le tassage à la frontière, qui avait rangé ce volume en
+32 minutes avec deux clusters libres, n'en a plus aucun — il le rend tel quel.
+
+**Les démarrages, contre leur cible** (secondes ; `incr` en écart à `base`) :
+
+| profil | cible | base | incr | dirs | écart |
+|---|---:|---:|---:|---:|---:|
+| `dev-1993` | 41,8 | 41,8 | 0 | 41,8 | +0,0 % |
+| `poweruser-1993` | 42,7 | 42,8 | 0 | 42,8 | +0,2 % |
+| `gamer-1993` | 29,5 | 29,1 | 0 | 29,4 | −0,3 % |
+| `secretaire-1993` | 36,0 | 36,0 | 0 | 35,9 | −0,3 % |
+| `dev-1996` | 58,7 | 58,7 | 0 | 58,6 | −0,2 % |
+| `famille-1996` | 54,4 | 54,9 | 0 | 54,2 | −0,4 % |
+| `gamer-1996` | 44,0 | 45,3 | 0 | 45,2 | +2,7 % |
+| `secretaire-1996` | 55,4 | 54,5 | 0 | 54,6 | −1,4 % |
+| `dev-1999` | 57,0 | 56,9 | 0 | 58,0 | +1,8 % |
+| `famille-1999` | 66,0 | 63,0 | 0 | 63,8 | −3,3 % |
+| `gamer-1999` | 54,8 | 56,8 | 0 | 57,0 | +4,0 % |
+| `secretaire-1999` | 56,7 | 56,7 | 0 | 57,6 | +1,6 % |
+| `dev-2003` | 49,1 | 50,1 | 0 | 50,4 | +2,6 % |
+| `famille-2003` | 28,8 | 29,3 | −0,4 | 29,8 | +3,5 % |
+| `gamer-2003` | 70,0 | 69,0 | 0 | 69,4 | −0,9 % |
+| `secretaire-2003` | 33,8 | 35,2 | −0,3 | 36,0 | +6,5 % |
+| `dev-2007` | 47,0 | 46,0 | −0,1 | 46,6 | −0,9 % |
+| `famille-2007` | 38,3 | 38,0 | +0,3 | 39,1 | +2,1 % |
+| `gamer-2007` | 29,8 | 31,1 | 0 | 32,0 | +7,4 % |
+| `secretaire-2007` | 41,9 | 41,6 | −0,1 | 42,3 | +1,0 % |
+
+La dérive passe de −4,5…+4,4 % à **−3,3…+7,4 %**, et de +2,1 % au plus en somme
+par époque. Elle vient presque toute des répertoires : les requêtes d'un
+démarrage de `dev-1996` passent de 1 121 à 1 231, de `dev-1999` de 1 961 à
+2 236, parce qu'ouvrir un fichier lit désormais son chemin, avec la
+table FAT32 que ses répertoires demandent. `ThinkModel` **n'a pas été recalé**.
+`fit-think.py` ne désigne d'ailleurs aucune constante : l'une ou l'autre seule
+laisse des résidus de ±1,2 à ±2,2 s selon l'époque, avec un léger avantage à
+`perFile` — ce qu'on attend d'un coût nouveau par fichier ouvert. Le cache de
+piste, qui n'est dans aucun lot, rouvrira ce calage de toute façon ; la dérive
+reste dans la bande de ±8 %, et la décision est laissée ouverte.
+
+**Le coût de génération**, meilleure de cinq générations, en release, machine au
+calme :
+
+| volume | avant | après | |
+|---|---:|---:|---:|
+| `dev-1993` (démo de défragmentation) | 46 ms | 51 ms | ×1,1 |
+| `secretaire-1999` (démo de démarrage) | 25 ms | 33 ms | ×1,3 |
+| `dev-1996` | 168 ms | 197 ms | ×1,2 |
+| `dev-1999` | 238 ms | 287 ms | ×1,2 |
+| `secretaire-2003` | 114 ms | 175 ms | ×1,5 |
+| `dev-2003` | 907 ms | 1 110 ms | ×1,2 |
+| `gamer-2007` | 250 ms | 478 ms | ×1,9 |
+| `dev-2007` | 1 343 ms | 1 803 ms | ×1,3 |
+| `famille-2007` | 651 ms | 2 181 ms | ×3,4 |
+| `famille-2003` | 620 ms | 3 247 ms | **×5,2** |
+
+L'ouverture de l'app paie 13 ms de plus pour ses deux démos. Les NTFS pleins
+paient bien davantage : chaque paquet de 64 Ko qui ne peut pas prolonger le
+précédent lance le best-fit borné de `NTFSAllocator`, et `famille-2003` le fait
+des centaines de milliers de fois. Avec l'entrelacement, `famille-2007` montait
+à 6 s et `secretaire-1999` à 70 ms ; deux défauts de copie à l'écriture (un flux
+resté référencé dans sa file, une copie des extents gardée pour le retour
+arrière) avaient d'abord rendu chaque paquet quadratique.
+
+### Le README
+
+Régénéré d'un seul jeu de mesures — `dirs`, 340 bilans, dont les vingt volumes.
+`readme-tables.py` produit désormais aussi les tables de défragmentation FAT et
+leurs chiffres de prose ; il a été validé en reproduisant, depuis les bilans de
+`base`, toutes les lignes de table du README précédent, et ses totaux arrondis à
+la minute la plus proche comme le faisait le README (21 h 59, 1 h 23). La table
+des trois allocateurs ne passe pas par le simulateur ; `AllocatorComparison`
+la redonne à l'identique. Les paragraphes nouveaux disent l'écriture par
+paquets, l'entrelacement non retenu, les répertoires et leur couleur ; les
+phrases sur l'entrée de répertoire écrite dans la racine ont été retirées. Trois
+chiffres de prose non remesurables ont été retirés plutôt que recopiés (les
+249 Go et les 187 000 miettes de `famille-2007`, le trou de 22 Go de
+`dev-2007`), et la phrase sur les deux volumes pleins à 99 % que le tassage à la
+frontière range ne vaut plus que pour `gamer-1996`.
+
+### Laissé ouvert
+
+- **L'entrelacement.** Écrit, testé, coupé. Le reprendre demande un débit par
+  programme — modem, disque, processeur — et une heure dans la journée, deux
+  faits que la chronologie n'a pas. Entre la borne basse livrée et la borne
+  haute mesurée, les trois cibles de calibration se referment ou se dépassent :
+  c'est là qu'elles se jouent.
+- **Le coût des NTFS pleins** : ×3 à ×5 sur `famille-2003` et `famille-2007`.
+  La recherche que lance chaque paquet est celle de `NTFSAllocator`, bornée par
+  des fenêtres ancrées au début de la zone de données, qu'un vrai NTFS mènerait
+  plutôt près du dernier cluster du fichier. C'est une question sur
+  l'allocateur, pas sur ce lot.
+- **Le tassage à la frontière est quadratique en morceaux** (`physical()`,
+  `vcn()`). Sans entrelacement, il reste dans ses temps ; avec, il ne l'était
+  plus. L'app ne le propose que sur FAT.
+- **Que Windows ne sache pas déplacer un répertoire FAT** — les vingt échecs de
+  `MoveItem` de JkDefrag, puis l'abandon de toute la classe — est du lot 5. Ici
+  les répertoires se déplacent comme des fichiers, sur FAT comme sur NTFS, et
+  un répertoire FAT déplacé ne réécrit pas l'entrée `..` de ses enfants.
+- **Des répertoires encore trop peu nombreux**, faute de fichiers : les
+  manifestes rangent chaque groupe dans un seul dossier. Un désinstalleur ne
+  retire aucun répertoire, et la racine d'un FAT16 accepte plus de 512 entrées.
+- **Les places d'entrée sont approchées** : dans un répertoire, les
+  sous-répertoires d'abord puis les fichiers vivants par identifiant, sans les
+  trous des entrées effacées. Un démarrage NTFS ne lit pas l'enregistrement de
+  MFT d'un répertoire, faute de numéro, et un acte préchargé ne lit pas les
+  répertoires — la lecture groupée du préchargeur en tient lieu.
+- **Les écritures refusées bougent sur les volumes pleins**, sans que ce soit
+  expliqué fichier par fichier : `dev-1996` 461 → 139, `gamer-1999` 92 → 69,
+  `famille-1996` 1 523 → 1 480 ; l'entrelacement les aurait presque doublées
+  (`famille-1996` 2 896), des écritures simultanées tenant de la place en même
+  temps. Les répertoires déplacent le curseur de quelques clusters sur des
+  volumes à 93–99 %, ce qui suffit à changer ce qui trouve place.
+- **La dérive de calibration** : −3,3 à +7,4 %, non compensée.

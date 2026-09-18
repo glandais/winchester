@@ -256,6 +256,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                       partition: partition, bufferBytes: bufferBytes,
                                       fullBlocks: fullBlocks, into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
+                                        entrySector: volume.entrySector(of: position),
                                         phase: phase, partition: partition, into: sink)
                 apply(position, to: [target], in: &volume)
                 moved.clusters += Int(file.clusterCount)
@@ -412,6 +413,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                       partition: partition, bufferBytes: bufferBytes,
                                       fullBlocks: fullBlocks, into: sink)
                 DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
+                                        entrySector: volume.entrySector(of: position),
                                         phase: phase, partition: partition,
                                         repaint: contiguous == volume.files[position].isContiguous
                                             || length >= volume.files[position].clusterCount

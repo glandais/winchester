@@ -34,8 +34,12 @@ import DiskCore
 ///
 /// Ce qui n'est **pas** transposé, et pourquoi :
 ///
-/// - **les répertoires.** La galerie ne leur alloue aucun cluster : la zone 0
-///   est vide, et le volume commence par la réserve d'espace libre qui la suit ;
+/// - **les échecs de déplacement des répertoires.** Depuis le lot 4 les
+///   répertoires ont leurs clusters, et remplissent la zone 0. Mais Windows ne
+///   sait pas déplacer un répertoire FAT : `MoveItem` y échoue, et au
+///   vingtième échec JkDefrag marque tous les répertoires `Unmovable` pour le
+///   reste de la passe (`JkDefragLib.cpp:2486`), vingt recalculs de zones
+///   compris. Ici ils se déplacent comme le reste, sur FAT comme sur NTFS ;
 /// - **le critère du dernier accès.** Un fichier non lu depuis trente jours
 ///   est un space hog (`JkDefragLib.cpp:3714`), sauf si le registre désactive la
 ///   mise à jour des dates d'accès — ce que Vista fait par défaut, et XP non. Le
@@ -524,8 +528,11 @@ extension JKDefragStrategy {
             for (position, file) in volume.files.enumerated() where Self.isMovable(file) {
                 let hog = strategy.isSpaceHog(file, clusterBytes: clusterBytes)
                 if hog { hogs += 1 }
+                // `CalculateZones` : zone 0 pour les répertoires, 2 pour les
+                // gros fichiers, 1 pour le reste.
+                let zone: UInt8 = file.category == .directory ? 0 : (hog ? 2 : 1)
                 items.append(Item(lcn: file.extents[0].start, clusters: file.clusterCount,
-                                  zone: hog ? 2 : 1, position: Int32(position)))
+                                  zone: zone, position: Int32(position)))
             }
             self.order = ItemOrder(items, fileCount: volume.files.count)
             self.zones = Self.calculateZones(volume: volume, order: order,
@@ -676,7 +683,8 @@ extension JKDefragStrategy {
                                   partition: volume.partition,
                                   bufferBytes: strategy.bufferBytes,
                                   fullBlocks: strategy.fullBlocks, into: sink)
-            DefragOperations.commit(cluster: Int(lcn), fileIndex: index, phase: phase,
+            DefragOperations.commit(cluster: Int(lcn), fileIndex: index,
+                                    entrySector: volume.entrySector(of: index), phase: phase,
                                     partition: volume.partition,
                                     // Un fichier déplacé en entier est déjà tout
                                     // entier de sa nouvelle teinte.

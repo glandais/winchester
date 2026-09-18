@@ -167,9 +167,12 @@ struct ArrangementTests {
 @Suite("Démarrage d'un disque rangé")
 struct RangedBootTests {
 
+    /// Sur `dev-1993` et non plus `gamer-1993` : plein à 99,96 %, celui-ci ne
+    /// laissait à la passe de 95 que deux déplacements depuis le lot 1, et
+    /// plus aucun depuis que ses répertoires prennent leur place.
     @Test("Le démarrage du disque rangé suit l'arrangement de la passe")
     func rangedBootReadsTheNewPlaces() throws {
-        let disk = try DiskGenerator.generate(try ScenarioLibrary.load("gamer-1993"))
+        let disk = try DiskGenerator.generate(try ScenarioLibrary.load("dev-1993"))
         let volume = try GeneratedVolumeBridge.volume(from: disk)
         let plan = Windows95Strategy().plan(volume: volume)
         let moved = plan.arrangement.filter { place in
@@ -181,7 +184,11 @@ struct RangedBootTests {
                                 uniquingKeysWith: { _, last in last })
         let ranged = disk.rearranged(extents: places)
         for place in moved {
-            #expect(ranged.catalog[place.id]?.extents == place.extents)
+            if let directory = FileCatalog.directory(ofItem: place.id) {
+                #expect(ranged.catalog.directories[Int(directory)].extents == place.extents)
+            } else {
+                #expect(ranged.catalog[place.id]?.extents == place.extents)
+            }
         }
 
         // Le démarrage lit autre chose, ailleurs : ses requêtes ne sont plus
@@ -190,7 +197,9 @@ struct RangedBootTests {
         let after = BootPlanner.plan(disk: ranged)
         #expect(before.filesRead == after.filesRead)
         #expect(before.requests.map(\.lba) != after.requests.map(\.lba))
-        // Et l'état du volume rangé est celui que le plan annonce.
-        #expect(ranged.metrics.fragmentedFileCount == plan.after.fragmentedFiles)
+        // Et l'état du volume rangé est celui que le plan annonce — lequel
+        // compte les répertoires, que la passe a rangés avec le reste.
+        let fragmentedDirectories = ranged.catalog.directories.filter { $0.extents.coalesced().count > 1 }.count
+        #expect(ranged.metrics.fragmentedFileCount + fragmentedDirectories == plan.after.fragmentedFiles)
     }
 }

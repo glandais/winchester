@@ -79,6 +79,32 @@ def defrag(step, profile, tool, full_blocks=False):
     return d
 
 
+EXTENT_CLASSES = ["1", "2", "3-4", "5-16", "17-64", ">64"]
+
+
+def disk(step, profile):
+    """Un volume généré (`SCENARIO=disk:`) : histogramme d'extents, répertoires,
+    coût de génération."""
+    t = text(step, f"disk-{profile}")
+    counts = dict(re.findall(r"(\S+?)=(\d+)", re.search(r"^extents\s+: (.*)$", t, re.M).group(1)))
+    d = dict(generationMs=_int(r"^génération\s+: (\d+) ms", t),
+             files=_int(r"^fichiers\s+: (\d+)", t),
+             residents=_int(r"(\d+) résidents", t),
+             histogram=[int(counts[c]) for c in EXTENT_CLASSES],
+             fragmented=_int(r"^fragmentés\s+: (\d+) sur", t),
+             fragmentable=_int(r"sur (\d+) fragmentables", t),
+             ratio=_float(r"fragmentables, ([\d.]+) %", t),
+             worst=_int(r"^pire fichier\s+: (\d+)", t),
+             holes=_int(r"^trous libres\s+: (\d+)", t),
+             failed=_int(r"^refusées\s+: (\d+)", t),
+             directories=_int(r"^répertoires\s+: (\d+)", t),
+             directoryClusters=_int(r"^répertoires\s+: \d+, (\d+) clusters", t),
+             multiCluster=_int(r"(\d+) en plusieurs clusters", t),
+             fragmentedDirectories=_int(r"(\d+) fragmentés, pire", t),
+             worstDirectory=_int(r"pire (\d+) extents", t))
+    return d
+
+
 # --- Les nombres comme le README les écrit ---------------------------------
 
 def number(x):

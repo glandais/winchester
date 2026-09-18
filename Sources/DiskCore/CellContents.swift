@@ -14,7 +14,8 @@ public struct CellOccupant: Sendable, Equatable {
 /// Ce que contient un bloc de la carte d'un disque généré.
 public struct CellContents: Sendable {
     public let clusters: Range<UInt32>
-    /// Les fichiers les plus présents dans le bloc, du plus au moins présent.
+    /// Les fichiers — et les répertoires — les plus présents dans le bloc, du
+    /// plus au moins présent.
     public let occupants: [CellOccupant]
     /// Nombre de fichiers qui touchent le bloc, y compris ceux qui ne sont
     /// pas listés.
@@ -72,6 +73,18 @@ extension GeneratedDisk {
                                           clustersInCell: inCell,
                                           fragments: record.extents.coalesced().count,
                                           logicalSize: record.logicalSize))
+        }
+        // Un répertoire est un occupant comme un autre : le toucher sur la
+        // carte doit dire ce que c'est.
+        for directory in catalog.directories where !directory.extents.isEmpty {
+            let inCell = overlap(directory.extents)
+            guard inCell > 0 else { continue }
+            fileClusters += inCell
+            occupants.append(CellOccupant(path: catalog.path(ofDirectory: directory.id),
+                                          category: .directory,
+                                          clustersInCell: inCell,
+                                          fragments: directory.extents.coalesced().count,
+                                          logicalSize: directory.peakEntryBytes))
         }
         let fileCount = occupants.count
         occupants.sort {

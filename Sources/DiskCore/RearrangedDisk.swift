@@ -12,7 +12,8 @@ extension GeneratedDisk {
     /// volume-là et non celui d'avant.
     ///
     /// Un fichier que `extents` ne nomme pas garde sa place : un défragmenteur
-    /// ne touche ni aux fichiers résidents ni aux fichiers vides.
+    /// ne touche ni aux fichiers résidents ni aux fichiers vides. Un répertoire
+    /// est nommé par son identifiant d'élément (`FileCatalog.itemID`).
     public func rearranged(extents places: [UInt32: [Extent]]) -> GeneratedDisk {
         var copy = self
         for record in catalog.files {
@@ -21,9 +22,16 @@ extension GeneratedDisk {
             updated.entry.extents = extents
             copy.catalog[record.id] = updated
         }
+        for directory in catalog.directories {
+            guard let extents = places[FileCatalog.itemID(ofDirectory: directory.id)] else { continue }
+            copy.catalog.updateDirectory(directory.id) { $0.entry.extents = extents }
+        }
 
         var bitmap = ClusterBitmap(clusterCount: self.bitmap.clusterCount)
         for extent in systemExtents where !extent.isEmpty { _ = bitmap.allocate(extent) }
+        for directory in copy.catalog.directories {
+            for extent in directory.extents where !extent.isEmpty { _ = bitmap.allocate(extent) }
+        }
         for record in copy.catalog.files where !record.isResident {
             for extent in record.extents where !extent.isEmpty { _ = bitmap.allocate(extent) }
         }

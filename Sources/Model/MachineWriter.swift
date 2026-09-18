@@ -134,11 +134,12 @@ struct MachineWriter {
         }
     }
 
-    /// Ce que la table de métadonnées vient de prendre pour elle.
-    mutating func grow(metadata extents: [Extent]) {
+    /// Ce que la table de métadonnées — ou un répertoire — vient de prendre
+    /// pour elle.
+    mutating func grow(metadata extents: [Extent], as category: ClusterCategory = .reserved) {
         for extent in extents where !extent.isEmpty {
             pendingMutations.append(MapMutation(start: Int(extent.start), count: Int(extent.length),
-                                                category: .reserved))
+                                                category: category))
             // Les nouveaux enregistrements sont initialisés à leur place.
             emit(.metadata, lba: partition.lba(ofCluster: Int(extent.start)),
                  sectors: min(Int(extent.length) * partition.clusterSectors, 16),
@@ -152,7 +153,10 @@ struct MachineWriter {
 
     /// Le fichier vient d'être créé, déplacé ou effacé : ses entrées de table
     /// sont sales.
-    mutating func markDirty(_ record: FileRecord) {
+    ///
+    /// - Parameter directory: son répertoire, pour que l'entrée soit écrite là
+    ///   où il est.
+    mutating func markDirty(_ record: FileRecord, directory: DirectoryRecord? = nil) {
         let rank = ranks[record.id] ?? {
             let rank = 16 + ranks.count
             ranks[record.id] = rank
@@ -161,6 +165,7 @@ struct MachineWriter {
         let clusters = record.extents.isEmpty ? [0] : record.extents.map { Int($0.start) }
         for cluster in clusters {
             for access in partition.commitAccesses(forCluster: cluster, fileIndex: rank,
+                                                   entrySector: partition.entrySector(inDirectory: directory),
                                                    validation: nil) {
                 dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
             }

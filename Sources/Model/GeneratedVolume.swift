@@ -20,6 +20,7 @@ extension ClusterCategory {
         case .archive:                    self = .archive
         case .swap:                       self = .swap
         case .metadata:                   self = .reserved
+        case .directory:                  self = .directory
         }
     }
 }
@@ -92,20 +93,50 @@ enum GeneratedVolumeBridge {
 
         let partition = partition(of: disk)
 
+        // Les répertoires qui ont des clusters sont des éléments comme les
+        // autres, posés juste avant ce qu'ils contiennent — l'ordre où un
+        // outil qui lit l'arborescence les rencontre. Chaque élément sait où
+        // est son entrée : c'est là que la validation d'un déplacement la
+        // réécrit.
+        let format = DiskGenerator.directoryFormat(for: disk.spec)
+        let offsets = disk.catalog.entryOffsets(format: format)
+        let knowsDirectories = disk.catalog.directories.contains(where: \.exists)
+        var positionOf: [UInt32: Int] = [:]
+        func entry(in directory: UInt32?, at offset: UInt64) -> DirectoryEntryPlace? {
+            guard knowsDirectories, let directory else { return nil }
+            return DirectoryEntryPlace(directory: positionOf[directory], offset: offset)
+        }
+
         var files: [DefragFile] = []
-        files.reserveCapacity(disk.catalog.files.count)
-        for record in disk.catalog.directoryWalkOrder()
-        where !record.isResident && !record.extents.isEmpty {
-            let category = ClusterCategory(record.category)
-            files.append(DefragFile(id: record.id,
-                                    path: disk.catalog.path(of: record),
-                                    category: category,
-                                    walkOrder: files.count,
-                                    extents: record.extents,
-                                    isMovable: category != .swap,
-                                    bytes: record.logicalSize,
-                                    createdDay: record.createdDay,
-                                    modifiedDay: record.modifiedDay))
+        files.reserveCapacity(disk.catalog.files.count + disk.catalog.directories.count)
+        for item in disk.catalog.treeWalkOrder() {
+            switch item {
+            case let .directory(directory):
+                guard !directory.extents.isEmpty else { continue }
+                positionOf[directory.id] = files.count
+                files.append(DefragFile(id: FileCatalog.itemID(ofDirectory: directory.id),
+                                        path: disk.catalog.path(ofDirectory: directory.id),
+                                        category: .directory,
+                                        walkOrder: files.count,
+                                        extents: directory.extents,
+                                        isMovable: true,
+                                        bytes: directory.peakEntryBytes,
+                                        entry: entry(in: directory.parent,
+                                                     at: offsets.directories[Int(directory.id)])))
+            case let .file(record):
+                guard !record.isResident, !record.extents.isEmpty else { continue }
+                let category = ClusterCategory(record.category)
+                files.append(DefragFile(id: record.id,
+                                        path: disk.catalog.path(of: record),
+                                        category: category,
+                                        walkOrder: files.count,
+                                        extents: record.extents,
+                                        isMovable: category != .swap,
+                                        bytes: record.logicalSize,
+                                        createdDay: record.createdDay,
+                                        modifiedDay: record.modifiedDay,
+                                        entry: entry(in: record.directory, at: offsets.files[record.id] ?? 0)))
+            }
         }
         // La zone MFT du générateur est reprise telle quelle : c'est bien la
         // plage que l'allocateur a tenue à l'écart pendant tout le

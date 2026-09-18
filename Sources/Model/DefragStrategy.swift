@@ -345,14 +345,19 @@ enum DefragOperations {
     ///   qui n'ont pas bougé gardaient la teinte de l'ancien état ; ils prennent
     ///   la nouvelle au moment où le système de fichiers valide le déplacement,
     ///   avec la première écriture de métadonnées.
+    ///
+    /// - Parameter entrySector: sur FAT, le secteur de répertoire qui porte
+    ///   l'entrée du fichier (`DefragVolume.entrySector`).
     static func commit(cluster: Int,
                        fileIndex: Int,
+                       entrySector: Int? = nil,
                        phase: Int,
                        partition: PartitionGeometry,
                        repaint: (extents: [Extent], category: ClusterCategory, contiguous: Bool)? = nil,
                        into sink: OperationSink) {
         var pending = repaint
         for access in partition.commitAccesses(forCluster: cluster, fileIndex: fileIndex,
+                                               entrySector: entrySector,
                                                validation: sink.nextValidation()) {
             let first = sink.mutationMark
             if let file = pending {

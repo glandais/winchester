@@ -324,6 +324,9 @@ struct SimulatorScreen: View {
         if let install = model.install {
             seen.formUnion(install.installed.catalog.files.lazy.map { ClusterCategory($0.category).rawValue })
             if install.temporaryFiles > 0 { seen.insert(ClusterCategory.churn.rawValue) }
+            if install.installed.catalog.directories.contains(where: { !$0.extents.isEmpty }) {
+                seen.insert(ClusterCategory.directory.rawValue)
+            }
         }
         return ClusterCategory.allCases.filter { seen.contains($0.rawValue) }
     }

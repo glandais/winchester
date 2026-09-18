@@ -192,8 +192,9 @@ installation de MS-DOS puis de Windows, création du fichier d'échange, et des
 journées de compilations, de temporaires et d'archives. L'allocateur est celui
 de MS-DOS — le premier cluster libre **depuis le début du volume**, à chaque
 écriture. C'est tout ce qu'il faut pour que les fichiers éclatent ; aucun
-mécanisme exotique n'intervient. Résultat : 4 016 fichiers, 8 % fragmentés en
-1 024 morceaux, 60 trous dans l'espace libre, à 69 % de remplissage.
+mécanisme exotique n'intervient. Résultat : 4 016 fichiers et 11 répertoires,
+8 % fragmentés en 1 030 morceaux, 61 trous dans l'espace libre, à 69 % de
+remplissage.
 
 **La passe** — « défragmentation complète (fichiers et espace libre) » : chaque
 fichier est rendu contigu et tassé contre le début du volume, dans l'ordre du
@@ -203,14 +204,15 @@ conséquences, et ce sont elles qu'on entend :
 - la destination d'un fichier est presque toujours occupée par un autre, qu'il
   faut d'abord **évacuer** vers la fin du volume — et qui sera relu puis
   redéplacé quand viendra son tour. Sur ce volume-là, l'outil de 95 déplace
-  3 984 fichiers et évacue 5 008 fois : c'est ce va-et-vient, pas le volume de
-  données, qui fait durer une passe — 29 min 24, quand le tassage à la
+  3 991 éléments et évacue 4 997 fois : c'est ce va-et-vient, pas le volume de
+  données, qui fait durer une passe — 31 min 46, quand le tassage à la
   frontière, qui ne déloge presque personne, finit en 5 min 46 ;
-- chaque déplacement validé réécrit les deux copies de la FAT et l'entrée de
-  répertoire, toutes trois au tout début de la partition. Le bras revient donc
-  au bord du plateau environ une fois par fichier. Sur NTFS il y revient aussi,
-  pour le journal, mais une validation sur huit : c'est une rafale espacée, pas
-  un « clac » régulier ;
+- chaque déplacement validé réécrit les deux copies de la FAT, au tout début de
+  la partition, puis l'entrée du fichier **là où vit son répertoire** — dans la
+  racine pour un fichier de la racine, ailleurs pour tous les autres. Le bras
+  revient donc au bord du plateau environ une fois par fichier. Sur NTFS il y
+  revient aussi, pour le journal, mais une validation sur huit : c'est une
+  rafale espacée, pas un « clac » régulier ;
 - le fichier d'échange est ouvert par Windows : il ne bouge pas, et tout est
   tassé autour de lui. C'est le bloc rouge immobile de la carte.
 
@@ -241,6 +243,11 @@ un volume de 320 Go, et sa couleur ne peut plus être celle d'une catégorie
 majoritaire : elle est **modulée par le taux de remplissage** du bloc, de sorte
 qu'un bloc à moitié occupé n'ait pas l'air plein. Les accès y laissent une
 rémanence de 0,34 s, fondue sur l'âge comme la traînée du plateau.
+
+Les **répertoires** ont leur couleur, le jaune des dossiers de l'Explorateur :
+sur FAT ce sont des fichiers comme les autres, que la passe déplace aussi ; sur
+NTFS, l'index des noms d'un répertoire qui a débordé de son enregistrement de
+MFT.
 
 Rien de tout cela n'est tenu cluster par cluster : la carte est une suite de
 plages, et un volume de 320 Go coûte 2,6 Mo au lieu de 78.
@@ -335,6 +342,32 @@ chemin des défragmenteurs redeviennent un ordre unique.
 | trous dans l'espace libre | 3 | 502 | 441 |
 | slack | 13,8 % | 1,5 % | 1,4 % |
 
+**Écrire sans connaître la taille.** Un programme qui copie un fichier, ou
+l'installe depuis un CD, en connaît la taille et obtient sa place d'un coup. Un
+compilateur qui produit son `.obj`, un navigateur qui reçoit une page, Word qui
+sérialise son document, un logiciel de téléchargement ou de compression ne la
+connaissent pas : leur fichier grandit par **paquets** — un cluster sur FAT, où
+le pilote prolonge la chaîne à chaque écriture, 64 Ko sur NTFS, ce que le
+gestionnaire de cache vide d'un coup. La question est posée programme par
+programme (`FileSpec.sizeKnownInAdvance`), jamais par taux. Sur FAT elle ne
+change rien tant qu'un programme écrit seul — cluster par cluster au curseur,
+il prend ce qu'il aurait pris d'un coup —, et c'est sur NTFS qu'elle se voit :
+chaque paquet va dans le trou le plus juste pour lui, et la traîne des fichiers
+en 2 à 16 morceaux passe de 1,9 à 10,3 % des fichiers fragmentables sur
+`secretaire-2003`. Plusieurs programmes qui écrivent **en même temps** se
+disputeraient le curseur et s'entrelaceraient ; le simulateur sait le faire,
+mais ne le fait pas : il faudrait savoir à quel débit et à quelle heure chacun
+écrit, ce que la chronologie ignore.
+
+**Les répertoires existent.** Sur FAT un répertoire est un fichier qui porte
+les entrées de 32 octets de ses enfants — plus une par tranche de treize
+caractères d'un nom long sous VFAT — et grandit d'un cluster quand elles
+débordent, au curseur, donc loin de ses premiers clusters ; il ne raccourcit
+jamais. Sur NTFS, son index tient dans son enregistrement de MFT tant qu'il est
+petit, puis prend des tampons de 4 Ko. Un répertoire naît au premier fichier
+qu'on y écrit. Démarrer un disque, c'est lire le chemin de chaque fichier
+ouvert, répertoire par répertoire depuis la racine, là où ils sont.
+
 **Les trois stratégies.** MS-DOS sert le premier cluster libre à partir du
 début du volume, à chaque écriture : les trous se rebouchent aussitôt, le début
 du disque devient un gruyère dense et les fichiers récents sont hachés. VFAT
@@ -355,19 +388,25 @@ poste DOS de 1993 après deux ans en a 70 %.
 
 **Trois cibles ne sont pas atteintes**, et les tests le disent plutôt que de
 l'arrondir : `dev-1996` donne 8 % de fichiers fragmentés au lieu des 35 à 50 %
-visés, `secretaire-1999` 6 % au lieu de 15 à 25 %, et `famille-2003` 11 % au
+visés, `secretaire-1999` 6 % au lieu de 15 à 25 %, et `famille-2003` 13 % au
 lieu de 40 à 60 %. Le premier écart vient de la population : trois mille des cinq
 mille fichiers du volume viennent d'une installation écrite d'affilée sur un
 disque vierge, si bien que le taux global plafonne — alors que les fichiers de
-sortie sont bel et bien en 423 morceaux. Le troisième vient de NTFS lui-même,
+sortie sont bel et bien en 355 morceaux. Le troisième vient de NTFS lui-même,
 qui place encore bien à 95 % de remplissage. Le deuxième était atteint jusqu'à
 ce que le hint système cesse de renvoyer les DLL au cluster 0 sur FAT32 : ce
-mécanisme-là n'a jamais existé, et il fabriquait de la fragmentation. Ce qui
-manque aux trois est le même — un fichier n'est ici fragmenté que si l'espace
-libre l'était déjà, faute d'allocation incrémentale et d'entrelacement.
+mécanisme-là n'a jamais existé, et il fabriquait de la fragmentation.
+L'écriture par paquets ne les a pas refermées : elle ne change rien sur FAT, et
+peu sur NTFS. L'entrelacement de plusieurs programmes, essayé, portait
+`secretaire-1999` à 32 % — au-dessus de sa fourchette — et mettait `dev-1999` en
+437 802 morceaux ; il supposait tous les programmes d'une journée actifs
+ensemble et au même débit, et n'est pas retenu.
 
 **Coût.** Le volume le plus lourd — un Vista de 250 Go, trois ans d'historique,
-2,7 millions d'événements — se génère en 1,4 s en release, dont 0,4 s pour les noms uniques. Il passe de longues
+2,7 millions d'événements — se génère en 1,8 s en release, dont 0,4 s pour les
+noms uniques. Les deux disques des démos, fabriqués au lancement, prennent 51
+et 33 ms. L'écriture par paquets coûte surtout sur les NTFS pleins, où chaque
+paquet de 64 Ko cherche son trou : `famille-2003` passe de 0,6 à 3,2 s. Il passe de longues
 périodes plein hors de sa zone MFT, où chaque écriture va chercher des trous
 épars sur tout le volume : c'est un index à deux niveaux au-dessus de la bitmap
 qui saute les régions pleines, sans rien changer à la place trouvée. La génération tourne
@@ -401,8 +440,8 @@ suite de lectures collées : entre deux fichiers, la machine décompresse,
 relocalise, initialise, et le disque attend. Ce temps de calcul est le
 **plancher** d'un démarrage — deux constantes par époque, calées pour que le
 total tombe sur les durées d'alors — et tout ce qui dépasse ce plancher est du
-disque. Sur les vingt profils il pèse entre 34 et 71 % du total, et les vingt
-démarrages tiennent entre 29,1 et 69,0 s.
+disque. Sur les vingt profils il pèse entre 34 et 70 % du total, et les vingt
+démarrages tiennent entre 29,4 et 69,4 s.
 
 Ces constantes ont été recalées une fois, au chantier 22, et elles vivent dans
 une seule table (`ThinkModel.boot`). Le premier calage absorbait, sans le
@@ -414,14 +453,14 @@ n'existent pas encore, le rouvriront.
 
 | | système | fichiers | lu | durée | dont calcul | témoin |
 |---|---|---|---|---|---|---|
-| `gamer-1993` | MS-DOS 6.22 et Windows 3.1 | 96 | 7 Mo | 29,1 s | 34 % | +1 % |
+| `gamer-1993` | MS-DOS 6.22 et Windows 3.1 | 95 | 7 Mo | 29,4 s | 34 % | +1 % |
 | `dev-1993` | MS-DOS 6.22 et Windows 3.1 | 121 | 15 Mo | 41,8 s | 41 % | +0 % |
-| `gamer-1996` | Windows 95 | 346 | 36 Mo | 45,3 s | 47 % | +5 % |
-| `famille-1999` | Windows 98 SE | 618 | 110 Mo | 63,0 s | 56 % | +6 % |
-| `secretaire-1999` | Windows 98 SE | 534 | 97 Mo | 56,7 s | 54 % | +8 % |
-| `gamer-2003` | Windows XP | 912 | 226 Mo | 69,0 s | 71 % | −0 % |
-| `dev-2003` | Windows XP | 386 | 171 Mo | 50,1 s | 69 % | −1 % |
-| `famille-2007` | Windows Vista | 517 | 114 Mo | 38,0 s | 55 % | +5 % |
+| `gamer-1996` | Windows 95 | 346 | 36 Mo | 45,2 s | 48 % | +5 % |
+| `famille-1999` | Windows 98 SE | 618 | 110 Mo | 63,8 s | 55 % | +6 % |
+| `secretaire-1999` | Windows 98 SE | 534 | 97 Mo | 57,6 s | 53 % | +8 % |
+| `gamer-2003` | Windows XP | 912 | 226 Mo | 69,4 s | 70 % | −0 % |
+| `dev-2003` | Windows XP | 386 | 172 Mo | 50,4 s | 68 % | −2 % |
+| `famille-2007` | Windows Vista | 517 | 115 Mo | 39,1 s | 53 % | +3 % |
 
 **Le témoin** est la colonne qui compte. C'est le même contenu posé comme au
 premier jour — mêmes fichiers, mêmes tailles, chacun d'un seul tenant, tassé
@@ -430,7 +469,7 @@ place change. Sans lui une durée de démarrage ne dit rien : on ne saurait pas 
 qui, dedans, vient du disque.
 
 Et ce qu'il dit est inattendu deux fois. **Sur les volumes FAT, la
-fragmentation ne coûte presque rien à un démarrage** : de 0 à 10 %. La raison
+fragmentation ne coûte presque rien à un démarrage** : de 0 à 9 %. La raison
 tient en une phrase — un démarrage lit les fichiers qu'un installeur a écrits
 d'affilée sur un disque encore vide, c'est-à-dire la population la **moins**
 fragmentée du volume. Les fichiers en morceaux d'un `dev-1996`, ce sont ses
@@ -441,7 +480,7 @@ la même conclusion : défragmenter n'accélérait pas le démarrage, et c'est u
 rangement à part — `layout.ini` — qui s'en chargeait.
 
 **Sur NTFS, le témoin ne gagne pas toujours.** Sur les huit volumes, l'écart va
-de −1 % (`dev-2003`) à +6 % (`famille-2003`), et trois volumes
+de −2 % (`dev-2003`) à +3 %, et trois volumes
 démarrent aussi vite ou plus vite que leur témoin. NTFS choisit le trou qui
 convient plutôt que le premier venu, et sa disposition réelle peut battre un
 rangement naïf qui empile tout dans l'ordre du répertoire. Le témoin garde donc
@@ -513,11 +552,11 @@ de l'attente ; sur CD et DVD, ce sont la décompression et les pauses.
 
 | | source | posé | archives | redémarrages | durée |
 |---|---|---|---:|---:|---:|
-| `gamer-1993` | 21 disquettes | 373 fichiers, 39 Mo | 0 | 2 | 12 min 07 |
+| `gamer-1993` | 21 disquettes | 373 fichiers, 39 Mo | 0 | 2 | 12 min 09 |
 | `secretaire-1996` | CD-ROM 8x | 1 008 fichiers, 222 Mo | 46 | 3 | 7 min 11 |
 | `famille-1999` | CD-ROM 32x | 2 412 fichiers, 574 Mo | 77 | 5 | 8 min 59 |
-| `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 8 min 39 |
-| `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 20 min 49 |
+| `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 8 min 41 |
+| `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 20 min 52 |
 
 ### Revivre un disque généré
 
@@ -551,13 +590,13 @@ de 1999 durerait la nuit.
 
 | journée | activités | lu / écrit | durée |
 |---|---|---|---:|
-| `dev-1996`, jour 20 | navigation, compilation, archivage | 209 / 43 Mo | 5 min 40 |
-| `dev-1996`, jour 300 | idem | 225 / 77 Mo | 7 min 04 |
-| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 199 / 17 Mo | 1 min 38 |
-| `gamer-1999`, jour 365 | navigation, jeu | 532 / 6 Mo | 2 min 03 |
+| `dev-1996`, jour 20 | navigation, compilation, archivage | 210 / 43 Mo | 5 min 41 |
+| `dev-1996`, jour 300 | idem | 225 / 77 Mo | 7 min 00 |
+| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 200 / 18 Mo | 1 min 39 |
+| `gamer-1999`, jour 365 | navigation, jeu | 531 / 6 Mo | 2 min 03 |
 
 **L'usure s'entend.** Sur `dev-1996`, la même journée de travail passe d'un seek
-moyen de 275 cylindres au jour 20 à 617 au jour 300 : le disque fait la même
+moyen de 274 cylindres au jour 20 à 383 au jour 300 : le disque fait la même
 chose, il le fait de plus en plus loin.
 
 ### Défragmenter un disque généré
@@ -611,29 +650,29 @@ outils d'époque et les deux écrits ici ne sont proposés que sur leur format, 
 les déplacements par blocs pleins s'y activent pour XP, UltraDefrag et JkDefrag.
 
 L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
-`famille-2007` tasse trois cents gigaoctets par tampons de 256 Ko : trente-deux
-millions de requêtes, cent douze heures de passe simulée, pour ranger
-562 fichiers sur 12 229. La passe de XP sur le même volume tient en **67 261
-requêtes et 20 min 43**.
+`famille-2007` tasse trois cents gigaoctets par tampons de 256 Ko : quarante-deux
+millions de requêtes, cent quarante-deux heures de passe simulée, pour ranger
+870 fichiers sur 12 247. La passe de XP sur le même volume tient en **90 398
+requêtes et 26 min 52**.
 
 | scénario NTFS     | plein | requêtes | durée      | déplacés | fragmentés avant → après | morceaux avant → après |
 |-------------------|------:|---------:|-----------:|---------:|--------------------------|------------------------|
-| `gamer-2003`      |   9 % |       20 |        8 s |        0 | 0 → 0                    | 0 → 0                  |
-| `secretaire-2003` |  94 % |    5 494 |   1 min 35 |      201 | 322 → 121                | 26 611 → 24 110        |
-| `famille-2003`    |  95 % |   21 720 |   5 min 22 |      341 | 382 → 41                 | 57 562 → 47 137        |
-| `dev-2003`        |  95 % |   20 921 |   5 min 38 |       33 | 40 → 7                   | 14 052 → 3 792         |
-| `secretaire-2007` |  88 % |   28 379 |  10 min 42 |       47 | 47 → **0**               | 11 808 → **0**         |
-| `famille-2007`    |  93 % |   67 261 |  20 min 43 |      407 | 562 → 155                | 187 793 → 158 761      |
-| `gamer-2007`      |  90 % |   50 155 |  18 min 11 |      229 | 334 → 105                | 63 403 → 42 363        |
-| `dev-2007`        |  86 % |  294 536 |     1 h 16 |      271 | 271 → **0**              | 135 927 → **0**        |
+| `gamer-2003`      |   9 % |      223 |        9 s |       10 | 10 → **0**               | 89 → **0**             |
+| `secretaire-2003` |  94 % |   12 836 |   2 min 55 |      888 | 1 181 → 293              | 38 866 → 33 425        |
+| `famille-2003`    |  95 % |   31 924 |   6 min 23 |      513 | 560 → 47                 | 51 090 → 35 792        |
+| `dev-2003`        |  95 % |   20 915 |   5 min 17 |      108 | 123 → 15                 | 11 299 → 1 339         |
+| `secretaire-2007` |  88 % |   41 761 |  14 min 51 |       76 | 76 → **0**               | 17 548 → **0**         |
+| `famille-2007`    |  93 % |   90 398 |  26 min 52 |      713 | 870 → 157                | 173 194 → 134 532      |
+| `gamer-2007`      |  90 % |   77 237 |  26 min 09 |      634 | 762 → 128                | 60 894 → 28 362        |
+| `dev-2007`        |  86 % |  292 180 |     1 h 17 |      254 | 254 → **0**              | 135 086 → **0**        |
 
 La colonne qui compte est la dernière : cet outil-là ne déloge personne, donc
 il échoue quand aucun trou n'est à la taille, et il le dit dans son rapport.
 Et **le remplissage ne suffit pas à le prédire**. `dev-2003` et
 `secretaire-2003` sont deux volumes de 40 Go remplis à 94-95 % : le premier
-répare 33 fichiers sur 40, le second 201 sur 322. La taille de ce qu'il y a à
-réparer ne l'explique pas non plus — 33 Mo par fichier déplacé chez le
-développeur, 3,5 Mo chez la secrétaire. Ce qui sépare les deux volumes n'est pas établi : il
+répare 108 fichiers sur 123, le second 888 sur 1 181. La taille de ce qu'il y a à
+réparer ne l'explique pas non plus — 20 Mo par fichier déplacé chez le
+développeur, 0,7 Mo chez la secrétaire. Ce qui sépare les deux volumes n'est pas établi : il
 faudrait compter les échecs par taille, et regarder où tombent les trous.
 
 #### Recoller au lieu de déplacer
@@ -651,32 +690,32 @@ sujet : un fichier ramené de quarante morceaux à deux y reste « fragmenté »
 
 | scénario NTFS     | morceaux restants, XP | UltraDefrag |  requêtes XP → UD |    durée XP → UD |
 |-------------------|----------------------:|------------:|------------------:|-----------------:|
-| `secretaire-2003` |                24 110 |      13 088 |    5 494 → 28 747 | 1 min 35 → 6 min 56 |
-| `famille-2003`    |                47 137 |      23 813 |   21 720 → 69 839 | 5 min 22 → 17 min 59 |
-| `dev-2003`        |                 3 792 |         206 |   20 921 → 28 311 | 5 min 38 → 7 min 32 |
-| `secretaire-2007` |                     0 |           0 |   28 379 → 26 041 | 10 min 42 → 10 min 52 |
-| `famille-2007`    |               158 761 |       1 675 |  67 261 → 381 519 | 20 min 43 → 1 h 33 |
-| `gamer-2007`      |                42 363 |         591 |  50 155 → 129 669 | 18 min 11 → 39 min 18 |
-| `dev-2007`        |                     0 |          54 | 294 536 → 280 550 |  1 h 16 → 1 h 26 |
+| `secretaire-2003` |                33 425 |      28 598 |   12 836 → 23 665 | 2 min 55 → 5 min 26 |
+| `famille-2003`    |                35 792 |      27 513 |   31 924 → 49 170 | 6 min 23 → 10 min 52 |
+| `dev-2003`        |                 1 339 |          67 |   20 915 → 23 742 | 5 min 17 → 6 min 28 |
+| `secretaire-2007` |                     0 |           0 |   41 761 → 38 489 | 14 min 51 → 15 min 12 |
+| `famille-2007`    |               134 532 |       1 634 |  90 398 → 351 499 | 26 min 52 → 1 h 26 |
+| `gamer-2007`      |                28 362 |         491 |  77 237 → 124 686 | 26 min 09 → 39 min 06 |
+| `dev-2007`        |                     0 |          58 | 292 180 → 279 159 |  1 h 17 → 1 h 25 |
 
-Sur `famille-2007`, les 158 761 morceaux que XP laisse derrière lui tombent à
-**1 675** — 99 % de moins — pendant que le nombre de fichiers fragmentés, lui,
-reste à 155. Le prix est près de six fois plus de requêtes et quatre fois et
-demie plus de temps.
+Sur `famille-2007`, les 134 532 morceaux que XP laisse derrière lui tombent à
+**1 634** — 99 % de moins — pendant que le nombre de fichiers fragmentés, lui,
+reste à 157. Le prix est près de quatre fois plus de requêtes et trois fois plus
+de temps.
 
 Sur NTFS, la passe ne réutilise pas dans un tour l'espace qu'elle vient de
 libérer : Windows tient ces clusters pour temporairement alloués jusqu'au
 prochain point de contrôle, et UltraDefrag ne relit sa liste de trous qu'en tête
 de tour. Ses destinations sont donc plus lointaines — le seek moyen de
-`dev-2007` passe de 24 642 à 66 891 cylindres — et un morceau inversé compte
+`dev-2007` passe de 30 614 à 66 122 cylindres — et un morceau inversé compte
 pour deux : la tête le lit dans l'ordre du fichier.
 
 Cela ne fait pas d'UltraDefrag le meilleur outil partout. Les deux volumes que
 XP nettoie entièrement, il les nettoie aussi, ni mieux ni plus vite. Et sur un
 volume FAT de 1996, où presque aucun fichier n'atteint 40 Mo, la défragmentation
-partielle n'a rien à mordre : sur `dev-1996`, la passe tient en 32 s contre
-13 min 42 à l'outil de 95, parce qu'elle n'évacue personne. Elle laisse 1 961
-morceaux — et l'outil de 95, sur ce volume-là, en laisse 2 496 : à 95 % de
+partielle n'a rien à mordre : sur `dev-1996`, la passe tient en 42 s contre
+21 min 54 à l'outil de 95, parce qu'elle n'évacue personne. Elle laisse 1 444
+morceaux — et l'outil de 95, sur ce volume-là, en laisse 2 218 : à 93 % de
 remplissage, il ne trouve plus où évacuer non plus, et saute les places qu'il
 ne peut pas libérer.
 
@@ -696,11 +735,11 @@ laisse plus de morceaux derrière lui dès que les trous manquent :
 
 | scénario | plein | durée, 95 → JkDefrag | évacuations, 95 | morceaux restants, 95 → JkDefrag |
 |---|---:|---:|---:|---:|
-| `dev-1993` | 69 % | 29 min 24 → 5 min 15 | 5 008 | 0 → 0 |
-| `dev-1996` | 95 % | 13 min 42 → 4 min 04 | 656 | 2 496 → 838 |
-| `secretaire-1999` | 87 % | 4 h 37 → 9 min 07 | 9 145 | 4 → 1 229 |
-| `famille-1999` | 96 % | 5 h 52 → 14 min 29 | 8 661 | 1 395 → 3 323 |
-| `gamer-1996` | 99 % | 8 s → 8 s | 3 | 1 536 → 1 534 |
+| `dev-1993` | 69 % | 31 min 46 → 5 min 10 | 4 997 | 0 → 0 |
+| `dev-1996` | 93 % | 21 min 54 → 5 min 07 | 1 733 | 2 218 → 315 |
+| `secretaire-1999` | 87 % | 4 h 33 → 9 min 09 | 10 273 | 4 → 1 246 |
+| `famille-1999` | 96 % | 5 h 16 → 15 min 26 | 13 873 | 27 → 2 849 |
+| `gamer-1996` | 99 % | 8 s → 9 s | 3 | 1 541 → 1 541 |
 
 À 99 %, il ne fait presque rien : un outil qui n'évacue personne a besoin de
 trous. **Et l'outil de 95 non plus** : sur `gamer-1996`, dont les quelques centaines de
@@ -710,18 +749,18 @@ réelle de l'algorithme de 1995, et c'est pourquoi l'outil demandait de faire de
 la place avant de le lancer.
 
 Sur NTFS, les morceaux restants restent du même ordre de grandeur qu'avec
-UltraDefrag, mieux sur quatre volumes, moins bien sur un. Mais la passe range
+UltraDefrag, mieux sur deux volumes, un peu moins bien sur trois. Mais la passe range
 tout le volume et déplace bien plus que les seuls fichiers cassés — 3,9 Go sur
 `gamer-2003`, plein à 9 % et sans un fichier en morceaux :
 
 | scénario | plein | morceaux restants, XP | UltraDefrag | JkDefrag | durée, XP → JkDefrag | Go déplacés, XP → JkDefrag |
 |---|---:|---:|---:|---:|---:|---:|
-| `secretaire-2003` | 94 % | 24 110 | 13 088 | 6 953 | 1 min 35 → 21 min 34 | 0,7 → 4,6 |
-| `famille-2003` | 95 % | 47 137 | 23 813 | 2 551 | 5 min 22 → 30 min 09 | 1,2 → 9,9 |
-| `dev-2003` | 95 % | 3 792 | 206 | 40 | 5 min 38 → 12 min 11 | 1,1 → 3,3 |
-| `gamer-2003` | 9 % | 0 | 0 | 0 | 8 s → 6 min 05 | 0,0 → 3,9 |
-| `famille-2007` | 93 % | 158 761 | 1 675 | 2 292 | 20 min 43 → 2 h 05 | 19,6 → 103,2 |
-| `gamer-2007` | 90 % | 42 363 | 591 | 573 | 18 min 11 → 1 h 19 | 21,3 → 95,5 |
+| `secretaire-2003` | 94 % | 33 425 | 28 598 | 8 031 | 2 min 55 → 26 min 36 | 0,6 → 4,7 |
+| `famille-2003` | 95 % | 35 792 | 27 513 | 3 458 | 6 min 23 → 27 min 45 | 1,4 → 10,4 |
+| `dev-2003` | 95 % | 1 339 | 67 | 244 | 5 min 17 → 10 min 36 | 2,1 → 3,6 |
+| `gamer-2003` | 9 % | 0 | 0 | 0 | 9 s → 6 min 06 | 0,0 → 3,9 |
+| `famille-2007` | 93 % | 134 532 | 1 634 | 2 184 | 26 min 52 → 1 h 45 | 26,8 → 77,6 |
+| `gamer-2007` | 90 % | 28 362 | 491 | 510 | 26 min 09 → 1 h 15 | 28,5 → 87,0 |
 
 La zone MFT que voient ces passes est la zone **courante**, réduite de moitié
 chaque fois que le reste du volume s'est rempli, et non la réserve d'origine :
@@ -749,29 +788,29 @@ routine**, sans défragmentation devant :
   qui occupe la place du suivant. C'est le seul mode de JkDefrag qui déloge.
 
 Un tri est long, et il déplace plus que le volume : ce qu'on évacue redescend
-quand vient son tour. Sur `famille-2007`, 402 Go déplacés pour 320, 194 548
-évacuations, 7 h 28 de passe contre 2 h 05 pour le mode 2. Sur un volume plein,
+quand vient son tour. Sur `famille-2007`, 405 Go déplacés pour 320, 173 778
+évacuations, 7 h 13 de passe contre 1 h 45 pour le mode 2. Sur un volume plein,
 ce qui ne trouve pas de place est posé en morceaux : `gamer-2007` en sort avec
-28 528 morceaux contre 573. Sur `secretaire-1999`, il en laisse 23 contre
-1 229.
+30 556 morceaux contre 510. Sur `secretaire-1999`, il en laisse 23 contre
+1 246.
 
 Le catalogue ne date que les écritures, au jour près : le dernier accès y est la
 dernière écriture, et à jour égal c'est le chemin qui départage — unique, puisque
 le générateur ne fait jamais coexister deux fichiers au même chemin.
 
-Ces passes FAT-là sont longues : de 14 min (`dev-1996`) à 6 h 16 (`dev-1999`)
+Ces passes FAT-là sont longues : de 22 min (`dev-1996`) à 5 h 32 (`dev-1999`)
 sur les dix volumes où l'outil de 95 a de quoi travailler. C'est la vraie durée
 d'une passe d'époque sur un volume d'époque, et c'est pourquoi la démo de
 défragmentation a pris un autre outil que celui de 95 — 5 min 46 sur `dev-1993`
-au lieu de 29 min 24, pour le même résultat. Ce n'est pas la taille du volume
+au lieu de 31 min 46, pour le même résultat. Ce n'est pas la taille du volume
 qui la fixe : `secretaire-1993`, le plus petit disque de la galerie, y passe
-1 h 46 — 170 Mo dont 69 % des fichiers fragmentables sont en morceaux, lus à
-1,8 Mo/s — quand `dev-1996`, six fois plus gros, en prend 14.
+1 h 48 — 170 Mo dont 70 % des fichiers fragmentables sont en morceaux, lus à
+1,8 Mo/s — quand `dev-1996`, six fois plus gros, en prend 22.
 
 Ce qui la fixe, c'est le **remplissage**. Un volume plein n'a plus où évacuer :
-à 69 % de remplissage la passe de `dev-1993` déplace 388 Mo pour ranger un
-volume de 220 Mo, à 93 % `dev-1999` en déplace 63 609 pour 6 710 — neuf fois son propre
-contenu, en 20 111 évacuations. C'est ce va-et-vient que l'on entend, et c'est
+à 69 % de remplissage la passe de `dev-1993` déplace 416 Mo pour ranger un
+volume de 220 Mo, à 93 % `dev-1999` en déplace 54 709 pour 6 710 — huit fois son propre
+contenu, en 18 922 évacuations. C'est ce va-et-vient que l'on entend, et c'est
 pour cela que l'outil d'époque demandait de faire de la place avant de le
 lancer.
 
@@ -779,9 +818,9 @@ lancer.
 
 Sur FAT, les outils simulés se partagent deux défauts. Windows 95 range
 parfaitement, mais dans un autre ordre que celui du volume : il déplace jusqu'à
-neuf fois le contenu du disque. JkDefrag et UltraDefrag ne délogent personne, et
+huit fois le contenu du disque. JkDefrag et UltraDefrag ne délogent personne, et
 n'ont plus rien à faire quand les trous manquent — à 99 %, ils ne touchent pas
-un des 399 fichiers cassés de `gamer-1996`, et l'outil de 95 non plus.
+un des 407 fichiers cassés de `gamer-1996`, et l'outil de 95 non plus.
 
 Le **tassage à la frontière** part d'une règle : l'ordre d'arrivée est l'ordre
 actuel. Une frontière balaie le volume depuis son début, et tout ce qui est
@@ -804,30 +843,32 @@ passe laisse un volume cohérent.
 
 | scénario | plein | durée, 95 → JkDefrag → frontière | morceaux restants, 95 / JkDefrag / frontière | trous libres, 95 / JkDefrag / frontière |
 |---|---:|---:|---:|---:|
-| `dev-1993` | 69 % | 29 min 24 → 5 min 15 → **5 min 46** | 0 / 0 / **0** | 2 / 8 / **1** |
-| `secretaire-1993` | 88 % | 1 h 46 → 9 min 03 → **15 min 24** | 0 / 0 / **0** | 2 / 149 / **2** |
-| `poweruser-1993` | 86 % | 39 min 05 → 5 min 51 → **11 min 35** | 0 / 65 / **0** | 2 / 55 / **1** |
-| `gamer-1993` | 99 % | 10 s → 10 s → **32 min 02** | 988 / 977 / **0** | 6 / 13 / **1** |
-| `dev-1996` | 95 % | 13 min 42 → 4 min 04 → **14 min 50** | 2 496 / 838 / **339** | 166 / 218 / **62** |
-| `famille-1996` | 89 % | 58 min 09 → 6 min 24 → **8 min 32** | 177 / 186 / **177** | 165 / 222 / **89** |
-| `secretaire-1996` | 76 % | 42 min 19 → 6 min 30 → **5 min 58** | 2 / 36 / **2** | 3 / 143 / **1** |
-| `gamer-1996` | 99 % | 8 s → 8 s → **51 min 54** | 1 536 / 1 534 / **4** | 2 / 2 / **1** |
-| `dev-1999` | 93 % | 6 h 16 → 14 min 13 → **37 min 48** | 1 723 / 2 258 / **3** | 255 / 1 477 / **1** |
-| `famille-1999` | 96 % | 5 h 52 → 14 min 29 → **38 min 38** | 1 395 / 3 323 / **53** | 511 / 2 247 / **9** |
-| `secretaire-1999` | 87 % | 4 h 37 → 9 min 07 → **18 min 18** | 4 / 1 229 / **4** | 5 / 1 041 / **2** |
-| `gamer-1999` | 97 % | 22 min 27 → 7 min 36 → **50 min 21** | 6 743 / 1 770 / **112** | 787 / 850 / **11** |
+| `dev-1993` | 69 % | 31 min 46 → 5 min 10 → **5 min 46** | 0 / 0 / **0** | 2 / 6 / **1** |
+| `secretaire-1993` | 88 % | 1 h 48 → 9 min 16 → **16 min 53** | 0 / 0 / **0** | 2 / 171 / **1** |
+| `poweruser-1993` | 86 % | 40 min 08 → 6 min 08 → **11 min 34** | 0 / 64 / **0** | 1 / 50 / **1** |
+| `gamer-1993` | 100 % | 8 s → 8 s → **8 s** | 990 / 990 / **990** | 0 / 0 / **0** |
+| `dev-1996` | 93 % | 21 min 54 → 5 min 07 → **19 min 18** | 2 218 / 315 / **66** | 185 / 138 / **12** |
+| `famille-1996` | 89 % | 58 min 50 → 6 min 40 → **9 min 18** | 132 / 152 / **132** | 133 / 265 / **89** |
+| `secretaire-1996` | 76 % | 40 min 09 → 6 min 32 → **6 min 04** | 6 / 39 / **6** | 6 / 140 / **1** |
+| `gamer-1996` | 99 % | 8 s → 9 s → **57 min 11** | 1 541 / 1 541 / **4** | 2 / 1 / **1** |
+| `dev-1999` | 93 % | 5 h 32 → 14 min 22 → **42 min 55** | 1 717 / 1 901 / **3** | 427 / 1 241 / **1** |
+| `famille-1999` | 96 % | 5 h 16 → 15 min 26 → **36 min 34** | 27 / 2 849 / **27** | 28 / 1 937 / **1** |
+| `secretaire-1999` | 87 % | 4 h 33 → 9 min 09 → **18 min 30** | 4 / 1 246 / **4** | 5 / 1 072 / **1** |
+| `gamer-1999` | 97 % | 27 min 19 → 7 min 35 → **53 min 49** | 6 832 / 1 801 / **91** | 748 / 864 / **4** |
 
 Les morceaux qui restent sont **tous ceux du fichier d'échange**, que personne
 ne déplace : aucun fichier déplaçable ne sort de la passe en morceaux. Les trous
-qui restent sont entre ces morceaux — sur `dev-1996`, 300 morceaux ne laissent
-plus que 2 trous.
+qui restent sont entre ces morceaux — sur `dev-1996`, 66 morceaux ne laissent
+plus que 12 trous. Une exception : `gamer-1993`, plein à 100 % depuis que ses
+répertoires ont pris ses derniers clusters libres. Sans les deux clusters dont
+la navette a besoin, la passe ne peut rien, et elle le rend tel quel.
 
-Sur les douze volumes, la passe dure 4 h 51 au total contre 21 h 59 pour
-Windows 95, et elle déplace cinq fois moins de données (34,2 Go contre 189).
-Elle reste trois fois plus longue que JkDefrag (1 h 23), qui ne fait pas le même
-travail : sur les quatre volumes de 1999, il laisse entre 1 200 et 3 300 morceaux
-et de 850 à 2 250 trous. Et c'est le seul des trois à ranger les deux volumes
-pleins à 99 %, où l'algorithme de 1995 ne trouve plus où évacuer et rend le
+Sur les douze volumes, la passe dure 4 h 38 au total contre 20 h 52 pour
+Windows 95, et elle déplace cinq fois moins de données (34,8 Go contre 172,5).
+Elle reste trois fois plus longue que JkDefrag (1 h 26), qui ne fait pas le même
+travail : sur les quatre volumes de 1999, il laisse entre 1 200 et 2 850 morceaux
+et de 860 à 1 940 trous. Et c'est le seul des trois à ranger `gamer-1996`, plein
+à 99 %, où l'algorithme de 1995 ne trouve plus où évacuer et rend le
 volume tel quel : là, tout passe par une navette de deux clusters, et chaque
 tronçon se paie d'une écriture des tables.
 
@@ -835,10 +876,9 @@ tronçon se paie d'une écriture des tables.
 
 Sur les volumes NTFS de 2003 et 2007, la place ne manque plus — 2 à 33 Go
 libres — mais la taille : le tassage à la frontière y déplace tout le contenu
-du volume, jusqu'à 328 Go et dix heures de passe. Et la fragmentation y est faite
-de miettes. Sur `famille-2007`, 562 fichiers cassés pèsent 249 Go en 188 000
-morceaux, dont 187 000 font moins de 4 Mo et ne pèsent que 12 Go. Chacun coûte
-pourtant une lecture : c'est leur nombre, pas leur poids, qui fait la durée.
+du volume, jusqu'à 488 Go et dix-neuf heures de passe. Et la fragmentation y est
+faite de miettes : sur `famille-2007`, 870 fichiers cassés en 173 194 morceaux.
+Chacun coûte une lecture : c'est leur nombre, pas leur poids, qui fait la durée.
 
 Le **recollage économe** ne déplace donc que ce qui coûte peu. Une suite de
 morceaux de moins de 4 Mo est recopiée d'un seul tenant, contre le gros morceau
@@ -859,23 +899,23 @@ bras par morceau. La zone MFT n'est jamais une destination.
 
 | scénario | plein | durée, XP / UltraDefrag / JkDefrag / recollage | morceaux restants | trous libres |
 |---|---:|---:|---:|---:|
-| `dev-2003` | 95 % | 5 min 38 / 7 min 32 / 12 min 11 / **3 min 11** | 3 792 / 206 / 40 / **146** | 3 610 / 1 035 / 439 / **130** |
-| `famille-2003` | 95 % | 5 min 22 / 17 min 59 / 30 min 09 / **13 min 09** | 47 137 / 23 813 / 2 551 / **1 167** | 9 469 / 16 024 / 1 201 / **300** |
-| `secretaire-2003` | 94 % | 1 min 35 / 6 min 56 / 21 min 34 / **13 min 52** | 24 110 / 13 088 / 6 953 / **2 665** | 2 809 / 7 327 / 3 601 / **620** |
-| `gamer-2003` | 9 % | 8 s / 8 s / 6 min 05 / **8 s** | 0 / 0 / 0 / **0** | 8 / 8 / 16 / **7** |
-| `dev-2007` | 86 % | 1 h 16 / 1 h 26 / 2 h 07 / **10 min 30** | 0 / 54 / 0 / **1 059** | 5 580 / 5 621 / 240 / **339** |
-| `famille-2007` | 93 % | 20 min 43 / 1 h 33 / 2 h 05 / **22 min 23** | 158 761 / 1 675 / 2 292 / **1 912** | 27 078 / 7 009 / 1 637 / **570** |
-| `gamer-2007` | 90 % | 18 min 11 / 39 min 18 / 1 h 19 / **17 min 48** | 42 363 / 591 / 573 / **1 567** | 14 147 / 7 155 / 871 / **626** |
-| `secretaire-2007` | 88 % | 10 min 42 / 10 min 52 / 46 min 41 / **3 min 35** | 0 / 0 / 0 / **57** | 3 225 / 3 223 / 192 / **920** |
+| `dev-2003` | 95 % | 5 min 17 / 6 min 28 / 10 min 36 / **3 min 20** | 1 339 / 67 / 244 / **228** | 1 868 / 1 013 / 442 / **115** |
+| `famille-2003` | 95 % | 6 min 23 / 10 min 52 / 27 min 45 / **17 min 01** | 35 792 / 27 513 / 3 458 / **1 803** | 10 497 / 12 838 / 2 067 / **418** |
+| `secretaire-2003` | 94 % | 2 min 55 / 5 min 26 / 26 min 36 / **23 min 28** | 33 425 / 28 598 / 8 031 / **2 327** | 5 651 / 8 479 / 4 030 / **636** |
+| `gamer-2003` | 9 % | 9 s / 9 s / 6 min 06 / **12 s** | 0 / 0 / 0 / **0** | 98 / 97 / 22 / **33** |
+| `dev-2007` | 86 % | 1 h 17 / 1 h 25 / 2 h 05 / **11 min 44** | 0 / 58 / 0 / **981** | 5 728 / 5 762 / 252 / **257** |
+| `famille-2007` | 93 % | 26 min 52 / 1 h 26 / 1 h 45 / **25 min 35** | 134 532 / 1 634 / 2 184 / **1 978** | 32 285 / 7 236 / 1 446 / **535** |
+| `gamer-2007` | 90 % | 26 min 09 / 39 min 06 / 1 h 15 / **19 min 37** | 28 362 / 491 / 510 / **1 487** | 13 512 / 7 246 / 835 / **657** |
+| `secretaire-2007` | 88 % | 14 min 51 / 15 min 12 / 53 min 10 / **4 min 19** | 0 / 0 / 0 / **87** | 3 265 / 3 289 / 180 / **925** |
 
-Sur les huit volumes, la passe dure 1 h 24, contre 2 h 18 pour XP, 4 h 22 pour
-UltraDefrag et 7 h 28 pour JkDefrag, et laisse moins de morceaux (8 573) et
-moins de trous (3 512) que chacun d'eux. L'écart de durée avec XP et UltraDefrag
+Sur les huit volumes, la passe dure 1 h 45, contre 2 h 40 pour XP, 4 h 09 pour
+UltraDefrag et 7 h 10 pour JkDefrag, et laisse moins de morceaux (8 891) et
+moins de trous (3 576) que chacun d'eux. L'écart de durée avec XP et UltraDefrag
 tient surtout aux blocs pleins : donnés à ces outils (`FULL_BLOCKS=1`), ils les
-ramènent à 1 h 12 et 1 h 28, sans rien changer à ce qu'ils laissent. Ce que la passe apporte en
+ramènent à 1 h 27 et 1 h 38, sans rien changer à ce qu'ils laissent. Ce que la passe apporte en
 propre, c'est la qualité à durée égale. Elle ne recopie jamais un fichier
-entier : sur `dev-2007`, où un trou de 22 Go accueille tout, XP et JkDefrag
-finissent sans un morceau, et elle en laisse 1 059.
+entier : sur `dev-2007`, où un grand trou accueille tout, XP et JkDefrag
+finissent sans un morceau, et elle en laisse 981.
 
 Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
 démarrage :
@@ -900,12 +940,13 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   FIFO : représentatif d'un contrôleur IDE de l'époque, et c'est ce qui rend le
   crépitement si dense.
 - **Un démarrage décrit en fichiers est moins dense qu'un scénario réglé à
-  l'oreille** : 1 121 requêtes pour tout un démarrage de `dev-1996`, contre 90 à
+  l'oreille** : 1 231 requêtes pour tout un démarrage de `dev-1996`, contre 90 à
   150 par seconde dans les phases écrites à la main du scénario que la démo a
   remplacé — lequel ne vit plus que dans les tests. Un vrai démarrage consulte le
-  registre à chaque périphérique, relit des `.INI`, rouvre des répertoires —
-  autant d'accès courts que ce modèle ne pose pas, parce qu'aucun d'eux ne
-  correspond à un fichier du catalogue. Le crépitement est donc un peu plus
+  registre à chaque périphérique, relit des `.INI` — autant d'accès courts que
+  ce modèle ne pose pas, parce qu'aucun d'eux ne correspond à un fichier du
+  catalogue. Les répertoires, eux, sont lus : le chemin de chaque fichier
+  ouvert, là où ses répertoires sont posés. Le crépitement est donc un peu plus
   clairsemé qu'il ne devrait.
 - **On ne navigue plus dans une passe.** Ni tête de lecture à traîner, ni saut
   de cinq secondes, ni durée totale : la passe se calcule pendant qu'on
@@ -923,8 +964,9 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   l'époque réellement dimensionné (500 Mo à 1 Go) y passe des heures, et la
   galerie le montre. Le modèle est le même dans les trois cas.
 - Le défragmenteur modélisé ne fait pas de passe de vérification, ne relit pas
-  ce qu'il vient d'écrire et ne reprend pas une passe interrompue. Les entrées
-  de répertoire sont réduites à une écriture d'un secteur dans la racine.
+  ce qu'il vient d'écrire et ne reprend pas une passe interrompue. Il déplace
+  les répertoires comme des fichiers, y compris sur FAT, où Windows ne savait
+  pas le faire, et sans réécrire l'entrée `..` de leurs sous-répertoires.
 - Le mixage des transitoires s'appuie sur `scheduleBuffer(at:)` et l'horloge du
   player node. Suffisant pour une démo ; une version robuste rendrait tout dans
   un unique `AVAudioSourceNode` piloté par une file d'événements.
@@ -1057,7 +1099,7 @@ par étape, le jeu complet des bilans, les comparaisons — sous
 
 ```sh
 ./Tools/Measure/snapshot.sh base              # avant de toucher au code
-./Tools/Measure/run.sh base full              # 320 bilans, ~2 min
+./Tools/Measure/run.sh base full              # 340 bilans, ~5 min
 # … une correction …
 ./Tools/Measure/snapshot.sh m1 && ./Tools/Measure/run.sh m1 boots   # 3 s
 ./Tools/Measure/boots.py base m1              # les vingt démarrages et leur cible
@@ -1065,11 +1107,19 @@ par étape, le jeu complet des bilans, les comparaisons — sous
 ./Tools/Measure/compare.py base m1 defrag- --identical   # ce qui n'a pas bougé
 ./Tools/Measure/fit-think.py m1               # quelle constante de ThinkModel
 ./Tools/Measure/readme-tables.py m1           # les tables mesurées du README
+./Tools/Measure/run.sh m1 disks               # les vingt volumes, un à la fois
+./Tools/Measure/extents.py base m1            # morceaux par fichier, répertoires, coût
 ```
 
+Le bilan d'un volume (`SCENARIO=disk:<profil>`) donne l'histogramme du nombre
+d'extents par fichier, les répertoires, les écritures refusées, le coût de
+génération — la meilleure de trois — et une **empreinte** de toutes les
+extents : deux binaires qui la partagent ont posé les mêmes clusters aux mêmes
+fichiers.
+
 `readme-tables.py` se valide d'abord en reproduisant le README du commit
-précédent à partir des bilans de ce commit-là ; les tables de défragmentation
-FAT et la table des trois allocateurs n'en sortent pas (voir son en-tête).
+précédent à partir des bilans de ce commit-là ; la table des trois allocateurs
+n'en sort pas (voir son en-tête).
 
 ## Vidéos
 

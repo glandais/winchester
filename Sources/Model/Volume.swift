@@ -14,6 +14,11 @@ enum ClusterCategory: UInt8, CaseIterable {
     /// Ce que le système de fichiers occupe pour lui-même : secteur
     /// d'amorçage, tables FAT et racine, ou sur NTFS la MFT et sa copie.
     case reserved
+    /// Les répertoires. Sur FAT ce sont des fichiers, sur NTFS l'index de
+    /// leurs noms : ils prennent des clusters, se fragmentent, et se
+    /// déplacent. Dernier de la liste pour que les sept autres gardent leur
+    /// octet.
+    case directory
 
     var label: String {
         switch self {
@@ -25,6 +30,7 @@ enum ClusterCategory: UInt8, CaseIterable {
         case .churn:       return "Temporaires, cache"
         case .swap:        return "Fichier d'échange"
         case .reserved:    return "FAT, MFT, racine"
+        case .directory:   return "Répertoires"
         }
     }
 
@@ -33,7 +39,7 @@ enum ClusterCategory: UInt8, CaseIterable {
     /// catégories dans cet ordre-là.
     var packingGroup: Int {
         switch self {
-        case .system, .archive, .reserved, .free: return 0
+        case .system, .archive, .reserved, .free, .directory: return 0
         case .application:                        return 1
         case .document:                           return 2
         case .churn, .swap:                       return 3

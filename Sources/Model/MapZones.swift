@@ -94,6 +94,7 @@ extension ClusterCategory {
         case .churn:       return "des fichiers temporaires \(state(true, plural: true))"
         case .swap:        return "le fichier d'échange"
         case .reserved:    return "les tables du système de fichiers"
+        case .directory:   return "des répertoires \(state(true, plural: true))"
         }
     }
 }

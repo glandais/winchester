@@ -123,6 +123,10 @@ public enum ClusterShading {
         // la bitmap les tient occupés. Ils prennent la couleur des
         // métadonnées, celle des tables FAT.
         count(systemExtents, as: Int(FileCategory.metadata.rawValue))
+        for directory in catalog.directories where !directory.extents.isEmpty {
+            count(directory.extents, as: Int(FileCategory.directory.rawValue),
+                  contiguous: directory.extents.count <= 1)
+        }
         for record in catalog.files where !record.isResident {
             count(record.extents, as: Int(record.category.rawValue),
                   contiguous: record.extents.coalesced().count <= 1)
@@ -176,7 +180,9 @@ public enum DiskGenerator {
         case .fat16, .vfat, .fat32:
             var simulator = Simulator(allocator: fatAllocator(for: spec),
                                       catalog: compiled.catalog,
-                                      logger: logger)
+                                      logger: logger,
+                                      concurrent: runsProgramsConcurrently(spec),
+                                      directories: directoryFormat(for: spec))
             let outcome = try simulator.run(compiled.timeline, onProgress: onProgress)
             return disk(spec: spec, allocator: simulator.allocator, catalog: outcome.catalog,
                         metrics: outcome.metrics, failedWrites: outcome.failedWrites,
@@ -185,7 +191,9 @@ public enum DiskGenerator {
         case .ntfs:
             var simulator = Simulator(allocator: ntfsAllocator(for: spec),
                                       catalog: compiled.catalog,
-                                      logger: logger)
+                                      logger: logger,
+                                      concurrent: runsProgramsConcurrently(spec),
+                                      directories: directoryFormat(for: spec))
             let outcome = try simulator.run(compiled.timeline, onProgress: onProgress)
             return disk(spec: spec, allocator: simulator.allocator, catalog: outcome.catalog,
                         metrics: outcome.metrics, failedWrites: outcome.failedWrites,
@@ -242,6 +250,7 @@ public enum DiskGenerator {
             }
             played += 1
             if !step.metadataGrew.isEmpty { journal.append(.metadataGrew(step.metadataGrew)) }
+            if !step.directoryGrew.isEmpty { journal.append(.directoryGrew(step.directoryGrew)) }
             if let created = step.created { journal.append(.created(created)) }
             if let deleted = step.deleted { journal.append(.deleted(deleted)) }
         }
@@ -260,6 +269,44 @@ public enum DiskGenerator {
     }
 
     // MARK: - Allocateurs
+
+    /// Les programmes d'une journée écrivent-ils en même temps ?
+    ///
+    /// **Non, sur aucun volume de la galerie**, et c'est une décision du
+    /// chantier 23, pas un fait d'époque. Le tourniquet de `Simulator` sait
+    /// faire écrire plusieurs programmes à la fois, paquet par paquet, et il est
+    /// testé ; mais il leur donne à tous **le même débit**, et la chronologie,
+    /// qui ne connaît que la journée, les fait tous tourner ensemble du matin
+    /// au soir. Ni l'un ni l'autre n'est vrai — un compilateur écrit en Mo/s, un
+    /// modem en Ko/s, et ils ne tournent pas toute la journée côte à côte — et
+    /// les deux ensemble mettaient les FAT de 1999 en centaines de milliers de
+    /// morceaux (`dev-1999` : 437 802 contre 12 739). C'est une borne haute ;
+    /// l'ordre séquentiel, rendu ici, est la borne basse. Trancher entre les
+    /// deux demande un débit par programme et une heure dans la journée, que la
+    /// chronologie n'a pas (LEDGER.md, chantier 23).
+    ///
+    /// MS-DOS, lui, n'exécute vraiment qu'un programme à la fois : pour
+    /// `.fat16`, ce ne serait pas une décision.
+    public static func runsProgramsConcurrently(_ spec: ProfileSpec) -> Bool {
+        false
+    }
+
+    /// Ce que coûte une entrée de répertoire sur ce volume : MS-DOS n'écrit
+    /// que des noms courts, VFAT y ajoute les noms longs, FAT16 garde sa racine
+    /// hors de la zone de données, FAT32 et NTFS non.
+    public static func directoryFormat(for spec: ProfileSpec) -> DirectoryFormat {
+        switch spec.fileSystem.type {
+        case .fat16, .vfat, .fat32:
+            let bytes = UInt64(spec.resolvedFileSystem().clusterBytes)
+            return DirectoryFormat(kind: .fat(longNames: spec.fileSystem.type != .fat16,
+                                              fixedRoot: spec.fileSystem.type != .fat32),
+                                   clusterBytes: bytes)
+        case .ntfs:
+            let profile = ntfsProfile(for: spec)
+            return DirectoryFormat(kind: .ntfs, clusterBytes: UInt64(profile.clusterBytes),
+                                   residentBytes: profile.residentThresholdBytes)
+        }
+    }
 
     static func fatAllocator(for spec: ProfileSpec) -> FATAllocator {
         let scan: FATAllocator.Scan = spec.fileSystem.type == .fat16

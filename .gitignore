@@ -3,3 +3,4 @@ DerivedData/
 *.wav
 *.xcodeproj/
 .DS_Store
+__pycache__/

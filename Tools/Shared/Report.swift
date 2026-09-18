@@ -206,3 +206,76 @@ func writeWAV(to path: String, from raw: FileHandle, frameCount: Int, gain: Floa
     try raw.seek(toOffset: 0)
     try writeWAV(to: path, frameCount: frameCount, gain: gain) { raw.readData(ofLength: $0 * 8) }
 }
+
+// MARK: - Le volume
+
+/// Colonnes de l'histogramme d'extents, celles de
+/// `FILESYSTEM_EXPERT_REVIEW.md` §2 : la borne haute de chaque classe.
+let extentClasses: [(label: String, upTo: Int)] = [
+    ("1", 1), ("2", 2), ("3-4", 4), ("5-16", 16), ("17-64", 64), (">64", .max),
+]
+
+/// Les répertoires qui existent sur le disque, ce qu'ils occupent, et combien
+/// sont en plusieurs clusters ou en plusieurs morceaux.
+func directoryLine(_ disk: GeneratedDisk) -> String {
+    let existing = disk.catalog.directories.filter(\.exists)
+    guard !existing.isEmpty else { return "\(disk.catalog.directories.count)" }
+    let clusters = existing.reduce(0) { $0 + Int($1.entry.clusterCount) }
+    let multi = existing.filter { $0.entry.clusterCount > 1 }.count
+    let fragmented = existing.filter { $0.extents.count > 1 }.count
+    let worst = existing.map(\.extents.count).max() ?? 0
+    return "\(existing.count), \(clusters) clusters, \(multi) en plusieurs clusters, "
+        + "\(fragmented) fragmentés, pire \(worst) extents"
+}
+
+/// Empreinte du volume au cluster près : chaque fichier vivant, dans l'ordre
+/// du catalogue, avec ses extents, puis ce que le système de fichiers occupe
+/// pour lui-même. Deux générations qui la partagent ont posé les mêmes
+/// clusters aux mêmes fichiers.
+func fingerprint(_ disk: GeneratedDisk) -> UInt64 {
+    var hash: UInt64 = 0xCBF2_9CE4_8422_2325
+    func mix(_ value: UInt32) {
+        var v = value
+        for _ in 0..<4 {
+            hash = (hash ^ UInt64(v & 0xFF)) &* 0x0000_0100_0000_01B3
+            v >>= 8
+        }
+    }
+    for record in disk.catalog.files {
+        mix(record.id)
+        mix(UInt32(truncatingIfNeeded: record.logicalSize))
+        for extent in record.extents { mix(extent.start); mix(extent.length) }
+    }
+    for directory in disk.catalog.directories {
+        for extent in directory.extents { mix(extent.start); mix(extent.length) }
+    }
+    for extent in disk.systemExtents { mix(extent.start); mix(extent.length) }
+    return hash
+}
+
+/// Ce qu'un volume généré contient : combien de fichiers en combien de
+/// morceaux, et ce que coûte sa génération.
+func describeDisk(_ disk: GeneratedDisk, generation: Double) -> String {
+    var histogram = [Int](repeating: 0, count: extentClasses.count)
+    for record in disk.catalog.files where !record.isResident && !record.extents.isEmpty {
+        let count = record.extents.count
+        histogram[extentClasses.firstIndex { count <= $0.upTo }!] += 1
+    }
+    let m = disk.metrics
+    return """
+    empreinte     : \(String(fingerprint(disk), radix: 16))
+    génération    : \(String(format: "%.0f", generation * 1_000)) ms
+    volume        : \(disk.clusterCount) clusters de \(disk.clusterBytes / 1_024) Ko, \
+    \(Int(m.fill * 100)) % plein
+    fichiers      : \(m.fileCount), \(m.residentFileCount) résidents
+    extents       : \(zip(extentClasses, histogram).map { "\($0.label)=\($1)" }.joined(separator: " "))
+    fragmentés    : \(m.fragmentedFileCount) sur \(m.fragmentableFileCount) fragmentables, \
+    \(String(format: "%.1f", m.fragmentedRatioAmongFragmentable * 100)) %
+    pire fichier  : \(m.maxExtentsPerFile) extents
+    trous libres  : \(m.freeRunCount)
+    refusées      : \(disk.failedWrites) écritures, faute de place
+    MFT           : \(disk.mftClusters) clusters en \(disk.mftExtents) extents
+    répertoires   : \(directoryLine(disk))
+
+    """
+}

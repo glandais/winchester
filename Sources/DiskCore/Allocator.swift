@@ -98,6 +98,33 @@ public protocol Allocator {
     @discardableResult
     mutating func extend(file: inout FileEntry, byClusters count: UInt32) -> Bool
 
+    /// Écrit `count` clusters de plus au bout d'un fichier dont le programme ne
+    /// connaît pas la taille finale : par paquets de
+    /// `profile.writePacketClusters`, chacun pris là où l'allocateur en est au
+    /// moment où il est demandé, comme autant d'`extend` successifs.
+    ///
+    /// Personne ne s'intercale pendant l'appel. L'entrelacement de deux
+    /// programmes se fait au-dessus, en appelant cette fonction un paquet à la
+    /// fois pour chacun (`Simulator`) ; appelée pour tout un fichier, elle
+    /// décrit un programme qui écrit seul.
+    ///
+    /// Tout ou rien, comme `extend` : si un paquet ne trouve pas de place, ce
+    /// que les précédents ont pris est rendu et le fichier ressort inchangé.
+    /// - Returns: `false` si la place manquait.
+    @discardableResult
+    mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool
+
+    /// Prend `count` clusters dans l'ordre exact où `count` paquets d'un
+    /// cluster, demandés l'un après l'autre par des fichiers différents, les
+    /// auraient pris — ou rien, et `nil`, si ce format ne le garantit pas.
+    ///
+    /// C'est ce qui permet de jouer d'un bloc plusieurs programmes qui écrivent
+    /// en même temps (`Simulator.next`) : sur FAT, chaque paquet est un cluster,
+    /// et c'est le premier libre au curseur partagé, quel que soit le fichier
+    /// qui le demande. Sur NTFS, un paquet cherche d'abord à prolonger **son**
+    /// fichier : l'ordre des demandes compte, et rien ne se joue d'avance.
+    mutating func takeInWritingOrder(_ count: UInt32, hints: [AllocationHint]) -> [Extent]?
+
     mutating func free(_ extents: [Extent])
 
     /// Prend une plage précise, si elle est entièrement libre.
@@ -173,6 +200,82 @@ extension Allocator {
         let after = profile.clusters(forBytes: bytes)
         if after > before {
             guard extend(file: &file, byClusters: after - before) else { return }
+        }
+        file.logicalSize = bytes
+    }
+
+    public mutating func takeInWritingOrder(_ count: UInt32, hints: [AllocationHint]) -> [Extent]? { nil }
+
+    public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+        let packet = profile.writePacketClusters
+        // Ce qui a été ajouté, et non une copie des extents d'avant : gardée,
+        // elle ferait recopier le tableau à chaque paquet.
+        var added: UInt32 = 0
+        while added < count {
+            let size = min(packet, count - added)
+            guard extend(file: &file, byClusters: size) else {
+                // Les paquets précédents ont tous été ajoutés au bout du
+                // fichier : les rendre par la fin rend au fichier ses extents
+                // d'avant, dernier compris.
+                releaseTail(of: &file, keeping: file.clusterCount - added)
+                return false
+            }
+            added += size
+        }
+        return true
+    }
+
+    /// Rend les clusters d'un fichier au-delà des `kept` premiers, par la fin,
+    /// sans toucher à sa taille logique.
+    public mutating func releaseTail(of file: inout FileEntry, keeping kept: UInt32) {
+        var excess = file.clusterCount > kept ? file.clusterCount - kept : 0
+        while excess > 0, var last = file.extents.last {
+            let taken = min(last.length, excess)
+            free([Extent(start: last.end - taken, length: taken)])
+            last.length -= taken
+            if last.length == 0 { file.extents.removeLast() } else { file.extents[file.extents.count - 1] = last }
+            excess -= taken
+        }
+    }
+
+    /// Place un fichier dont le programme ne connaissait pas la taille : il
+    /// naît vide et grandit par paquets jusqu'à sa taille finale. La résidence
+    /// se décide comme pour `place` — sur la taille à laquelle il arrive.
+    /// - Returns: `false` si la place manquait ; rien n'est alors pris.
+    public mutating func placeStreamed(file: inout FileEntry) -> Bool {
+        if profile.isResident(bytes: file.logicalSize) {
+            place(file: &file)
+            return true
+        }
+        file.isResident = false
+        file.extents = []
+        let written = stream(file: &file, clusters: profile.clusters(forBytes: file.logicalSize))
+        noteFileCreated(logicalSize: file.logicalSize)
+        return written
+    }
+
+    /// `grow` pour un fichier qu'on allonge sans en connaître la fin : un
+    /// journal, `index.dat`, le `.pst` d'Outlook. Le complément arrive par
+    /// paquets.
+    public mutating func growStreamed(file: inout FileEntry, toLogicalSize bytes: UInt64) {
+        guard bytes > file.logicalSize else { return }
+        if file.isResident, !profile.isResident(bytes: bytes) {
+            var moved = file
+            moved.extents = []
+            guard stream(file: &moved, clusters: profile.clusters(forBytes: bytes)) else { return }
+            file.isResident = false
+            file.logicalSize = bytes
+            file.extents = moved.extents
+            return
+        }
+        if file.isResident {
+            file.logicalSize = bytes
+            return
+        }
+        let before = profile.clusters(forBytes: file.logicalSize)
+        let after = profile.clusters(forBytes: bytes)
+        if after > before {
+            guard stream(file: &file, clusters: after - before) else { return }
         }
         file.logicalSize = bytes
     }

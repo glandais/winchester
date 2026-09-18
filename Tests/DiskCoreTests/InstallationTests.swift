@@ -83,6 +83,7 @@ struct InstallationTests {
             case let .created(record): for extent in record.extents { bitmap.allocate(extent) }
             case let .deleted(record): _ = bitmap.free(record.extents)
             case let .metadataGrew(extents): for extent in extents { bitmap.allocate(extent) }
+            case let .directoryGrew(extents): for extent in extents { bitmap.allocate(extent) }
             }
         }
         #expect(steps == installed.steps.count)

@@ -181,6 +181,7 @@ struct WindowsXPStrategy: DefragStrategy {
                                   partition: partition, bufferBytes: bufferBytes,
                                   fullBlocks: fullBlocks, into: sink)
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
+                                    entrySector: volume.entrySector(of: position),
                                     phase: 1, partition: partition, into: sink)
             volume.relocate(position, to: [target])
             movedClusters += Int(file.clusterCount)

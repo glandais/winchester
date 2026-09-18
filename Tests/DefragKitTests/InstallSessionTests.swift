@@ -110,6 +110,14 @@ struct InstallSessionTests {
                 for cluster in Int(extent.start)..<Int(extent.end) { expected[cluster] = category }
             }
         }
+        // Les répertoires que l'installation a créés, et fait grandir.
+        for directory in disk.catalog.directories {
+            for extent in directory.extents {
+                for cluster in Int(extent.start)..<Int(extent.end) {
+                    expected[cluster] = ClusterCategory.directory.rawValue
+                }
+            }
+        }
         let mismatches = zip(map, expected).filter { $0 != $1 }.count
         #expect(mismatches == 0)
     }

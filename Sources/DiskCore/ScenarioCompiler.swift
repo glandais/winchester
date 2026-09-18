@@ -118,7 +118,7 @@ public struct ScenarioCompiler {
         while committedBytes > target, disposableCursor < disposable.count {
             let victim = disposable[disposableCursor]
             disposableCursor += 1
-            writer.timeline.append(.delete(id: victim.id), on: day)
+            writer.timeline.append(.delete(id: victim.id), on: day, by: .explorer)
             let freed = occupancy(of: victim.bytes)
             committedBytes = committedBytes > freed ? committedBytes - freed : 0
         }
@@ -144,6 +144,7 @@ public struct ScenarioCompiler {
     // MARK: - Installation
 
     private mutating func installSystemAndApplications() {
+        writer.program = .setup
         for appID in spec.installs {
             guard let manifest = manifests[appID] else { continue }
             install(manifest, on: 0)
@@ -182,6 +183,8 @@ public struct ScenarioCompiler {
                                     bytes: bytes)
                 // Les fichiers d'installation sont posés une fois ; ceux dont le
                 // manifeste annonce un autre motif vivront leur vie ensuite.
+                // L'installeur connaît la taille de chaque fichier — elle est
+                // dans le catalogue de ses archives — et le pose d'un coup.
                 writer.write(spec, from: day, to: day, touches: 0, rng: &rng)
                 committedBytes += occupancy(of: bytes)
                 installed.append(id)
@@ -225,7 +228,7 @@ public struct ScenarioCompiler {
 
         // Le ménage de fin d'installation.
         for id in step.temporaryIDs {
-            writer.timeline.append(.delete(id: id), on: day)
+            writer.append(.delete(id: id), on: day)
         }
 
         filesByApp[manifest.id, default: []].append(contentsOf: installed)
@@ -267,18 +270,20 @@ public struct ScenarioCompiler {
     }
 
     private mutating func scheduleUninstalls() {
+        writer.program = .setup
         for uninstall in spec.uninstalls ?? [] {
             let day = UInt32(max(0, spec.timeline.start.days(until: uninstall.date)))
             for id in filesByApp[uninstall.app] ?? [] {
-                writer.timeline.append(.delete(id: id), on: day)
+                writer.append(.delete(id: id), on: day)
             }
         }
     }
 
     private mutating func scheduleDefragRuns() {
+        writer.program = .setup
         for date in spec.defragRuns ?? [] {
             let day = UInt32(max(0, spec.timeline.start.days(until: date)))
-            writer.timeline.append(.defragment, on: min(day, dayCount))
+            writer.append(.defragment, on: min(day, dayCount))
         }
     }
 
@@ -289,6 +294,10 @@ public struct ScenarioCompiler {
     /// lui tout seul.
     private mutating func installSwapFile() {
         let size = spec.disk.sizeBytes
+        // Le fichier permanent de Windows 3.1, `pagefile.sys` et
+        // `hiberfil.sys` sont posés par l'installation ; `WIN386.SWP` naît et
+        // vit sous la main du gestionnaire de mémoire.
+        writer.program = .setup
         // Seuls les fichiers d'échange posés le jour de l'installation en font
         // partie : `WIN386.SWP` naît au premier vrai démarrage, le lendemain.
         var dayZero: [UInt32] = []
@@ -316,6 +325,7 @@ public struct ScenarioCompiler {
             // `386SPART.PAR`, le fichier permanent de Windows 3.1, qui était à
             // la racine.
             let base = min(size / 16, 40 * 1_024 * 1_024)
+            writer.program = .pager
             writer.write(FileSpec(id: newID(), name: "WIN386.SWP",
                                   directory: catalog.makeDirectory(path: "\\WINDOWS"),
                                   category: .swap,
@@ -374,6 +384,7 @@ public struct ScenarioCompiler {
     /// le volume est au plus mité. Grouper les suppressions à la fin rouvrirait
     /// un grand espace contigu et ne fragmenterait rien.
     private mutating func compile(_ build: ActivitySpec.Build, on day: UInt32) {
+        writer.program = .developer
         let objects = catalog.makeDirectory(path: objectPath)
         let sources = catalog.makeDirectory(path: sourcePath)
 
@@ -400,7 +411,7 @@ public struct ScenarioCompiler {
             let half = replaced.count / 2
 
             for id in replaced.prefix(half) {
-                writer.timeline.append(.delete(id: id), on: day)
+                writer.append(.delete(id: id), on: day)
             }
 
             for index in 0..<(recompiled / 2) {
@@ -408,7 +419,7 @@ public struct ScenarioCompiler {
             }
 
             for id in replaced.dropFirst(half) {
-                writer.timeline.append(.delete(id: id), on: day)
+                writer.append(.delete(id: id), on: day)
             }
 
             // Le fichier précompilé n'est refait que lorsqu'un en-tête commun
@@ -417,10 +428,13 @@ public struct ScenarioCompiler {
             // compilation vient de mitter.
             if build.pchMB > 0, fullRebuild {
                 let id = newID()
+                // Le compilateur écrit l'en-tête précompilé à mesure qu'il le
+                // construit : il n'en sait la taille qu'à la fin.
                 writer.write(FileSpec(id: id, name: "VC.PCH", directory: objects,
                                       category: .buildArtifact,
                                       pattern: .createDeleteShortLived(lifetimeDays: 1),
-                                      bytes: build.pchMB * 1_024 * 1_024),
+                                      bytes: build.pchMB * 1_024 * 1_024,
+                                      sizeKnownInAdvance: false),
                              from: day, to: day + 1, touches: 0, rng: &rng)
             }
 
@@ -430,14 +444,16 @@ public struct ScenarioCompiler {
 
             // L'éditeur de liens écrit sa sortie dans ce qui reste. Il tourne
             // à chaque passe, incrémentale ou non, et remplace l'exécutable
-            // précédent — qui laisse donc un trou de sa taille.
+            // précédent — qui laisse donc un trou de sa taille. Lui connaît la
+            // taille de ce qu'il écrit : il a calculé l'adresse de chaque
+            // section avant d'en émettre un octet.
             let binary = newID()
             writer.write(FileSpec(id: binary, name: "PROJET.EXE", directory: objects,
                                   category: .buildArtifact,
                                   bytes: ByteCount(rng.logNormal(median: 1_400_000, sigma: 0.6))),
                          from: day, to: day, touches: 0, rng: &rng)
             if let previous = lastBinary {
-                writer.timeline.append(.delete(id: previous), on: day)
+                writer.append(.delete(id: previous), on: day)
             }
             lastBinary = binary
 
@@ -448,7 +464,8 @@ public struct ScenarioCompiler {
         }
 
         // Quelques sources modifiées : supprimées puis réécrites, dans les trous
-        // que la compilation vient d'ouvrir.
+        // que la compilation vient d'ouvrir. L'éditeur écrit un tampon qu'il a
+        // en mémoire : il en connaît la longueur.
         for _ in 0..<occurrences(build.perDay / 2) {
             let id = newID()
             let bytes = SizeModel.sourceFile.sample(&rng)
@@ -464,9 +481,11 @@ public struct ScenarioCompiler {
         if rng.chance(build.perDay / 40) {
             let id = newID()
             let bytes = ByteCount(rng.logNormal(median: 9_000_000, sigma: 1.1))
+            // Un compresseur n'apprend la taille de son archive qu'en la
+            // finissant.
             writer.write(FileSpec(id: id, name: "BUILD.ZIP",
                                   directory: catalog.makeDirectory(path: archivePath),
-                                  category: .archive, bytes: bytes),
+                                  category: .archive, bytes: bytes, sizeKnownInAdvance: false),
                          from: day, to: day, touches: 0, rng: &rng)
             track(id, bytes: bytes, disposable: true, on: day)
         }
@@ -474,9 +493,11 @@ public struct ScenarioCompiler {
 
     private mutating func emitObject(index: Int, directory: UInt32, on day: UInt32) -> UInt32 {
         let id = newID()
+        // Le compilateur écrit son objet au fil du code qu'il génère.
         writer.write(FileSpec(id: id, name: "M\(index).OBJ", directory: directory,
                               category: .buildArtifact,
-                              bytes: SizeModel.objectFile.sample(&rng)),
+                              bytes: SizeModel.objectFile.sample(&rng),
+                              sizeKnownInAdvance: false),
                      from: day, to: day, touches: 0, rng: &rng)
         return id
     }
@@ -498,27 +519,39 @@ public struct ScenarioCompiler {
     /// vie courte, plus `index.dat` qui ne fait que grossir et n'est jamais
     /// réécrit. Le premier creuse les trous, le second les remplit par bouts.
     private mutating func browseWeb(_ browse: ActivitySpec.Browse, on day: UInt32) {
-        let cache = catalog.makeDirectory(path: cachePath)
+        writer.program = .browser
+        // Internet Explorer range son cache dans quatre sous-dossiers — `Cache1`
+        // à `Cache4` sous IE 3, quatre noms tirés au hasard sous
+        // `Content.IE5` ensuite — et répartit les fichiers entre eux. C'est ce
+        // qui borne la taille de chacun des quatre répertoires, et ce qui les
+        // fait grandir ensemble.
+        let folders = cacheFolders.map { catalog.makeDirectory(path: $0) }
 
         for _ in 0..<occurrences(browse.perDay) {
             for index in 0..<browse.pagesPerSession {
+                let cache = folders[index % folders.count]
+                // Le navigateur écrit ce qu'il reçoit, à mesure qu'il le
+                // reçoit ; un serveur HTTP de l'époque n'annonçait pas
+                // toujours sa longueur, et le cache ne l'attendait pas.
                 writer.write(FileSpec(id: newID(), name: "C\(index).TMP", directory: cache,
                                       category: .cache,
                                       pattern: .createDeleteShortLived(
                                           lifetimeDays: 1 + rng.cluster(below: 30)),
-                                      bytes: SizeModel.browserCache.sample(&rng)),
+                                      bytes: SizeModel.browserCache.sample(&rng),
+                                      sizeKnownInAdvance: false),
                              from: day, to: min(day + 40, dayCount), touches: 0, rng: &rng)
             }
         }
 
         // `index.dat` est créé au premier jour de navigation, puis grossit
         // indéfiniment. Un seul fichier, mais l'un des plus fragmentés du
-        // volume.
+        // volume. Il vit au-dessus des quatre dossiers qu'il indexe.
         if day == 1 {
+            let cache = catalog.makeDirectory(path: cacheIndexPath)
             writer.write(FileSpec(id: newID(), name: "index.dat", directory: cache,
                                   category: .cache,
                                   pattern: .append(growthPerEvent: 24_000),
-                                  bytes: 32_000),
+                                  bytes: 32_000, sizeKnownInAdvance: false),
                          from: 1, to: dayCount, touches: Int(dayCount / 3), rng: &rng)
         }
     }
@@ -531,6 +564,21 @@ public struct ScenarioCompiler {
         }
     }
 
+    /// Le répertoire de `index.dat` : la racine du cache sous IE 3, `Content.IE5`
+    /// ensuite.
+    private var cacheIndexPath: String {
+        epochYear <= 1996 ? cachePath : cachePath + "\\Content.IE5"
+    }
+
+    /// Les quatre dossiers du cache. Les noms de `Content.IE5` sont tirés au
+    /// hasard par le navigateur ; ceux-ci sont fixes, huit caractères
+    /// majuscules comme les siens — un nom court, une entrée.
+    private var cacheFolders: [String] {
+        epochYear <= 1996
+            ? (1...4).map { "\(cachePath)\\CACHE\($0)" }
+            : ["0KX4B2QM", "3TZ9W1CF", "7HD2P8NA", "Q5JL6E0R"].map { "\(cacheIndexPath)\\\($0)" }
+    }
+
     // MARK: Bureautique
 
     /// Le poste de bureau : peu de fichiers, petits, mais réenregistrés sans
@@ -539,6 +587,7 @@ public struct ScenarioCompiler {
     /// fragmentation discrète mais **dispersée**, très différente de celle d'un
     /// développeur.
     private mutating func officeWork(_ office: ActivitySpec.Office, on day: UInt32) {
+        writer.program = .office
         let directory = catalog.makeDirectory(path: documentPath)
 
         for _ in 0..<occurrences(office.newDocumentsPerWeek / 7) {
@@ -550,10 +599,13 @@ public struct ScenarioCompiler {
             let activeDays = min(14 + rng.cluster(below: 45), dayCount > day ? dayCount - day : 1)
             let saves = Int(office.savesPerDocumentPerWeek * Double(activeDays) / 7)
             let bytes = SizeModel.document(forYear: epochYear).sample(&rng)
+            // Word sérialise son document composé à mesure qu'il l'écrit : ni
+            // le premier enregistrement ni les suivants ne connaissent leur
+            // taille d'avance (`Simulator.replaceViaTemporary`).
             writer.write(FileSpec(id: id, name: "DOC\(id).DOC", directory: directory,
                                   category: .document,
                                   pattern: .writeTempThenRename,
-                                  bytes: bytes),
+                                  bytes: bytes, sizeKnownInAdvance: false),
                          from: day, to: day + activeDays, touches: saves, rng: &rng)
             documents.append(id)
             // Un document de travail n'est pas ce qu'on efface pour faire de la
@@ -561,12 +613,14 @@ public struct ScenarioCompiler {
             track(id, bytes: bytes * 3, disposable: false, on: day)
         }
 
-        // La boîte aux lettres, qui ne fait que grossir sur trois ans.
+        // La boîte aux lettres, qui ne fait que grossir sur trois ans. C'est
+        // la messagerie qui l'écrit, pas le traitement de texte.
         if day == 1, epochYear >= 2003 {
+            writer.program = .mail
             writer.write(FileSpec(id: newID(), name: "Outlook.pst", directory: directory,
                                   category: .document,
                                   pattern: .append(growthPerEvent: 900_000),
-                                  bytes: 4_000_000),
+                                  bytes: 4_000_000, sizeKnownInAdvance: false),
                          from: 1, to: dayCount, touches: Int(dayCount / 7), rng: &rng)
         }
     }
@@ -585,18 +639,34 @@ public struct ScenarioCompiler {
     /// ne fragmentent rien. Ce qu'ils font, c'est **remplir** — et c'est le
     /// remplissage qui fragmente tout ce qui est écrit ensuite.
     private mutating func importMedia(_ media: ActivitySpec.Media, on day: UInt32) {
-        let directory = catalog.makeDirectory(path: mediaPath)
+        writer.program = .media
+        // Un dossier par séance : le logiciel d'extraction range chaque disque
+        // qu'il encode dans un dossier à lui, l'assistant d'import de
+        // l'appareil photo chaque transfert. Il n'est créé que si la séance
+        // importe quelque chose (`FileCatalog.makeDirectory` ne coûte rien au
+        // disque tant qu'aucun fichier n'y entre).
+        let directory = catalog.makeDirectory(path: "\(mediaPath)\\Import \(day)")
+        // Ce qui les écrit ne sait pas toujours leur taille : une photo est
+        // **copiée** depuis la carte de l'appareil, et la copie la connaît ;
+        // un MP3 sort de l'encodeur qui compresse le disque à la volée, un DivX
+        // d'un téléchargement, une vidéo de famille de la capture depuis le
+        // caméscope — trois fichiers dont la fin n'est connue qu'à la fin.
+        let photo: Bool = switch epochYear {
+        case ...1999: false
+        case ...2003: rng.chance(0.75)
+        default:      rng.chance(0.7)
+        }
         let distribution: SizeModel.Distribution = switch epochYear {
         case ...1999: SizeModel.mp3
-        case ...2003: rng.chance(0.75) ? SizeModel.photo(forYear: epochYear) : SizeModel.divx
-        default:      rng.chance(0.7) ? SizeModel.photo(forYear: epochYear) : SizeModel.homeVideo
+        case ...2003: photo ? SizeModel.photo(forYear: epochYear) : SizeModel.divx
+        default:      photo ? SizeModel.photo(forYear: epochYear) : SizeModel.homeVideo
         }
 
         for _ in 0..<occurrences(media.filesPerWeek / 7) {
             let id = newID()
             let bytes = distribution.sample(&rng)
             writer.write(FileSpec(id: id, name: "M\(id)", directory: directory,
-                                  category: .media, bytes: bytes),
+                                  category: .media, bytes: bytes, sizeKnownInAdvance: photo),
                          from: day, to: day, touches: 0, rng: &rng)
             track(id, bytes: bytes, disposable: true, on: day)
         }
@@ -616,6 +686,7 @@ public struct ScenarioCompiler {
     /// supprimées. Elles laissent une alternance de trous parfaitement réguliers
     /// que rien d'autre ne produit — la signature visuelle du téléchargeur.
     private mutating func downloadFiles(_ download: ActivitySpec.Download, on day: UInt32) {
+        writer.program = .download
         let directory = catalog.makeDirectory(path: downloadPath)
 
         for _ in 0..<occurrences(download.perWeek / 7) {
@@ -625,28 +696,33 @@ public struct ScenarioCompiler {
                 var partIDs: [UInt32] = []
                 for index in 0..<parts {
                     let id = newID()
+                    // Téléchargées : écrites à mesure qu'elles arrivent.
                     writer.write(FileSpec(id: id, name: "PART\(index).RAR", directory: directory,
-                                          category: .archive, bytes: partBytes),
+                                          category: .archive, bytes: partBytes,
+                                          sizeKnownInAdvance: false),
                                  from: day, to: day, touches: 0, rng: &rng)
                     partIDs.append(id)
                 }
                 // L'extraction écrit le contenu à côté des parties, **avant** que
                 // celles-ci ne soient supprimées : c'est cet ordre qui fabrique
-                // l'alternance.
+                // l'alternance. Le décompresseur écrit ce qu'il décompresse, au
+                // fil de la lecture des parties.
                 let extracted = partBytes * ByteCount(parts) * 95 / 100
                 let extractedID = newID()
                 writer.write(FileSpec(id: extractedID, name: "EXTRAIT", directory: directory,
-                                      category: .archive, bytes: extracted),
+                                      category: .archive, bytes: extracted,
+                                      sizeKnownInAdvance: false),
                              from: day, to: day, touches: 0, rng: &rng)
                 track(extractedID, bytes: extracted, disposable: true, on: day)
                 for id in partIDs {
-                    writer.timeline.append(.delete(id: id), on: min(day + 1, dayCount))
+                    writer.append(.delete(id: id), on: min(day + 1, dayCount))
                 }
             } else {
                 let id = newID()
                 let bytes = SizeModel.archivePart.sample(&rng)
                 writer.write(FileSpec(id: id, name: "DL", directory: directory,
-                                      category: .archive, bytes: bytes),
+                                      category: .archive, bytes: bytes,
+                                      sizeKnownInAdvance: false),
                              from: day, to: day, touches: 0, rng: &rng)
                 track(id, bytes: bytes, disposable: true, on: day)
             }
@@ -667,9 +743,14 @@ public struct ScenarioCompiler {
     private mutating func play(_ gaming: ActivitySpec.Gaming, on day: UInt32) {
         let saves = catalog.makeDirectory(path: savePath)
 
+        // Installer un jeu, c'est l'installeur qui écrit ; les sauvegardes,
+        // c'est le jeu.
+        writer.program = .setup
         if occurrences(gaming.installsPerYear / 365) > 0 {
             let directory = catalog.makeDirectory(path: "\(gamePath)\\JEU\(nextID)")
             var files: [UInt32] = []
+            // Installé depuis le CD : l'installeur connaît la taille de ce
+            // qu'il copie.
             for index in 0..<(3 + Int(rng.below(6))) {
                 let id = newID()
                 let bytes = SizeModel.gameAsset.sample(&rng)
@@ -684,14 +765,18 @@ public struct ScenarioCompiler {
 
         if !gameFiles.isEmpty, occurrences(gaming.uninstallsPerYear / 365) > 0 {
             let removed = gameFiles.removeFirst()
-            for id in removed { writer.timeline.append(.delete(id: id), on: day) }
+            for id in removed { writer.append(.delete(id: id), on: day) }
         }
 
+        writer.program = .game
         for _ in 0..<occurrences(gaming.savesPerDay) {
+            // Un jeu écrit sa sauvegarde en sérialisant son état, sans en
+            // connaître la taille d'avance.
             writer.write(FileSpec(id: newID(), name: "SAVE.DAT", directory: saves,
                                   category: .document,
                                   pattern: .writeTempThenRename,
-                                  bytes: SizeModel.gameSave.sample(&rng)),
+                                  bytes: SizeModel.gameSave.sample(&rng),
+                                  sizeKnownInAdvance: false),
                          from: day, to: min(day + 30, dayCount), touches: 4, rng: &rng)
         }
     }
@@ -708,6 +793,7 @@ public struct ScenarioCompiler {
     /// majorité des fichiers d'un disque part en morceaux : pas dans ce que
     /// l'utilisateur crée, mais dans ce que le système remplace sous lui.
     private mutating func update(_ maintenance: ActivitySpec.Maintenance, on day: UInt32) {
+        writer.program = .setup
         guard occurrences(maintenance.updatesPerYear / 365) > 0 else { return }
         guard !replaceableSystemFiles.isEmpty else { return }
 
@@ -718,12 +804,13 @@ public struct ScenarioCompiler {
 
             // Le fichier de remplacement est écrit, l'ancien est effacé. Une
             // version plus récente est presque toujours un peu plus grosse.
+            // C'est un installeur qui l'écrit : il en connaît la taille.
             let id = newID()
             let bytes = ByteCount(Double(victim.bytes) * rng.uniform(1.0...1.4))
             writer.write(FileSpec(id: id, name: "UPD\(id).DLL", directory: directory,
                                   category: .systemCore, bytes: bytes),
                          from: day, to: day, touches: 0, rng: &rng)
-            writer.timeline.append(.delete(id: victim.id), on: day)
+            writer.append(.delete(id: victim.id), on: day)
 
             committedBytes += occupancy(of: bytes)
             let freed = occupancy(of: victim.bytes)
@@ -734,6 +821,7 @@ public struct ScenarioCompiler {
     }
 
     private mutating func hoard(_ hoarding: ActivitySpec.Hoarding, on day: UInt32) {
+        writer.program = .collector
         let bytesPerDay = hoarding.gigabytesPerYear * 1_073_741_824 / 365
         // Une taille typique de « chose qu'on garde » à cette époque-là : une
         // archive de quelques dizaines de mégaoctets en 2003, quelques
@@ -746,9 +834,12 @@ public struct ScenarioCompiler {
         for _ in 0..<occurrences(rate) {
             let id = newID()
             let bytes = ByteCount(rng.logNormal(median: median, sigma: 0.9))
+            // Téléchargé, compressé, ou lu depuis un CD par le logiciel de
+            // gravure qui en fait une image : dans les trois cas, écrit au fil
+            // de ce qui arrive.
             writer.write(FileSpec(id: id, name: "ARCH\(id)",
                                   directory: catalog.makeDirectory(path: archivePath),
-                                  category: .archive, bytes: bytes),
+                                  category: .archive, bytes: bytes, sizeKnownInAdvance: false),
                          from: day, to: day, touches: 0, rng: &rng)
             track(id, bytes: bytes, disposable: true, on: day)
         }

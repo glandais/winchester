@@ -541,6 +541,7 @@ enum BootPlanner {
                               readGranularity: script.readGranularity,
                               stampsAccess: script.stampsAccess && firstOfTheDay,
                               flushSeconds: script.metadataFlushSeconds,
+                              directories: DirectoryPlacement(disk: disk),
                               seed: disk.spec.seed &* 0x9E37_79B9)
         let walk = disk.catalog.directoryWalkOrder()
         // Le chemin d'un fichier se reconstruit en remontant l'arborescence :
@@ -658,6 +659,36 @@ enum BootPlanner {
         return chosen
     }
 
+    // MARK: - Les répertoires
+
+    /// Où sont les répertoires du volume, et où chaque nom y a son entrée.
+    struct DirectoryPlacement {
+        let directories: [DirectoryRecord]
+        let format: DirectoryFormat
+        let fileOffsets: [UInt32: UInt64]
+        let directoryOffsets: [UInt64]
+
+        /// `nil` pour un volume dont aucun répertoire n'existe sur le disque —
+        /// un volume construit à la main, qui ne sait pas où ils seraient.
+        init?(disk: GeneratedDisk) {
+            guard disk.catalog.directories.contains(where: \.exists) else { return nil }
+            directories = disk.catalog.directories
+            format = DiskGenerator.directoryFormat(for: disk.spec)
+            (fileOffsets, directoryOffsets) = disk.catalog.entryOffsets(format: format)
+        }
+
+        /// Le répertoire et ses ancêtres, de la racine vers lui.
+        func chain(to directory: UInt32) -> [UInt32] {
+            var chain: [UInt32] = []
+            var current: UInt32? = directory
+            while let id = current {
+                chain.append(id)
+                current = directories[Int(id)].parent
+            }
+            return chain.reversed()
+        }
+    }
+
     // MARK: - Émission des requêtes
 
     /// Traduit une suite de fichiers en requêtes bloc, en tenant le compte du
@@ -698,9 +729,25 @@ enum BootPlanner {
         /// Pages de la table FAT32 déjà en cache.
         private var cachedTablePages: Set<Int> = []
 
+        /// Les répertoires du volume, là où l'allocateur les a posés.
+        let directories: DirectoryPlacement?
+        /// Sur FAT, les clusters de chaque répertoire déjà parcourus : le
+        /// pilote cherche un nom en lisant le répertoire depuis son début, et
+        /// garde en cache ce qu'il a lu.
+        private var directoryScanned: [UInt32: UInt32] = [:]
+        /// Sur NTFS, les tampons d'index déjà lus : on descend l'arbre des
+        /// noms jusqu'à la feuille qui porte le nom cherché, sans lire les
+        /// autres.
+        private var indexBuffersRead: Set<UInt64> = []
+        /// Sur FAT, le secteur de répertoire qui porte l'entrée de chaque
+        /// fichier ouvert : c'est là que sa date d'accès se réécrit.
+        private var entrySector: [UInt32: Int] = [:]
+
         init(partition: PartitionGeometry, think: ThinkModel, readGranularity: Int,
-             stampsAccess: Bool, flushSeconds: Double, seed: UInt64) {
+             stampsAccess: Bool, flushSeconds: Double, directories: DirectoryPlacement? = nil,
+             seed: UInt64) {
             self.partition = partition
+            self.directories = directories
             self.think = think
             self.readGranularity = readGranularity
             self.stampsAccess = stampsAccess
@@ -782,7 +829,7 @@ enum BootPlanner {
         private mutating func stamp(_ record: FileRecord) {
             let access: MetadataAccess
             if partition.format.isFAT {
-                guard let lba = directoryLBA[record.directory] else { return }
+                guard let lba = entrySector[record.id] ?? directoryLBA[record.directory] else { return }
                 access = MetadataAccess(lba: lba, sectors: 1)
             } else {
                 access = MetadataAccess(lba: partition.mftLBA + fileIndex * partition.mftRecordSectors,
@@ -820,18 +867,84 @@ enum BootPlanner {
             }
         }
 
-        /// L'ouverture d'un fichier, avant toute donnée.
+        /// L'ouverture d'un fichier, avant toute donnée : le chemin, répertoire
+        /// par répertoire depuis la racine, puis sur NTFS l'enregistrement du
+        /// fichier.
         private mutating func open(_ record: FileRecord, phase: Int) {
-            let firstCluster = record.extents.first?.start
-            let directory = openedDirectories.insert(record.directory).inserted
-                ? firstCluster
-                : nil
-            if let directory { directoryLBA[record.directory] = partition.lba(ofCluster: Int(directory)) }
-            for access in partition.openAccesses(fileIndex: fileIndex,
-                                                 directoryFirstCluster: directory) {
+            if let directories {
+                readPath(to: record, in: directories, phase: phase)
+            } else if partition.format.isFAT, openedDirectories.insert(record.directory).inserted,
+                      let first = record.extents.first?.start {
+                // Un volume qui ne sait pas où sont ses répertoires : on lit un
+                // cluster près du fichier, comme le modèle le faisait avant de
+                // les poser.
+                let lba = partition.lba(ofCluster: Int(first))
+                directoryLBA[record.directory] = lba
+                append(lba: lba, sectors: partition.clusterSectors, isWrite: false, phase: phase)
+                bytesRead += partition.clusterSectors * DriveGeometry.bytesPerSector
+            }
+            for access in partition.openAccesses(fileIndex: fileIndex) {
                 append(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase)
                 bytesRead += access.sectors * DriveGeometry.bytesPerSector
             }
+        }
+
+        /// Trouver un nom, c'est lire chaque répertoire du chemin jusqu'à
+        /// l'entrée de l'étape suivante.
+        private mutating func readPath(to record: FileRecord, in placement: DirectoryPlacement,
+                                       phase: Int) {
+            let chain = placement.chain(to: record.directory)
+            for (step, directory) in chain.enumerated() {
+                let offset = step + 1 < chain.count
+                    ? placement.directoryOffsets[Int(chain[step + 1])]
+                    : placement.fileOffsets[record.id] ?? 0
+                let sector = readDirectory(directory, upTo: offset, in: placement, phase: phase)
+                if step + 1 == chain.count, let sector { entrySector[record.id] = sector }
+            }
+        }
+
+        /// Lit ce qu'il faut d'un répertoire pour atteindre l'entrée à
+        /// `offset`, et rend le secteur qui la porte.
+        ///
+        /// Sur FAT le répertoire est une liste : le pilote le lit depuis son
+        /// début, cluster après cluster, en suivant sa chaîne — un répertoire
+        /// en morceaux coûte un déplacement du bras par morceau. La racine d'un
+        /// FAT16 a été lue entière au montage. Sur NTFS c'est un arbre : seul le
+        /// tampon d'index qui porte le nom est lu, et un petit répertoire tient
+        /// dans son enregistrement de MFT.
+        private mutating func readDirectory(_ id: UInt32, upTo offset: UInt64,
+                                            in placement: DirectoryPlacement, phase: Int) -> Int? {
+            let directory = placement.directories[Int(id)]
+            let sectorBytes = UInt64(DriveGeometry.bytesPerSector)
+            guard directory.entry.clusterCount > 0 else {
+                if partition.format.isFAT, directory.parent == nil, partition.rootSectorCount > 0 {
+                    return partition.rootLBA + Int(offset / sectorBytes) % partition.rootSectorCount
+                }
+                return nil
+            }
+            let last = min(placement.format.clusterIndex(ofEntryAt: offset), directory.entry.clusterCount - 1)
+            let range: Range<UInt32>
+            if partition.format.isFAT {
+                let scanned = directoryScanned[id] ?? 0
+                range = scanned..<max(scanned, last + 1)
+                directoryScanned[id] = max(scanned, last + 1)
+            } else {
+                range = indexBuffersRead.insert(UInt64(id) << 32 | UInt64(last)).inserted
+                    ? last..<(last + 1) : last..<last
+            }
+            for access in partition.directoryAccesses(directory.extents, clusters: range) {
+                if partition.format.isFAT {
+                    // Sur FAT32, suivre la chaîne d'un répertoire demande la
+                    // table comme celle d'un fichier.
+                    let first = (access.lba - partition.dataStartLBA) / partition.clusterSectors
+                    followChain(from: first, through: first + access.sectors / partition.clusterSectors - 1,
+                                phase: phase)
+                }
+                append(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase)
+                bytesRead += access.sectors * DriveGeometry.bytesPerSector
+            }
+            let cluster = partition.directoryAccesses(directory.extents, clusters: last..<(last + 1)).first?.lba
+            return cluster.map { $0 + Int(offset % UInt64(partition.clusterBytes) / sectorBytes) }
         }
 
         /// Les extents d'un fichier, découpés en requêtes de taille bornée et

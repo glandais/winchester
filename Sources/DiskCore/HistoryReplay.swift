@@ -26,7 +26,10 @@ public final class HistoryReplay: @unchecked Sendable {
     /// catalogue compris, à chaque événement ; `fat!.step` le mute en place.
     private var fat: Simulator<FATAllocator>?
     private var ntfs: Simulator<NTFSAllocator>?
+    /// Premier événement pas encore confié au simulateur.
     private var cursor = 0
+    /// Événements finis.
+    private var played = 0
     public private(set) var failedWrites = 0
 
     public init(_ spec: ProfileSpec, manifests: [AppManifest] = AppLibrary.all) {
@@ -39,24 +42,51 @@ public final class HistoryReplay: @unchecked Sendable {
         case .fat16, .vfat, .fat32:
             let allocator = DiskGenerator.fatAllocator(for: spec)
             initialSystemExtents = allocator.metadataExtents
-            fat = Simulator(allocator: allocator, catalog: compiled.catalog)
+            fat = Simulator(allocator: allocator, catalog: compiled.catalog,
+                            concurrent: DiskGenerator.runsProgramsConcurrently(spec),
+                            directories: DiskGenerator.directoryFormat(for: spec))
         case .ntfs:
             let allocator = DiskGenerator.ntfsAllocator(for: spec)
             initialSystemExtents = allocator.metadataExtents
-            ntfs = Simulator(allocator: allocator, catalog: compiled.catalog)
+            ntfs = Simulator(allocator: allocator, catalog: compiled.catalog,
+                             concurrent: DiskGenerator.runsProgramsConcurrently(spec),
+                             directories: DiskGenerator.directoryFormat(for: spec))
         }
     }
 
     /// Le jour du prochain événement à rejouer, `nil` quand l'histoire est finie.
     public var nextDay: UInt32? {
-        cursor < events.count ? events[cursor].day : nil
+        if let pending = simulatorPending { return pending.day }
+        return cursor < events.count ? events[cursor].day : nil
     }
 
-    public var isFinished: Bool { cursor >= events.count }
+    public var isFinished: Bool { cursor >= events.count && !hasPending }
 
     /// Nombre d'événements de l'histoire, et combien sont déjà rejoués.
     public var eventCount: Int { events.count }
-    public var playedEvents: Int { cursor }
+    public var playedEvents: Int { played }
+
+    private var hasPending: Bool { fat?.hasPendingEvents ?? ntfs!.hasPendingEvents }
+    /// Un événement de la tranche en cours, s'il en reste.
+    private var simulatorPending: TimedEvent? {
+        hasPending ? (fat?.nextPendingEvent ?? ntfs!.nextPendingEvent) : nil
+    }
+
+    /// Confie au simulateur la tranche suivante du jour `day`, s'il n'en a pas
+    /// déjà une en cours.
+    private func loadIfNeeded(day: UInt32) -> Bool {
+        if hasPending { return true }
+        guard cursor < events.count, events[cursor].day == day else { return false }
+        if fat != nil { cursor = fat!.load(events, from: cursor) } else { cursor = ntfs!.load(events, from: cursor) }
+        return true
+    }
+
+    /// Joue jusqu'au prochain événement fini de la tranche en cours.
+    private func next(reporting: Bool) -> (timed: TimedEvent, step: SimulationStep?)? {
+        let done = fat != nil ? fat!.next(reporting: reporting) : ntfs!.next(reporting: reporting)
+        if done != nil { played += 1 }
+        return done
+    }
 
     /// Rejoue les événements du jour `day`, en racontant chacun.
     ///
@@ -64,21 +94,25 @@ public final class HistoryReplay: @unchecked Sendable {
     ///   `false` arrête le rejeu **avant** l'événement suivant, qui reste à
     ///   jouer.
     /// - Returns: `false` si `body` a interrompu la journée.
+    ///
+    /// Les événements sont racontés dans l'ordre où ils **finissent** : deux
+    /// programmes qui écrivent en même temps (`Simulator.next`) peuvent finir
+    /// dans l'autre ordre que celui où ils ont commencé.
     @discardableResult
     public func play(day: UInt32,
                      _ body: (TimedEvent, SimulationStep) throws -> Bool) rethrows -> Bool {
-        while cursor < events.count, events[cursor].day == day {
-            let timed = events[cursor]
-            cursor += 1
-            let step = fat != nil ? fat!.step(timed) : ntfs!.step(timed)
+        while loadIfNeeded(day: day) {
+            guard let done = next(reporting: true) else { continue }
+            let step = done.step ?? SimulationStep()
             if step.failed { failedWrites += 1 }
-            if try !body(timed, step) { return false }
+            if try !body(done.timed, step) { return false }
         }
         return true
     }
 
     /// Les événements d'un jour, sans les jouer. Il doit être le jour courant.
     public func events(of day: UInt32) -> ArraySlice<TimedEvent> {
+        precondition(!hasPending, "une tranche du jour est déjà en cours")
         var end = cursor
         while end < events.count, events[end].day == day { end += 1 }
         return events[cursor..<end]
@@ -107,15 +141,16 @@ public final class HistoryReplay: @unchecked Sendable {
 
     /// L'événement suivant, sans le jouer.
     public var peek: TimedEvent? {
-        cursor < events.count ? events[cursor] : nil
+        simulatorPending ?? (cursor < events.count ? events[cursor] : nil)
     }
 
     /// Rejoue sans rien raconter jusqu'à la fin du jour `day` inclus.
     public func skip(through day: UInt32) {
-        while cursor < events.count, events[cursor].day <= day {
-            let failed = fat != nil ? fat!.replay(events[cursor]) : ntfs!.replay(events[cursor])
-            if failed { failedWrites += 1 }
-            cursor += 1
+        while let next = nextDay, next <= day {
+            _ = loadIfNeeded(day: next)
+            let before = fat?.failedWriteCount ?? ntfs!.failedWriteCount
+            while self.next(reporting: false) != nil {}
+            failedWrites += (fat?.failedWriteCount ?? ntfs!.failedWriteCount) - before
         }
     }
 
