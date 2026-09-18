@@ -1049,6 +1049,28 @@ entre la lecture séquentielle du noyau et le crépitement des pilotes, et **88 
 de l'énergie entre 1,5 et 8 kHz**, conforme aux mesures publiées sur des seeks
 piste-à-piste répétés.
 
+### Mesurer un changement
+
+`Tools/Measure/` range les gestes qui servent à mesurer un chantier — un binaire
+par étape, le jeu complet des bilans, les comparaisons — sous
+`.build/measure/` :
+
+```sh
+./Tools/Measure/snapshot.sh base              # avant de toucher au code
+./Tools/Measure/run.sh base full              # 320 bilans, ~2 min
+# … une correction …
+./Tools/Measure/snapshot.sh m1 && ./Tools/Measure/run.sh m1 boots   # 3 s
+./Tools/Measure/boots.py base m1              # les vingt démarrages et leur cible
+./Tools/Measure/boots.py --steps base m1 m2   # l'effet de chaque étape
+./Tools/Measure/compare.py base m1 defrag- --identical   # ce qui n'a pas bougé
+./Tools/Measure/fit-think.py m1               # quelle constante de ThinkModel
+./Tools/Measure/readme-tables.py m1           # les tables mesurées du README
+```
+
+`readme-tables.py` se valide d'abord en reproduisant le README du commit
+précédent à partir des bilans de ce commit-là ; les tables de défragmentation
+FAT et la table des trois allocateurs n'en sortent pas (voir son en-tête).
+
 ## Vidéos
 
 Les vidéos de démonstration se rendent **hors de l'application** : la même
@@ -1194,6 +1216,8 @@ Tools/RenderVideo/         rendu hors-ligne en vidéo : carte, plateau, bilan
 Tools/Shared/              scénario demandé, mixage en flux et bilan, communs
                            aux deux outils
 Tools/make-videos.sh       le lot de vidéos décrit dans Tools/videos.txt
+Tools/Measure/             mesurer un chantier : un binaire par étape, les
+                           bilans en parallèle, comparaisons, tables du README
 ```
 
 ## Journal de bord

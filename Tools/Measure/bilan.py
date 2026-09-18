@@ -1,0 +1,105 @@
+"""Lire les bilans de RenderTrace rangés par `run.sh`.
+
+Commun aux scripts de ce dossier : où sont les bilans, ce qu'on en extrait, et
+comment le README écrit les nombres.
+"""
+import os
+import re
+
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+MEASURE = os.environ.get("MEASURE_DIR", os.path.join(ROOT, ".build", "measure"))
+
+PROFILES = [f"{p}-{y}" for y in ("1993", "1996", "1999", "2003", "2007")
+            for p in ("dev", "famille", "gamer", "secretaire")]
+PROFILES[PROFILES.index("famille-1993")] = "poweruser-1993"
+NTFS = [p for p in PROFILES if p.endswith(("2003", "2007"))]
+
+# Les durées de démarrage que le modèle donnait avant la relecture des experts,
+# et sur lesquelles `ThinkModel.boot` est calé (LEDGER.md, chantiers 20 à 22).
+# Ce ne sont pas des mesures d'époque : ce sont les cibles du calage.
+BOOT_TARGETS = {
+    "dev-1993": 41.8, "gamer-1993": 29.5, "poweruser-1993": 42.7, "secretaire-1993": 36.0,
+    "dev-1996": 58.7, "famille-1996": 54.4, "gamer-1996": 44.0, "secretaire-1996": 55.4,
+    "dev-1999": 57.0, "famille-1999": 66.0, "gamer-1999": 54.8, "secretaire-1999": 56.7,
+    "dev-2003": 49.1, "famille-2003": 28.8, "gamer-2003": 70.0, "secretaire-2003": 33.8,
+    "dev-2007": 47.0, "famille-2007": 38.3, "gamer-2007": 29.8, "secretaire-2007": 41.9,
+}
+
+
+def text(step, name):
+    with open(os.path.join(MEASURE, f"out-{step}", f"{name}.txt")) as f:
+        return f.read()
+
+
+def _int(pattern, t):
+    m = re.search(pattern, t, re.M)
+    return int(m.group(1)) if m else None
+
+
+def _float(pattern, t):
+    m = re.search(pattern, t, re.M)
+    return float(m.group(1)) if m else None
+
+
+def common(t):
+    """Ce que tout bilan porte : durée, requêtes, seeks, lu et écrit."""
+    return dict(duration=_float(r"^durée\s+: ([\d.]+)", t),
+                requests=_int(r"^requêtes\s+: (\d+)", t),
+                seeks=_int(r"^seeks\s+: (\d+)", t),
+                meanSeek=_int(r"moy\. (\d+) cyl", t),
+                read=_int(r"^lu / écrit\s+: (\d+)", t),
+                written=_int(r"^lu / écrit\s+: \d+ / (\d+)", t))
+
+
+def boot(step, profile):
+    t = text(step, f"boot-{profile}")
+    d = common(t)
+    d.update(os=re.search(r"^système\s+: (.*?)(?: puis .*)?$", t, re.M).group(1),
+             files=_int(r"(\d+) ouverts", t),
+             think=_float(r"^calcul\s+: ([\d.]+)", t),
+             witness=re.search(r"soit ([-+]\d+) %", t).group(1),
+             stamped=_int(r"dates d'accès : (\d+)", t),
+             stampWrites=_int(r"réécrites en (\d+)", t))
+    return d
+
+
+def defrag(step, profile, tool, full_blocks=False):
+    t = text(step, f"{'full' if full_blocks else 'defrag'}-{profile}-{tool}")
+    d = common(t)
+    if d["duration"] is None:
+        return None  # outil refusé sur ce format
+    pair = lambda label: tuple(map(int, re.search(label + r"\s+: (\d+) avant, (\d+) après", t).groups()))
+    d.update(fill=_int(r"(\d+) % plein", t),
+             moved=_int(r"^déplacements\s+: (\d+) fichiers", t),
+             evacuations=_int(r"(\d+) évacuations", t),
+             movedMB=_int(r"^déplacé\s+: (\d+) Mo", t),
+             fragmented=pair("fragmentés"),
+             fragments=pair("morceaux"),
+             holes=pair("trous libres"))
+    return d
+
+
+# --- Les nombres comme le README les écrit ---------------------------------
+
+def number(x):
+    """12 345 → « 12 345 »."""
+    return f"{int(round(x)):,}".replace(",", " ")
+
+
+def decimal(x, digits=1):
+    return f"{x:.{digits}f}".replace(".", ",")
+
+
+def duration(seconds):
+    """Arrondie à la seconde : « 8 s », « 5 min 54 », « 1 h 16 »."""
+    s = int(round(seconds))
+    if s < 60:
+        return f"{s} s"
+    if s < 3600:
+        return f"{s // 60} min {s % 60:02d}"
+    return f"{s // 3600} h {(s % 3600) // 60:02d}"
+
+
+def gigabytes(mb):
+    """Les Go du README sont des Mo divisés par 1 024."""
+    return decimal(mb / 1024)
