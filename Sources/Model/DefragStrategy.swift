@@ -15,7 +15,8 @@ import DiskCore
 /// - JkDefrag range le volume en zones et comble les trous par des fichiers
 ///   pris plus haut, sans jamais évacuer personne ;
 /// - une passe NTFS façon `FSCTL_MOVE_FILE` ne touche que les fichiers
-///   réellement fragmentés — sur un volume de 2007, deux cents sur douze mille.
+///   réellement fragmentés — sur un volume de 2007, quelques centaines sur
+///   des dizaines de milliers.
 ///
 /// Une stratégie est une valeur et non un espace de noms : les variantes d'un
 /// même outil (analyse seule, optimisation complète, comblement seul) sont des
@@ -286,14 +287,15 @@ enum DefragOperations {
                 cursor = min(kept[low - 1].end, end)
                 continue
             }
-            // Jusqu'où peut-on libérer sans heurter un extent conservé ?
+            // Jusqu'où peut-on libérer sans heurter un extent conservé ? Le
+            // suivant commence après `cursor` par construction de la
+            // dichotomie, et `end` aussi tant que la boucle tourne : la plage
+            // n'est jamais vide, et la boucle avance toujours.
             let next = low < kept.count ? kept[low].start : end
             let stop = min(next, end)
-            if stop > cursor {
-                sink.record(MapMutation(start: Int(cursor), count: Int(stop - cursor),
-                                        category: .free))
-            }
-            cursor = max(stop, cursor + 1)
+            sink.record(MapMutation(start: Int(cursor), count: Int(stop - cursor),
+                                    category: .free))
+            cursor = stop
         }
     }
 
@@ -418,12 +420,55 @@ enum DefragOperations {
     }
 }
 
+// MARK: - Points de contrôle
+
+/// La cadence des points de contrôle NTFS, vue d'un outil qui passe par
+/// `FSCTL_MOVE_FILE` et relit le bitmap du volume à chaque recherche de trou.
+///
+/// Un tel outil ne choisit rien : c'est Windows qui fait le point de contrôle,
+/// **toutes les cinq secondes** (« NTFS writes checkpoint every 5 sec », dans
+/// le chapitre sur la reprise de NTFS des supports de *Windows Internals*),
+/// « every few seconds » pour Russinovich. Entre deux, les clusters qu'un
+/// déplacement quitte sont occupés dans le bitmap que l'outil relit, et un
+/// déplacement vers eux échouerait. C'est la cadence du défragmenteur de XP et
+/// de JkDefrag.
+///
+/// Les outils qui ont leur propre comptabilité en ont une autre, et chacune est
+/// un choix : UltraDefrag ne relit sa liste de trous qu'en tête de tour, le
+/// recollage économe fait un point de contrôle tous les `checkpointMoves`
+/// déplacements, le tassage à la frontière un par lot de validations.
+///
+/// Le temps est celui de `OperationSink.plannedSeconds`, une estimation. Un
+/// point de contrôle qui tombe **pendant** un déplacement libère ce que les
+/// déplacements précédents ont quitté, pas ce que celui-ci quitte : il n'est
+/// validé qu'à sa fin.
+struct NTFSCheckpoints {
+
+    static let interval = 5.0
+
+    private var last = 0.0
+    /// Les clusters retenus au moment de la dernière validation.
+    private var heldAtLastCommit = 0
+
+    /// Après chaque validation : si un point de contrôle est tombé depuis la
+    /// précédente, ce qu'elle avait laissé retenu redevient libre.
+    mutating func afterCommit(_ volume: inout DefragVolume, sink: OperationSink) {
+        guard volume.releaseWaitsForCheckpoint else { return }
+        let now = sink.plannedSeconds
+        let checkpoint = (now / Self.interval).rounded(.down) * Self.interval
+        if checkpoint > last {
+            volume.releaseHeldClusters(first: heldAtLastCommit)
+            last = checkpoint
+        }
+        heldAtLastCommit = volume.heldClusters.count
+    }
+}
+
 // MARK: - Recherche de trous
 
 extension DefragOperations {
 
-    /// Le premier trou d'au moins `need` clusters, depuis le début du volume,
-    /// en dehors de la zone réservée à la MFT.
+    /// Le premier trou d'au moins `need` clusters, depuis le début du volume.
     ///
     /// La recherche repart de zéro à chaque appel, et ce n'est pas une
     /// négligence : c'est ce que font `FindGap` de JKDefrag comme
@@ -431,21 +476,25 @@ extension DefragOperations {
     /// à chaque fois plutôt que de le mettre en cache. La conséquence est
     /// visible sur la carte — les fichiers réparés se regroupent vers l'avant,
     /// dans les trous que la passe vient elle-même d'ouvrir — et le coût reste
-    /// modeste tant qu'on ne traite que les fichiers cassés.
+    /// modeste tant qu'on ne traite que les fichiers cassés. Sur NTFS, ces
+    /// trous-là n'apparaissent qu'au point de contrôle (`NTFSCheckpoints`).
     ///
     /// `limit: need` est ce qui évite le piège quadratique : on ne mesure
     /// jamais un trou au-delà de la taille cherchée. Sur un volume presque
     /// vide, le premier trou fait la taille du disque.
     ///
-    /// La zone MFT est libre dans la bitmap, et c'est précisément le piège :
-    /// sur un volume de 320 Go elle fait quarante gigaoctets d'un seul tenant,
-    /// donc le plus grand trou du volume et de très loin. Un défragmenteur qui
-    /// l'ignore y range le premier gros fichier cassé venu et condamne la MFT
-    /// à se fragmenter dès la prochaine création de fichier. On la saute, comme
-    /// le fait `FindGap` avec ses `MftExcludes`.
-    static func firstGap(in volume: DefragVolume, need: UInt32) -> Extent? {
+    /// - Parameter avoidingMFTZone: sauter la zone réservée à la MFT. C'est un
+    ///   choix **de l'outil**, pas une règle du volume : Windows y laisse
+    ///   écrire un défragmenteur. La zone est libre dans la bitmap et fait sur
+    ///   un volume de 320 Go quarante gigaoctets d'un seul tenant, donc le plus
+    ///   grand trou du volume et de très loin ; un outil qui s'en sert y range
+    ///   le premier gros fichier cassé venu, et la MFT se fragmentera à la
+    ///   prochaine création de fichier. JkDefrag la saute (`MftExcludes`),
+    ///   UltraDefrag s'en sert exprès depuis XP — chaque stratégie le dit.
+    static func firstGap(in volume: DefragVolume, need: UInt32,
+                         avoidingMFTZone: Bool) -> Extent? {
         let total = UInt32(volume.partition.clusterCount)
-        let mftZone = volume.mftZone
+        let mftZone = avoidingMFTZone ? volume.mftZone : nil
         var cursor: UInt32 = 0
         while cursor < total {
             guard let run = volume.bitmap.nextFreeRun(from: cursor, limit: need) else { return nil }
@@ -468,8 +517,45 @@ extension DefragOperations {
         return nil
     }
 
-    /// Le plus grand trou du volume, zone MFT exclue —
-    /// `find_largest_free_region` d'UltraDefrag.
+    /// Des clusters libres au-dessus de `floor`, en partant du fond du volume,
+    /// jusqu'à `need` — moins s'il n'y en a pas assez.
+    ///
+    /// C'est la zone de manœuvre d'un outil qui évacue : posé au fond, un
+    /// fichier délogé n'est plus sur le chemin de ce qui avance depuis le
+    /// début du volume. Chaque trou est pris par le haut, et ce qui en reste
+    /// en dessous reste d'un tenant.
+    static func highestFreeRuns(in volume: DefragVolume, downTo floor: UInt32, need: UInt32,
+                                avoidingMFTZone: Bool) -> [Extent] {
+        let total = UInt32(volume.partition.clusterCount)
+        let mftZone = avoidingMFTZone ? volume.mftZone : nil
+        var runs: [Extent] = []
+        var remaining = need
+        var cursor = total
+        while remaining > 0, cursor > floor, let run = volume.bitmap.previousFreeRun(before: cursor) {
+            cursor = run.start
+            var pieces = [run]
+            if let zone = mftZone, run.start < zone.upperBound, run.end > zone.lowerBound {
+                pieces = []
+                if run.start < zone.lowerBound {
+                    pieces.append(Extent(start: run.start, length: zone.lowerBound - run.start))
+                }
+                if run.end > zone.upperBound {
+                    pieces.append(Extent(start: zone.upperBound, length: run.end - zone.upperBound))
+                }
+            }
+            for piece in pieces.reversed() {
+                let start = max(piece.start, floor)
+                guard start < piece.end, remaining > 0 else { continue }
+                let take = min(piece.end - start, remaining)
+                runs.append(Extent(start: piece.end - take, length: take))
+                remaining -= take
+            }
+        }
+        return runs
+    }
+
+    /// Le plus grand trou du volume — `find_largest_free_region`
+    /// d'UltraDefrag —, zone MFT exclue ou non comme pour `firstGap`.
     ///
     /// Il ne sert pas à placer quoi que ce soit mais à **borner une ambition** :
     /// la défragmentation partielle ne fusionne jamais plus de clusters qu'il
@@ -480,14 +566,15 @@ extension DefragOperations {
     /// le seul endroit de la couche où un appel coûte proportionnellement à la
     /// taille du disque, et c'est pour cela qu'il n'est fait qu'une fois par
     /// tour de boucle et jamais par fichier.
-    static func largestGap(in volume: DefragVolume) -> Extent? {
+    static func largestGap(in volume: DefragVolume, avoidingMFTZone: Bool) -> Extent? {
         let total = UInt32(volume.partition.clusterCount)
+        let mftZone = avoidingMFTZone ? volume.mftZone : nil
         var best: Extent?
         var cursor: UInt32 = 0
         while cursor < total {
             guard var run = volume.bitmap.nextFreeRun(from: cursor) else { break }
 
-            if let zone = volume.mftZone, run.start < zone.upperBound, run.end > zone.lowerBound {
+            if let zone = mftZone, run.start < zone.upperBound, run.end > zone.lowerBound {
                 // Ce qui précède la zone compte, ce qu'elle couvre est interdit,
                 // et la mesure reprend derrière elle.
                 if run.start < zone.lowerBound {

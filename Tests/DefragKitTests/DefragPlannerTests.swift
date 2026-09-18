@@ -405,13 +405,19 @@ struct AgedVolumeTests {
         #expect(plan.after.freeHoles == 2)
     }
 
-    /// Le va-et-vient qui fait durer une passe : bien plus d'évacuations que de
-    /// fichiers déplacés, et plus d'octets déplacés que le volume n'en porte.
-    @Test("La passe évacue plus qu'elle ne déplace")
-    func evacuationsDominate() {
+    /// Le va-et-vient qui fait durer une passe : une évacuation pour deux ou
+    /// trois fichiers déplacés, et plus d'octets déplacés que le volume n'en
+    /// porte — mais pas plusieurs fois plus. Avant que l'outil n'évacue au fond
+    /// du volume, il y avait plus d'évacuations que de fichiers déplacés : un
+    /// occupant reposé juste au-dessus de la frontière était réévacué.
+    @Test("La passe évacue, et déplace un peu plus que le volume ne porte")
+    func evacuationsRemain() {
         let plan = DefragPlanner.plan(volume: Self.agedVolume())
-        #expect(plan.evacuations > plan.filesMoved)
-        #expect(plan.movedBytes > plan.partition.capacityBytes * 3 / 4)
+        let occupied = Int(Double(plan.partition.capacityBytes) * plan.before.fill)
+        #expect(plan.evacuations > plan.filesMoved / 3)
+        #expect(plan.evacuations < plan.filesMoved)
+        #expect(plan.movedBytes > occupied)
+        #expect(plan.movedBytes < 2 * occupied)
     }
 
     /// Le fichier d'échange est ouvert par Windows : il ne bouge pas, et tout
@@ -510,7 +516,9 @@ struct WindowsXPStrategyTests {
     /// de 320 Go elle fait quarante gigaoctets d'un seul tenant, donc le plus
     /// grand trou disponible et de très loin. Un défragmenteur qui s'y range
     /// condamne la MFT à se fragmenter dès la création de fichier suivante.
-    @Test("Un fichier réparé n'atterrit pas dans la zone réservée à la MFT")
+    /// L'outil de XP, par défaut sur NTFS, s'en garde — c'est une hypothèse,
+    /// voir `WindowsXPStrategy.avoidsMFTZone`.
+    @Test("L'outil de XP ne range rien dans la zone réservée à la MFT")
     func theMftZoneIsNotAPlayground() {
         // Tout le volume est occupé sauf la zone MFT (100..<400) et un trou
         // juste assez grand à la fin.
@@ -1096,18 +1104,43 @@ struct UltraDefragStrategyTests {
         #expect(UltraDefragStrategy.moveAtOnce(capacityBytes: 3 << 40) == 64 << 20)
     }
 
-    /// La zone MFT est le plus grand trou du volume et elle est interdite :
-    /// `largestGap` doit la sauter, sans quoi la passe partielle composerait
-    /// des morceaux qu'aucun trou réel ne saurait accueillir.
-    @Test("Le plus grand trou ignore la zone réservée à la MFT")
-    func theLargestGapSkipsTheMftZone() {
+    /// La zone MFT est le plus grand trou du volume. Pour un outil qui la
+    /// respecte, `largestGap` doit la sauter, sans quoi la passe partielle
+    /// composerait des morceaux qu'aucun trou permis ne saurait accueillir ;
+    /// pour UltraDefrag, qui s'en sert, elle est le plus grand trou.
+    @Test("Le plus grand trou saute la zone MFT si l'outil la respecte, et seulement alors")
+    func theLargestGapSkipsTheMftZoneOnRequest() {
         let files = [TestFile(category: .system, extents: [Extent(start: 0, length: 100)])]
         let free = ntfsVolume(clusterCount: 1_000, files: files)
         let fenced = ntfsVolume(clusterCount: 1_000, files: files, mftZone: 200..<900)
 
-        #expect(DefragOperations.largestGap(in: free) == Extent(start: 100, length: 900))
+        #expect(DefragOperations.largestGap(in: free, avoidingMFTZone: true)
+                == Extent(start: 100, length: 900))
         // Reste 100..<200 d'un côté, 900..<1000 de l'autre : deux fois cent.
-        #expect(DefragOperations.largestGap(in: fenced)?.length == 100)
+        #expect(DefragOperations.largestGap(in: fenced, avoidingMFTZone: true)?.length == 100)
+        #expect(DefragOperations.largestGap(in: fenced, avoidingMFTZone: false)
+                == Extent(start: 100, length: 900))
+    }
+
+    /// `analyze.c:259-296` : la zone MFT n'est retirée des régions libres que
+    /// sous Windows 2000 et avant. Sous XP et Vista, UltraDefrag y range un
+    /// fichier cassé qui n'a pas d'autre trou à sa taille.
+    @Test("UltraDefrag range un fichier dans la zone MFT, XP non")
+    func ultraDefragUsesTheMftZone() {
+        // Un fichier de 50 clusters en deux morceaux ; le seul trou à sa taille
+        // est la zone MFT.
+        let files = [
+            TestFile(category: .document, extents: [Extent(start: 0, length: 25),
+                                                    Extent(start: 500, length: 25)]),
+            TestFile(category: .system, extents: [Extent(start: 25, length: 75)], movable: false),
+            TestFile(category: .system, extents: [Extent(start: 400, length: 100),
+                                                  Extent(start: 525, length: 475)], movable: false),
+        ]
+        let volume = ntfsVolume(clusterCount: 1_000, files: files, mftZone: 100..<400)
+        let ultra = UltraDefragStrategy().plan(volume: volume)
+        let xp = WindowsXPStrategy().plan(volume: volume)
+        #expect(ultra.arrangement[0].extents == [Extent(start: 100, length: 50)])
+        #expect(xp.arrangement[0].extents.count == 2)
     }
 
     /// Les compteurs d'une passe UltraDefrag ne se lisent pas comme ceux d'une

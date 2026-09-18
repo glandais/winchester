@@ -11,10 +11,11 @@ import DiskCore
 /// toutes les quatre s'entendent :
 ///
 /// - **il ne visite que les fichiers réellement fragmentés.** Pas de frontière
-///   qui avance, pas d'ordre de parcours à respecter. Sur le 320 Go de
-///   `famille-2007`, cela fait 244 fichiers au lieu de 12 220 — et c'est toute
-///   la différence entre une passe de quelques minutes et les quatre-vingt-
-///   quatorze heures que coûtait le tassage ;
+///   qui avance, pas d'ordre de parcours à respecter. Sur un volume de 2007,
+///   cela fait quelques centaines de fichiers sur des dizaines de milliers — et
+///   c'est toute la différence entre une passe de quelques dizaines de minutes
+///   et les dizaines d'heures que coûte le tassage de Windows 95 (le README les
+///   compare, volume par volume) ;
 /// - **il n'évacue personne.** La destination d'un fichier est un trou déjà
 ///   libre ; si aucun trou ne convient, le fichier reste en morceaux et finit
 ///   dans le rapport de fin de passe, sous « fichiers qui n'ont pas pu être
@@ -39,16 +40,22 @@ import DiskCore
 /// Sa faiblesse se mesure : il échoue quand aucun trou n'est à la taille, et il
 /// laisse alors le fichier en morceaux. Attention à la conclusion trop facile —
 /// **ce n'est pas le taux de remplissage qui décide**. `dev-2003` et
-/// `secretaire-2003` sont deux volumes de 40 Go remplis à 94 % : le premier
-/// répare 260 fichiers sur 299, le second 57 sur 141. Ce qui les sépare est la
-/// taille de ce qu'il y a à réparer — 11 Mo par fichier déplacé contre 21, et
-/// 213 Mo sur le 320 Go de `famille-2007`, qui n'en répare qu'un tiers. Un
-/// volume plein garde des trous, mais pas de *grands* trous.
+/// `secretaire-2003` sont deux volumes de 40 Go remplis à 94–95 %, et ils ne
+/// laissent pas la même part de leurs fichiers cassés en morceaux (table
+/// « Passe de XP sur NTFS » du README). Un volume plein garde des trous, mais
+/// pas de *grands* trous : c'est la taille de ce qu'il y a à réparer qui
+/// décide.
 ///
-/// Réserve : cette taille moyenne est celle des fichiers effectivement
-/// déplacés, pas de ceux qui sont restés fragmentés. La corrélation est nette,
-/// le mécanisme reste une hypothèse tant que les échecs ne sont pas comptés par
-/// taille.
+/// Réserve : c'est une hypothèse tant que les échecs ne sont pas comptés par
+/// taille. Les chiffres qui la soutenaient ici ne correspondaient plus au
+/// générateur après la relecture des experts, et ont été retirés plutôt que
+/// rafraîchis : un docstring ne se régénère pas, le README si.
+///
+/// Sur NTFS, ce qu'il quitte n'est libre qu'au point de contrôle suivant, que
+/// Windows fait toutes les cinq secondes (`NTFSCheckpoints`) : le bitmap qu'il
+/// relit à chaque fichier le montre occupé d'ici là. Un gros fichier se
+/// déplace en plus de cinq secondes, et la règle ne mord que sur les petits,
+/// déplacés à la suite.
 struct WindowsXPStrategy: DefragStrategy {
 
     let id = "windowsXP"
@@ -77,15 +84,40 @@ struct WindowsXPStrategy: DefragStrategy {
     /// donc le nombre de seeks, donc le grain de la passe.
     var bufferBytes = 4 * 1024 * 1024
 
+    /// L'outil de XP ne range rien dans la zone réservée à la MFT.
+    ///
+    /// **C'est une hypothèse**, et la moins mauvaise des deux. Aucune source ne
+    /// dit ce que faisait `dfrg.msc` ; la relecture de défragmentation
+    /// (`DEFRAG_REVIEW.md` §5) pense qu'il ne la respectait pas, parce que
+    /// l'API autorise l'écriture dans la zone et que le noyau la cède de
+    /// lui-même au-delà de ~87 % de remplissage. Deux choses font pencher dans
+    /// l'autre sens :
+    ///
+    /// - l'API donne les bornes de la zone aux défragmenteurs
+    ///   (`FSCTL_GET_NTFS_VOLUME_DATA`, `MftZoneStart` et `MftZoneEnd`), et ceux
+    ///   de NT 4.0 — Diskeeper, dont `dfrg.msc` est la version allégée — s'en
+    ///   servaient pour l'« identifier » (Russinovich, *Inside Windows NT Disk
+    ///   Defragmenting*, 1997) ;
+    /// - UltraDefrag, qui s'en sert, le justifie par sa propre routine
+    ///   d'optimisation de la MFT (`analyze.c:259-261` : « Since we have MFT
+    ///   optimization routine, let's use MFT zone for files placement ») —
+    ///   routine que l'outil de XP n'avait pas (voir `canTouch`).
+    ///
+    /// Le modèle garde donc le comportement d'avant la relecture, et le dit
+    /// hypothèse. La zone qui a cédé au générateur, elle, est déjà plus petite :
+    /// `mftZone` est la zone du moment, pas celle du formatage.
+    static let avoidsMFTZone = true
+
     /// Déplacer par blocs pleins (`DefragOperations.gatheredMove`) au lieu de
     /// couper chaque tampon aux bornes des extents.
     ///
     /// Ce n'est pas le comportement modélisé de l'outil, et c'est désactivé par
     /// défaut : l'option sert à comparer les algorithmes à primitive égale avec
-    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Sur les huit volumes
-    /// NTFS de la galerie, elle ramène XP de 2 h 08 à 1 h 08, UltraDefrag de
-    /// 4 h 03 à 1 h 28 et JkDefrag de 7 h 09 à 4 h 49, sans rien changer à ce
-    /// qu'ils laissent.
+    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Elle raccourcit les
+    /// passes sans changer ce qu'elles laissent, au point de contrôle près : une
+    /// passe plus courte ne voit pas tomber ses points de contrôle aux mêmes
+    /// déplacements. Le README en donne la mesure sur les huit volumes NTFS
+    /// (« Recollage économe »).
     var fullBlocks = false
 
     /// L'ordre dans lequel les fichiers cassés sont visités.
@@ -133,6 +165,7 @@ struct WindowsXPStrategy: DefragStrategy {
         var movedClusters = 0
         var filesMoved = 0
         var alreadyInPlace = 0
+        var checkpoints = NTFSCheckpoints()
 
         // MARK: Phase 0 — analyse
 
@@ -164,12 +197,17 @@ struct WindowsXPStrategy: DefragStrategy {
                 continue
             }
 
+            // Un répertoire FAT : `FSCTL_MOVE_FILE` refuse d'en déplacer le
+            // premier cluster, et l'outil déplace les fichiers entiers. L'appel
+            // échoue sans rien copier, le répertoire reste en morceaux.
+            guard volume.moveFileAccepts(position, fromVCN: 0) else { continue }
+
             // Un trou libre assez grand, le premier venu depuis le début du
             // volume — `FindGap(MinimumLcn: 0, FindHighestGap: NO)`. Il est par
             // construction disjoint des extents du fichier, puisqu'il est
             // libre : aucun recouvrement à gérer, et aucun occupant à évacuer.
-            guard let target = DefragOperations.firstGap(in: volume,
-                                                         need: file.clusterCount) else {
+            guard let target = DefragOperations.firstGap(in: volume, need: file.clusterCount,
+                                                         avoidingMFTZone: Self.avoidsMFTZone) else {
                 // Aucun trou à la taille : le fichier reste en morceaux. C'est
                 // exactement ce que faisait l'outil — il n'a jamais déplacé
                 // personne pour se faire de la place.
@@ -183,7 +221,15 @@ struct WindowsXPStrategy: DefragStrategy {
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
                                     entrySector: volume.entrySector(of: position),
                                     phase: 1, partition: partition, into: sink)
-            volume.relocate(position, to: [target])
+            // Ce que le fichier quitte n'est libre qu'au point de contrôle
+            // suivant, et le bitmap que l'outil relit pour chercher le trou du
+            // fichier suivant le montre occupé d'ici là.
+            if volume.releaseWaitsForCheckpoint {
+                volume.relocateHoldingReleased(position, to: [target])
+            } else {
+                volume.relocate(position, to: [target])
+            }
+            checkpoints.afterCommit(&volume, sink: sink)
             movedClusters += Int(file.clusterCount)
             filesMoved += 1
             sink.moves.filesMoved = filesMoved
@@ -191,6 +237,9 @@ struct WindowsXPStrategy: DefragStrategy {
 
         // MARK: Phase 2 — la MFT et la bitmap, une dernière fois
 
+        // Le bilan est celui d'un volume revenu au repos, le dernier point de
+        // contrôle passé.
+        volume.releaseHeldClusters()
         sink.progress = 1
         DefragOperations.final(partition: partition, phase: 2, into: sink)
 

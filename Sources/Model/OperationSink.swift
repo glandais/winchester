@@ -12,9 +12,9 @@ struct MoveCount: Sendable, Equatable {
 /// Une passe de défragmentation se comptait en tableaux : toutes les
 /// opérations, toutes les mutations de la carte, puis toutes les requêtes et
 /// toute la chronologie qui en sortaient. Sur le FAT32 de 6,4 Go de `dev-1999`
-/// cela fait 1,1 million d'opérations et 780 Mo de pic, pour une passe qu'on
-/// écoute pendant cinq heures et dont on n'entend jamais que la seconde en
-/// cours.
+/// cela faisait 1,1 million d'opérations et 780 Mo de pic, pour une passe
+/// qu'on écoutait pendant cinq heures et dont on n'entend jamais que la
+/// seconde en cours.
 ///
 /// Le récepteur décide de ce qu'il garde :
 ///
@@ -60,6 +60,25 @@ final class OperationSink {
     /// l'ont remplie, quelle que soit la stratégie qui les a produites.
     private(set) var validations = 0
 
+    /// Le temps que la passe a pris jusqu'ici, **estimé** requête par requête :
+    /// un positionnement et un transfert pour chaque opération émise.
+    ///
+    /// Un planificateur n'a pas d'horloge — la durée d'une passe n'est connue
+    /// qu'une fois ses requêtes jouées par `DiskSimulator`, bien après. Or une
+    /// règle du volume se compte en secondes : NTFS fait un point de contrôle
+    /// toutes les cinq secondes (`NTFSCheckpoints`). Cette horloge-ci en tient
+    /// lieu. Elle ne connaît pas le disque, seulement ceux des volumes NTFS de
+    /// la galerie — des 7 200 tr/min de 2003 à 2006 —, et elle ne sert qu'à
+    /// placer ces points de contrôle.
+    private(set) var plannedSeconds: Double = 0
+
+    /// Seek moyen de 8,5 ms et demi-tour de plateau de 4,17 ms à 7 200 tr/min :
+    /// les Barracuda 7200.7 et 7200.10 de `DriveCatalog`.
+    static let plannedPositioning = 0.0127
+    /// Entre les 58 et 78 Mo/s que ces disques soutiennent en périphérie et les
+    /// deux tiers qu'ils gardent au moyeu.
+    static let plannedBytesPerSecond = 50_000_000.0
+
     /// Rang de la validation qui commence, et compte d'une de plus.
     func nextValidation() -> Int {
         defer { validations += 1 }
@@ -91,6 +110,8 @@ final class OperationSink {
     }
 
     func emit(_ operation: DiskOperation) {
+        plannedSeconds += Self.plannedPositioning
+            + Double(operation.sectors * DriveGeometry.bytesPerSector) / Self.plannedBytesPerSecond
         guard let downstream else {
             operations.append(operation)
             return

@@ -32,24 +32,37 @@ import DiskCore
 /// des allers-retours entre le fond du volume, où l'on prend, et le trou en
 /// cours, où l'on pose — un trou après l'autre, en remontant.
 ///
+/// Deux règles du système décident de ce qui échoue, et elles sont suivies :
+///
+/// - **sur FAT, les répertoires** — la zone 0 — échouent : Windows ne sait pas
+///   en déplacer le premier cluster, et au-delà de vingt échecs JkDefrag les
+///   abandonne tous (`Pass.move`). Sur NTFS, ils se déplacent comme le reste ;
+/// - **sur NTFS, ce qu'un déplacement quitte** n'est libre qu'au point de
+///   contrôle suivant, toutes les cinq secondes (`NTFSCheckpoints`). `FindGap`
+///   relit le bitmap, qui le montre occupé d'ici là. Le mode 2 n'en souffre
+///   presque pas, ses trous étant tous relus ; les tris, qui évacuent une place
+///   pour s'y poser aussitôt (`Vacate`), la trouvent encore prise et posent le
+///   fichier plus loin, en morceaux. L'auteur le décrit lui-même
+///   (`MoveItem4`, `JkDefragLib.cpp:2355-2360`).
+///
 /// Ce qui n'est **pas** transposé, et pourquoi :
 ///
-/// - **les échecs de déplacement des répertoires.** Depuis le lot 4 les
-///   répertoires ont leurs clusters, et remplissent la zone 0. Mais Windows ne
-///   sait pas déplacer un répertoire FAT : `MoveItem` y échoue, et au
-///   vingtième échec JkDefrag marque tous les répertoires `Unmovable` pour le
-///   reste de la passe (`JkDefragLib.cpp:2486`), vingt recalculs de zones
-///   compris. Ici ils se déplacent comme le reste, sur FAT comme sur NTFS ;
 /// - **le critère du dernier accès.** Un fichier non lu depuis trente jours
 ///   est un space hog (`JkDefragLib.cpp:3714`), sauf si le registre désactive la
 ///   mise à jour des dates d'accès — ce que Vista fait par défaut, et XP non. Le
 ///   catalogue ne connaît pas les dates d'accès : le critère est inactif, comme
 ///   sous Vista ;
 /// - **les échecs de verrouillage.** Aucun fichier n'est tenu ouvert par une
-///   application, aucun trou n'attend un point de contrôle NTFS : un
-///   déplacement n'échoue que si sa destination est **occupée** — ce qui
-///   arrive, voir `Pass.fixup`. La garde des quinze minutes, elle, n'a rien à
-///   garder ;
+///   application : un déplacement n'échoue que si sa destination est
+///   **occupée** — ce qui arrive, voir `Pass.fixup` — ou si Windows refuse la
+///   plage. La garde des quinze minutes, elle, n'a rien à garder ;
+/// - **le déplacement partiel.** Quand une destination est en partie retenue
+///   par un point de contrôle à venir, Windows ne signale pas d'erreur : il
+///   déplace ce qu'il peut, le fichier en ressort coupé, et `MoveItem4` le
+///   retente fragment par fragment ailleurs. Ici le déplacement est refusé
+///   d'un bloc. Le cas ne se présente pas : toute destination vient d'un
+///   `FindGap` qui relit le bitmap, ou d'un trou mémorisé qu'aucun
+///   déplacement n'a pu quitter entre-temps ;
 /// - **`SlowDown`.** La vitesse par défaut est 100 %, qui n'endort rien.
 ///
 /// Les autres modes de la ligne de commande sont là aussi, un par valeur de
@@ -137,10 +150,11 @@ struct JKDefragStrategy: DefragStrategy {
     ///
     /// Ce n'est pas le comportement modélisé de l'outil, et c'est désactivé par
     /// défaut : l'option sert à comparer les algorithmes à primitive égale avec
-    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Sur les huit volumes
-    /// NTFS de la galerie, elle ramène XP de 2 h 08 à 1 h 08, UltraDefrag de
-    /// 4 h 03 à 1 h 28 et JkDefrag de 7 h 09 à 4 h 49, sans rien changer à ce
-    /// qu'ils laissent.
+    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Elle raccourcit les
+    /// passes sans changer ce qu'elles laissent, au point de contrôle près : une
+    /// passe plus courte ne voit pas tomber ses points de contrôle aux mêmes
+    /// déplacements. Le README en donne la mesure sur les huit volumes NTFS
+    /// (« Recollage économe »).
     var fullBlocks = false
 
     /// Combien d'éléments `FindBestItem` peut visiter avant de renoncer à une
@@ -156,8 +170,10 @@ struct JKDefragStrategy: DefragStrategy {
     ///
     /// Deux millions, c'est une demi-seconde à 250 ns la visite — un défaut de
     /// cache par nœud d'un arbre chaîné, sur une machine de 2008. Estimation
-    /// pessimiste, et elle ne décide de rien : sur les vingt volumes de la
-    /// galerie, la recherche la plus longue en fait 166 176.
+    /// pessimiste, et elle ne doit rien décider : `Report.perfectFitsExhausted`
+    /// dit si elle a mordu, `perfectFitPeakVisits` de combien elle en était
+    /// loin. Sur les vingt volumes de la galerie, au chantier 24, elle n'a
+    /// jamais mordu.
     var perfectFitVisits = 2_000_000
 
     /// Les masques de space hogs que `RunJkDefrag` installe par défaut
@@ -275,6 +291,7 @@ struct JKDefragStrategy: DefragStrategy {
             pass.optimizeSort(field: field, phases: [1, 1, 2])
         }
 
+        pass.volume.releaseHeldClusters()
         sink.progress = 1
         DefragOperations.final(partition: input.partition, phase: phases.count - 2, into: sink)
 
@@ -313,15 +330,23 @@ struct JKDefragStrategy: DefragStrategy {
         /// pour les fichiers qu'aucun trou ne pouvait recevoir d'un tenant.
         var slices = 0
         /// Tranches qui, faute d'avoir été recalculées après les morceaux
-        /// sautés, débordaient de la fin du fichier — et que le système a donc
-        /// refusées.
+        /// sautés, débordaient de la fin du fichier — et que le système a
+        /// bornées à cette fin.
         var overrunSlices = 0
         /// Fichiers que `Fixup` voulait déplacer sans trouver de trou à leur
         /// taille dans leur zone.
         var fixupFailures = 0
-        /// Déplacements refusés parce que la destination était déjà prise, et
+        /// Déplacements refusés — destination déjà prise, ou répertoire FAT —,
         /// dont le fichier est devenu immobile pour le reste de la passe.
         var failedMoves = 0
+        /// Dont des répertoires que Windows n'a pas su déplacer.
+        var directoryFailures = 0
+        /// Répertoires qu'on n'a plus essayé de déplacer, `CannotMoveDirs`
+        /// ayant dépassé vingt.
+        var directoriesGivenUp = 0
+        /// Recalculs de zones, un par déplacement refusé (`MoveItem`,
+        /// `JkDefragLib.cpp:2545`).
+        var zoneRecalculations = 0
         var gapsVisited = 0
         var gapsSkipped = 0
         /// Trous relus après un déplacement refusé, au lieu d'être sautés
@@ -516,6 +541,11 @@ extension JKDefragStrategy {
         let sink: OperationSink
         var touched = Set<Int32>()
         var report = Report()
+        var checkpoints = NTFSCheckpoints()
+        /// `Data->CannotMoveDirs` : les répertoires qui ont échoué d'affilée.
+        /// Au-delà de vingt, JkDefrag ne les tente plus.
+        var cannotMoveDirs = 0
+        var directoriesAbandoned: Bool { cannotMoveDirs > 20 }
 
         init(strategy: JKDefragStrategy, volume: DefragVolume, sink: OperationSink) {
             self.strategy = strategy
@@ -536,7 +566,8 @@ extension JKDefragStrategy {
             }
             self.order = ItemOrder(items, fileCount: volume.files.count)
             self.zones = Self.calculateZones(volume: volume, order: order,
-                                             freeSpacePercent: strategy.freeSpacePercent)
+                                             freeSpacePercent: strategy.freeSpacePercent,
+                                             directoriesAbandoned: false)
             report.zones = (zones[1], zones[2], zones[3])
             report.spaceHogs = hogs
         }
@@ -558,13 +589,20 @@ extension JKDefragStrategy {
         /// une zone la rallonge, ce qui peut faire basculer un autre morceau
         /// immobile dans la zone précédente. D'où l'itération jusqu'à point
         /// fixe, plafonnée à dix tours.
+        ///
+        /// Une fois les répertoires abandonnés (`CannotMoveDirs > 20`), ils
+        /// comptent tous pour immobiles, qu'on ait tenté de les déplacer ou
+        /// non (`JkDefragLib.cpp:1940` et `:2004`).
         static func calculateZones(volume: DefragVolume, order: ItemOrder,
-                                   freeSpacePercent: Double) -> [UInt32] {
+                                   freeSpacePercent: Double,
+                                   directoriesAbandoned: Bool) -> [UInt32] {
             let total = UInt64(volume.partition.clusterCount)
             let reserve = UInt64(Double(total) * freeSpacePercent / 100)
 
             var movable: [UInt64] = [0, 0, 0]
-            for item in order.items { movable[Int(item.zone)] += UInt64(item.clusters) }
+            for item in order.items where !(directoriesAbandoned && item.zone == 0) {
+                movable[Int(item.zone)] += UInt64(item.clusters)
+            }
 
             var unmovable: [UInt64] = [0, 0, 0]
             var previous: [UInt64] = [0, 0, 0]
@@ -597,7 +635,8 @@ extension JKDefragStrategy {
                     }
                 }
                 for (position, file) in volume.files.enumerated()
-                where !order.contains(Int32(position)) {
+                where !order.contains(Int32(position))
+                    || (directoriesAbandoned && file.category == .directory) {
                     for extent in file.extents where !extent.isEmpty {
                         // Les morceaux posés dans la zone MFT sont déjà comptés
                         // avec elle.
@@ -653,26 +692,52 @@ extension JKDefragStrategy {
         /// Déplace une tranche d'un fichier — ou le fichier entier — vers `lcn`,
         /// et tient l'arbre à jour comme le fait `MoveItem3`.
         ///
-        /// Rend `false` si la destination n'est pas libre. `FSCTL_MOVE_FILE`
-        /// refuse alors l'appel sans rien copier, et `MoveItem` en tire une
-        /// conclusion plus lourde qu'il n'y paraît (`JkDefragLib.cpp:2542`) : le
-        /// fichier est déclaré **immobile** pour le reste de la passe, et les
-        /// zones sont recalculées autour de lui. Il n'y a pas de seconde chance.
+        /// Rend `false` si la destination n'est pas libre, ou si Windows refuse
+        /// de déplacer la plage — le premier cluster d'un répertoire FAT
+        /// (`DefragVolume.moveFileAccepts`). `FSCTL_MOVE_FILE` refuse alors
+        /// l'appel sans rien copier, et `MoveItem` en tire une conclusion plus
+        /// lourde qu'il n'y paraît (`JkDefragLib.cpp:2542`) : le fichier est
+        /// déclaré **immobile** pour le reste de la passe, et les zones sont
+        /// recalculées autour de lui. Il n'y a pas de seconde chance.
+        ///
+        /// Les répertoires ont un compteur à eux (`JkDefragLib.cpp:2482-2493`) :
+        /// « Directories cannot be moved on FAT volumes. This is a known Windows
+        /// limitation and not a bug in JkDefrag. But JkDefrag will still try ».
+        /// Chaque échec l'incrémente, chaque succès le remet à zéro ; au-delà de
+        /// vingt, un répertoire est déclaré immobile **sans essai ni recalcul**,
+        /// et le calcul des zones les tient tous pour immobiles. Une passe
+        /// JkDefrag sur FAT commence donc par vingt et un échecs, vingt et un
+        /// recalculs de zones, puis abandonne toute la classe.
         @discardableResult
         mutating func move(_ position: Int32, vcn: UInt32, length: UInt32,
                            to lcn: UInt32, phase: Int, pass: Int) -> Bool {
             let index = Int(position)
             let file = volume.files[index]
             let target = Extent(start: lcn, length: length)
+            let isDirectory = file.category == .directory
 
-            let insideMFT = volume.mftZone.map { lcn < $0.upperBound && target.end > $0.lowerBound } ?? false
-            guard !insideMFT, volume.bitmap.isFree(target) else {
-                report.failedMoves += 1
+            if isDirectory && directoriesAbandoned {
+                report.directoriesGivenUp += 1
                 order.remove(position)
-                zones = Self.calculateZones(volume: volume, order: order,
-                                            freeSpacePercent: strategy.freeSpacePercent)
                 return false
             }
+
+            let insideMFT = volume.mftZone.map { lcn < $0.upperBound && target.end > $0.lowerBound } ?? false
+            guard !insideMFT, volume.bitmap.isFree(target),
+                  volume.moveFileAccepts(index, fromVCN: vcn) else {
+                report.failedMoves += 1
+                if isDirectory {
+                    cannotMoveDirs += 1
+                    report.directoryFailures += 1
+                }
+                order.remove(position)
+                zones = Self.calculateZones(volume: volume, order: order,
+                                            freeSpacePercent: strategy.freeSpacePercent,
+                                            directoriesAbandoned: directoriesAbandoned)
+                report.zoneRecalculations += 1
+                return false
+            }
+            if isDirectory { cannotMoveDirs = 0 }
 
             let (source, result) = DefragOperations.relocation(of: file.extents, vcn: vcn,
                                                               length: length, to: target)
@@ -691,7 +756,15 @@ extension JKDefragStrategy {
                                     repaint: contiguous == file.isContiguous || length >= file.clusterCount
                                         ? nil : (extents, file.category, contiguous),
                                     into: sink)
-            volume.relocateChanges(index, to: extents)
+            // Sur NTFS, ce que la tranche quitte n'est libre qu'au point de
+            // contrôle suivant : `FindGap` relit le bitmap, qui le montre
+            // occupé d'ici là.
+            if volume.releaseWaitsForCheckpoint {
+                volume.relocateHoldingReleased(index, to: extents, changesOnly: true)
+            } else {
+                volume.relocate(index, to: extents, changesOnly: true)
+            }
+            checkpoints.afterCommit(&volume, sink: sink)
             order.move(position, to: extents[0].start)
             touched.insert(position)
             sink.moves.filesMoved = touched.count
@@ -763,16 +836,18 @@ extension JKDefragStrategy {
 
                     // L'original ne recalcule pas la tranche après avoir sauté
                     // des morceaux : elle peut déborder de la fin du fichier.
-                    // `FSCTL_MOVE_FILE` refuse une plage qui sort du fichier,
-                    // rien n'est copié — et comme `ClustersDone` avance quand
-                    // même, la boucle s'arrête là. C'est une lecture de l'API et
-                    // non une mesure ; la borner à la fin du fichier aurait
-                    // inventé un déplacement que personne n'a demandé.
-                    if clusters > total - done {
-                        pass.report.overrunSlices += 1
-                        break
-                    }
-                    guard pass.move(position, vcn: done, length: clusters, to: gap.start,
+                    // `FSCTL_MOVE_FILE` ne la refuse pas, il la **borne** :
+                    // `FatComputeMoveFileParameter` ramène le compte à la taille
+                    // allouée (« This will be bounded by allocation size on
+                    // return », `fastfat/fsctrl.c`), et sur NTFS « defragmenting
+                    // a virtual cluster beyond the allocation size of a file is
+                    // allowed » (*Defragmenting Files*, Microsoft). La fin du
+                    // fichier est donc recopiée dans le trou. `ClustersDone`
+                    // avance ensuite de toute la tranche demandée, dépasse la
+                    // taille du fichier, et la boucle s'arrête là.
+                    let moved = min(clusters, total - done)
+                    if moved < clusters { pass.report.overrunSlices += 1 }
+                    guard pass.move(position, vcn: done, length: moved, to: gap.start,
                                     phase: phase, pass: 0) else { break }
                     slices += 1
                     done += clusters

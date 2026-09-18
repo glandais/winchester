@@ -6,15 +6,16 @@ import DiskCore
 ///
 /// Elle n'est pas là pour l'époque : UltraDefrag est de 2018, et aucun des
 /// vingt disques de la galerie n'en a jamais vu la couleur. Elle est là pour
-/// un échec mesuré. Le défragmenteur de Windows XP laisse 155 des 244 fichiers
-/// cassés de `famille-2007` en morceaux, et toujours les mêmes : les gros —
-/// 213 Mo en moyenne — pour lesquels un volume plein à 93 % n'a plus un seul
-/// trou à la taille. `WindowsXPStrategy` n'a rien à leur proposer, parce qu'il
-/// ne sait faire qu'une chose : recopier un fichier **entier** dans un trou
-/// libre, ou renoncer.
+/// un échec mesuré. Le défragmenteur de Windows XP laisse une part des
+/// fichiers cassés de `famille-2007` en morceaux — le README dit combien —, et
+/// toujours les mêmes : les gros, pour lesquels un volume plein à 93 % n'a
+/// plus un seul trou à la taille. `WindowsXPStrategy` n'a rien à leur
+/// proposer, parce qu'il ne sait faire qu'une chose : recopier un fichier
+/// **entier** dans un trou libre, ou renoncer.
 ///
-/// UltraDefrag pose la question autrement. Un fichier de 213 Mo en quatre
-/// morceaux n'a pas besoin d'être déplacé pour aller mieux ; il a besoin qu'on
+/// UltraDefrag pose la question autrement. Un fichier de deux cents
+/// mégaoctets en quatre morceaux n'a pas besoin d'être déplacé pour aller
+/// mieux ; il a besoin qu'on
 /// recolle **ses petits morceaux**, et qu'on laisse les gros où ils sont. C'est
 /// la *défragmentation partielle*, et la comparaison des deux bases de code
 /// note que JKDefrag n'a pas d'équivalent.
@@ -40,18 +41,22 @@ import DiskCore
 /// gros fichier, au lieu d'un transfert de deux cents mégaoctets ou de rien du
 /// tout.
 ///
-/// Deux choses du code d'origine n'ont pas de sens ici et sont assumées comme
-/// telles. Le second essai de `defragment()`, qui redonne sa chance à un
-/// fichier dont le déplacement a échoué parce que la destination avait été
-/// prise entre-temps, n'a rien à rattraper : un plan simulé ne perd pas une
-/// course contre le système. Et `can_defragment` saute les répertoires sur FAT,
-/// distinction qu'un `ClusterCategory` ne porte pas.
+/// Une chose du code d'origine n'a pas de sens ici et est assumée comme telle.
+/// Le second essai de `defragment()`, qui redonne sa chance à un fichier dont
+/// le déplacement a échoué parce que la destination avait été prise
+/// entre-temps, n'a rien à rattraper : un plan simulé ne perd pas une course
+/// contre le système. `can_defragment` saute les répertoires sur FAT
+/// (`defrag.c:139`), que Windows ne sait pas déplacer entiers
+/// (`DefragVolume.moveFileAccepts`) : c'est suivi.
 ///
-/// Une troisième, en revanche, est suivie à la lettre parce qu'elle s'entend :
-/// sur NTFS, l'espace qu'un déplacement libère ne sert qu'au **tour suivant**
-/// de la routine (`move.c:719-727`, voir `apply`). Les destinations d'un tour
-/// sont donc prises plus loin qu'elles ne le seraient sur FAT, et le bras
-/// voyage d'autant.
+/// Deux autres sont suivies à la lettre parce qu'elles s'entendent :
+///
+/// - sur NTFS, l'espace qu'un déplacement libère ne sert qu'au **tour
+///   suivant** de la routine (`move.c:719-727`, voir `apply`). Les
+///   destinations d'un tour sont donc prises plus loin qu'elles ne le seraient
+///   sur FAT, et le bras voyage d'autant ;
+/// - sous XP et Vista, la zone réservée à la MFT est une région libre comme
+///   une autre (`avoidsMFTZone`) — souvent la plus grande du volume.
 struct UltraDefragStrategy: DefragStrategy {
 
     let id = "ultraDefrag"
@@ -72,15 +77,36 @@ struct UltraDefragStrategy: DefragStrategy {
     /// du volume comme le fait `adjust_move_at_once_parameter`.
     var bufferBytes: Int?
 
+    /// UltraDefrag range des fichiers dans la zone réservée à la MFT, et
+    /// délibérément.
+    ///
+    /// `get_mft_zones_layout` (`analyze.c:259-296`) ne retire la zone des
+    /// régions libres que sous Windows 2000 et avant :
+    ///
+    /// ```c
+    /// /** @note Since we have MFT optimization routine,
+    ///  *  let's use MFT zone for files placement on XP
+    ///  *  and more recent Windows editions. */
+    ///     if(jp->win_version < WINDOWS_XP)
+    ///         jp->free_regions = winx_sub_volume_region(jp->free_regions,start,length);
+    /// ```
+    ///
+    /// et `find_first_free_region` parcourt ensuite `jp->free_regions` sans
+    /// aucun test de zone. Les volumes NTFS de la galerie tournent sous XP et
+    /// Vista : la zone y est une région libre comme une autre — souvent la
+    /// plus grande du volume.
+    static let avoidsMFTZone = false
+
     /// Déplacer par blocs pleins (`DefragOperations.gatheredMove`) au lieu de
     /// couper chaque tampon aux bornes des extents.
     ///
     /// Ce n'est pas le comportement modélisé de l'outil, et c'est désactivé par
     /// défaut : l'option sert à comparer les algorithmes à primitive égale avec
-    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Sur les huit volumes
-    /// NTFS de la galerie, elle ramène XP de 2 h 08 à 1 h 08, UltraDefrag de
-    /// 4 h 03 à 1 h 28 et JkDefrag de 7 h 09 à 4 h 49, sans rien changer à ce
-    /// qu'ils laissent.
+    /// `FragmentMergeStrategy`, qui déplace toujours ainsi. Elle raccourcit les
+    /// passes sans changer ce qu'elles laissent, au point de contrôle près : une
+    /// passe plus courte ne voit pas tomber ses points de contrôle aux mêmes
+    /// déplacements. Le README en donne la mesure sur les huit volumes NTFS
+    /// (« Recollage économe »).
     var fullBlocks = false
 
     /// La courbe d'`adjust_move_at_once_parameter` (`analyze.c:90-117`), qui
@@ -139,7 +165,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                   directoryCount: DefragOperations.directoryCount(of: volume),
                                   into: sink)
 
-        let candidates = volume.files.indices.filter { canDefragment(volume.files[$0], fragmented: false) }
+        let candidates = volume.files.indices.filter { canDefragment(volume.files[$0], on: partition, fragmented: false) }
         let alreadyInPlace = candidates.filter { volume.files[$0].isContiguous }.count
 
         var moved = Movements()
@@ -149,8 +175,9 @@ struct UltraDefragStrategy: DefragStrategy {
         // Un seuil infini rend tout fichier « petit » : la condition
         // `clusters * bytes_per_cluster < 2 * seuil` est vraie partout, et
         // chaque fichier cassé est recopié entier. C'est, à l'ordre de passage
-        // près, ce que fait le défragmenteur de XP — et cela laisse derrière
-        // exactement les mêmes fichiers.
+        // près, ce que fait le défragmenteur de XP ; ce qui reste derrière
+        // diffère par la zone MFT, qu'UltraDefrag s'autorise, et par le point
+        // de contrôle, qu'il n'attend qu'en tête de tour.
         repeat {
             moved.clustersThisPass = 0
             routine(threshold: nil, phase: 1, bufferBytes: buffer,
@@ -227,7 +254,7 @@ struct UltraDefragStrategy: DefragStrategy {
         // chemin. C'est cet ordre-là, et non celui de la MFT, qui fait qu'une
         // passe UltraDefrag attaque par le fichier le plus abîmé du volume.
         let order = volume.files.indices
-            .filter { canDefragment(volume.files[$0]) }
+            .filter { canDefragment(volume.files[$0], on: partition) }
             .sorted { left, right in
                 let a = volume.files[left], b = volume.files[right]
                 if a.fragmentCount != b.fragmentCount { return a.fragmentCount > b.fragmentCount }
@@ -238,7 +265,7 @@ struct UltraDefragStrategy: DefragStrategy {
             // Un tour de la routine après l'autre : l'avancement repart de zéro
             // à chacun, comme la barre de l'outil.
             sink.progress = Double(rank) / Double(order.count)
-            guard canDefragment(volume.files[position]) else { continue }
+            guard canDefragment(volume.files[position], on: partition) else { continue }
             let file = volume.files[position]
 
             let entirely = threshold.map {
@@ -249,8 +276,9 @@ struct UltraDefragStrategy: DefragStrategy {
                 // Assez petit pour qu'il soit absurde de ruser : on le recopie
                 // d'un bout à l'autre dans le premier trou venu, ou on le
                 // laisse tel quel.
-                guard let target = DefragOperations.firstGap(in: volume,
-                                                             need: file.clusterCount) else { continue }
+                guard let target = DefragOperations.firstGap(in: volume, need: file.clusterCount,
+                                                             avoidingMFTZone: Self.avoidsMFTZone)
+                else { continue }
                 DefragOperations.move(source: file.extents, destination: [target],
                                       category: file.category, contiguous: true, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
@@ -314,7 +342,7 @@ struct UltraDefragStrategy: DefragStrategy {
         var minVCN: UInt32 = 0
         var succeeded = false
 
-        while minVCN < maxVCN, canDefragment(volume.files[position]) {
+        while minVCN < maxVCN, canDefragment(volume.files[position], on: partition) {
 
             // Les morceaux réels du fichier, dans son ordre logique, tronqués à
             // ce qui n'a pas encore été traité.
@@ -322,7 +350,9 @@ struct UltraDefragStrategy: DefragStrategy {
                 .filter { $0.vcn >= minVCN && $0.vcn + $0.length <= maxVCN }
             if window.isEmpty { break }
 
-            guard let largest = DefragOperations.largestGap(in: volume) else { break }
+            guard let largest = DefragOperations.largestGap(in: volume,
+                                                            avoidingMFTZone: Self.avoidsMFTZone)
+            else { break }
 
             var vcn: UInt32 = 0
             var length: UInt32 = 0
@@ -403,7 +433,8 @@ struct UltraDefragStrategy: DefragStrategy {
                 continue
             }
 
-            if let target = DefragOperations.firstGap(in: volume, need: length) {
+            if let target = DefragOperations.firstGap(in: volume, need: length,
+                                                      avoidingMFTZone: Self.avoidsMFTZone) {
                 let (source, result) = DefragOperations.relocation(of: volume.files[position].extents,
                                                                     vcn: vcn, length: length, to: target)
                 let extents = result.coalesced()
@@ -436,11 +467,14 @@ struct UltraDefragStrategy: DefragStrategy {
     /// Valide un déplacement dans le volume de travail.
     ///
     /// Sur NTFS, ce que le fichier quitte reste hors d'atteinte jusqu'au tour
-    /// suivant : Windows tient ces clusters pour temporairement alloués, et
-    /// UltraDefrag ne les rend pas à sa liste de régions libres
-    /// (`move.c:719-727`). Sur FAT, ils sont réutilisables aussitôt.
+    /// suivant : Windows tient ces clusters pour temporairement alloués
+    /// (`DefragVolume.releaseWaitsForCheckpoint`), et UltraDefrag ne les rend
+    /// à sa liste de régions libres qu'en tête de tour
+    /// (`release_temp_space_regions`, `move.c:719-727`) — même si le point de
+    /// contrôle de Windows est passé entre-temps. C'est sa cadence. Sur FAT,
+    /// ils sont réutilisables aussitôt.
     private func apply(_ position: Int, to extents: [Extent], in volume: inout DefragVolume) {
-        if volume.partition.format == .ntfs {
+        if volume.releaseWaitsForCheckpoint {
             volume.relocateHoldingReleased(position, to: extents)
         } else {
             volume.relocate(position, to: extents)
@@ -481,10 +515,12 @@ struct UltraDefragStrategy: DefragStrategy {
 
     // MARK: - Ce à quoi l'outil a le droit de toucher
 
-    /// `can_defragment` : déplaçable, cassé, et qui ne soit ni la MFT ni un
-    /// fichier de métadonnées.
-    private func canDefragment(_ file: DefragFile, fragmented: Bool = true) -> Bool {
+    /// `can_defragment` (`defrag.c:127`) : déplaçable, cassé, qui ne soit ni
+    /// la MFT ni un fichier de métadonnées, ni un répertoire FAT.
+    private func canDefragment(_ file: DefragFile, on partition: PartitionGeometry,
+                               fragmented: Bool = true) -> Bool {
         guard file.isMovable, file.category != .reserved, file.clusterCount > 0 else { return false }
+        if partition.format.isFAT && file.category == .directory { return false }
         return fragmented ? !file.isContiguous : true
     }
 

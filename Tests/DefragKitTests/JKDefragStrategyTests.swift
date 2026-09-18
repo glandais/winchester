@@ -110,6 +110,12 @@ struct JKDefragStrategyTests {
     /// tranches, chacune dans le plus grand trou du moment. Ici 12 clusters en
     /// trois morceaux de 4, et un seul trou de 10 : la première tranche
     /// emporte les deux premiers morceaux et la moitié du troisième.
+    ///
+    /// Déplacé plus haut, le fichier est revisité par le même parcours. Le plus
+    /// grand trou fait alors 4 clusters, le premier morceau (10) est sauté, et
+    /// la tranche de 4 déborde des 2 qui restent : Windows la borne, et ces
+    /// deux clusters partent en tête de volume — un déplacement qui ne recolle
+    /// rien, et que l'original fait.
     @Test("Faute de trou à sa taille, un fichier est recollé par tranches")
     func defragmentBySlices() {
         let files = [
@@ -124,11 +130,35 @@ struct JKDefragStrategyTests {
         let (plan, report) = jkRun(jkVolume(clusterCount: 100, files: files))
         #expect(plan.before.fragments == 3)
         #expect(plan.after.fragments == 2, "trois morceaux devenus deux")
-        #expect(report.moves[0] == 1)
+        #expect(report.moves[0] == 2)
+        #expect(report.overrunSlices == 1)
 
         // Windows XP ne sait que recopier un fichier entier : il renonce.
         let xp = WindowsXPStrategy().plan(volume: jkVolume(clusterCount: 100, files: files))
         #expect(xp.after.fragments == 3)
+    }
+
+    /// Le défaut de l'original : la tranche est calculée avant de sauter les
+    /// morceaux déjà bien placés, et n'est pas recalculée. Ici le trou fait 40
+    /// clusters, le premier morceau 50 : il est sauté, et la tranche de 40
+    /// part du cluster logique 50 d'un fichier qui en compte 60. Windows la
+    /// **borne** à la fin du fichier (`FatComputeMoveFileParameter`, et « beyond
+    /// the allocation size of a file is allowed » sur NTFS) : les dix derniers
+    /// clusters sont recopiés dans le trou, juste derrière le premier morceau.
+    @Test("Une tranche qui déborde de la fin du fichier est bornée, pas refusée",
+          arguments: [VolumeFormat.fat16, .ntfs])
+    func overrunSliceIsBounded(format: VolumeFormat) {
+        let (plan, report) = jkRun(jkVolume(clusterCount: 300, files: [
+            JKFile(name: "D.DAT", category: .document, extents: [
+                Extent(start: 0, length: 50), Extent(start: 200, length: 10),
+            ]),
+            JKFile(name: "WIN386.SWP", category: .swap, extents: [
+                Extent(start: 90, length: 110), Extent(start: 210, length: 90),
+            ]),
+        ], format: format))
+        #expect(report.overrunSlices == 1)
+        #expect(plan.arrangement[0].extents == [Extent(start: 0, length: 60)])
+        #expect(plan.movedBytes == 10 * plan.partition.clusterBytes)
     }
 
     /// La garde de `Defragment` : une tranche qui ne dépasse pas le morceau

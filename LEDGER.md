@@ -4395,3 +4395,359 @@ frontière range ne vaut plus que pour `gamer-1996`.
   temps. Les répertoires déplacent le curseur de quelques clusters sur des
   volumes à 93–99 %, ce qui suffit à changer ce qui trouve place.
 - **La dérive de calibration** : −3,3 à +7,4 %, non compensée.
+
+## Chantier 24 — le lot 5 : la défragmentation, une fois les volumes justes
+
+**Fait** · branche `experts`
+
+### Le problème
+
+`DEFRAG_REVIEW.md` a été écrit avant les quatre lots. Ses chiffres ont tous été
+remesurés sur les volumes d'aujourd'hui (étape `base`, le commit du chantier 23),
+et plusieurs ont changé d'ordre de grandeur ; la revue disait où regarder.
+
+| | où | ce qui était faux | remesuré avant ce lot |
+|---|---|---|---|
+| §4 | `WindowsXPStrategy`, `JKDefragStrategy` | la règle NTFS des clusters retenus n'est appliquée qu'à trois stratégies sur cinq ; XP et JkDefrag, qui relisent le bitmap à chaque trou, réutilisent aussitôt ce qu'ils quittent | avec l'hypothèse de la revue — un seul point de contrôle en fin de passe — XP laisse sur `dev-2007` **66 fichiers cassés et 52 346 morceaux** au lieu de 0 (la revue mesurait 42) |
+| §5 | `DefragOperations.firstGap`, `largestGap` | la zone MFT est interdite à tous, y compris à UltraDefrag, qui s'en sert exprès depuis XP | sur `gamer-2007`, la zone porte le plus grand trou du volume : 2 558 846 clusters (9,8 Go) contre 403 007 hors zone ; sur `secretaire-2003`, 319 046 contre 18 610 |
+| §3 | `Windows95Strategy.freeRuns` | l'occupant évacué est reposé juste au-dessus de la destination, rattrapé par la frontière et réévacué | jusqu'à **15,9 fois** le contenu du volume (`secretaire-1999`, 4 h 33) ; 9,2 fois sur `dev-1999` (5 h 32) ; 20 h 52 et 172,5 Go sur les douze FAT |
+| §6 | `JKDefragStrategy` | les répertoires FAT, créés au lot 4, se déplacent comme des fichiers ; Windows ne sait pas les déplacer | la zone 0 de JkDefrag se range sur FAT comme sur NTFS |
+| §7 | `JKDefragStrategy.Pass.defragment` | une tranche qui déborde de la fin du fichier est tenue pour refusée, sans source | 156 tranches débordantes sur `famille-1999` pour 714 tranches recopiées au-delà de la première, 53 sur `secretaire-2003`, 44 sur `gamer-2007` |
+| §9 | quatre docstrings, et d'autres | des chiffres de galerie qui ne correspondent plus au générateur | « 260 fichiers réparés sur 299 » : 109 sur 123 ; « 57 sur 141 » : 887 sur 1 181 ; « 244 sur 12 220 » : 870 sur 12 247 ; « 213 Mo en moyenne » : pas remesurable ; « jusqu'à sept fois, cinq heures » : 15,9 fois, 5 h 32 ; « 166 176 visites » : 197 609 ; « 440 fichiers cassés de `gamer-1996` » : 407 |
+| §9 | `FrontierCompactionStrategy` | le docstring présente le groupement des validations comme acquis | 1,4 déplacement par lot sur `gamer-1996` (99 %), 1,7 à 12 sous 90 % |
+
+### Les décisions
+
+**La règle des clusters retenus est portée par le volume.**
+`DefragVolume.releaseWaitsForCheckpoint` vaut vrai sur NTFS, et
+`DefragVolume.relocate` y **refuse** de s'exécuter (`precondition`) : on n'y
+déplace qu'avec `relocateHoldingReleased`, qui prend aussi le mode « seuls les
+extents qui changent » dont JkDefrag a besoin (l'ancien `relocateChanges`). La
+source est Russinovich, *Inside Windows NT Disk Defragmenting* (Windows NT
+Magazine, 1997) : « NTFS prevents deallocated clusters from being used again
+until NTFS checkpoints the drive's state. Once every few seconds […] only then
+can deallocated clusters be reused », et un `FSCTL_MOVE_FILE` vers eux rend
+`STATUS_ALREADY_COMMITTED`, « the only remedy is to wait and try again ». Chaque
+stratégie choisit sa cadence, et chaque cadence est écrite :
+
+| stratégie | cadence | pourquoi |
+|---|---|---|
+| XP, JkDefrag, Windows 95 sur NTFS | celle de Windows, **toutes les 5 s** (`NTFSCheckpoints`) | ils relisent le bitmap du volume, donc voient ce que Windows voit |
+| UltraDefrag | un par tour de routine | `release_temp_space_regions` : il ne relit sa liste qu'en tête de tour, même si Windows a fait son point de contrôle entre-temps |
+| recollage économe | tous les `checkpointMoves` déplacements | le choix du chantier 15 |
+| tassage à la frontière | un par lot de validations | le choix du chantier 14 |
+
+**Le chiffre choisi : cinq secondes.** « NTFS writes checkpoint every 5 sec »,
+dans les supports de cours tirés de *Windows Internals* (chapitre sur la reprise
+de NTFS) ; Russinovich dit « every few seconds ». Un planificateur n'a pas
+d'horloge : `OperationSink.plannedSeconds` en estime une, requête par requête —
+12,7 ms de positionnement (seek moyen de 8,5 ms et demi-tour à 7 200 tr/min,
+les Barracuda 7200.7 et 7200.10 de la galerie) et un transfert à 50 Mo/s. Un
+point de contrôle qui tombe pendant un déplacement ne libère que ce que les
+déplacements **précédents** ont quitté. Ce que la cadence change, mesuré avec un
+binaire jetable dont l'intervalle se règle — fichiers cassés / morceaux restants :
+
+| outil | volume | 1 s | **5 s** | 30 s | un seul, en fin de passe |
+|---|---|---:|---:|---:|---:|
+| XP | `dev-2003` | 14 / 1 323 | **14 / 1 323** | 15 / 1 339 | 33 / 5 958 |
+| XP | `dev-2007` | 0 / 0 | **0 / 0** | 0 / 0 | 66 / 52 346 |
+| XP | `famille-2007` | 157 / 134 532 | **157 / 134 532** | 157 / 134 532 | 175 / 139 123 |
+| XP | `gamer-2007` | 128 / 28 362 | **129 / 28 364** | 126 / 28 351 | 176 / 37 662 |
+| JkDefrag | `secretaire-2003` | 316 / 7 860 | **315 / 7 768** | 329 / 8 091 | 1 043 / 31 545 |
+| JkDefrag | `famille-2003` | 51 / 3 409 | **55 / 3 440** | 55 / 3 527 | 319 / 37 877 |
+| JkDefrag | `dev-2007` | 0 / 0 | **0 / 0** | 0 / 0 | 98 / 39 478 |
+
+De une à trente secondes, rien ne bouge de plus d'une quinzaine de fichiers :
+**le chiffre ne décide pas des conclusions**. Seule l'hypothèse la plus
+favorable de la revue les renverse. La raison est mécanique : un gros fichier
+cassé se déplace en plus de cinq secondes, et un point de contrôle est passé
+quand vient le suivant.
+
+Windows 95 sur NTFS — hors de son époque, mais la galerie l'y fait tourner —
+suit la cadence de Windows, et quand ses occupants viennent de quitter la place
+d'un fichier, il attend le point de contrôle avant de s'y poser. L'attente n'est
+pas jouée, seulement son effet.
+
+**Ce que JkDefrag fait d'une destination retenue.** L'auteur l'écrit dans
+`MoveItem4` (`JkDefragLib.cpp:2355-2360`) : l'API ne signale pas d'erreur, elle
+déplace ce qu'elle peut et coupe le fichier, que l'outil retente ailleurs. Ce
+déplacement partiel n'est pas modélisé, et le cas ne se présente pas : un
+binaire jetable a compté **zéro** destination retenue sur les vingt volumes,
+chacune venant d'un `FindGap` qui relit le bitmap. Les tris, en revanche,
+évacuent une place et relisent le bitmap juste après : sur NTFS ils la trouvent
+prise, et posent le fichier plus loin (plus bas).
+
+**La zone MFT est un paramètre de la stratégie.** `firstGap` et `largestGap`
+prennent `avoidingMFTZone`, sans valeur par défaut. UltraDefrag : **faux**,
+`get_mft_zones_layout` (`analyze.c:259-296`) ne retire la zone des régions
+libres que `if(jp->win_version < WINDOWS_XP)`, « since we have MFT optimization
+routine ». XP : **vrai, et c'est une hypothèse**, écrite comme telle dans
+`WindowsXPStrategy.avoidsMFTZone`. La revue penchait pour l'inverse ; deux
+choses penchent de ce côté-ci, sans trancher : `FSCTL_GET_NTFS_VOLUME_DATA` donne
+les bornes de la zone aux défragmenteurs, et ceux de NT 4.0 — Diskeeper, dont
+`dfrg.msc` est la version allégée — s'en servaient pour l'« identifier »
+(Russinovich) ; et UltraDefrag ne justifie son usage de la zone que par sa
+routine d'optimisation de la MFT, que l'outil de XP n'avait pas. JkDefrag garde
+ses `MftExcludes`, dans sa propre recherche de trou.
+
+**Windows 95 évacue au fond du volume.** Des deux issues, la recherche
+descendante : `highestFreeRuns` est sorti de `FrontierCompactionStrategy` pour
+`DefragOperations`, et sert aux deux. Ce qui tranche n'est pas une source sur
+`DEFRAG.EXE` — il n'y en a pas — mais le code lui-même : le docstring de la
+stratégie et le résumé de sa passe à l'écran disaient déjà que l'occupant est
+poussé « vers la fin du volume ». Le code faisait l'inverse de sa description,
+et c'est le facteur qui n'était pas fidèle — une défragmentation complète d'un
+disque de cette taille sous Windows 98 prenait une à trois heures. La nature
+sonore de la passe ne change pas : évacuations, retours au bord pour les tables,
+même ordre de parcours. Un occupant qui ne trouve pas de place au fond reste où
+il est, comme avant.
+
+**Les répertoires FAT, que Windows ne sait pas déplacer.** La source est le
+pilote FAT que Microsoft publie (`Windows-driver-samples/filesys/fastfat`,
+`fsctrl.c`, `FatMoveFile`) : pour un répertoire, `StartingVcn == 0` rend
+`STATUS_INVALID_PARAMETER`, « because sub-directories have this cluster number
+in them and there is no safe way to simultaneously update them all » — le
+premier cluster ne bouge pas, le reste de la chaîne si. C'est
+`DefragVolume.moveFileAccepts`, consulté par les trois outils qui passent par
+l'API :
+
+- **JkDefrag** (`MoveItem`, `JkDefragLib.cpp:2482-2545`) essaie, échoue, déclare
+  le répertoire immobile et recalcule ses zones ; un succès remet le compteur à
+  zéro. Le test est `CannotMoveDirs > 20` : l'abandon vient au **vingt et
+  unième** échec, pas au vingtième comme le disait la revue. Ensuite, un
+  répertoire est déclaré immobile sans essai ni recalcul, et `CalculateZones`
+  les compte tous pour immobiles (`:1940`, `:2004`) ;
+- **UltraDefrag** les saute d'emblée : `can_defragment`, `defrag.c:139`,
+  « skip FAT directories » — l'écart que son docstring disait non transposable
+  faute de catégorie ; elle existe depuis le lot 4 ;
+- **XP** déplace les fichiers entiers : l'appel échoue sans rien copier, le
+  répertoire reste en morceaux.
+
+Windows 95 et les deux passes écrites ici n'appellent pas l'API ; ils déplacent
+toujours les répertoires comme des fichiers. **L'entrée `..` n'est pas
+réécrite** : pour les outils de l'API, la question ne se pose plus — c'est
+précisément le premier cluster, celui que `..` désigne, que Windows refuse de
+déplacer ; pour `DEFRAG.EXE`, qui devait bien la réécrire, elle reste ouverte.
+
+**Une tranche qui déborde est bornée, pas refusée.** Deux sources, une par
+format : `FatComputeMoveFileParameter` (`fastfat/fsctrl.c`) ramène le compte à
+la taille allouée — « This will be bounded by allocation size on return » — et
+la page *Defragmenting Files* de Microsoft écrit « When defragmenting NTFS file
+system volumes, defragmenting a virtual cluster beyond the allocation size of a
+file is allowed ». La fin du fichier est recopiée dans le trou, puis
+`ClustersDone` avance de toute la tranche demandée et la boucle s'arrête. Le
+compteur `overrunSlices` compte maintenant les tranches bornées.
+
+**Les chiffres des docstrings : retirés, ou datés.** Un chiffre de galerie dans
+un docstring ne se régénère pas ; le README si, d'un seul jeu de mesures, par
+`readme-tables.py`. Règle retenue, et appliquée à tous les docstrings de
+défragmentation — pas seulement aux quatre de la revue : un fait qui décrit les
+volumes d'aujourd'hui **en sort**, et renvoie à la table du README qui le porte ;
+un chiffre qui justifie un réglage au moment où il a été choisi **reste, daté**
+du chantier qui l'a mesuré ; une constante tirée d'un source (20 Mo, 50 Mo,
+5 s) reste telle quelle. Un test qui régénère les docstrings aurait demandé de
+générer les vingt volumes en debug, au prix de minutes par volume NTFS, pour
+des phrases. Les fourchettes « Mesuré sur la galerie » de l'écran de choix
+d'outil étaient de la même espèce, et plusieurs périmées avant ce lot ; elles
+ont été reprises des mêmes bilans. Deux textes d'explication de l'app aussi
+(l'entrée de répertoire, l'évacuation au fond).
+
+**Les trois points plus petits.** Le groupement des validations du tassage à la
+frontière est décrit tel qu'il est mesuré, lot par lot (ci-dessous). La ligne
+morte de `recordFreed` a disparu — la dichotomie garantit `stop > cursor`, et le
+commentaire le dit. `Windows95Strategy.destination` cherche par dichotomie dans
+les plages immobiles, fusionnées au préalable pour que leurs fins soient triées
+comme leurs débuts.
+
+### Ce qui valide
+
+- **`swift test` : 377 tests passent** (366 avant). Onze de plus :
+  `CheckpointTests` (six, dont le test de sortie qui vérifie que `relocate`
+  refuse de s'exécuter sur NTFS, et celui de la règle au niveau du volume : un
+  déplacement ne trouve pas, avant le point de contrôle, la place qu'un autre
+  vient de quitter), trois dans `DirectoryItemsTests`, un pour la tranche bornée,
+  un pour la zone MFT d'UltraDefrag. `DISKCORE_CALIBRATION=1 swift test --filter
+  Calibration` passe avec ses trois problèmes connus, les mêmes.
+- **L'audit d'allocation du lot 1** (`AllocationInvariantTests`) passe sur les
+  treize plans aux deux remplissages, sur le code final ; en cours de lot, les
+  suites touchées par chaque correction ont été relancées à part.
+- **JkDefrag sur FAT abandonne ses répertoires** : sur trente répertoires cassés,
+  vingt et un échecs, vingt et un recalculs de zones, neuf répertoires abandonnés
+  sans essai, et le fichier ordinaire recollé ; sur NTFS, aucun échec.
+- **Quatre tests existants ont changé**, chacun pour une raison du lot : « la
+  passe évacue plus qu'elle ne déplace » (Windows 95) disait exactement le
+  facteur que la correction retire — il y a maintenant une évacuation pour deux
+  fichiers déplacés, et 1,2 fois le contenu du volume déplacé ; le test d'écoute
+  a besoin d'une passe longue et la retrouve par un tampon de 32 Ko ; le
+  recollage par tranches de JkDefrag contenait une tranche débordante sans le
+  dire, maintenant recopiée ; le test de la zone MFT dit qu'il porte sur XP.
+- **Ce qui ne devait pas bouger n'a pas bougé**, étape par étape
+  (`compare.py --identical`) :
+
+  | étape | ce qu'elle change | bilans différents | lesquels |
+  |---|---|---:|---|
+  | `tidy` | ligne morte, dichotomie | 0 sur 340 | — |
+  | `held` | clusters retenus | 71 | NTFS seuls : XP, JkDefrag et ses modes, Windows 95 ; ni UltraDefrag, ni le recollage, ni la frontière |
+  | `mftzone` | zone MFT d'UltraDefrag | 12 | UltraDefrag seul, sur six NTFS (la zone de `famille-2003` et `famille-2007` a entièrement cédé) |
+  | `w95` | évacuation au fond | 18 | Windows 95 seul |
+  | `fatdirs` | répertoires FAT | 100 | FAT seuls, XP, UltraDefrag et JkDefrag |
+  | `overrun` | tranche bornée | 14 | le mode 2 de JkDefrag seul |
+
+  Les 64 bilans de démarrage, d'installation, de journée et de volume sont
+  identiques de `base` à la dernière étape : **ce lot ne touche pas les
+  démarrages**, et `ThinkModel` n'a pas bougé.
+
+### Ce que chaque correction change, mesuré séparément
+
+Chaque étape est un binaire de `Tools/Measure/`, construit après sa correction,
+mesuré sur les 340 bilans.
+
+**Les clusters retenus (`base` → `held`)** — fichiers cassés / morceaux restants :
+
+| outil | volume | avant | après |
+|---|---|---:|---:|
+| XP | `dev-2003` | 15 / 1 339 | 14 / 1 323 |
+| XP | `secretaire-2003` | 293 / 33 425 | 294 / 33 434 |
+| XP | `gamer-2007` | 128 / 28 362 | 129 / 28 364 |
+| XP | les cinq autres | inchangés | inchangés |
+| JkDefrag | `dev-2003` | 37 / 244 | 39 / 169 |
+| JkDefrag | `famille-2003` | 52 / 3 458 | 54 / 3 391 |
+| JkDefrag | `gamer-2007` | 162 / 510 | 168 / 521 |
+
+Le chapitre NTFS du README ne comparait pas seulement deux algorithmes mais deux
+règles ; il compare maintenant deux algorithmes, et **ses conclusions tiennent** :
+XP nettoie toujours entièrement `dev-2007` et `secretaire-2007`. Ce qui bascule,
+ce sont les tris de JkDefrag sur NTFS : ils évacuent la place du fichier suivant,
+puis la trouvent retenue. Sur `famille-2007`, le tri par nom passait de 173 194
+morceaux à 33 728 en 7 h 13 ; il n'en ramène plus que 132 111, en 2 h 27. Sur
+`dev-2007`, il en laisse 59 783 au lieu de 12. Et Windows 95 sur NTFS, qui ne
+peut plus reprendre aussitôt ce qu'il évacue, déplace moins : `famille-2007`
+passe de 142 h 42 à 72 h 26.
+
+**La zone MFT d'UltraDefrag (`held` → `mftzone`)** :
+
+| volume | fichiers cassés restants | morceaux restants | durée |
+|---|---:|---:|---:|
+| `gamer-2007` | 143 → **107** | 491 → **337** | 39 min 06 → 41 min 53 |
+| `secretaire-2003` | 301 → **273** | 28 598 → **18 570** | 5 min 26 → 10 min 32 |
+| `dev-2007` | 6 → 4 | 58 → 51 | 1 h 25 → 1 h 21 |
+| `dev-2003` | 15 → 15 | 67 → **46** | 6 min 28 → 6 min 31 |
+
+Sur `dev-2007`, le seek moyen tombe de 66 122 à 51 355 cylindres : les
+destinations sont moins lointaines. La revue annonçait 92 → 70 fichiers cassés
+sur `gamer-2007` ; c'est aujourd'hui 143 → 107.
+
+**Windows 95 au fond du volume (`mftzone` → `w95`)**, sur les FAT où il a du
+travail :
+
+| volume | plein | déplacé / contenu | évacuations | durée | morceaux restants |
+|---|---:|---:|---:|---:|---:|
+| `dev-1993` | 69 % | 2,9 → 1,5 | 4 997 → 2 892 | 31 min 46 → 22 min 18 | 0 → 0 |
+| `secretaire-1993` | 88 % | 6,4 → 1,5 | 12 807 → 1 171 | 1 h 48 → 18 min 13 | 0 → 0 |
+| `famille-1996` | 89 % | 5,9 → 1,5 | 3 619 → 473 | 58 min 50 → 15 min 48 | 132 → 132 |
+| `dev-1996` | 93 % | 1,7 → 0,6 | 1 733 → 1 025 | 21 min 54 → 9 min 29 | 2 218 → 2 208 |
+| `dev-1999` | 93 % | 9,2 → 1,4 | 18 922 → 4 228 | 5 h 32 → 1 h 04 | 1 717 → **4 805** |
+| `famille-1999` | 96 % | 7,3 → 1,8 | 13 873 → 2 403 | 5 h 16 → 1 h 11 | 27 → 27 |
+| `gamer-1999` | 97 % | 0,7 → 0,3 | 1 978 → 636 | 27 min 19 → 14 min 06 | 6 832 → 6 529 |
+| `secretaire-1999` | 87 % | **15,9 → 1,7** | 10 273 → 1 362 | 4 h 33 → 35 min 48 | 4 → 4 |
+
+Sur les douze FAT, **20 h 52 → 4 h 46**, et 172,5 → 31,3 Go déplacés. La
+facture est sur `dev-1999` : quand la frontière arrive au fond, elle y trouve
+ses propres réfugiés et plus de place au-dessus ; le volume sort avec 4 805
+morceaux au lieu de 1 717. La revue mesurait 13,4 fois le contenu sur
+`gamer-1999` ; le lot 1 l'avait déjà ramené à 0,7, sa passe butant sur des
+places qu'elle ne peut plus libérer. Sur NTFS, le même geste ramène `famille-2007`
+de 72 h 26 à 20 h 38.
+
+Conséquence pour le chapitre du tassage à la frontière : Windows 95 met
+désormais 4 h 46 sur les douze FAT, la frontière 4 h 38. Ce n'est plus la durée
+qui les sépare, c'est ce qu'ils laissent sur les volumes pleins — jusqu'à 6 529
+morceaux pour l'un, 91 au plus pour l'autre. Le README le dit.
+
+**Les répertoires FAT (`w95` → `fatdirs`)**. Les échecs de JkDefrag, comptés par
+un binaire jetable :
+
+| volume | échecs de répertoire | abandonnés sans essai |
+|---|---:|---:|
+| `dev-1993`, `poweruser-1993`, `secretaire-1993` | 9, 10, 6 | 0 |
+| `gamer-1996`, `secretaire-1996` | 5, 11 | 0 |
+| `dev-1996`, `famille-1996` | 21, 21 | 2, 2 |
+| `dev-1999`, `gamer-1999`, `secretaire-1999` | 21 | 7, 17, 3 |
+| `famille-1999` | 21 | **730** |
+
+L'effet sur le mode 2 est faible, de 0 à +14 fichiers cassés (`famille-1999`,
+549 → 563). Il est fort sur les tris, où les répertoires immobiles barrent la
+reconstruction de la zone 0 : sur `famille-1999`, le tri par nom laissait 156
+fichiers cassés, il en laisse 633. XP et UltraDefrag laissent un à vingt-deux
+répertoires de plus en morceaux par volume.
+
+**La tranche bornée (`fatdirs` → `overrun`)**, le mode 2 de JkDefrag seul. Sur
+`famille-1999`, 152 tranches débordent, pour 738 tranches recopiées au-delà de la
+première ; les recopier ramène ce qu'il
+laisse de 2 918 à **1 970 morceaux**, pour 563 → 559 fichiers cassés. Sur
+`secretaire-1996`, l'inverse : 12 → 67 morceaux, 3 → 8 fichiers cassés, une
+tranche bornée recopiant une fin de fichier loin de son début. Ailleurs, de
+quelques dizaines de morceaux dans un sens ou dans l'autre. `famille-1999` reste
+le plus mauvais score de JkDefrag, et de loin.
+
+**Le groupement des validations du tassage à la frontière**, que ce lot ne
+change pas, mesuré sur les douze FAT (déplacements par lot validé) : 12,2 sur
+`secretaire-1996` (76 %), 9,7 sur `secretaire-1999` (87 %), 5,9 sur `dev-1993`
+(69 %), mais 2,4 sur `poweruser-1993` (86 %) et 1,7 sur `secretaire-1993`
+(88 %) ; au-dessus de 90 %, de 2,2 à 3,3 ; et **1,4 sur `gamer-1996`** à 99 %. La
+revue comptait 0,7 sur ce dernier, avec un autre décompte des déplacements ;
+ici ce sont les déplacements unitaires, tronçons compris. Le
+docstring le dit : le groupement cède là où le volume est plein. `gamer-1993`,
+plein à 100 % depuis le lot 4, ne déplace rien.
+
+**La borne de visites de `FindBestItem`** n'a mordu nulle part : pic de 197 609
+visites (`secretaire-2007`) pour un budget de deux millions.
+
+### Le README
+
+Régénéré d'un seul jeu de mesures, l'étape `final` — le code du commit —, dont
+les 340 bilans sont identiques à ceux de `overrun`. `readme-tables.py` a d'abord
+été validé en reproduisant, depuis les bilans de `base`, les 72 lignes de table
+du README précédent et ses chiffres de prose (les journées au texte « activités »
+près, que l'outil ne produit pas). Six tables changent ; démarrages,
+installations et journées sont identiques. La prose reprise :
+
+- le chapitre NTFS dit désormais que **tous les outils sont soumis à la même
+  règle**, leur cadence, et ce que la cadence change ;
+- UltraDefrag et la zone MFT, et l'hypothèse de XP ;
+- JkDefrag sur FAT : les répertoires abandonnés et la tranche bornée ;
+- les tris sur NTFS, qui rangent à peine ;
+- Windows 95 : ses durées (9 min 29 à 1 h 11), l'évacuation au fond, ce qu'elle
+  coûte à `dev-1999` ;
+- le tassage à la frontière, qui ne se distingue plus de Windows 95 par la durée
+  mais par ce qu'il laisse ;
+- deux phrases de « Ce qui ne l'est pas » : la durée de `dev-1993` sous 95
+  (29 min 24, périmée avant ce lot) et les répertoires FAT.
+
+### Laissé ouvert
+
+- **XP et la zone MFT** : une hypothèse, argumentée, pas une source. Un
+  désassemblage de `dfrg.msc` ou un témoignage d'époque trancherait.
+- **Le déplacement partiel sur une place retenue** (`MoveItem4`) n'est pas
+  modélisé ; le cas ne se présente pas dans la galerie, mais un outil qui ne
+  relirait pas le bitmap le rencontrerait.
+- **L'attente d'un point de contrôle n'est pas jouée** : Windows 95 sur NTFS
+  attend avant de se poser, et la passe n'en dure pas plus. L'horloge des points
+  de contrôle est une estimation, calée sur les disques NTFS de la galerie ; elle
+  ne suit pas le disque réellement simulé.
+- **L'entrée `..` d'un répertoire FAT déplacé par Windows 95** n'est pas
+  réécrite, et ses sous-répertoires ne sont pas relus : c'est la moitié du
+  travail de `DEFRAG.EXE` sur un répertoire, et le coût n'est pas là.
+- **Le plus mauvais score de JkDefrag** reste `famille-1999` : 559 fichiers
+  cassés, 1 970 morceaux. Ses 761 répertoires, un par séance d'import de photos,
+  y sont pour beaucoup.
+- **Windows 95 sur un volume plein** laisse plus de morceaux qu'avant. C'est le
+  prix de l'évacuation au fond, et il est mesuré ; un outil d'époque
+  demandait de faire de la place avant la passe.
+- **Le tassage à la frontière reste quadratique en morceaux** (`physical()`,
+  `vcn()`), comme l'a signalé le chantier 23 ; rien n'y a été fait.
+- **Les fourchettes de durée de l'écran de choix d'outil** sont recopiées à la
+  main des bilans ; `readme-tables.py` pourrait les produire.
+- **La dérive de calibration des démarrages** (−3,3 à +7,4 %) est celle du
+  chantier 23 : ce lot ne touche aucun démarrage, et `ThinkModel` n'a pas été
+  recalé.

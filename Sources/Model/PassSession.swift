@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Le producteur — planificateur, simulateur, repères — ne s'arrête jamais de
 /// lui-même : une passe de 1995 sur un volume de 6 Go se planifie en moins
-/// d'une seconde et s'écoute en cinq heures. C'est donc l'écoute qui le tient
+/// d'une seconde et s'écoute pendant plus d'une heure. C'est donc l'écoute qui le tient
 /// en laisse. Chaque paquet produit est déposé ici, et le fil s'endort dès
 /// qu'il a pris `horizon` secondes d'avance sur ce que l'écoute a réclamé ; il
 /// se réveille quand elle vient chercher la suite.

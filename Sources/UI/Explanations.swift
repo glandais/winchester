@@ -48,9 +48,10 @@ enum Explanation: String, CaseIterable, Identifiable {
                 + "proportionnel. Deux seeks courts prennent donc plus longtemps qu'un seul de même distance "
                 + "totale, et sonnent autrement."
         case .edgeReturn:
-            return "Sur FAT, chaque déplacement validé réécrit les deux copies de la table d'allocation et "
-                + "l'entrée de répertoire, au tout début de la partition. Le bras y revient à peu près une fois "
-                + "par fichier : c'est le « clac » franc qui rythme une passe de Windows 95."
+            return "Sur FAT, chaque déplacement validé réécrit les deux copies de la table d'allocation, au "
+                + "tout début de la partition, puis l'entrée du fichier dans son répertoire. Le bras revient au "
+                + "bord à peu près une fois par fichier : c'est le « clac » franc qui rythme une passe de "
+                + "Windows 95."
         case .prefetch:
             return "Windows XP et Vista rangent la liste des fichiers à lire au démarrage par position sur le "
                 + "disque, et la relisent d'une seule course du bras, avec les fiches de la MFT qui les "
@@ -82,7 +83,7 @@ enum Explanation: String, CaseIterable, Identifiable {
                 + "morceaux s'effondre. Les deux chiffres se lisent ensemble."
         case .evacuations:
             return "La place où doit aller un fichier est presque toujours occupée : l'occupant part d'abord "
-                + "ailleurs, et sera redéplacé quand viendra son tour. C'est ce va-et-vient, plus que la "
+                + "au fond du volume, et sera redéplacé quand viendra son tour. C'est ce va-et-vient, plus que la "
                 + "quantité de données, qui fait durer une passe. Un outil qui ne déloge personne en compte zéro."
         case .pagefile:
             return "Windows l'a ouvert : le défragmenteur ne peut pas le déplacer et range tout autour. C'est "

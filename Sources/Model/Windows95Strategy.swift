@@ -10,9 +10,10 @@ import DiskCore
 /// seul ordre dont l'outil disposait. Deux conséquences qui s'entendent :
 ///
 /// - la destination d'un fichier est presque toujours occupée par un autre, qui
-///   doit d'abord être **évacué** vers l'espace libre de la fin du volume. Ce
-///   fichier-là sera relu et redéplacé quand viendra son tour. C'est ce
-///   va-et-vient, et non le volume de données, qui fait durer une passe ;
+///   doit d'abord être **évacué** vers l'espace libre de la fin du volume
+///   (`refuge`). Ce fichier-là sera relu et redéplacé quand viendra son tour.
+///   C'est ce va-et-vient, et non le volume de données, qui fait durer une
+///   passe ;
 /// - chaque déplacement validé réécrit les métadonnées, dont l'emplacement
 ///   dépend du format : sur FAT, les deux copies de la table et l'entrée de
 ///   répertoire, toutes trois au tout début de la partition. D'où le retour
@@ -22,14 +23,20 @@ import DiskCore
 /// Le fichier d'échange n'est pas déplaçable : Windows l'a ouvert, et le
 /// défragmenteur tasse tout autour de lui.
 ///
-/// Tout le travail se fait en **extents** et jamais cluster par cluster : c'est
-/// ce qui permet de planifier une passe sur un volume de 320 Go, où les 80
-/// millions de clusters ne portent en tout que 178 000 extents.
+/// Sur NTFS, hors de son époque, elle subit la règle du volume : ce qu'elle
+/// quitte attend le point de contrôle (`NTFSCheckpoints`), et une destination
+/// que ses occupants viennent de libérer n'est prise qu'après lui.
 ///
-/// Ses limites sont celles de son époque, et elles se mesurent : appliquée au
-/// 320 Go de `famille-2007`, cette stratégie tasse trois cents gigaoctets par
-/// tampons de 256 Ko pour ranger 244 fichiers fragmentés sur 12 220. Ce n'est
-/// pas ce que faisaient les outils de 2007 — voir les autres `DefragStrategy`.
+/// Tout le travail se fait en **extents** et jamais cluster par cluster : c'est
+/// ce qui permet de planifier une passe sur un volume de 320 Go, où quatre-vingts
+/// millions de clusters ne portent que quelques centaines de milliers
+/// d'extents.
+///
+/// Ses limites sont celles de son époque : appliquée à un volume de 2007, cette
+/// stratégie tasse des centaines de gigaoctets par tampons de 256 Ko pour
+/// ranger quelques centaines de fichiers fragmentés sur des dizaines de
+/// milliers — le README en donne la mesure. Ce n'est pas ce que faisaient les
+/// outils de 2007 — voir les autres `DefragStrategy`.
 struct Windows95Strategy: DefragStrategy {
 
     let id = "windows95"
@@ -84,15 +91,36 @@ struct Windows95Strategy: DefragStrategy {
         // Ils tiennent en quelques extents — le fichier d'échange, et sur NTFS
         // la MFT et sa copie : aucune raison d'en faire un tableau de booléens
         // de la taille du volume.
-        let blocked = (volume.files
-            .filter { !$0.isMovable }
-            .flatMap(\.extents) + volume.systemExtents)
-            .sorted { $0.start < $1.start }
+        // Fusionnées en plages disjointes, elles sont triées par leur fin
+        // comme par leur début : `destination` y cherche par dichotomie.
+        var blocked: [Extent] = []
+        for extent in (volume.files.filter { !$0.isMovable }.flatMap(\.extents) + volume.systemExtents)
+            .filter({ !$0.isEmpty }).sorted(by: { $0.start < $1.start }) {
+            if let last = blocked.last, extent.start <= last.end {
+                blocked[blocked.count - 1] = Extent(start: last.start,
+                                                    length: max(last.end, extent.end) - last.start)
+            } else {
+                blocked.append(extent)
+            }
+        }
 
         // MARK: Empaquetage
 
         var frontier: UInt32 = 0
         var phase = 1
+        var checkpoints = NTFSCheckpoints()
+
+        // Sur FAT, ce qu'un déplacement quitte est libre aussitôt validé ; sur
+        // NTFS — hors de son époque, mais la galerie l'y fait tourner — il
+        // attend le point de contrôle, comme pour tout outil.
+        func relocate(_ position: Int, to extents: [Extent]) {
+            if volume.releaseWaitsForCheckpoint {
+                volume.relocateHoldingReleased(position, to: extents)
+            } else {
+                volume.relocate(position, to: extents)
+            }
+            checkpoints.afterCommit(&volume, sink: sink)
+        }
 
         for position in volume.files.indices {
             let file = volume.files[position]
@@ -131,8 +159,8 @@ struct Windows95Strategy: DefragStrategy {
             where occupantPosition != position {
                 let occupant = volume.files[occupantPosition]
                 guard occupant.isMovable else { blockedHere = true; break }
-                guard let refuge = freeRuns(in: volume, count: occupant.clusterCount,
-                                            from: target.end, excluding: reserved, total: total)
+                guard let refuge = refuge(in: volume, count: occupant.clusterCount,
+                                          above: reserved.upperBound)
                 else { blockedHere = true; break }
 
                 DefragOperations.move(source: occupant.extents, destination: refuge,
@@ -143,7 +171,7 @@ struct Windows95Strategy: DefragStrategy {
                 DefragOperations.commit(cluster: Int(refuge[0].start), fileIndex: occupantPosition,
                                         entrySector: volume.entrySector(of: occupantPosition),
                                         phase: phase, partition: partition, into: sink)
-                volume.relocate(occupantPosition, to: refuge)
+                relocate(occupantPosition, to: refuge)
                 movedClusters += Int(occupant.clusterCount)
                 evacuations += 1
                 sink.moves.evacuations = evacuations
@@ -167,6 +195,13 @@ struct Windows95Strategy: DefragStrategy {
             // c'est la donnée de **quelqu'un d'autre**. L'audit de
             // `AllocationInvariantTests` le vérifie sur les treize plans ;
             // celle-ci le vérifie sur place, là où le manquement s'écrivait.
+            // Sur NTFS, la place que les occupants viennent de quitter est
+            // retenue jusqu'au point de contrôle : `FSCTL_MOVE_FILE` y
+            // échouerait, et « the only remedy is to wait and try again »
+            // (Russinovich). L'attente n'est pas jouée, seulement son effet.
+            if volume.heldClusters.contains(where: { $0.start < target.end && $0.end > target.start }) {
+                volume.releaseHeldClusters()
+            }
             assert(volume.occupants(of: target.start..<target.end).allSatisfy { $0 == position }
                    && !blocked.contains { $0.start < target.end && $0.end > target.start },
                    "\(id) : dépôt de \(file.path) sur \(target), encore occupé")
@@ -177,7 +212,7 @@ struct Windows95Strategy: DefragStrategy {
             DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
                                     entrySector: volume.entrySector(of: position),
                                     phase: phase, partition: partition, into: sink)
-            volume.relocate(position, to: [target])
+            relocate(position, to: [target])
             movedClusters += Int(need)
             filesMoved += 1
             sink.moves.filesMoved = filesMoved
@@ -187,6 +222,7 @@ struct Windows95Strategy: DefragStrategy {
 
         // MARK: Phase finale — réécriture complète des tables
 
+        volume.releaseHeldClusters()
         sink.progress = 1
         DefragOperations.final(partition: partition, phase: 5, into: sink)
 
@@ -220,40 +256,55 @@ struct Windows95Strategy: DefragStrategy {
 
     /// Première position ≥ `from` où `need` clusters consécutifs ne heurtent
     /// aucun cluster intouchable.
+    ///
+    /// `blocked` est fait de plages disjointes et triées : la seule qui puisse
+    /// gêner est la première qui finit après `start`, que la dichotomie trouve
+    /// sans rebalayer le tableau depuis son début à chaque fichier.
     private func destination(from: UInt32, need: UInt32,
                              blocked: [Extent], total: UInt32) -> UInt32? {
         var start = from
+        var index = 0
         while UInt64(start) + UInt64(need) <= UInt64(total) {
-            if let hit = blocked.first(where: { $0.start < start + need && $0.end > start }) {
-                start = hit.end
-            } else {
-                return start
+            var low = index, high = blocked.count
+            while low < high {
+                let middle = (low + high) / 2
+                if blocked[middle].end <= start { low = middle + 1 } else { high = middle }
             }
+            index = low
+            guard index < blocked.count, blocked[index].start < start + need else { return start }
+            start = blocked[index].end
         }
         return nil
     }
 
-    /// Des clusters libres où évacuer un occupant : au-delà de la zone en cours
-    /// d'empaquetage, et sans toucher à la destination en préparation.
+    /// Des clusters libres où évacuer un occupant : **au fond du volume**,
+    /// au-dessus de la zone en cours d'empaquetage, et sans toucher à la
+    /// destination en préparation.
+    ///
+    /// Le fond est la zone de manœuvre de l'outil, et c'est ce que ce
+    /// docstring et le résumé de la passe ont toujours dit. Posé juste
+    /// au-dessus de la destination, dans le premier trou venu, l'occupant était
+    /// rattrapé par la frontière quelques fichiers plus loin et réévacué, et
+    /// encore : au chantier 24, avant la correction, la passe déplaçait
+    /// jusqu'à 15,9 fois le contenu du volume (`secretaire-1999`, 4 h 33),
+    /// quand une défragmentation complète d'un 8 Go sous Windows 98 prenait une
+    /// à trois heures. Après, 1,8 fois au plus sur les douze volumes FAT. Le
+    /// va-et-vient reste — la destination d'un fichier est presque toujours
+    /// prise —, mais un fichier évacué ne l'est plus qu'une fois, en général.
+    ///
+    /// Le prix est sur les volumes pleins : quand la frontière arrive au fond,
+    /// elle y trouve les fichiers qu'on y a mis à l'abri, et plus de place
+    /// au-dessus pour les pousser. `dev-1999`, plein à 93 %, en sort avec plus
+    /// de morceaux qu'avant.
     ///
     /// L'occupant ressort souvent en plusieurs morceaux, et c'est normal : il
     /// n'est là qu'en transit, et sera relu puis redéplacé quand viendra son
-    /// tour dans le parcours.
-    private func freeRuns(in volume: DefragVolume, count: UInt32,
-                          from: UInt32, excluding reserved: Range<UInt32>,
-                          total: UInt32) -> [Extent]? {
-        var result: [Extent] = []
-        var remaining = count
-        var cursor = max(from, reserved.upperBound)
-
-        while remaining > 0, cursor < total {
-            guard let run = volume.bitmap.nextFreeRun(from: cursor) else { break }
-            guard run.start < total else { break }
-            let take = min(run.length, remaining)
-            result.append(Extent(start: run.start, length: take))
-            remaining -= take
-            cursor = run.start + run.length
-        }
-        return remaining == 0 ? result : nil
+    /// tour dans le parcours. S'il n'y a pas la place de l'évacuer en entier,
+    /// il reste où il est.
+    private func refuge(in volume: DefragVolume, count: UInt32, above floor: UInt32) -> [Extent]? {
+        // L'outil de 1995 ne connaît pas de zone MFT.
+        let runs = DefragOperations.highestFreeRuns(in: volume, downTo: floor, need: count,
+                                                    avoidingMFTZone: false)
+        return runs.reduce(0) { $0 + $1.length } == count ? runs : nil
     }
 }

@@ -329,7 +329,12 @@ struct StreamingTests {
     @Test("L'écoute image par image ne garde que l'instant, et arrive au même état")
     func livePassForgetsThePast() throws {
         let volume = Self.agedVolume()
-        let strategy = Windows95Strategy()
+        // Il faut une passe longue devant une écoute courte. Depuis que
+        // Windows 95 évacue au fond du volume, sa passe sur ce volume est trois
+        // fois plus courte ; un tampon de 32 Ko lui rend sa longueur. C'est
+        // elle qui compte ici, pas la fidélité du tampon.
+        var strategy = Windows95Strategy()
+        strategy.bufferBytes = 32 * 1024
         let reference = Self.whole(volume, strategy)
 
         // Les paquets sont livrés à l'écoute comme le ferait la session :

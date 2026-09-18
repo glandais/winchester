@@ -6,13 +6,13 @@ import DiskCore
 /// Il part de ce que les défragmenteurs simulés font mal sur FAT, mesuré sur
 /// les douze volumes FAT de la galerie :
 ///
-/// - **Windows 95** range parfaitement, mais dans l'ordre du parcours de
-///   l'arborescence : presque chaque fichier a une destination occupée, et ce
-///   qu'il évacue redescendra. Il déplace jusqu'à sept fois le contenu du
-///   volume, et une passe dure jusqu'à cinq heures ;
+/// - **Windows 95** range, mais dans l'ordre du parcours de l'arborescence :
+///   presque chaque fichier a une destination occupée, et ce qu'il évacue au
+///   fond du volume devra en revenir. Il déplace plus que le contenu du
+///   volume, et quand le fond est plein il ne sait plus où évacuer ;
 /// - **JkDefrag** et **UltraDefrag** n'évacuent personne, donc n'ont rien à
-///   faire quand les trous manquent : à 99 % de remplissage, ils ne touchent
-///   pas un seul des 440 fichiers cassés de `gamer-1996`.
+///   faire quand les trous manquent : à 99 % de remplissage, ils ne réparent
+///   aucun des fichiers cassés de `gamer-1996` — Windows 95 non plus.
 ///
 /// Le principe tient en une règle : **l'ordre d'arrivée est l'ordre actuel**.
 /// Une frontière balaie le volume depuis son début ; tout ce qui est sous elle
@@ -45,7 +45,15 @@ import DiskCore
 ///   trou qu'on ne peut pas combler devant un obstacle sert de refuge ;
 /// - **les validations sont groupées.** Un déplacement vers des clusters déjà
 ///   libres n'écrit les tables qu'avec les suivants, en une traite, et les
-///   clusters qu'il quitte restent retenus d'ici là.
+///   clusters qu'il quitte restent retenus d'ici là. Le groupement ne tient
+///   que tant qu'il reste de la place : le lot est vidé chaque fois qu'un
+///   cluster retenu barre la frontière ou qu'une évacuation manque de place,
+///   et c'est plus fréquent quand le volume est plein. Au chantier 24, sur
+///   les onze volumes FAT où la passe a du travail, un lot validait de 1,7 à
+///   12 déplacements sous 90 % de remplissage, jamais plus de 3,3 au-dessus,
+///   et 1,4 sur `gamer-1996`, plein à 99 % : presque un aller-retour du bras
+///   jusqu'aux tables par déplacement, comme pour Windows 95. C'est le prix
+///   d'avancer sans espace libre.
 ///
 /// D'où une garantie que les outils d'époque n'avaient pas : **aucune écriture
 /// ne tombe sur une donnée encore référencée**, pas même sur celles du fichier
@@ -724,7 +732,8 @@ extension FrontierCompactionStrategy {
                                far: Bool, whole: Bool = false, phase: Int) -> Bool {
             guard let pieceVcn = vcn(of: piece.start, in: file) else { return false }
             var destinations = far
-                ? highestFreeRuns(downTo: above, need: piece.length)
+                ? DefragOperations.highestFreeRuns(in: volume, downTo: above, need: piece.length,
+                                                   avoidingMFTZone: true)
                 : freeRuns(from: above, to: total, need: piece.length)
             var found = destinations.reduce(0) { $0 + $1.length }
             if found < piece.length, let wrap = wrapFrom, wrap < above {
@@ -776,36 +785,6 @@ extension FrontierCompactionStrategy {
                 let take = min(end - run.start, remaining)
                 runs.append(Extent(start: run.start, length: take))
                 remaining -= take
-            }
-            return runs
-        }
-
-        /// Des clusters libres au-dessus de `floor`, en partant du fond du
-        /// volume, jusqu'à `need`.
-        func highestFreeRuns(downTo floor: UInt32, need: UInt32) -> [Extent] {
-            var runs: [Extent] = []
-            var remaining = need
-            var cursor = total
-            while remaining > 0, cursor > floor, let run = volume.bitmap.previousFreeRun(before: cursor) {
-                cursor = run.start
-                var pieces = [run]
-                if let zone = volume.mftZone, run.start < zone.upperBound, run.end > zone.lowerBound {
-                    pieces = []
-                    if run.start < zone.lowerBound {
-                        pieces.append(Extent(start: run.start, length: zone.lowerBound - run.start))
-                    }
-                    if run.end > zone.upperBound {
-                        pieces.append(Extent(start: zone.upperBound, length: run.end - zone.upperBound))
-                    }
-                }
-                for piece in pieces.reversed() {
-                    let start = max(piece.start, floor)
-                    guard start < piece.end, remaining > 0 else { continue }
-                    let take = min(piece.end - start, remaining)
-                    // Le haut du trou : ce qui reste en dessous reste d'un tenant.
-                    runs.append(Extent(start: piece.end - take, length: take))
-                    remaining -= take
-                }
             }
             return runs
         }

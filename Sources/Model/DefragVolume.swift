@@ -284,38 +284,85 @@ struct DefragVolume {
 
     var fill: Double { bitmap.fill }
 
+    // MARK: - Déplacer
+
+    /// Si `FSCTL_MOVE_FILE` accepte de déplacer la plage de ce fichier qui
+    /// commence au cluster logique `vcn`.
+    ///
+    /// Une règle de Windows, donc des seuls outils qui passent par son API — XP,
+    /// JkDefrag, UltraDefrag ; ni `DEFRAG.EXE`, qui écrivait lui-même sur le
+    /// disque, ni les deux passes écrites pour ce projet. Sur FAT, **le premier
+    /// cluster d'un répertoire ne se déplace pas** : `FatMoveFile` rend
+    /// `STATUS_INVALID_PARAMETER` pour un répertoire dès que `StartingVcn` vaut
+    /// zéro, « because sub-directories have this cluster number in them and
+    /// there is no safe way to simultaneously update them all » — c'est le
+    /// numéro que porte l'entrée `..` de chaque enfant (`fastfat/fsctrl.c`,
+    /// l'échantillon de pilote que Microsoft publie). Le reste de sa chaîne se
+    /// déplace. D'où « FAT directories cannot be moved entirely » dans le
+    /// journal d'UltraDefrag, et « Directories cannot be moved on FAT
+    /// volumes. This is a known Windows limitation » dans JkDefrag.
+    func moveFileAccepts(_ position: Int, fromVCN vcn: UInt32) -> Bool {
+        !(partition.format.isFAT && files[position].category == .directory && vcn == 0)
+    }
+
+    /// Si ce que quitte un déplacement attend le prochain point de contrôle
+    /// avant de redevenir libre.
+    ///
+    /// C'est une propriété du **volume**, pas de l'outil qui le défragmente.
+    /// NTFS ne laisse pas réutiliser un cluster désalloué tant que ses données
+    /// de reprise ne sont pas sur le disque : « NTFS prevents deallocated
+    /// clusters from being used again until NTFS checkpoints the drive's
+    /// state. Once every few seconds, NTFS ensures that all its crash recovery
+    /// data is safely on disk; only then can deallocated clusters be reused »
+    /// (Mark Russinovich, *Inside Windows NT Disk Defragmenting*, Windows NT
+    /// Magazine, 1997). Un `FSCTL_MOVE_FILE` vers ces clusters échoue en
+    /// `STATUS_ALREADY_COMMITTED`, et le bitmap que relit un défragmenteur les
+    /// montre occupés. FAT n'a pas de journal : ce qu'un déplacement quitte
+    /// est libre dès qu'il est validé.
+    var releaseWaitsForCheckpoint: Bool { partition.format == .ntfs }
+
     /// Déplace un fichier vers une nouvelle suite d'extents, comme le fait la
-    /// validation d'un déplacement dans les tables.
-    mutating func relocate(_ position: Int, to extents: [Extent]) {
-        let old = files[position].extents
-        for extent in old { bitmap.free(extent) }
-        index.remove(old, file: position)
-        for extent in extents { bitmap.allocate(extent) }
-        index.insert(extents, file: position)
-        files[position].extents = extents
+    /// validation d'un déplacement dans les tables, et rend aussitôt ce qu'il
+    /// quitte.
+    ///
+    /// **Refusé sur NTFS**, où rien n'est rendu aussitôt : une stratégie y
+    /// passe par `relocateHoldingReleased`, et choisit sa cadence de points de
+    /// contrôle (`releaseHeldClusters`). La règle ne peut pas être oubliée par
+    /// un outil — c'est ce qui était arrivé à deux sur cinq.
+    ///
+    /// - Parameter changesOnly: ne toucher la bitmap et l'index que pour les
+    ///   extents qui changent. Retirer et réinsérer tous les extents du fichier
+    ///   est quadratique pour qui déplace un fichier en trois mille morceaux
+    ///   **un morceau à la fois**, comme le fait `Vacate` : la moitié du temps
+    ///   d'un tri complet. Le résultat est le même, à un détail près : les
+    ///   extents inchangés gardent leur rang dans les listes de l'index.
+    ///   `occupants` rend alors ses fichiers dans un autre ordre, et Windows 95
+    ///   évacue dans cet ordre-là : il déplace tout.
+    mutating func relocate(_ position: Int, to extents: [Extent], changesOnly: Bool = false) {
+        precondition(!releaseWaitsForCheckpoint,
+                     "sur NTFS, ce qu'un déplacement quitte attend le point de contrôle : relocateHoldingReleased")
+        replace(position, with: extents, changesOnly: changesOnly)
     }
 
     /// Les clusters qu'un déplacement a libérés mais qu'on s'interdit encore de
-    /// réutiliser : occupés dans la bitmap, portés par aucun fichier.
+    /// réutiliser : occupés dans la bitmap, portés par aucun fichier. Dans
+    /// l'ordre où ils ont été retenus.
     ///
-    /// C'est la comptabilité d'UltraDefrag sur NTFS (`move.c:719-727`). Windows
-    /// marque les clusters quittés par `FSCTL_MOVE_FILE` comme temporairement
-    /// alloués jusqu'au prochain point de contrôle ; l'outil ne les rend donc
-    /// pas à sa liste de régions libres, et ne la relit qu'en tête de chaque
-    /// tour (`release_temp_space_regions`). Un trou ouvert pendant un tour
-    /// n'existe qu'au tour suivant.
+    /// Sur NTFS c'est la règle du volume (`releaseWaitsForCheckpoint`) ; sur
+    /// FAT, un choix de l'outil — `FrontierCompactionStrategy` retient ce
+    /// qu'elle quitte jusqu'à ce que les tables soient écrites.
     private(set) var heldClusters: [Extent] = []
 
-    /// `relocate`, en retenant ce que le fichier quitte au lieu de le rendre
-    /// aussitôt aux recherches de trou.
+    /// Le déplacement, en retenant ce que le fichier quitte au lieu de le
+    /// rendre aussitôt aux recherches de trou.
     ///
-    /// Ce qui est libéré, c'est ce que l'empreinte d'origine a de libre une
+    /// Ce qui est retenu, c'est ce que l'empreinte d'origine a de libre une
     /// fois le déplacement fait : la plage déplacée, et pas ce qui est resté en
     /// place.
-    mutating func relocateHoldingReleased(_ position: Int, to extents: [Extent]) {
-        let old = files[position].extents
-        relocate(position, to: extents)
-        for extent in old where !extent.isEmpty {
+    mutating func relocateHoldingReleased(_ position: Int, to extents: [Extent],
+                                          changesOnly: Bool = false) {
+        let removed = replace(position, with: extents, changesOnly: changesOnly)
+        for extent in removed where !extent.isEmpty {
             var cursor = extent.start
             // Le run est borné à l'extent : un trou voisin, déjà libre avant le
             // déplacement, n'a rien à attendre.
@@ -331,42 +378,57 @@ struct DefragVolume {
 
     /// Le point de contrôle : tout ce qui était retenu redevient libre.
     mutating func releaseHeldClusters() {
-        for extent in heldClusters { bitmap.free(extent) }
-        heldClusters.removeAll(keepingCapacity: true)
+        releaseHeldClusters(first: heldClusters.count)
     }
 
-    /// Le même déplacement, qui ne touche la bitmap et l'index que pour les
-    /// extents qui changent.
-    ///
-    /// `relocate` retire et réinsère tous les extents du fichier. Pour qui
-    /// déplace un fichier en trois mille morceaux **un morceau à la fois**,
-    /// comme le fait `Vacate`, c'est un travail quadratique : la moitié du temps
-    /// d'un tri complet. Le résultat est le même, à un détail près : les extents
-    /// inchangés gardent leur rang dans les listes de l'index. `occupants` rend
-    /// alors ses fichiers dans un autre ordre, et Windows 95 évacue dans cet
-    /// ordre-là : il garde `relocate`.
-    mutating func relocateChanges(_ position: Int, to extents: [Extent]) {
+    /// Un point de contrôle tombé pendant la passe : ce qui avait été retenu
+    /// **avant lui** — les `count` premiers extents retenus — redevient libre,
+    /// et ce que les déplacements suivants ont quitté attend le prochain.
+    mutating func releaseHeldClusters(first count: Int) {
+        let count = min(count, heldClusters.count)
+        guard count > 0 else { return }
+        for extent in heldClusters[..<count] { bitmap.free(extent) }
+        heldClusters.removeFirst(count)
+    }
+
+    /// Remplace les extents du fichier et rend ceux qu'il a quittés, déjà
+    /// libérés dans la bitmap.
+    @discardableResult
+    private mutating func replace(_ position: Int, with extents: [Extent],
+                                  changesOnly: Bool) -> ArraySlice<Extent> {
         let old = files[position].extents
-        // Un déplacement ne change qu'une plage de VCN : ce qui la précède et
-        // ce qui la suit sont les mêmes extents, dans le même ordre.
         var prefix = 0
-        while prefix < old.count && prefix < extents.count && old[prefix] == extents[prefix] {
-            prefix += 1
-        }
         var suffix = 0
-        while suffix < old.count - prefix && suffix < extents.count - prefix
-                && old[old.count - 1 - suffix] == extents[extents.count - 1 - suffix] {
-            suffix += 1
+        if changesOnly {
+            // Un déplacement ne change qu'une plage de VCN : ce qui la précède
+            // et ce qui la suit sont les mêmes extents, dans le même ordre.
+            while prefix < old.count && prefix < extents.count && old[prefix] == extents[prefix] {
+                prefix += 1
+            }
+            while suffix < old.count - prefix && suffix < extents.count - prefix
+                    && old[old.count - 1 - suffix] == extents[extents.count - 1 - suffix] {
+                suffix += 1
+            }
         }
-        for extent in old[prefix..<(old.count - suffix)] {
-            bitmap.free(extent)
-            index.remove(extent, file: position)
-        }
-        for extent in extents[prefix..<(extents.count - suffix)] {
-            bitmap.allocate(extent)
-            index.insert(extent, file: position)
+        let removed = old[prefix..<(old.count - suffix)]
+        let added = extents[prefix..<(extents.count - suffix)]
+        if changesOnly {
+            for extent in removed {
+                bitmap.free(extent)
+                index.remove(extent, file: position)
+            }
+            for extent in added {
+                bitmap.allocate(extent)
+                index.insert(extent, file: position)
+            }
+        } else {
+            for extent in removed { bitmap.free(extent) }
+            index.remove(old, file: position)
+            for extent in added { bitmap.allocate(extent) }
+            index.insert(extents, file: position)
         }
         files[position].extents = extents
+        return removed
     }
 
     /// Les fichiers qui occupent la plage demandée.
