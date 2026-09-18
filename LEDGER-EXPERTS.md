@@ -190,7 +190,8 @@ vingt cessent d'être impossibles.
 pas lire toute la FAT32, resserrer le montage NTFS de ses 2 Mo d'un trait),
 lectures arrondies au cluster (jusqu'à 16× d'amplification sur les volumes de
 1996), `$LogFile`, horodatage d'accès, suivi de chaîne FAT32. **Puis recaler
-`ThinkModel` une seule fois**, avec les corrections du lot 1 déjà en place.
+`ThinkModel`**, avec les corrections du lot 1 déjà en place — une fois ici, et
+une dernière fois au lot 7, qui est le seul autre à faire tomber le séquentiel.
 
 **Lot 4 — les deux décisions de conception.** Allocation incrémentale et
 entrelacement d'abord (c'est elle qui débloque les deux cibles de
@@ -206,6 +207,56 @@ assumer le facteur 12 dans le docstring.
 **Lot 6 — l'acoustique**, qui ne dépend d'aucun des précédents : le régime dans
 le timbre, le filtre à 18 ms, la recalibration thermique, l'atterrissage des
 têtes.
+
+**Lot 7 — le cache du disque**, que les trois revues ne rangeaient nulle part et
+qui est pourtant le troisième des priorités de l'expert disque : « le plus gros
+écart conceptuel restant entre ce modèle et un disque réel » (§4.1). Il vient en
+dernier parce qu'il refait tomber tout le séquentiel, donc qu'il **rouvre le
+calage de `ThinkModel`** — et c'est lui qui le refermera pour de bon.
+
+Quatre mécanismes, qui sont un seul objet :
+
+1. **la lecture anticipée.** Après une lecture, le disque continue de remplir
+   son tampon jusqu'à la fin de la piste ; la requête séquentielle suivante est
+   servie **à la vitesse du bus, sans latence rotationnelle ni pas de piste**.
+   C'est le mécanisme qui, sur un vrai disque, masquait exactement le tour perdu
+   corrigé au lot 1 — et c'est pour cela que le corriger sans lui laisse le
+   séquentiel trop lent d'un côté et le calage trop haut de l'autre ;
+2. **la lecture sans latence** : sur une requête d'une piste entière, le disque
+   commence à lire au secteur qui se présente et réordonne dans le tampon. La
+   latence moyenne d'une grosse lecture n'est donc pas un demi-tour ;
+3. **le cache d'écriture**, activé par défaut sur IDE dès la fin des années 90 :
+   une petite écriture est acquittée immédiatement et vidée plus tard, par
+   paquets triés. Aujourd'hui toute écriture est synchrone, ce qui allonge les
+   installations et les journées, et surtout leur donne un rythme régulier là où
+   le vrai disque produisait des **salves** ;
+4. **la taille du tampon**, qui est une fiche et non un réglage : 128 Ko
+   segmentés sur le Fireball de 1996, 2 Mo sur le Barracuda ATA IV, 16 Mo sur le
+   7200.10. C'est elle qui date un disque à l'oreille autant que son régime.
+
+Il faut lui adjoindre ce que §4.2 signale et qui n'a de sens qu'avec lui : **le
+débit du bus n'est jamais une borne**. Un cache qui sert « à la vitesse du bus »
+exige qu'on sache laquelle — et pour un 1993 en PIO mode 2 (8,3 Mo/s crête, 2 à
+3 Mo/s utiles derrière un 486) c'est le bus qui commande, pas le plateau. Le
+**coût par commande** (0,1 à 0,3 ms, et bien davantage en PIO où le processeur
+transfère mot à mot) vit au même endroit, dans `DriveReference` plutôt que dans
+le temps de réflexion du système.
+
+**Deux caches logiciels attendent au même endroit**, tous deux repoussés par un
+chantier qui a buté dessus : `SMARTDRV`, que le démarrage de 1993 charge, qui
+lisait par éléments de 8 Ko et anticipait (chantier 22, M3) ; et **VCACHE**,
+dont l'éviction manque pour que le suivi de chaîne FAT32 produise les *retours
+périodiques* à la table que la revue décrit, et non la seule première lecture de
+chaque page (chantier 22, M1). Ce sont trois caches différents — celui du
+disque, celui du pilote, celui du système — et c'est le premier qui décide des
+deux autres.
+
+**Ce qu'il faut mesurer avant de recaler** : un cache déplace le coût d'une
+lecture séquentielle vers zéro, donc il **révèle** ce que le plancher processeur
+vaut vraiment. Si, après lui, `perMegabyte` doit encore monter pour tenir les
+cibles, c'est que les cibles elles-mêmes sont à rediscuter — elles ne sont pas
+des mesures d'époque, mais les durées que le modèle donnait avant la relecture.
+Ce lot est le bon endroit pour le dire.
 
 **À ne faire qu'après le lot 1** : plafonner `InstallEra.writeRequestSectors`
 à 128 ou 256 secteurs (aucune pile de l'époque n'émettait le mégaoctet actuel).
@@ -285,3 +336,10 @@ doit être corrigé « au jugé » — c'est justement la règle du projet.
 - **Deux estimations de coût manquent** : ce que l'allocation incrémentale fait
   au temps de génération des vingt volumes, et ce qu'un cache de piste fait au
   temps de rendu d'une passe. Les deux sont dans le chemin chaud.
+- **Le cache du disque n'était dans aucune des trois listes de priorités
+  ordonnées**, alors que l'expert disque le classe troisième dans sa prose. Il a
+  été ajouté en lot 7 après coup, une fois que trois chantiers de suite eurent
+  buté dessus : le tour perdu qu'il masquait (lot 1), l'éviction qui manque au
+  suivi de chaîne FAT32 et `SMARTDRV` (lot 3), et le calage de `ThinkModel` qu'il
+  rouvrira (lots 3 et 4). Une revue dit où regarder ; elle ne dit pas dans quel
+  ordre, et l'ordre s'est révélé à l'usage.
