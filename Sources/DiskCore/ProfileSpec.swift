@@ -100,15 +100,34 @@ public struct DiskSpec: Sendable, Codable {
     /// Géométrie zonée. Toujours vraie sur un disque à plateaux ; le drapeau
     /// n'existe que pour pouvoir l'éteindre et entendre la différence.
     public var zbr: Bool
+    /// Un disque nommé de `DriveCatalog.named`, par son modèle. Présent, c'est
+    /// sa fiche qui décrit le matériel — géométrie, seek, tampon, année — et
+    /// les champs ci-dessus ne font que la recopier. Absent, le disque est
+    /// déduit de ces champs et de l'année du scénario.
+    public var model: String?
 
     public init(sizeMB: UInt64, rpm: Int, averageSeekMs: Double,
-                trackToTrackMs: Double? = nil, zbr: Bool = true) {
+                trackToTrackMs: Double? = nil, zbr: Bool = true, model: String? = nil) {
         self.sizeMB = sizeMB
         self.rpm = rpm
         self.averageSeekMs = averageSeekMs
         self.trackToTrackMs = trackToTrackMs
         self.zbr = zbr
+        self.model = model
     }
+
+    /// Le disque d'une fiche nommée, champs recopiés : la capacité en Mio
+    /// entiers, pour que la partition ne déborde jamais du disque.
+    public init(reference: DriveReference) {
+        self.init(sizeMB: reference.capacityBytes / (1_024 * 1_024),
+                  rpm: reference.rpm,
+                  averageSeekMs: reference.averageSeekMs,
+                  trackToTrackMs: reference.trackToTrackMs,
+                  model: reference.model)
+    }
+
+    /// La fiche nommée de ce disque, s'il en a une.
+    public var reference: DriveReference? { model.flatMap(DriveCatalog.reference(named:)) }
 
     public var sizeBytes: UInt64 { sizeMB * 1_024 * 1_024 }
 }

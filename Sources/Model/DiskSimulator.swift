@@ -155,16 +155,31 @@ struct IdleBehavior {
     /// Recalibration thermique périodique, pour les disques qui la faisaient.
     var recalibration: ThermalRecalibration?
 
+    /// Têtes garées sur une rampe hors du plateau (NoTouch chez WD) : elles
+    /// n'y sont jamais posées, donc rien ne se décolle à la mise en route et
+    /// rien n'atterrit à la coupure. Le clic de chargement sur la rampe n'a pas
+    /// de voix : aucune source ne le décrit.
+    var rampLoad = false
+
     /// Un disque qu'on laisse tourner, bras là où il est.
     static let none = IdleBehavior()
 
     /// Un disque de bureau de l'année donnée : jamais parqué au repos, et
     /// recalibré périodiquement s'il est d'avant 1997.
     static func desktop(year: Int, coldStart: Bool = false,
-                        stopAfter: Double? = nil, stopDuration: Double = 0) -> IdleBehavior {
+                        stopAfter: Double? = nil, stopDuration: Double = 0,
+                        rampLoad: Bool = false) -> IdleBehavior {
         IdleBehavior(parkAfter: nil, stopDuration: stopDuration, stopAfter: stopAfter,
                      coldStart: coldStart,
-                     recalibration: ThermalRecalibration.era(year: year))
+                     recalibration: ThermalRecalibration.era(year: year),
+                     rampLoad: rampLoad)
+    }
+
+    /// Le disque de bureau d'un matériel donné : son année à lui, sa rampe.
+    static func desktop(_ hardware: DriveHardware, coldStart: Bool = false,
+                        stopAfter: Double? = nil, stopDuration: Double = 0) -> IdleBehavior {
+        desktop(year: hardware.year, coldStart: coldStart, stopAfter: stopAfter,
+                stopDuration: stopDuration, rampLoad: hardware.rampLoad)
     }
 }
 
@@ -442,7 +457,9 @@ struct DiskMechanics {
     mutating func start(events: inout [DiskEvent]) {
         events.append(DiskEvent(time: spinUpAt, kind: .spinUp(duration: spinUpDuration)))
         guard idle.coldStart else { return }
-        events.append(DiskEvent(time: spinUpAt + StartupSequence.unstickDelay, kind: .headUnstick))
+        if !idle.rampLoad {
+            events.append(DiskEvent(time: spinUpAt + StartupSequence.unstickDelay, kind: .headUnstick))
+        }
 
         let dwell = StartupSequence.dwellRevolutions * geometry.revolutionDuration
         let stops = StartupSequence.stops(cylinders: geometry.cylinders)
@@ -1133,9 +1150,12 @@ struct DiskMechanics {
 
         if let stopAt {
             tail.append(DiskEvent(time: stopAt, kind: .spinDown(duration: idle.stopDuration)))
-            // Le moteur ralentit ; les têtes finissent par toucher le plateau.
-            let landing = stopAt + StartupSequence.landingDelay(stopDuration: idle.stopDuration)
-            tail.append(DiskEvent(time: landing, kind: .headLand))
+            // Le moteur ralentit ; les têtes finissent par toucher le plateau —
+            // sauf sur une rampe, où le bras les a retirées avant.
+            if !idle.rampLoad {
+                let landing = stopAt + StartupSequence.landingDelay(stopDuration: idle.stopDuration)
+                tail.append(DiskEvent(time: landing, kind: .headLand))
+            }
         }
 
         tail.sort { $0.time < $1.time }

@@ -370,9 +370,9 @@ enum ScenarioBuilder {
                                            totalDuration: 0,
                                            spinUpAt: 0.35,
                                            spinUpDuration: spinUpDuration,
-                                           idle: .desktop(year: disk.spec.timeline.start.year,
+                                           idle: .desktop(hardware,
                                                           coldStart: true),
-                                           drive: .era(year: disk.spec.timeline.start.year))
+                                           drive: hardware.interface)
         let freshSeconds = (freshTrace.timings.last?.end ?? 0) + fresh.tail
 
         let launch = plan.appName.map {
@@ -418,10 +418,10 @@ enum ScenarioBuilder {
                              // Une vraie mise sous tension, et pas d'arrêt
                              // moteur : la machine vient de démarrer. Le bras
                              // reste où la dernière lecture l'a laissé.
-                             idle: .desktop(year: disk.spec.timeline.start.year, coldStart: true),
-                             drive: .era(year: disk.spec.timeline.start.year),
+                             idle: .desktop(hardware, coldStart: true),
+                             drive: hardware.interface,
                              tail: plan.tail,
-                             year: disk.spec.timeline.start.year),
+                             year: hardware.year),
             phases: plan.phases,
             defrag: nil,
             boot: BootPlayback(osName: plan.osName,
@@ -507,10 +507,10 @@ enum ScenarioBuilder {
             // On a démarré sur la disquette ou le CD : le disque tourne déjà.
             setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
                              spinUpAt: 0, spinUpDuration: 0.9,
-                             idle: .desktop(year: disk.spec.timeline.start.year),
-                             drive: .era(year: disk.spec.timeline.start.year),
+                             idle: .desktop(hardware),
+                             drive: hardware.interface,
                              tail: tailDuration,
-                             year: disk.spec.timeline.start.year),
+                             year: hardware.year),
             phases: phases.descriptors,
             defrag: nil,
             boot: nil,
@@ -573,12 +573,12 @@ enum ScenarioBuilder {
                              // La machine s'allume le matin et s'éteint le
                              // soir : la journée se referme sur la coupure, le
                              // bras qui se retire et les têtes qui se posent.
-                             idle: .desktop(year: disk.spec.timeline.start.year, coldStart: true,
+                             idle: .desktop(hardware, coldStart: true,
                                             stopAfter: powerOffDelay,
                                             stopDuration: spinDownDuration),
-                             drive: .era(year: disk.spec.timeline.start.year),
+                             drive: hardware.interface,
                              tail: tailDuration,
-                             year: disk.spec.timeline.start.year),
+                             year: hardware.year),
             phases: phases,
             defrag: nil,
             boot: nil,
@@ -656,9 +656,7 @@ enum ScenarioBuilder {
 
         return assembleDefrag(volume: volume,
                               strategy: strategy,
-                              year: disk.spec.timeline.start.year,
-                              geometry: hardware.geometry,
-                              seekModel: hardware.seek,
+                              hardware: hardware,
                               label: ScenarioLabel(title: disk.spec.displayName,
                                                    summary: disk.spec.summary
                                                        ?? String(localized: "scenario.defrag.fallbackSummary", defaultValue: "A defragmentation pass on a generated disk"),
@@ -678,10 +676,10 @@ enum ScenarioBuilder {
     /// sur sa propre copie du volume, et émettra ses opérations à mesure.
     private static func assembleDefrag(volume: DefragVolume,
                                        strategy chosen: (any DefragStrategy)? = nil,
-                                       year: Int,
-                                       geometry: DriveGeometry,
-                                       seekModel: SeekModel,
+                                       hardware: DriveHardware,
                                        label: ScenarioLabel) -> Scenario {
+        let geometry = hardware.geometry
+        let seekModel = hardware.seek
         let partition = volume.partition
         precondition(geometry.totalSectors >= partition.totalSectors,
                      "la partition déborde du disque qui la porte")
@@ -692,10 +690,10 @@ enum ScenarioBuilder {
         // qu'un fondu pour que la couche de rotation s'installe.
         let setup = PassSetup(geometry: geometry, seekModel: seekModel,
                               spinUpAt: 0, spinUpDuration: 0.9,
-                              idle: .desktop(year: year),
-                              drive: .era(year: year),
+                              idle: .desktop(hardware),
+                              drive: hardware.interface,
                               tail: tailDuration,
-                              year: year)
+                              year: hardware.year)
 
         return Scenario(
             kind: .defrag,

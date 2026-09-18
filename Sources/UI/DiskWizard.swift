@@ -341,9 +341,11 @@ private struct HardwareStep: View {
     }
 
     var body: some View {
-        let geometry = DriveGeometry.era(model: "", capacityBytes: draft.disk.sizeBytes,
-                                         rpm: max(draft.disk.rpm, 1),
-                                         year: draft.timeline.start.year, zbr: draft.disk.zbr)
+        let reference = draft.disk.reference
+        let geometry = reference?.geometry
+            ?? DriveGeometry.era(model: "", capacityBytes: draft.disk.sizeBytes,
+                                 rpm: max(draft.disk.rpm, 1),
+                                 year: draft.timeline.start.year, zbr: draft.disk.zbr)
         let platters = (geometry.heads + 1) / 2
         VStack(alignment: .leading, spacing: 14) {
             Stepper(value: year, in: 1990...2008) {

@@ -94,6 +94,22 @@ struct HostBus: Sendable, Equatable {
     let readMBs: Double
     let writeMBs: Double
 
+    /// Le bus d'une machine de l'année donnée, pour un disque série ou non.
+    ///
+    /// Un disque SATA impose un contrôleur SATA, quelle que soit l'année du
+    /// scénario : 150 Mo/s jusqu'en 2005 (SATA 1,5 Gb/s, l'ICH5 d'Intel en
+    /// 2003), 300 Mo/s ensuite (SATA 3 Gb/s, l'ICH8 en 2006), 600 à partir de
+    /// 2011 (SATA 6 Gb/s, les chipsets de la série 6). Débits de la norme,
+    /// codage 8b/10b déduit ; aucune mesure de la période.
+    static func era(year: Int, serial: Bool) -> HostBus {
+        guard serial else { return era(year: year) }
+        switch year {
+        case ..<2006:     return HostBus(readMBs: 150, writeMBs: 150)
+        case ..<2011:     return HostBus(readMBs: 300, writeMBs: 300)
+        default:          return HostBus(readMBs: 600, writeMBs: 600)
+        }
+    }
+
     static func era(year: Int) -> HostBus {
         switch year {
         case ..<1995:     HostBus(readMBs: 5.0, writeMBs: 5.0)

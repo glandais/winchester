@@ -38,12 +38,16 @@ public struct DriveGeometry: Sendable {
     public let heads: Int
     public let rpm: Double
     public let zones: [Zone]
+    /// Diamètre des plateaux, en pouces : il ne change rien à l'adressage, mais
+    /// la vitesse de l'air au bord — donc le souffle — en dépend.
+    public let platterInches: Double
 
     private let sectorsPerTrackByCylinder: [Int]
     /// LBA du premier secteur de chaque cylindre, `cylinders + 1` entrées.
     private let cylinderStartLBA: [Int]
 
-    public init(model: String, cylinders: Int, heads: Int, rpm: Double, zones: [Zone]) {
+    public init(model: String, cylinders: Int, heads: Int, rpm: Double, zones: [Zone],
+                platterInches: Double = 3.5) {
         precondition(cylinders > 1 && heads > 0)
         precondition(!zones.isEmpty && zones[0].firstCylinder == 0)
 
@@ -52,6 +56,7 @@ public struct DriveGeometry: Sendable {
         self.heads = heads
         self.rpm = rpm
         self.zones = zones
+        self.platterInches = platterInches
 
         var spt = [Int](repeating: 0, count: cylinders)
         var zoneIndex = 0
@@ -268,9 +273,22 @@ extension DriveGeometry {
                            year: Int,
                            heads forcedHeads: Int? = nil,
                            zbr: Bool = true) -> DriveGeometry {
+        zoned(model: model, capacityBytes: capacityBytes, rpm: rpm,
+              density: DriveCatalog.density(year: year),
+              heads: forcedHeads, zbr: zbr)
+    }
+
+    /// La même construction, pour une densité donnée plutôt que celle d'une
+    /// année : celle d'une fiche qui ne suit pas la courbe des époques.
+    public static func zoned(model: String,
+                             capacityBytes: UInt64,
+                             rpm: Int,
+                             density: (tracksPerFace: Double, bytesPerFace: Double, innerRatio: Double),
+                             heads forcedHeads: Int? = nil,
+                             zbr: Bool = true,
+                             platterInches: Double = 3.5) -> DriveGeometry {
         precondition(capacityBytes > 0 && rpm > 0)
 
-        let density = DriveCatalog.density(year: year)
         var cylinders = max(Int(density.tracksPerFace.rounded()), 2)
         let sectors = Int((Double(capacityBytes) / Double(bytesPerSector)).rounded(.up))
 
@@ -320,12 +338,14 @@ extension DriveGeometry {
         // à la fois jusqu'à couvrir ce qui est demandé — jamais l'inverse.
         var outer = outerSPT
         var drive = DriveGeometry(model: model, cylinders: cylinders, heads: heads,
-                                  rpm: Double(rpm), zones: zones(outer: outer))
+                                  rpm: Double(rpm), zones: zones(outer: outer),
+                                  platterInches: platterInches)
         var attempts = 0
         while drive.totalSectors < sectors && attempts < 16 {
             outer += 1
             drive = DriveGeometry(model: model, cylinders: cylinders, heads: heads,
-                                  rpm: Double(rpm), zones: zones(outer: outer))
+                                  rpm: Double(rpm), zones: zones(outer: outer),
+                                  platterInches: platterInches)
             attempts += 1
         }
 
@@ -337,7 +357,8 @@ extension DriveGeometry {
             let deficit = sectors - drive.totalSectors
             cylinders += max(deficit / max(drive.sectorsPerCylinder(cylinders - 1), 1), 1)
             drive = DriveGeometry(model: model, cylinders: cylinders, heads: heads,
-                                  rpm: Double(rpm), zones: zones(outer: outer))
+                                  rpm: Double(rpm), zones: zones(outer: outer),
+                                  platterInches: platterInches)
         }
         return drive
     }

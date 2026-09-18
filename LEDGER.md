@@ -6495,3 +6495,166 @@ ce qu'on touche.
   `develop` : les douze traductions françaises de la table `Koubou` y sont des
   objets `{value, state}`, que l'export écrit en chaînes. L'écart précède ce
   chantier ; `import` et `check` n'en souffrent pas.
+
+## Chantier 33 — un disque nommé : le WD VelociRaptor WD1000DHTZ
+
+**Fait** · branche `velociraptor`
+
+### Le problème
+
+Tous les disques du modèle se déduisent d'une année, d'une capacité et d'un
+régime. `DriveGeometry.era` interpole entre les huit fiches du catalogue, toutes
+des plateaux de 3,5 pouces, la dernière de 2008. Un **WD VelociRaptor
+WD1000DHTZ** (2012 : 10 000 tr/min, trois plateaux de 2,5 pouces dans un radiateur
+IcePack de 3,5, 64 Mo de tampon, SATA 6 Gb/s) sort de cette courbe de trois
+façons à la fois. Voici ce que le modèle en aurait fait, prolongé depuis 2012 :
+
+| | fiche et mesures | prolongé depuis 2012 |
+|---|---|---|
+| têtes | 6 | 3 |
+| débit bord → moyeu | 209,1 → 114,7 Mo/s | 414 → 215 Mo/s |
+| seek moyen / piste-à-piste | ≈ 3,8 / 0,7 ms | 8,5 / 1,0 ms |
+| tampon | 64 Mo | 32 Mo, celui du 7200.11 |
+| repos | 30 dBA = 3,0 B | 3,26 B au régime seul |
+| parcage | rampe NoTouch | contact |
+
+Il y avait un défaut de plus : `DriveReference.geometry` ne lisait pas les
+pistes par face de sa propre fiche. Elle repassait par l'année, donc par
+l'interpolation. Une fiche hors de la courbe ne pouvait donc pas être fidèle.
+
+### Les sources
+
+Toutes sont rangées dans `~/code/perso/disknoise.resources/manuels/`, en PDF et en
+texte :
+
+- **Fiche WD 2879-701284-A05** (avril 2012, `wd-velociraptor-specsheet`) :
+  1 953 525 168 secteurs, 10 000 tr/min, 200 Mo/s soutenus, 64 Mo de cache,
+  SATA 6 Gb/s, 30 dBA au repos et 37 en seek (« Sound power level »), rampe
+  NoTouch (« The recording head never touches the disk media »). Ni seek, ni
+  densité.
+- **Fiche WD 2879-701284-A00** (2008, WD3000HLFS, `wd-velociraptor-rs`) : seek
+  4,2 / 4,7 ms, piste-à-piste 0,7 ms au maximum, tampon « Read: Adaptive »,
+  cache d'écriture actif. C'est la seule fiche VelociRaptor qui publie le
+  piste-à-piste.
+- **Fiche WD 2879-701284-A02** (2010, WD6000HLHX, `wd-velociraptor-ggsdata`) :
+  27 / 34 dBA pour la génération précédente.
+- **Tom's Hardware**, *Western Digital VelociRaptor WD1000DHTZ Review* (2012) :
+  plateaux de 2,5", trois plateaux ; 209,1 Mo/s au maximum, 114,7 au minimum ;
+  accès en lecture 6,78 ms, en écriture 8,83 ms.
+- **Base de plateaux rml527** : WD1000DHTZ-xxN21Vx, 1 To, 3 plateaux et 6 têtes,
+  334 Go par plateau.
+
+### Les décisions
+
+**Une liste à part, `DriveCatalog.named`.** Le VelociRaptor n'est ni une ancre, ni
+le voisin d'une année : `nearest(year: 2012)` rend toujours le 7200.11. Le mettre
+dans `all` aurait tordu la densité, le seek et le tampon de tous les disques
+déduits d'une année, et les tests qui parcourent `all` pour vérifier la courbe.
+
+**La géométrie vient de la fiche quand les plateaux ne font pas 3,5 pouces.**
+`DriveGeometry.era` délègue à `DriveGeometry.zoned`, qui prend une densité
+explicite. `DriveReference.geometry` passe la sienne (pistes par face, octets
+par face, rapport interne) quand `followsEra` est faux. Les huit fiches de 3,5
+pouces gardent exactement leur chemin.
+
+**Les valeurs de la fiche du VelociRaptor :**
+- 171 600 pistes par face. Elles viennent du débit mesuré au bord, 209,1 Mo/s,
+  soit 2 450 secteurs à 10 000 tr/min, du rapport interne 0,55 (114,7 / 209,1)
+  et de la capacité par face ;
+- seek moyen 3,8 ms, soit l'accès en lecture mesuré moins 3,0 ms de latence
+  moyenne. La fiche de 2008 annonçait 4,2 ms pour la génération d'avant ;
+- piste-à-piste 0,7 ms.
+
+**Le souffle suit la vitesse au bord, pas le régime.** `SpindleCharacter` prend le
+diamètre des plateaux. `speedRatio` vaut désormais (tr/min × rayon externe) /
+(7 200 × 1,831). Un plateau de 2,5 pouces s'arrête vers 1,25 pouce, et le
+VelociRaptor brasse l'air à 0,95 fois la vitesse d'un 7 200 tr/min de 3,5 pouces.
+C'est la raison même de ses petits plateaux. Au régime seul, il aurait fait
+3,50 B, plus que le 7200.11 ; le modèle donne 2,67 B contre 3,0 B sur la fiche.
+L'écart de −0,33 B est celui que le modèle a déjà sur le 7200.10 (−0,25 B). Les
+raies qui suivent le régime montent d'elles-mêmes : rotation à 166,7 Hz,
+commutation à 4 kHz. Pour un 3,5 pouces, rien ne change (`speedRatio` inchangé,
+vérifié par les tests).
+
+**Le disque dans sa machine.** `GeneratedVolumeBridge.drive(for:atLeast:)` rend
+un `DriveHardware` : géométrie, loi de seek, `DriveInterface` et **année du
+disque**. Pour un disque nommé, le tampon vient de sa fiche, et l'année (2012)
+va au palier et à la recalibration. L'année du scénario garde le logiciel et le
+bus. Un disque SATA impose un contrôleur SATA : `HostBus.era(year:serial:)` donne
+150 Mo/s avant 2006, 300 avant 2011, 600 ensuite, aux débits de la norme. Un
+disque déduit d'une année reçoit exactement ce qu'il recevait.
+
+**La rampe.** `IdleBehavior.rampLoad` supprime le décollement à la mise sous
+tension et l'atterrissage à la coupure. C'est ce que dit la fiche : les têtes ne
+touchent jamais le plateau.
+
+**Choisir le disque.** `DiskSpec.model` est facultatif, et les 20 profils JSON se
+décodent tels quels. `DiskSpec(reference:)` recopie la fiche, capacité en Mio
+entiers. L'assistant gagne un choix « Libre / VelociRaptor » : avec une fiche,
+capacité, régime et seek passent en lecture seule, et le panneau montre la
+géométrie de la fiche. La galerie écrit « VelociRaptor 1 To · 10 000 tr/min ».
+`rendertrace` accepte `DRIVE=VelociRaptor`, qui pose le même volume en tête du
+disque nommé.
+
+### Ce qui valide
+
+- `NamedDriveTests`, 7 tests :
+  - débit du modèle de 208,9 → 114,9 Mo/s, contre 209,1 → 114,7 mesurés ;
+  - 6 têtes ;
+  - la loi de seek passe par 3,80 et 0,70 ms (pleine course 6,85 ms, commutation
+    de tête 0,42 ms) et reste croissante ;
+  - le disque reste hors des époques ;
+  - un profil qui le nomme prend sa fiche entière, et un profil qui ne le nomme
+    pas reste sur l'UDMA/100 de 2007 ;
+  - le JSON avec et sans `model` se décode ;
+  - la vitesse au bord ;
+  - la rampe.
+- La suite existante passe sans modification.
+- **Les 340 bilans de `run.sh full` sont identiques** avant et après, à la durée
+  de génération près, qui est un chronomètre. Le chantier ne change rien aux
+  disques d'une année.
+- Le VelociRaptor sous les huit volumes NTFS de la galerie (`DRIVE=VelociRaptor`,
+  même volume, même travail : les requêtes sont les mêmes au nombre près) :
+
+| profil | démarrage (dont disque) | installation | défragmentation XP | seek moyen de la passe |
+|---|---|---|---|---|
+| dev-2003 | 50,9 (10,8) → 48,2 s (8,1) | 652,8 → 627,7 s | 169,5 → 58,6 s | 13 925 → 1 070 cyl. |
+| famille-2003 | 29,1 (10,5) → 26,1 s (7,5) | 458,1 → 438,6 s | 143,0 → 58,6 s | 7 216 → 566 cyl. |
+| gamer-2003 | 68,3 (13,3) → 64,3 s (9,3) | 695,4 → 667,5 s | 8,4 → 8,2 s | 7 978 → 2 543 cyl. |
+| secretaire-2003 | 35,2 (10,9) → 31,8 s (7,5) | 414,2 → 397,8 s | 87,4 → 38,0 s | 9 283 → 424 cyl. |
+| dev-2007 | 46,7 (12,8) → 43,5 s (9,5) | 638,1 → 589,6 s | 2 276 → 817 s | 21 199 → 5 771 cyl. |
+| famille-2007 | 38,6 (12,6) → 35,3 s (9,3) | 714,6 → 663,2 s | 975 → 450 s | 18 536 → 5 940 cyl. |
+| gamer-2007 | 31,2 (11,6) → 28,6 s (8,9) | 1 113 → 1 010 s | 1 043 → 474 s | 21 173 → 6 860 cyl. |
+| secretaire-2007 | 42,3 (12,1) → 39,4 s (9,2) | 607,7 → 562,3 s | 607 → 228 s | 28 027 → 7 588 cyl. |
+
+Un démarrage ne gagne que 3 à 4 s : le calcul l'emporte, et le disque n'y
+comptait déjà que pour 21 à 42 % de l'attente. Une défragmentation va 2 à 3 fois
+plus vite. Plusieurs raisons s'additionnent, **non séparées** ici :
+- le volume n'occupe que le premier tiers du disque, et le bras ne parcourt plus
+  qu'un tiers de sa course ;
+- le seek moyen passe de 8,5 à 3,8 ms ;
+- la latence passe de 4,2 à 3,0 ms ;
+- le bus passe de 100 à 300 Mo/s.
+
+### Laissé ouvert
+
+- **Séparer les quatre effets** de la défragmentation (course, seek, latence, bus),
+  chacun par un binaire jetable.
+- **Le NCQ** : un disque SATA de 2012 réordonne jusqu'à 32 commandes. Le modèle
+  n'en a pas.
+- **Les modes du bras** (`SeekSynth`) sont ceux d'un 3,5 pouces. Un bras de
+  2,5 pouces est plus court et plus raide, et ses résonances devraient monter.
+  Aucune source.
+- **Le clic de chargement sur la rampe** n'a pas de voix, et la rampe supprime
+  seulement des contacts. Aucune source ne décrit ce son.
+- **Le seek en écriture**, 8,83 ms d'accès mesurés contre 6,78 ms en lecture, n'est
+  pas modélisé. La loi est la même dans les deux sens, comme pour les autres fiches.
+- **Le secteur de 4 Ko** (Advanced Format, émulé en 512 octets) est ignoré : le
+  modèle adresse en 512.
+- **Le niveau en seek**, 37 dBA sur la fiche, n'est calé sur rien, comme pour
+  toute la galerie.
+- **L'époque logicielle de 2012** (Windows 7) n'existe pas. Le VelociRaptor s'essaie
+  sous les profils de 2003 et 2007, dans une machine SATA de leur année, et
+  l'assistant s'arrête toujours en 2008.
+- **L'écoute par Gabriel** : `DRIVE=VelociRaptor SCENARIO=gamer-2007` contre le
+  même profil sans `DRIVE`.

@@ -225,8 +225,22 @@ extension GeneratedVolumeBridge {
     ///   arrondis du formatage peuvent la faire dépasser d'un cheveu la
     ///   capacité nominale, et un LBA hors disque serait silencieusement ramené
     ///   au dernier cylindre.
-    static func drive(for spec: ProfileSpec,
-                      atLeast sectors: Int) -> (geometry: DriveGeometry, seek: SeekModel) {
+    static func drive(for spec: ProfileSpec, atLeast sectors: Int) -> DriveHardware {
+        if let reference = spec.disk.reference {
+            let geometry = reference.geometry
+            // Une fiche nommée a sa capacité : c'est la partition qui s'y plie,
+            // jamais l'inverse.
+            precondition(geometry.totalSectors >= sectors,
+                         "la partition déborde du \(reference.model)")
+            let year = spec.timeline.start.year
+            return DriveHardware(geometry: geometry,
+                                 seek: reference.seekModel,
+                                 interface: DriveInterface(buffer: reference.buffer,
+                                                           host: .era(year: year,
+                                                                      serial: reference.buffer.isSerial)),
+                                 year: reference.year,
+                                 rampLoad: reference.rampLoad)
+        }
         let capacity = max(spec.disk.sizeBytes,
                            UInt64(sectors) * UInt64(DriveGeometry.bytesPerSector))
         // Le disque n'a pas de marque : son nom se déduit de sa capacité et de
@@ -249,6 +263,21 @@ extension GeneratedVolumeBridge {
         let seek = DriveCatalog.writeSeek(year: year)?
             .applied(to: read, averageSeekMs: spec.disk.averageSeekMs,
                      trackToTrackMs: trackToTrack, cylinders: geometry.cylinders) ?? read
-        return (geometry, seek)
+        return DriveHardware(geometry: geometry, seek: seek,
+                             interface: .era(year: year), year: year, rampLoad: false)
     }
+}
+
+/// Le disque d'un profil, tel que la passe le simule : sa géométrie, sa loi de
+/// seek, son tampon dans la machine du scénario, et l'année **du disque** — qui
+/// n'est celle du scénario que pour un disque déduit d'une époque. Un disque
+/// nommé garde la sienne : c'est elle qui décide de son palier et de sa
+/// recalibration, pas l'âge du logiciel qu'on y a installé.
+struct DriveHardware {
+    let geometry: DriveGeometry
+    let seek: SeekModel
+    let interface: DriveInterface
+    let year: Int
+    /// Têtes garées sur une rampe : ni décollage, ni atterrissage.
+    let rampLoad: Bool
 }

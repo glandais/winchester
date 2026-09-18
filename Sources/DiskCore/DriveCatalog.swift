@@ -72,11 +72,24 @@ public struct DriveReference: Sendable {
     public let buffer: DriveBuffer
     /// Les seeks d'écriture que publie le manuel, quand il les publie.
     public let writeSeek: WriteSeek?
+    /// Diamètre des plateaux, en pouces. 3,5 pour tous les disques de bureau de
+    /// la période ; 2,5 pour les 10 000 tr/min, dont les plateaux sont réduits
+    /// pour que la vitesse au bord reste celle d'un 7 200 tr/min.
+    public let platterInches: Double
+    /// Rapport entre les secteurs de la piste interne et ceux de la piste
+    /// externe, quand une mesure le donne. Sinon, celui de l'époque.
+    public let innerRatio: Double?
+    /// Les têtes se garent sur une rampe hors du plateau au lieu de s'y poser :
+    /// ni décollage à la mise en route, ni atterrissage à la coupure.
+    public let rampLoad: Bool
 
     public init(model: String, shortName: String, year: Int, capacityBytes: UInt64, heads: Int,
                 tracksPerFace: Int, rpm: Int, averageSeekMs: Double,
                 trackToTrackMs: Double, sustainedOuterMBs: Double? = nil,
                 isAnchor: Bool = true,
+                platterInches: Double = 3.5,
+                innerRatio: Double? = nil,
+                rampLoad: Bool = false,
                 source: String,
                 buffer: DriveBuffer,
                 writeSeek: WriteSeek? = nil) {
@@ -94,7 +107,14 @@ public struct DriveReference: Sendable {
         self.source = source
         self.buffer = buffer
         self.writeSeek = writeSeek
+        self.platterInches = platterInches
+        self.innerRatio = innerRatio
+        self.rampLoad = rampLoad
     }
+
+    /// Une fiche de 3,5 pouces suit la courbe des densités de son époque ; une
+    /// autre a sa propre mécanique, et sa géométrie vient de sa fiche seule.
+    public var followsEra: Bool { platterInches == 3.5 }
 
     /// Octets sur une face du plateau.
     public var bytesPerFace: Double { Double(capacityBytes) / Double(heads) }
@@ -222,6 +242,11 @@ public struct DriveBuffer: Sendable, Equatable {
     /// ans avant la mesure et derrière un bus PIO — où il est sans doute
     /// sous-estimé. **Une mesure d'un point**, étendue à dix ans.
     public static let measuredOverheadMs = 0.2
+
+    /// Interface série : plus rapide que l'Ultra DMA/133, le dernier mode du
+    /// bus parallèle. Un disque SATA ne se branche pas sur une nappe IDE, et la
+    /// machine qui le porte a un contrôleur SATA.
+    public var isSerial: Bool { interfaceMBs > 133 }
 }
 
 /// Les disques sur lesquels le modèle est calibré, de 1993 à 2008.
@@ -248,6 +273,15 @@ public enum DriveCatalog {
 
     /// Rayon externe de la zone de données d'un plateau 3,5 pouces, en pouces.
     public static let outerRadiusInches = 1.831
+
+    /// Rayon externe de la zone de données, selon le diamètre des plateaux.
+    ///
+    /// Un plateau de 2,5 pouces mesure 65 mm contre 95 : sa bande de données
+    /// s'arrête vers 1,25 pouce du centre, dans le même rapport. C'est ce rayon
+    /// qui fixe la vitesse de l'air au bord, donc le souffle.
+    public static func outerRadiusInches(platterInches: Double) -> Double {
+        platterInches < 3 ? 1.25 : outerRadiusInches
+    }
 
     public static let all: [DriveReference] = [
 
@@ -420,6 +454,51 @@ public enum DriveCatalog {
                       + "<1.2 » (1 To), « Average <8.5 / <9.5 » (lecture / écriture)")),
     ]
 
+    /// Les disques qu'on choisit par leur nom, hors de la courbe des époques.
+    ///
+    /// Ils ne sont ni des ancres ni des voisins d'une année : un 10 000 tr/min
+    /// à plateaux de 2,5 pouces n'est pas « le disque de 2012 », c'est un
+    /// disque de niche, et le prendre pour son époque tordrait la densité, le
+    /// seek et le tampon de tous les disques déduits d'une année.
+    public static let named: [DriveReference] = [
+
+        // Trois plateaux de 334 Go, six têtes (base de plateaux rml527). Le
+        // manuel ne publie ni seek ni densité : les deux viennent du test de
+        // Tom's Hardware (2012) sur ce disque-là. Débit mesuré 209,1 Mo/s au
+        // bord et 114,7 au moyeu, d'où le rapport interne et, par la capacité,
+        // les pistes par face ; accès aléatoire en lecture 6,78 ms, dont 3,0 ms
+        // de latence moyenne à 10 000 tr/min. Le piste-à-piste est celui de la
+        // génération précédente, la seule fiche VelociRaptor qui le publie.
+        DriveReference(
+            model: "Western Digital VelociRaptor WD1000DHTZ",
+            shortName: "VelociRaptor",
+            year: 2012, capacityBytes: 1_000_204_886_016, heads: 6,
+            tracksPerFace: 171_600, rpm: 10_000,
+            averageSeekMs: 3.8, trackToTrackMs: 0.7,
+            sustainedOuterMBs: 200,
+            isAnchor: false,
+            platterInches: 2.5,
+            innerRatio: 0.55,
+            rampLoad: true,
+            source: "Fiche WD 2879-701284-A05 (avril 2012) — 1 953 525 168 secteurs, "
+                  + "10 000 tr/min, 200 Mo/s soutenus, 30 dBA au repos et 37 en seek "
+                  + "(puissance acoustique), rampe NoTouch. Tom's Hardware (2012) — "
+                  + "209,1 → 114,7 Mo/s, accès en lecture 6,78 ms. Fiche WD "
+                  + "2879-701284-A00 (2008, WD3000HLFS) — piste-à-piste 0,7 ms",
+            buffer: DriveBuffer(
+                bufferKB: 65_536, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 600, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Fiche WD 2879-701284-A05 — « Cache (MB) 64 », SATA 6 Gb/s. La "
+                      + "fiche de 2008 annonce la lecture « adaptive » et le cache "
+                      + "d'écriture actif ; celle de 2012 n'en dit rien de plus")),
+    ]
+
+    /// Un disque du catalogue ou de la liste nommée, par son modèle ou son nom
+    /// court.
+    public static func reference(named name: String) -> DriveReference? {
+        (named + all).first { $0.model == name || $0.shortName == name }
+    }
+
     /// Rapport entre les secteurs de la piste interne et ceux de la piste
     /// externe, par époque.
     ///
@@ -564,12 +643,24 @@ extension DriveReference {
     /// disque nommé on le connaît, et c'est lui qui décide des commutations de
     /// tête — un 20 Go de 2001 n'a qu'une seule face, donc pas une seule
     /// commutation de toute la passe.
+    ///
+    /// Hors de la courbe des époques — des plateaux qui ne sont pas de 3,5
+    /// pouces —, la densité n'est pas celle de l'année mais celle de la fiche.
     public var geometry: DriveGeometry {
-        DriveGeometry.era(model: label,
-                          capacityBytes: capacityBytes,
-                          rpm: rpm,
-                          year: year,
-                          heads: heads)
+        guard !followsEra else {
+            return DriveGeometry.era(model: label,
+                                     capacityBytes: capacityBytes,
+                                     rpm: rpm,
+                                     year: year,
+                                     heads: heads)
+        }
+        return DriveGeometry.zoned(model: label,
+                                   capacityBytes: capacityBytes,
+                                   rpm: rpm,
+                                   density: (Double(tracksPerFace), bytesPerFace,
+                                             innerRatio ?? DriveCatalog.density(year: year).innerRatio),
+                                   heads: heads,
+                                   platterInches: platterInches)
     }
 
     /// La loi de seek de ce disque-là, calée sur les deux durées de sa fiche,

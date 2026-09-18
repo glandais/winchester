@@ -83,13 +83,23 @@ enum ScenarioRequest {
         if let kind = ScenarioKind(rawValue: requested) {
             return Request(scenario: try demo(kind))
         }
-        guard let spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == profileID }) else {
+        guard var spec = (try? ScenarioLibrary.loadAll())?.first(where: { $0.id == profileID }) else {
             if requested.isEmpty { return Request(scenario: try demo(.windowsBoot)) }
             let known = ScenarioKind.allCases.map(\.rawValue) + ScenarioLibrary.identifiers
                 + ScenarioLibrary.identifiers.map { "boot:\($0)" }
                 + ScenarioLibrary.identifiers.map { "install:\($0)" }
                 + ["day:<profil>:<jour>"]
             fail("scénario inconnu : \(requested)\nconnus : \(known.joined(separator: ", "))")
+        }
+
+        // `DRIVE=<nom>` : le même volume, posé en tête d'un disque nommé. La
+        // partition garde la taille du profil, pour que seul le disque change.
+        if let name = environment["DRIVE"] {
+            guard let reference = DriveCatalog.reference(named: name) else {
+                fail("disque inconnu : \(name)\nconnus : "
+                     + DriveCatalog.named.map(\.shortName).joined(separator: ", "))
+            }
+            spec.disk.model = reference.model
         }
 
         FileHandle.standardError.write("génération de \(spec.id)…\n".data(using: .utf8)!)

@@ -114,6 +114,31 @@ vérification croisée par ce même débit — c'est ce contrôle qui a fait éc
 géométrie « native » d'un Quantum Fireball ST 6.4AT, qui donnerait 6,5 Mo/s là
 où son fabricant en annonce 16.
 
+**Un disque nommé se prend tel quel** (`DriveCatalog.named`, chantier 27). Le
+**WD VelociRaptor WD1000DHTZ** de 2012 n'est pas « le disque de 2012 » : c'est un
+10 000 tr/min à plateaux de 2,5 pouces dans un radiateur de 3,5, et le prolonger
+depuis la courbe des 3,5 pouces en ferait un tout autre disque. Il reste donc
+hors des ancres et hors de `nearest(year:)`, et sa géométrie vient de sa fiche
+seule, pas de son année. Un profil le choisit par `"model"` dans sa section
+`disk` ; l'assistant, par son nom. Son année, 2012, décide alors de sa voix, et
+celle du scénario de tout le reste. Il est posé dans une machine de l'époque du
+scénario, branché sur le contrôleur SATA de celle-ci.
+
+| | fiche et mesures | le modèle, de la fiche | le modèle, prolongé depuis 2012 |
+|---|---|---|---|
+| têtes | 6 (3 plateaux de 334 Go) | 6 | 3 |
+| pistes par face | — | 171 600 | 176 576 |
+| débit bord → moyeu | 209,1 → 114,7 Mo/s (Tom's Hardware) | 208,9 → 114,9 Mo/s | 414 → 215 Mo/s |
+| seek moyen / piste-à-piste | ≈ 3,8 ms / 0,7 ms | 3,80 / 0,70 ms, pleine course 6,85 ms | 8,5 / 1,0 ms |
+| tampon | 64 Mo, SATA 6 Gb/s | 64 Mo | 32 Mo (celui du 7200.11) |
+| repos | 30 dBA = 3,0 B | 2,67 B | 3,26 B |
+| parcage | rampe NoTouch | rampe : ni décollage ni atterrissage | contact |
+
+Le manuel WD ne publie ni seek ni densité. Le seek moyen vient de l'accès en
+lecture mesuré par Tom's Hardware, 6,78 ms, moins 3,0 ms de latence. Le
+piste-à-piste vient de la fiche de 2008 du WD3000HLFS, la seule VelociRaptor qui
+le donne. Les pistes par face viennent du débit mesuré au bord et de la capacité.
+
 Ce que remplace ce modèle faisait tout porter à la densité linéaire, avec un seul
 exposant calé sur les deux disques ci-dessus : il donnait 640 cylindres à un
 disque de 1993 qui en avait 1 806, et 235 000 à un 320 Go de 2007 qui en a
@@ -162,6 +187,10 @@ année :
 | Barracuda 7200.7, 2003 | 2 Mo | oui | oui | UDMA 5 : 100 Mo/s | UDMA/100 |
 | Barracuda 7200.10, 2006 | 16 Mo | oui | oui | UDMA 5 : 100 Mo/s | UDMA/100 |
 | Barracuda 7200.11, 2008 | 32 Mo | oui | oui | SATA : 300 Mo/s | — |
+| VelociRaptor WD1000DHTZ, 2012 ¹ | 64 Mo | oui | oui | SATA : 600 Mo/s | SATA de l'époque du scénario : 150 Mo/s avant 2006, 300 avant 2011, 600 ensuite |
+
+¹ Disque nommé : il n'est le disque d'aucune année, et ne sert que les profils qui
+le nomment. Un disque SATA impose un contrôleur SATA, quelle que soit la machine.
 
 - **la lecture anticipée** : après une lecture, la tête continue de lire, une
   piste d'avance — ce que tient le cache du Fireball. Une requête qui tombe
@@ -264,7 +293,10 @@ grosse lecture.
 le décollement est un claquement unique, plus grave qu'un seek (tout
 l'équipage bouge, sans profil de courant pour l'adoucir), suivi d'un bref
 frottement ; l'atterrissage, quatre contacts de plus en plus faibles et
-rapprochés — un rebond qui s'amortit — puis un frottement qui s'éteint.
+rapprochés — un rebond qui s'amortit — puis un frottement qui s'éteint. Un
+disque à rampe (le VelociRaptor) n'a ni l'un ni l'autre : ses têtes ne touchent
+jamais le plateau. Le clic du chargement sur la rampe n'a pas de voix, faute de
+source.
 
 **Plateau** — `SpindleCharacter` et `SpindleVoice`. Du bruit filtré, et trois
 grandeurs pour le former, prises aux manuels :
@@ -278,11 +310,15 @@ grandeurs pour le former, prises aux manuels :
 | Barracuda 7200.7, 2003 | 7 200 | 1 | fluide | < 2,2 B | 2,15 B |
 | Barracuda 7200.10, 2006 | 7 200 | 2 | fluide | 2,8 B | 2,55 B |
 | Barracuda 7200.11, 2008 | 7 200 | 4 | fluide | 2,9 B | 2,95 B |
+| VelociRaptor WD1000DHTZ, 2012 | 10 000, plateaux de 2,5" | 3 | fluide | 30 dBA = 3,0 B | 2,67 B |
 
 - le **souffle** d'air autour des plateaux est un bruit de sillage : ses trois
   bandes (185, 520, 1 450 Hz à 7 200 tr/min) glissent avec le régime, l'aigu y
   pèse d'autant plus que le disque tourne vite, et sa puissance croît en
-  puissance cinq de la vitesse ; +0,4 B par doublement du nombre de plateaux —
+  puissance cinq de la vitesse **au bord du plateau**, pas du régime : le
+  VelociRaptor, à 10 000 tr/min sur un rayon de 1,25 pouce contre 1,83, brasse
+  l'air à 0,95 fois la vitesse d'un 7 200 tr/min de 3,5 pouces. Au régime seul,
+  il aurait fait 3,5 B, plus que le 7200.11 ; la fiche dit 3,0 ; +0,4 B par doublement du nombre de plateaux —
   l'écart que le manuel de l'ATA IV mesure entre un et deux plateaux ;
 - le **roulement à billes**, jusqu'en 2000, fait l'essentiel du bruit d'un
   disque : un sifflement large vers 2,9 kHz et un roulage grave qui suit le
@@ -1439,7 +1475,11 @@ TRANSIENT_GAIN=0 /tmp/rendertrace rotation-seule.wav
 
 PLAN_ONLY=1 SCENARIO=dev-1999 /tmp/rendertrace x.wav  # bilan seul, sans rendu
 STRATEGY=ultraDefrag SCENARIO=famille-2007 /tmp/rendertrace ud.wav  # un autre outil
+DRIVE=VelociRaptor SCENARIO=gamer-2007 /tmp/rendertrace vr.wav       # un autre disque
 ```
+
+`DRIVE` pose le même volume en tête d'un disque nommé de `DriveCatalog.named` :
+la partition garde la taille du profil, et seul le disque change.
 
 `STRATEGY` force le défragmenteur simulé au lieu de laisser le format le dater :
 `windows95`, `windowsXP`, `jkDefrag`, `ultraDefrag`, les autres modes de
@@ -1559,7 +1599,8 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
                            quelconque à partir de sa fiche et de son année
     DriveCatalog.swift     huit disques réellement vendus, 1993 → 2008, avec
                            leurs sources ; densités interpolées dans le temps ;
-                           le tampon de chacun et sa politique par défaut
+                           le tampon de chacun et sa politique par défaut ;
+                           les disques nommés, hors époque (le VelociRaptor)
     SeekModel.swift        loi de durée, découpage en quatre phases, calage
                            sur le seek moyen et le piste-à-piste d'une fiche ;
                            le settle plus long d'une écriture

@@ -58,6 +58,10 @@ struct SpindleCharacter: Sendable, Equatable {
     let fluidBearing: Bool
     /// Année du disque : elle fixe le niveau d'un roulement à billes.
     let year: Int
+    /// Diamètre des plateaux, en pouces. Le souffle suit la vitesse de l'air
+    /// au bord, pas le régime : un 10 000 tr/min à plateaux de 2,5 pouces
+    /// brasse l'air à peu près comme un 7 200 tr/min de 3,5.
+    let platterInches: Double
 
     /// Première année du palier fluide dans le catalogue : le Barracuda ATA IV.
     static let fluidBearingYear = 2001
@@ -65,10 +69,11 @@ struct SpindleCharacter: Sendable, Equatable {
     /// Régime de référence : celui des mesures FDB du tableau.
     static let referenceRPM = 7_200.0
 
-    init(rpm: Double, platters: Int, year: Int) {
+    init(rpm: Double, platters: Int, year: Int, platterInches: Double = 3.5) {
         self.rpm = max(rpm, 1)
         self.platters = max(platters, 1)
         self.year = year
+        self.platterInches = platterInches
         self.fluidBearing = year >= Self.fluidBearingYear
     }
 
@@ -77,11 +82,19 @@ struct SpindleCharacter: Sendable, Equatable {
     init(geometry: DriveGeometry, year: Int?) {
         self.init(rpm: geometry.rpm,
                   platters: (geometry.heads + 1) / 2,
-                  year: year ?? Self.fluidBearingYear)
+                  year: year ?? Self.fluidBearingYear,
+                  platterInches: geometry.platterInches)
     }
 
-    /// Rapport de vitesse périphérique au disque de référence.
-    var speedRatio: Double { min(max(rpm / Self.referenceRPM, 0.25), 2) }
+    /// Rapport de vitesse périphérique au disque de référence : le régime, et
+    /// le rayon du bord des données. Sur un plateau de 3,5 pouces c'est le
+    /// rapport des régimes ; sur un VelociRaptor, 10 000 tr/min à 1,25 pouce
+    /// contre 7 200 à 1,83, il vaut 0,95.
+    var speedRatio: Double {
+        let radius = DriveCatalog.outerRadiusInches(platterInches: platterInches)
+            / DriveCatalog.outerRadiusInches
+        return min(max(rpm / Self.referenceRPM * radius, 0.25), 2)
+    }
 
     // MARK: - Niveaux
 

@@ -37,19 +37,29 @@ extension ProfileSpec {
     var year: Int { timeline.start.year }
 
     /// « IDE 850 Mo · 5 400 tr/min » : le disque n'a pas de marque, le modèle le
-    /// déduit de sa capacité, de son régime et de son année.
-    var hardwareLine: String { "IDE \(capacityLabel) · \(rpmLabel)" }
+    /// déduit de sa capacité, de son régime et de son année. Un disque nommé
+    /// porte son nom : « VelociRaptor 1 To · 10 000 tr/min ».
+    var hardwareLine: String {
+        "\(disk.reference?.shortName ?? "IDE") \(capacityLabel) · \(rpmLabel)"
+    }
 
     /// Capacité commerciale, en gigaoctets de mille mégaoctets : « 1,08 Go »,
-    /// « 6,4 Go », « 40 Go », comme sur l'étiquette.
+    /// « 6,4 Go », « 40 Go », comme sur l'étiquette. Celle d'un disque nommé
+    /// est celle de sa fiche : « 1 To ».
     var capacityLabel: String {
-        guard disk.sizeMB >= 1_000 else {
+        // Un disque nommé porte la capacité de son étiquette, en unités de mille.
+        let bytes = disk.reference.map { Double($0.capacityBytes) } ?? Double(disk.sizeMB) * 1e6
+        guard bytes >= 1e9 else {
             return String(localized: "disk.capacity.megabytes", defaultValue: "\(disk.sizeMB) MB")
+        }
+        if bytes >= 1e12 {
+            let value = (bytes / 1e12).formatted(.number.precision(.fractionLength(0...1)))
+            return String(localized: "disk.capacity.terabytes", defaultValue: "\(value) TB")
         }
         // Deux décimales au plus, et les zéros de fin retirés : « 1,08 Go »,
         // « 6,4 Go », « 40 Go », comme sur l'étiquette. Le séparateur décimal
         // est celui de la langue, pas une virgule collée après coup.
-        let value = (Double(disk.sizeMB) / 1_000)
+        let value = (bytes / 1e9)
             .formatted(.number.precision(.fractionLength(0...2)))
         return String(localized: "disk.capacity.gigabytes", defaultValue: "\(value) GB")
     }
