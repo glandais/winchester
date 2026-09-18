@@ -117,6 +117,21 @@ final class DiskHaptics {
             let strength: Float = kind == .headSwitch ? 0.10 : 0.20
             events = [transient(at: 0, intensity: strength, sharpness: 0.95)]
 
+        case .tickTrain(let ticks, let duration):
+            // Une cadence de 120 Hz ne se sent pas tic par tic : c'est un
+            // frémissement continu, piqué des seuls pas de piste.
+            events = [continuous(at: 0, duration: duration, intensity: 0.08, sharpness: 0.9)]
+                + ticks.filter { $0.kind == .trackStep }.prefix(24).map {
+                    transient(at: $0.offset, intensity: 0.16, sharpness: 0.95)
+                }
+
+        case .unstick:
+            events = [transient(at: 0, intensity: 0.7, sharpness: 0.6)]
+
+        case .landing:
+            events = [transient(at: 0, intensity: 0.35, sharpness: 0.5),
+                      continuous(at: 0.01, duration: 0.10, intensity: 0.12, sharpness: 0.3)]
+
         case .spinUp, .spinDown:
             return
         }

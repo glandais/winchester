@@ -18,12 +18,25 @@ enum HeadTick: Sendable {
     case trackStep
 }
 
+/// Un micro-transitoire dans un train, daté depuis le début du train.
+struct TrainTick: Sendable, Equatable {
+    let offset: Double
+    let kind: HeadTick
+}
+
 enum AudioCueKind: Sendable {
     case spinUp(duration: Double)
     case spinDown(duration: Double)
     case seek(profile: SeekProfile, travelMix: Double)
     case chatter(run: [ChatterSeek], duration: Double)
     case tick(HeadTick)
+    /// Micro-transitoires trop rapprochés pour s'éteindre l'un avant l'autre :
+    /// rendus ensemble, d'un seul passage dans le banc de résonateurs.
+    case tickTrain(ticks: [TrainTick], duration: Double)
+    /// Décollement des têtes à la mise sous tension.
+    case unstick
+    /// Atterrissage des têtes à l'arrêt.
+    case landing
 }
 
 struct AudioCue: Sendable {
@@ -47,10 +60,21 @@ enum AudioCueBuilder {
     /// Un train plus long est découpé : borne le coût de rendu et la latence.
     static let maxChatterDuration = 1.0
 
-    /// Espacement minimal entre deux micro-transitoires. Sans ce filtrage, une
-    /// grosse lecture séquentielle produit une mitraillette de commutations de
-    /// tête au lieu d'un ronronnement.
-    static let minimumTickSpacing = 0.018
+    /// Au-delà de ce silence entre deux micro-transitoires, le premier s'est
+    /// éteint et le second repart en one-shot. En deçà, ils forment un train.
+    ///
+    /// Il remplace un filtre qui, pour éviter la mitraillette, supprimait tout
+    /// micro-transitoire à moins de 18 ms du précédent. Or une lecture
+    /// séquentielle sur un disque à une tête franchit une piste à chaque tour —
+    /// 8,33 ms à 7 200 tr/min : une cadence de 120 Hz, qui n'est plus une suite
+    /// de tics mais une **hauteur**, le sifflement d'une grosse lecture. Le
+    /// filtre en supprimait un sur deux et en faisait un cliquetis à 60 Hz.
+    /// Sur un disque à quatre têtes, il écrasait les deux périodicités
+    /// emboîtées — la commutation à chaque tour, le pas de piste tous les
+    /// quatre — qui sont le son d'une lecture sur plusieurs plateaux. La
+    /// mitraillette ne venait pas de la densité, mais de one-shots superposés :
+    /// la réponse est celle des seeks rapprochés, un rendu continu.
+    static let tickWindow = 0.030
 
     /// Tous les repères d'une trace entière. C'est le flux ci-dessous, nourri
     /// d'un coup : il n'y a qu'une règle, et elle ne dépend pas de la façon dont
@@ -101,7 +125,12 @@ struct CueStream {
 
     /// Micro-transitoires en attente du verdict du train ouvert.
     private var pendingTicks: [(time: Double, kind: HeadTick)] = []
-    private var lastTickTime = -Double.infinity
+
+    /// Le train de micro-transitoires ouvert, qu'un tick à venir peut encore
+    /// allonger.
+    private var train: [TrainTick] = []
+    private var trainStart = 0.0
+    private var trainLast = 0.0
 
     /// Repères décidés, pas encore relâchés.
     private var ready: [AudioCue] = []
@@ -118,6 +147,7 @@ struct CueStream {
         var mark = lastEventTime
         if !run.isEmpty { mark = min(mark, runStart) }
         if let first = pendingTicks.first { mark = min(mark, first.time) }
+        if !train.isEmpty { mark = min(mark, trainStart) }
         return mark
     }
 
@@ -156,12 +186,18 @@ struct CueStream {
             tick(at: time, .trackStep)
         case .transfer:
             break
+        case .headUnstick:
+            ready.append(AudioCue(time: time, kind: .unstick))
+        case .headLand:
+            ready.append(AudioCue(time: time, kind: .landing))
         }
+        closeTrainIfSettled(now: time)
     }
 
     /// La trace est finie : ce qui était en suspens est tranché.
     mutating func finish() {
         if !run.isEmpty { closeRun() }
+        if !train.isEmpty { closeTrain() }
         finished = true
     }
 
@@ -206,8 +242,8 @@ struct CueStream {
         for tick in waiting { resolve(time: tick.time, kind: tick.kind) }
     }
 
-    /// Les micro-transitoires masqués par un seek en cours sont absorbés, puis
-    /// espacés d'au moins `minimumTickSpacing`.
+    /// Les micro-transitoires masqués par un seek en cours sont absorbés ; les
+    /// autres rejoignent le train ouvert ou en commencent un.
     private mutating func resolve(time: Double, kind: HeadTick) {
         while coverHead < covers.count && covers[coverHead].end < time { coverHead += 1 }
         if coverHead > 1_024 && coverHead * 2 > covers.count {
@@ -219,8 +255,37 @@ struct CueStream {
            time <= covers[coverHead].end {
             return
         }
-        guard time - lastTickTime >= AudioCueBuilder.minimumTickSpacing else { return }
-        lastTickTime = time
-        ready.append(AudioCue(time: time, kind: .tick(kind)))
+        if !train.isEmpty && !joinsTrain(time) { closeTrain() }
+        if train.isEmpty { trainStart = time }
+        train.append(TrainTick(offset: time - trainStart, kind: kind))
+        trainLast = time
+    }
+
+    /// Un micro-transitoire à cet instant rejoindrait-il le train ouvert ? Même
+    /// règle que les seeks : le précédent ne s'est pas encore éteint, et le
+    /// train ne dépasse pas une seconde.
+    private func joinsTrain(_ time: Double) -> Bool {
+        time < trainLast + AudioCueBuilder.tickWindow
+            && time - trainStart < AudioCueBuilder.maxChatterDuration
+    }
+
+    /// Referme le train dès qu'aucun micro-transitoire à venir ne peut plus le
+    /// rejoindre. Le plus précoce possible est le premier en attente d'un
+    /// train de seeks, ou à défaut l'événement qu'on vient de lire : c'est ce
+    /// qui laisse avancer la garde pendant une longue lecture.
+    private mutating func closeTrainIfSettled(now time: Double) {
+        guard !train.isEmpty else { return }
+        let earliest = min(pendingTicks.first?.time ?? time, time)
+        if !joinsTrain(earliest) { closeTrain() }
+    }
+
+    private mutating func closeTrain() {
+        if train.count == 1 {
+            ready.append(AudioCue(time: trainStart, kind: .tick(train[0].kind)))
+        } else {
+            ready.append(AudioCue(time: trainStart,
+                                  kind: .tickTrain(ticks: train, duration: trainLast - trainStart)))
+        }
+        train.removeAll(keepingCapacity: true)
     }
 }

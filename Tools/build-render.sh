@@ -56,6 +56,7 @@ MODEL_SOURCES="
     Sources/Audio/SeekSynth.swift
     Sources/Audio/SpindleVoice.swift
     Sources/Model/AudioCue.swift
+    Sources/Model/SpindleCharacter.swift
     Tools/Shared/ScenarioRequest.swift
     Tools/Shared/StreamingMixer.swift
     Tools/Shared/Report.swift

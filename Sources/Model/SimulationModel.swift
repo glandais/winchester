@@ -78,9 +78,9 @@ final class SimulationModel: ObservableObject {
         self.cache = [.builtin(kind): scenario]
         self.demoDisks = [kind: disk]
         self.disk = disk
-        self.engine = DiskNoiseEngine(rpm: scenario.geometry.rpm)
+        self.engine = DiskNoiseEngine(character: scenario.setup.character)
         engine.mix = SoundMix.load(from: .standard)
-        engine.load(feed: live, rpm: scenario.geometry.rpm)
+        engine.load(feed: live, character: scenario.setup.character)
         captureStart()
         finished = engine.$isFinished
             .removeDuplicates()
@@ -239,7 +239,7 @@ final class SimulationModel: ObservableObject {
         let grid = live.map?.grid ?? .standard
         live = scenario.startLivePass()
         live.map?.setGrid(grid)
-        engine.load(feed: live, rpm: scenario.geometry.rpm)
+        engine.load(feed: live, character: scenario.setup.character)
         passNumber += 1
         captureStart()
     }

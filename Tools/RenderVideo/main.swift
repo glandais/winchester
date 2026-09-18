@@ -118,6 +118,7 @@ let live = LivePass(session: nil,
                     geometry: scenario.geometry,
                     seekModel: scenario.seekModel,
                     spindle: scenario.setup.spindle,
+                    armReady: scenario.setup.armReady,
                     phases: scenario.phases,
                     map: scenario.map.map { ($0.partition.clusterCount, $0.initialRuns) })
 if let grid = composer.mapGrid { live.map?.setGrid(grid) }
@@ -134,7 +135,7 @@ let encoder = try VideoEncoder(path: videoPath, width: size.width, height: size.
 let accelerated = speed > 1
 let finalSpeed = speed
 let snippets = accelerated ? AudioSnippets(speed: speed, snippet: snippet) : nil
-let mixer = StreamingMixer(rpm: scenario.geometry.rpm, rawPath: accelerated ? nil : rawPath)
+let mixer = StreamingMixer(character: scenario.setup.character, rawPath: accelerated ? nil : rawPath)
 if let snippets {
     mixer.onFlush = { start, samples in snippets.consume(start: start, interleaved: samples) }
 }

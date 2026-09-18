@@ -222,23 +222,95 @@ nonisolated final class SeekSynth: Sendable {
 
     typealias Tick = HeadTick
 
+    /// Force et longueur de l'excitation d'un micro-transitoire. La
+    /// commutation de tête est électronique — seul le petit recentrage qui
+    /// suit fait bouger le bras ; le pas de piste est un vrai seek d'une piste.
+    private static func tickShape(_ tick: Tick) -> (duration: Double, strength: Double) {
+        tick == .headSwitch ? (0.010, 0.16) : (0.022, 0.38)
+    }
+
+    /// Écrit l'excitation d'un micro-transitoire à `offset`, coupée à `limit`
+    /// échantillons : le suivant, s'il arrive avant, reprend l'asservissement.
+    private func writeTick(_ tick: Tick, into buffer: inout [Double], at offset: Int,
+                           limit: Int, noise: inout NoiseSource) {
+        let shape = Self.tickShape(tick)
+        let length = Int(shape.duration * sampleRate) + 4
+        for k in 0..<3 where offset + k < buffer.count { buffer[offset + k] += shape.strength * (1 - Double(k) / 3) }
+        for i in 0..<min(length, limit) where offset + i < buffer.count {
+            let u = Double(i) / Double(length)
+            buffer[offset + i] += noise.next() * exp(-14 * u) * shape.strength * 0.5
+        }
+    }
+
     /// Micro-transitoires : commutation de tête et pas de piste. Ce sont eux qui
     /// donnent son grain à une longue lecture séquentielle, autrement muette.
     func renderTick(_ tick: Tick, variation: UInt32) -> AVAudioPCMBuffer? {
-        let duration = tick == .headSwitch ? 0.010 : 0.022
-        let strength = tick == .headSwitch ? 0.16 : 0.38
-        let count = Int(duration * sampleRate) + 4
-
+        let count = Int(Self.tickShape(tick).duration * sampleRate) + 4
         var excitation = [Double](repeating: 0, count: count)
         var noise = NoiseSource(seed: variation &* 97 &+ 13)
-        for k in 0..<3 where k < count { excitation[k] += strength * (1 - Double(k) / 3) }
-        for i in 0..<count {
-            let u = Double(i) / Double(count)
-            excitation[i] += noise.next() * exp(-14 * u) * strength * 0.5
-        }
+        writeTick(tick, into: &excitation, at: 0, limit: count, noise: &noise)
 
         // Timbre volontairement aigu : peu de masse en mouvement.
         return makeBuffer(resonate(excitation, travelMix: 0.05))
+    }
+
+    /// Un train de micro-transitoires, d'un seul passage dans le banc.
+    ///
+    /// C'est `renderChatter` appliqué aux pas de piste : les résonateurs gardent
+    /// leur état d'un tic au suivant, et c'est ce qui fait d'une cadence de
+    /// 120 Hz une hauteur plutôt qu'une mitraillette. La densité module le
+    /// train d'elle-même : l'excitation de chaque tic s'arrête au suivant, si
+    /// bien qu'un train serré n'empile pas les queues de ses tics.
+    func renderTickTrain(_ ticks: [TrainTick], variation: UInt32) -> AVAudioPCMBuffer? {
+        guard let last = ticks.last else { return nil }
+        let count = Int((last.offset + Self.tickShape(last.kind).duration + ringTail) * sampleRate) + 8
+        var excitation = [Double](repeating: 0, count: count)
+        var noise = NoiseSource(seed: variation &* 97 &+ 13)
+        for (index, tick) in ticks.enumerated() {
+            let offset = Int(tick.offset * sampleRate)
+            let next = index + 1 < ticks.count ? Int(ticks[index + 1].offset * sampleRate) : count
+            writeTick(tick.kind, into: &excitation, at: offset, limit: max(next - offset, 1),
+                      noise: &noise)
+        }
+        return makeBuffer(resonate(excitation, travelMix: 0.05))
+    }
+
+    /// Le décollement des têtes : le moteur donne son couple de démarrage, les
+    /// patins collés au lubrifiant cèdent d'un coup. Un claquement sec, plus
+    /// grave qu'un seek — c'est tout l'équipage qui bouge, sans profil de
+    /// courant pour l'adoucir — suivi d'un bref frottement.
+    func renderUnstick(variation: UInt32) -> AVAudioPCMBuffer? {
+        let count = Int(0.070 * sampleRate)
+        var excitation = [Double](repeating: 0, count: count)
+        var noise = NoiseSource(seed: variation &* 131 &+ 5)
+        for k in 0..<6 { excitation[k] += 1.1 * (1 - Double(k) / 6) }
+        let scrape = Int(0.030 * sampleRate)
+        for i in 0..<scrape {
+            let u = Double(i) / Double(scrape)
+            excitation[i] += noise.next() * exp(-5 * u) * 0.30
+        }
+        return makeBuffer(resonate(excitation, travelMix: 0.65))
+    }
+
+    /// L'atterrissage : les patins touchent la zone d'atterrissage, rebondissent
+    /// deux ou trois fois, puis frottent jusqu'à l'arrêt du coussin d'air. Un
+    /// petit *crac* granuleux, bien moins fort qu'un seek.
+    func renderLanding(variation: UInt32) -> AVAudioPCMBuffer? {
+        let count = Int(0.160 * sampleRate)
+        var excitation = [Double](repeating: 0, count: count)
+        var noise = NoiseSource(seed: variation &* 211 &+ 3)
+        // Contacts de plus en plus rapprochés et faibles : un rebond qui s'amortit.
+        let contacts: [(Double, Double)] = [(0.000, 0.55), (0.018, 0.34), (0.030, 0.22), (0.039, 0.14)]
+        for (time, strength) in contacts {
+            let at = Int(time * sampleRate)
+            for k in 0..<3 where at + k < count { excitation[at + k] += strength * (1 - Double(k) / 3) }
+        }
+        let rub = Int(0.120 * sampleRate)
+        for i in 0..<rub {
+            let u = Double(i) / Double(rub)
+            excitation[i] += noise.next() * (1 - u) * (1 - u) * 0.10
+        }
+        return makeBuffer(resonate(excitation, travelMix: 0.25))
     }
 
     // MARK: - Conversion

@@ -4751,3 +4751,288 @@ installations et journées sont identiques. La prose reprise :
 - **La dérive de calibration des démarrages** (−3,3 à +7,4 %) est celle du
   chantier 23 : ce lot ne touche aucun démarrage, et `ThinkModel` n'a pas été
   recalé.
+
+## Chantier 25 — le lot 6 : l'acoustique
+
+**Fait** · branche `experts`
+
+### Le problème
+
+Tout vient de `DISK_EXPERT_REVIEW.md` §6, §4.4, §4.5 et §4.6. Ce lot n'a pas de
+bilan à battre : les six autres se jugeaient sur des chiffres, celui-ci sur
+l'oreille. Ce qui a été mesuré avant d'y toucher (étape `a6base`, le commit du
+lot 7) :
+
+| | où | ce qui était faux | mesuré |
+|---|---|---|---|
+| §6 | `SpindleVoice` | trois résonances fixes, que le régime ne fait glisser que pendant la rampe | à plein régime, les huit fiches du catalogue ont **le même spectre** : 0,0 dB d'écart moyen par tiers d'octave, −32,3 dB RMS pour toutes |
+| §6 | `AudioCueBuilder.minimumTickSpacing` | tout micro-transitoire à moins de 18 ms du précédent est supprimé | lecture séquentielle de 64 Mo en requêtes d'un mégaoctet : l'enveloppe bat à **53,6 Hz** sur le Barracuda à une tête (au lieu de 108) et à **37,9 Hz** sur le Fireball à quatre têtes (au lieu de 75,7) — un tic sur deux |
+| §4.4 | `IdleBehavior` | pas de recalibration thermique | — |
+| §4.6 | `DiskMechanics.init` | mise en route : une rampe, puis le premier accès depuis le moyeu | le « clac » d'ouverture était la première lecture |
+| §4.5 | `Scenario.parkDelay` | le bras se parque une seconde après la dernière requête, sur **tous** les scénarios | aucun disque de bureau de cette période ne le faisait |
+| §6 | — | ni décollement ni atterrissage des têtes | — |
+
+Le point de `parkDelay` n'était pas dans la liste du lot 6 de
+`LEDGER-EXPERTS.md` ; il y entre parce qu'il décide du même son que
+l'atterrissage des têtes.
+
+### Les décisions
+
+**Le plateau prend le régime, le nombre de plateaux et le palier**
+(`SpindleCharacter`, nouveau fichier de `Sources/Model`, donc testé). La revue
+demandait le régime ; il ne suffit pas, et les manuels le disent. Relevés dans
+les PDF eux-mêmes — la recherche en ligne en avait donné une version fausse,
+2,1 B pour tout l'ATA IV :
+
+| disque | tr/min | plateaux | palier | repos | source |
+|---|---|---|---|---|---|
+| Conner CFA170A, 1993 | 4 011 | 2 | billes | 42 dBA | TULARC |
+| Quantum Fireball TM, 1996 | 5 400 | 2–3 | billes | 32 dBA à 1 m = **3,6 B** | manuel Quantum, tables 4-6 et 4-7 |
+| Seagate U8, 1999 | 5 400 | 1 | billes | 3,2 B | manuel U8, rév. B |
+| Barracuda ATA IV, 2001 | 7 200 | 1 / 2 | **FDB** | **2,1 / 2,5 B** | manuel ATA IV, rév. B, §1.9 |
+| Barracuda 7200.7, 2003 | 7 200 | 1 | FDB | < 2,2 B | manuel 7200.7, rév. N, table 1 |
+| Barracuda 7200.10, 320 Go | 7 200 | 2 | FDB | 2,8 B | manuel 7200.10 SATA, rév. A, table 4 |
+| Barracuda 7200.11, 1 To | 7 200 | 4 | FDB | 2,9 B | manuel 7200.11, rév. E, table 1 |
+
+Trois choses en sortent. **Le vieux disque lent est le plus bruyant** : le
+roulement à billes fait l'essentiel du bruit d'un disque jusqu'en 2000, et
+Seagate passe au palier fluide avec l'ATA IV. **Un plateau de plus, c'est
++0,4 B** au même régime sur le même moteur (ATA IV). **L'époque compte** : le
+Fireball TM donne pression et puissance du même disque, 4 dB d'écart, qui
+convertissent les 42 dBA du Conner en ≈ 4,6 B — un bel de plus qu'en 1996.
+
+Le modèle : un **souffle** d'air — les trois bandes d'avant, dont les
+fréquences et les parts de puissance sont gardées pour un 7 200 tr/min —,
+glissé avec le régime (nombre de Strouhal constant), incliné vers l'aigu à
+mesure que le disque tourne vite (×r pour la bande médiane, ×r² pour la haute),
+de puissance en r⁵ et +0,4 B par doublement des plateaux ; pour les disques
+d'avant 2001, un **roulement** à 3,6 B à deux plateaux, +1 B en 1993 : un
+sifflement large vers 2,9 kHz et un roulage grave qui suit le régime, **modulés
+à 35 % à chaque tour** ; une raie de **commutation du moteur** à 24 fois la
+rotation. Chaque bande est réglée pour porter exactement sa part de puissance :
+le niveau est celui du caractère, quelle que soit la forme du spectre. Le
+modèle retrouve les manuels à 0,1 B près, sauf le 7200.10 (2,55 contre 2,8 B).
+
+Deux choses ne viennent d'aucune fiche et sont dites comme telles : les
+**24 commutations par tour** (un triphasé à huit pôles, le moteur le plus
+courant — les fiches ne donnent pas les pôles) et la **forme des bandes du
+roulement**.
+
+**Une licence de mixage, la seule du plateau : le niveau suit les manuels à
+moitié en décibels** autour du U8, **au quart au-delà de 3,0 B** — le coude
+est venu de l'écoute, voir plus bas. Pris en entier, les 25 dB entre le Conner et
+un 7 200 tr/min à un plateau mettaient la voix de rotation de la défragmentation
+de `dev-1993` à −12,5 dBFS RMS, 19 dB au-dessus d'avant, crêtes à 1,27 — elle
+couvrait ses propres seeks et écrêtait —, et un 2003 sous −45 dBFS. Les seeks,
+eux, ne sont calés sur aucune fiche : l'écart idle/seek des manuels (+3 dB sur
+le U8, +9 dB sur l'ATA IV) dirait qu'il faudrait les caler aussi, et ce n'est
+pas fait. À moitié partout : 12 dB d'écart, et la passe de `dev-1993` à
+−24 dBFS, crêtes à 0,54 — ce que l'écoute sur le téléphone a trouvé trop fort
+pour les vieux disques et juste pour les récents. Avec le coude à 3,0 B, le plus
+bruyant des disques à palier fluide (le 7200.11), les récents ne bougent pas et
+les roulements descendent : 8 dB entre le Conner et un 2003, la passe de
+`dev-1993` à −26,5 dBFS au plus fort, le repos de 1993 à −28,7 dBFS contre −24,1.
+
+**Les micro-transitoires rapprochés partent en trains, et aucun n'est
+supprimé** (`CueStream`, `SeekSynth.renderTickTrain`). La règle est celle des
+seeks, héritée de MAME : un tic qui arrive à moins de 30 ms du précédent — avant
+qu'il se soit éteint — le rejoint ; un train ne dépasse pas une seconde ; il est
+rendu d'un seul passage dans le banc de résonateurs, qui garde son état d'un tic
+au suivant. La densité module le train d'elle-même : l'excitation de chaque tic
+s'arrête au suivant, qui reprend l'asservissement. Un tic isolé reste un
+one-shot mis en cache, rendu exactement comme avant. La décision est causale à
+horizon borné, comme celle des seeks : le train se referme dès que le plus
+précoce des tics à venir — le premier en attente d'un train de seeks, ou
+l'événement qu'on lit — ne peut plus le rejoindre, et `watermark` le retient
+jusque-là.
+
+**La mise sous tension en trois temps** (`IdleBehavior.coldStart`,
+`StartupSequence`), pour un démarrage et une journée : le moteur ; à 50 ms le
+**décollement** des têtes (`DiskEventKind.headUnstick`) ; puis la **recherche de
+la piste 0** — une course complète depuis la zone de parcage, quatre pas courts
+au bord, deux tours sur chaque arrêt —, calée pour finir quand le disque est
+prêt et jamais avant la moitié de la rampe, faute de coussin d'air. Le bras
+attend **au bord**. Le secteur d'amorçage étant au cylindre 0, le premier accès
+d'un démarrage n'a plus de seek : le « clac » franc d'ouverture est la salve,
+comme le dit la revue. Une défragmentation et une installation partent d'un
+plateau qui tourne déjà ; leur rampe reste un fondu, sans décollement.
+
+**La recalibration thermique** (`ThermalRecalibration`), pour les disques de
+1996 et avant — 1993 et 1996 dans la galerie, pas 1999. Ce que les sources
+donnent : « quelques minutes », « une seconde », « avant ~1996 ». Ce qui est
+choisi : la première deux minutes après le disque prêt — le plus long démarrage
+de la galerie dure 70 s, aucun n'en contient, et `ThinkModel` n'est pas touché —
+puis toutes les quatre minutes ; trois zones, bord, moyeu, milieu, deux fois,
+avec un aller-retour court autour de chaque repère et deux tours de lecture à
+chaque arrêt : 24 arrêts, ≈ 1 s sur un 3 600 tr/min. Elle attend la fin de la
+commande en cours, comme le faisaient les disques — c'est ce que les modèles
+« AV » évitaient —, et le retard qu'elle impose est compté à part
+(`TraceStats.recalibrationSeconds`, et une ligne du bilan). Ses seeks ne sont pas
+des seeks demandés ; mais le bras finit ailleurs, et la requête suivante peut en
+payer un de plus : c'est pourquoi le nombre de seeks d'une passe de 1993 bouge.
+
+**Le parcage d'une seconde disparaît des scénarios, remplacé par la coupure là
+où il y en a une.** Des trois issues proposées — le nommer, le rendre optionnel,
+le remplacer —, la troisième, parce que ce lot se juge sur ce que produit la
+mécanique réelle. `IdleBehavior.parkAfter` reste, documenté comme la pratique
+des disques à rampe des portables ; `IdleBehavior.desktop(year:)` ne s'en sert
+pas. La **journée** finit par une vraie coupure (`stopAfter`, une seconde après
+la dernière écriture) : le bras se retire au moyeu, le moteur est coupé, le
+plateau redescend par la loi du premier ordre de `SpindleTimeline`, et à 40 % du
+régime les têtes **se posent** (`headLand`) — le seuil est une estimation, aucune
+fiche ne le donne. Une défragmentation, un démarrage et une installation se
+referment sur le disque qui tourne, sans dernier mouvement : c'est ce qu'ils
+faisaient. La coupure n'étant connue qu'à la fin du travail, `PassEnd` la
+porte, et `LivePass` fait ralentir le plateau affiché avec celui qu'on entend ;
+`PlatterTrack.wake` montre le bras au bord après la mise en route.
+
+**Décollement et atterrissage** sont deux one-shots du même banc
+(`renderUnstick`, `renderLanding`) : un claquement unique plus grave qu'un seek
+suivi de 30 ms de frottement ; quatre contacts de plus en plus faibles et
+rapprochés, puis 120 ms de frottement qui s'éteint. L'haptique les reçoit, et
+un train de tics y devient un frémissement continu piqué de ses pas de piste.
+
+**Ce qui est jugé juste n'a pas bougé** : les fréquences des modes de
+l'actionneur sont les mêmes, seule l'excitation varie ; le timbre du plateau
+dépend du **régime du plateau**, jamais de la vitesse du bras ; la fusion des
+trains de seeks et la décomposition speedup / coast / slowdown / settle ne sont
+pas touchées.
+
+### Ce qui valide
+
+- **`swift test` : 390 tests passent** (377 avant) : les treize
+  d'`AcousticsTests` — niveaux des manuels, glissement du souffle, partage de la
+  puissance, cinq époques distinctes, mise en route, durée d'un démarrage au
+  premier seek près, recalibration par époque, interruption et son coût, bureau
+  sans parcage, coupure et atterrissage, plateau affiché qui s'arrête, pas de
+  piste non décimés.
+- **L'identité flux / bloc tient** : `StreamingTests` passe, avec l'oracle du
+  calcul d'un bloc mis à la nouvelle règle — ses micro-transitoires ne sont plus
+  espacés de 18 ms mais groupés en trains sur la trace entière, et il connaît le
+  décollement et l'atterrissage. Le cas synthétique de 20 000 événements, trains
+  coupés à la seconde et tics sur leurs bords, se décide comme d'un bloc. Rien
+  de ce qui est ajouté ne dépend de la taille des tampons : les trains sont
+  décidés sur les événements, et `SpindleVoice` recalcule ses filtres sur un
+  changement de caractère comme il le faisait sur un changement de vitesse.
+- **Les durées** (`compare.py a6base a6m3`, 340 bilans) : **rien ne bouge en
+  1999 et après**, sinon le nombre de repères audio, un événement de moins (le
+  parcage) et, sur les démarrages et les journées, un seek de moins (le premier).
+  Les démarrages de 1993 et 1996 ne bougent que de ce seek : 0,0 à −0,1 s,
+  `ThinkModel` n'est pas recalé. Les passes et installations de 1993 et 1996
+  s'allongent de leurs recalibrations : +0,1 à +0,7 %, soit une seconde par
+  recalibration (six sur la passe de 95 de `dev-1993`, 22 min 18 → 22 min 24).
+  Aucun plan, aucun volume, aucun compte de fichiers ne change.
+- **Le temps de rendu d'une passe**, en release sur le Mac, WAV compris :
+  défragmentation de `dev-1993` à la frontière (346 s de son), 3,9 → 6,1 s ; de
+  `dev-2003` par recollage (200 s), 4,8 → 3,9 s ; démarrage de `gamer-2003`
+  (69 s), 0,64 → 0,69 s. Un train d'une seconde — 120 tics — se rend en 3,8 ms :
+  c'est le coût que l'application paie, hors fil principal, une fois par seconde
+  de lecture séquentielle. Le surcoût de `dev-1993` est de 6 ms par seconde
+  écoutée ; il vient des trains qui remplacent des tics en cache.
+- **Le CPU sur l'appareil** (iPhone 13 Pro Max, iOS 27, Release), pendant la
+  démo de défragmentation (`dev-1993`, 3 600 tr/min, le cas le plus chargé en
+  trains), même geste sur les deux versions — le commit d'avant construit dans
+  un worktree jetable. `xctrace` Activity Monitor sur 20 s, puis Time Profiler
+  sur 10 s :
+
+  | | avant | après |
+  |---|---:|---:|
+  | CPU de l'app | **45,1 %** d'un cœur | **47,0 %** |
+  | voix du plateau (`SpindleVoice`, fil audio) | 3,0 % | 4,7 % |
+  | synthèse des transitoires (`SeekSynth`) | 0,2 % | 1,4 %, dont 0,9 % de trains de tics |
+  | haptique | 4,5 % | 2,3 % |
+  | fil principal (affichage) | 81 % de l'app | 80 % de l'app |
+
+  **+1,9 point au total.** Les trains coûtent ce qu'annonçait le rendu
+  hors-ligne ; la voix du plateau, cinq bandes au lieu de trois, un peu plus ;
+  l'haptique, qui reçoit un train au lieu d'un motif par tic, moitié moins.
+  L'essentiel du CPU reste l'affichage, comme avant le lot. Au repos, l'app
+  consomme 0,5 %.
+
+### Ce qui a été entendu
+
+**Gabriel a écouté** les paires ci-dessous au casque sur le Mac — le démarrage
+de 1993 et la passe de la démo **en entier** —, puis la démo, deux démarrages et
+une journée sur le téléphone. Tout ce qui est décrit plus bas a été entendu
+comme prévu, **sauf le ronronnement des vieux disques, trop fort** ; celui des
+récents est juste. C'est ce qui a fait resserrer le haut de l'échelle (le coude
+à 3,0 B) ; les récents n'ont pas bougé. Réécouté après le coude : juste au
+haut-parleur, encore un peu fort au casque, où **20 % de rotation suffisent** —
+le préréglage « Casque » passe de 32 à 20 % (et le rendu hors-ligne avec lui,
+`SPINDLE_GAIN` par défaut), « Haut-parleur » reste à 50 %. Les niveaux en dBFS
+cités dans ce chantier sont mesurés au gain d'avant, 0,32 ; au nouveau, la
+rotation est 4 dB plus bas. **La mention « rien n'a été écouté en
+entier » du chantier 19 est refermée.**
+
+L'assistant qui a mené ce lot n'entend pas : la description qui suit a été lue
+dans les rendus — spectrogrammes, enveloppes, spectres par tiers d'octave — et
+écrite avant l'écoute, pour qu'elle la confirme ou la démente. Les niveaux sont
+ceux d'après le coude.
+
+- **Le plateau, voix seule.** Avant, le même souffle sombre pour tous
+  (centroïde 611–656 Hz). Après, trois familles. Le **1993** est le plus fort
+  (−29,3 dB contre −32,3), plus clair (centroïde 1 119 Hz, un quart de l'énergie
+  au-dessus de 1,5 kHz) : un sifflement de roulement qui **bat à 60 Hz**, une fois
+  par tour, 34 % de modulation — un ronronnement rugueux. Le **1996-1999**, même
+  sifflement, battant à 90 Hz, 2 à 3 dB plus bas. Le **2001-2008**, le souffle
+  d'avant, lisse (1 % de modulation), de −37,5 à −33,5 dB selon les plateaux.
+- **Le démarrage de 1993**, sur les dix premières secondes : avant, le
+  ronronnement qui monte, puis à 7,75 s la première lecture, une course complète.
+  Après, un **claquement sec** isolé à 0,40 s, dans le silence presque complet
+  du moteur qui démarre — le décollement ; la montée d'un plateau plus clair,
+  strié à chaque tour ; puis, juste avant 7,55 s, une **courte salve** groupée —
+  la recherche de la piste 0 — et les lectures qui suivent partent du bord.
+- **La lecture séquentielle.** Avant, sur le Fireball, des tics isolés tous les
+  26 ms séparés de silence. Après, une texture continue, rythmée de temps forts
+  toutes les 53 ms — le pas de piste — entre lesquels passent trois
+  commutations plus faibles : **deux périodicités emboîtées**, 75,7 et 18,9 Hz
+  dans l'enveloppe. Sur le Barracuda, la cadence de 108 Hz est une hauteur.
+- **La recalibration.** Dans la journée de `dev-1996` au jour 20, à 121,55 s, au
+  milieu d'un va-et-vient régulier : 0,6 s de clacs plus forts et irréguliers,
+  puis le va-et-vient reprend. Dans une défragmentation de 1993, elle se fond
+  dans le crépitement : ce n'est qu'un changement de rythme d'une seconde. Elle
+  s'entendra surtout au repos — et une passe n'en a pas.
+- **La fin de journée.** Avant, le dernier clac d'écriture puis, une seconde
+  plus tard, le parcage, et le plateau qui tourne. Après, le dernier clac, le
+  retrait du bras, le ronronnement qui tombe, et 1,0 s après la coupure un
+  **petit crac** large bande — l'atterrissage — sur un plateau qui ralentit
+  encore, ses stries de rotation s'espaçant jusqu'au silence.
+
+**Écouté**, rendus par `a6base` (avant) et `a6m3` (après) avec
+`./Tools/Measure/snapshot.sh` puis `SCENARIO=… rendertrace` :
+
+| paire | ce qui doit différer |
+|---|---|
+| `SCENARIO=boot:gamer-1993`, avant / après, **en entier** (29 s) | décollement, salve de mise en route, plateau de 1993 |
+| `SCENARIO=dev-1993 STRATEGY=frontierCompaction`, avant / après, **en entier** (5 min 47) | la passe de la démo, et sa seule recalibration, à 2 min 01 |
+| `SCENARIO=day:dev-1996:20`, après | recalibration à 2 min 02, coupure et atterrissage à la fin |
+| `SCENARIO=boot:gamer-2003`, avant / après | le souffle d'un 7 200 à palier fluide, plus bas |
+| `SCENARIO=boot:gamer-<année> TRANSIENT_GAIN=0`, les cinq années | se reconnaissent-elles sans l'étiquette ? |
+
+### Laissé ouvert
+
+- **Le niveau des vieux disques après le coude** n'a pas été réécouté ; il est
+  4,6 dB plus bas en 1993, 1,5 dB en 1996, sur la foi d'une écoute qui le
+  trouvait trop fort sans dire de combien.
+- **Le CPU sur l'appareil n'est mesuré que sur un scénario**, la démo de
+  défragmentation ; une lecture séquentielle de 2003, où les trains sont plus
+  longs, n'a pas été jouée sur le téléphone.
+- **Les huit fiches ne se distinguent pas toutes.** Trois familles de timbre ;
+  à l'intérieur, 2 dB de niveau par doublement de plateaux, qu'on n'entend qu'en
+  comparaison directe. Les deux ATA IV et le 7200.7 sont identiques, et Seagate
+  dit qu'ils le sont. Un échantillon par époque vaudrait mieux que tout réglage.
+- **Le niveau des seeks n'est calé sur rien**, alors que les manuels donnent
+  l'écart repos/seek (+3 dB sur le U8, +9 dB sur l'ATA IV). C'est ce qui oblige à
+  la licence de mixage du plateau ; caler les deux ensemble la supprimerait.
+- **Les estimations de ce lot**, à trancher sur source : la période et le motif
+  de la recalibration, les 24 commutations par tour, le seuil d'atterrissage à
+  40 % du régime, les 50 ms du décollement, le passage au palier fluide en 2001
+  pour toute la galerie (Seagate ; Maxtor et Western Digital ont suivi plus
+  tard), et la conversion dBA → bels du Conner.
+- **La salve de mise en route et la recalibration ne sont pas dessinées** : le
+  plateau affiché ne connaît que les requêtes. Le bras saute du moyeu au bord à
+  l'instant prêt.
+- **Le 7200.10 est à 2,55 B dans le modèle et à 2,8 B dans son manuel** : la
+  droite par plateau est tirée de l'ATA IV seul.
+- **Une recalibration due pendant la queue d'une passe n'est pas jouée** : le
+  mécanisme ne regarde qu'à l'arrivée d'une requête, et à la coupure rien.

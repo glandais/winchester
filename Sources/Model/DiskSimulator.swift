@@ -15,6 +15,13 @@ enum DiskEventKind {
     /// Transfert de données. Acoustiquement quasi muet sur un disque sain :
     /// ce qui s'entend d'une grosse lecture, ce sont les pas de piste.
     case transfer(duration: Double, sectors: Int, isWrite: Bool)
+    /// Les têtes se décollent du plateau à la mise en rotation : la *stiction*,
+    /// le claquement sec d'un disque qu'on allume.
+    case headUnstick
+    /// Les têtes se posent sur la zone d'atterrissage quand le plateau ralentit
+    /// assez pour que le coussin d'air ne les porte plus : le petit *crac* qui
+    /// termine un arrêt.
+    case headLand
 }
 
 struct DiskEvent {
@@ -67,6 +74,11 @@ struct TraceStats {
     var stepSeconds = 0.0
     var thinkSeconds = 0.0
     var waitSeconds = 0.0
+    /// Temps pendant lequel une requête a attendu que le disque finisse de se
+    /// recalibrer, et nombre de recalibrations. Personne ne les a demandées :
+    /// elles n'entrent ni dans les seeks ni dans leur distance moyenne.
+    var recalibrationSeconds = 0.0
+    var recalibrations = 0
 
     var averageSeekDistance: Int {
         seekCount > 0 ? totalSeekDistance / seekCount : 0
@@ -82,17 +94,25 @@ struct RequestTiming {
     let end: Double
 }
 
-/// Ce que fait le disque quand plus personne ne lui demande rien.
+/// Ce que fait le disque de lui-même, en dehors des requêtes.
 ///
-/// Les deux gestes d'un disque au repos sont mécaniques et audibles, et aucun
-/// n'appartient à une requête : le bras s'en va se parquer, et le moteur
-/// finit par être coupé. Les décrire ici plutôt que dans chaque scénario
-/// évite que « le disque ne fait rien » se traduise par un silence.
+/// Les gestes d'un disque qu'on ne sollicite pas sont mécaniques et audibles,
+/// et aucun n'appartient à une requête : la mise en route, la recalibration
+/// thermique des disques d'avant 1997, le bras qui se retire et les têtes qui
+/// se posent quand le moteur est coupé. Les décrire ici plutôt que dans chaque
+/// scénario évite que « le disque ne fait rien » se traduise par un silence.
 struct IdleBehavior {
 
     /// Délai d'inactivité, compté depuis la dernière requête, au bout duquel le
     /// bras retourne au cylindre de parcage. `nil` pour un disque qu'on laisse
-    /// là où il s'est arrêté.
+    /// là où il s'est arrêté — c'est le cas de tous les disques de bureau de la
+    /// galerie.
+    ///
+    /// **Aucun disque à plateaux de cette période ne le faisait** : décharger
+    /// les têtes au repos est une pratique des disques à rampe, les portables
+    /// des années 2000. Un disque de bureau laisse le bras où il est et ne se
+    /// retire qu'à la coupure. Le mécanisme reste pour ces disques-là ; aucun
+    /// scénario ne s'en sert plus depuis le chantier 25.
     ///
     /// C'est bien un délai et non un instant : une passe en boucle fermée ne
     /// connaît pas sa propre durée avant d'être simulée.
@@ -103,8 +123,106 @@ struct IdleBehavior {
     var stopAt: Double?
     var stopDuration: Double = 0
 
+    /// Coupure comptée depuis la dernière requête : la machine s'éteint tant de
+    /// secondes après avoir fini d'écrire. Ignoré si `stopAt` est donné.
+    var stopAfter: Double?
+
+    /// La montée en régime est une vraie mise sous tension : les têtes se
+    /// décollent, puis le disque cherche la piste 0 et charge son
+    /// asservissement avant d'être prêt — et c'est **au bord** du plateau que
+    /// le bras attend la première requête. `false` pour un plateau qui tourne
+    /// déjà, dont la rampe n'est qu'un fondu.
+    var coldStart = false
+
+    /// Recalibration thermique périodique, pour les disques qui la faisaient.
+    var recalibration: ThermalRecalibration?
+
     /// Un disque qu'on laisse tourner, bras là où il est.
     static let none = IdleBehavior()
+
+    /// Un disque de bureau de l'année donnée : jamais parqué au repos, et
+    /// recalibré périodiquement s'il est d'avant 1997.
+    static func desktop(year: Int, coldStart: Bool = false,
+                        stopAfter: Double? = nil, stopDuration: Double = 0) -> IdleBehavior {
+        IdleBehavior(parkAfter: nil, stopDuration: stopDuration, stopAfter: stopAfter,
+                     coldStart: coldStart,
+                     recalibration: ThermalRecalibration.era(year: year))
+    }
+}
+
+/// La recalibration thermique : toutes les quelques minutes, le disque
+/// interrompt tout et va relire ses repères de position, parce que ses plateaux
+/// et son bras se sont dilatés. Une seconde de crépitement, l'événement sonore
+/// signature des disques du début des années 90 — au point que les
+/// constructeurs ont dû sortir des modèles « AV » sans recalibration pour le
+/// montage vidéo.
+///
+/// Ce que les sources donnent : la période (« quelques minutes »), la durée
+/// (« une seconde »), et l'époque (avant ~1996). Ce qu'elles ne donnent pas, et
+/// qui est donc un choix : l'ordre des repères visités. Ici trois zones —
+/// bord, moyeu, milieu — deux fois, et à chacune un aller-retour court autour
+/// du repère, deux tours de lecture chaque fois.
+struct ThermalRecalibration: Equatable {
+
+    /// Délai de la première, compté depuis le disque prêt. Deux minutes : un
+    /// démarrage de la galerie en dure au plus 70 s, il n'en contient aucune.
+    var firstAfter: Double = 120
+    /// Intervalle entre deux recalibrations.
+    var period: Double = 240
+    /// Tours de plateau passés sur chaque repère.
+    var dwellRevolutions: Double = 2
+
+    /// Dernière année de la galerie à recalibrer : 1993 et 1996 le font, 1999
+    /// ne le fait plus.
+    static let lastYear = 1996
+
+    static func era(year: Int) -> ThermalRecalibration? {
+        year <= lastYear ? ThermalRecalibration() : nil
+    }
+
+    /// Les cylindres visités, dans l'ordre.
+    func stops(cylinders: Int) -> [Int] {
+        let last = max(cylinders - 1, 0)
+        let nudge = max(cylinders / 200, 2)
+        var result: [Int] = []
+        for _ in 0..<2 {
+            for anchor in [0, last, last / 2] {
+                let away = anchor + nudge <= last ? anchor + nudge : anchor - nudge
+                result += [anchor, max(away, 0), anchor, max(min(anchor + nudge / 2, last), 0)]
+            }
+        }
+        return result
+    }
+}
+
+/// La mise sous tension d'un disque, dans l'ordre où elle s'entend.
+enum StartupSequence {
+
+    /// Les têtes se décollent dès que le moteur donne son couple de démarrage.
+    static let unstickDelay = 0.05
+
+    /// La recherche de la piste 0 : une course complète depuis la zone de
+    /// parcage, puis quelques pas courts pour charger l'asservissement, et le
+    /// bras reste au bord.
+    static func stops(cylinders: Int) -> [Int] {
+        let step = max(cylinders / 256, 2)
+        return [0, step, 0, 4 * step, 0]
+    }
+
+    /// Tours de plateau passés sur chaque arrêt.
+    static let dwellRevolutions = 2.0
+
+    /// Les têtes d'un disque à atterrissage sur le plateau (CSS) se posent
+    /// quand le régime est tombé assez bas pour que le coussin d'air ne les
+    /// porte plus. Aucune fiche ne donne ce seuil : 40 % du régime est une
+    /// estimation.
+    static let landingSpeed = 0.4
+
+    /// Délai entre la coupure du moteur et l'atterrissage, sur la même loi du
+    /// premier ordre que `SpindleTimeline`.
+    static func landingDelay(stopDuration: Double) -> Double {
+        -SpindleTimeline.timeConstant(forRamp: stopDuration) * log(landingSpeed)
+    }
 }
 
 struct DiskTrace {
@@ -220,6 +338,11 @@ struct DiskMechanics {
     private var headCylinder: Int
     private var headIndex = 0
     private var served = false
+    /// Prochaine recalibration thermique, si le disque en fait.
+    private var nextRecalibration: Double?
+    /// Instant de coupure du moteur, une fois connu : daté d'avance par le
+    /// scénario, ou compté depuis la dernière requête à la fin du travail.
+    private(set) var stopAt: Double?
 
     init(geometry: DriveGeometry, seekModel: SeekModel,
          spinUpAt: Double, spinUpDuration: Double, idle: IdleBehavior = .none) {
@@ -230,10 +353,11 @@ struct DiskMechanics {
         self.idle = idle
         self.skew = geometry.skew(seekModel: seekModel)
         self.clock = spinUpAt + spinUpDuration
-        // Au repos le bras est parqué au diamètre intérieur (ou sur une rampe
-        // hors plateau). Le premier accès est donc une course quasi complète :
-        // c'est le « clac » franc qu'on entend juste après le lancement du moteur.
+        // Au repos le bras est parqué au diamètre intérieur, sur la zone
+        // d'atterrissage. Un plateau qui tournait déjà l'y a laissé ; un disque
+        // qu'on allume en part pour chercher sa piste 0 (`start`).
         self.headCylinder = geometry.parkCylinder
+        self.nextRecalibration = idle.recalibration.map { clock + $0.firstAfter }
     }
 
     /// La rotation du plateau, connue d'avance : la montée comme la coupure
@@ -241,12 +365,68 @@ struct DiskMechanics {
     var spindle: SpindleTimeline {
         SpindleTimeline(spinUpAt: spinUpAt, duration: spinUpDuration,
                         rpm: geometry.rpm,
-                        spinDownAt: idle.stopAt,
+                        spinDownAt: stopAt ?? idle.stopAt,
                         spinDownDuration: idle.stopDuration)
     }
 
-    func start(events: inout [DiskEvent]) {
+    /// La mise en rotation, et pour un disque qu'on allume, ce qu'elle
+    /// entraîne : le décollement des têtes, puis la recherche de la piste 0.
+    ///
+    /// La salve de recherche est calée pour **finir** quand le disque est prêt :
+    /// c'est elle qui le rend prêt. Elle ne commence pas avant la moitié de la
+    /// montée — il faut un coussin d'air pour déplacer les têtes. Elle laisse le
+    /// bras au bord, et c'est de là que partira le premier accès.
+    mutating func start(events: inout [DiskEvent]) {
         events.append(DiskEvent(time: spinUpAt, kind: .spinUp(duration: spinUpDuration)))
+        guard idle.coldStart else { return }
+        events.append(DiskEvent(time: spinUpAt + StartupSequence.unstickDelay, kind: .headUnstick))
+
+        let dwell = StartupSequence.dwellRevolutions * geometry.revolutionDuration
+        let stops = StartupSequence.stops(cylinders: geometry.cylinders)
+        var cylinder = headCylinder
+        var length = 0.0
+        for stop in stops {
+            length += seekModel.duration(distance: abs(stop - cylinder)) + dwell
+            cylinder = stop
+        }
+        var t = max(clock - length, spinUpAt + spinUpDuration / 2)
+        for stop in stops {
+            let distance = abs(stop - headCylinder)
+            if distance > 0 {
+                let profile = seekModel.profile(distance: distance)
+                events.append(DiskEvent(time: t, kind: .seek(profile)))
+                t += profile.total
+            }
+            t += dwell
+            headCylinder = stop
+        }
+        headIndex = 0
+        // Une montée trop courte pour la salve retarde le disque prêt ; aucune
+        // des rampes des scénarios ne l'est.
+        clock = max(clock, t)
+    }
+
+    /// Une recalibration thermique commencée à `begin` : les repères visités,
+    /// deux tours de lecture sur chacun. Rend l'instant où le disque est de
+    /// nouveau disponible ; le bras reste sur le dernier repère.
+    private mutating func recalibrate(_ recalibration: ThermalRecalibration,
+                                      at begin: Double,
+                                      events: inout [DiskEvent]) -> Double {
+        let dwell = recalibration.dwellRevolutions * geometry.revolutionDuration
+        var t = begin
+        for stop in recalibration.stops(cylinders: geometry.cylinders) {
+            let distance = abs(stop - headCylinder)
+            if distance > 0 {
+                let profile = seekModel.profile(distance: distance)
+                events.append(DiskEvent(time: t, kind: .seek(profile)))
+                t += profile.total
+            }
+            t += dwell
+            headCylinder = stop
+        }
+        headIndex = 0
+        stats.recalibrations += 1
+        return t
     }
 
     /// Ce qu'il faut attendre, à l'instant `t`, pour que ce secteur-là passe
@@ -279,6 +459,23 @@ struct DiskMechanics {
         stats.thinkSeconds += thought
         stats.waitSeconds += max(issued - clock - thought, 0)
         var t = issued
+
+        // 0. Une recalibration thermique échue passe avant : le disque finit la
+        //    commande en cours, puis s'interrompt. Échue pendant un repos, elle
+        //    s'y loge et ne retarde personne.
+        if let recalibration = idle.recalibration {
+            var free = clock
+            while let due = nextRecalibration, due <= t {
+                let end = recalibrate(recalibration, at: max(due, free), events: &events)
+                free = end
+                nextRecalibration = due + recalibration.period
+                if end > t {
+                    stats.recalibrationSeconds += end - t
+                    t = end
+                }
+            }
+        }
+
         let target = geometry.position(ofLBA: request.lba)
 
         // 1. Déplacement du bras.
@@ -391,14 +588,19 @@ struct DiskMechanics {
     mutating func finish(events: inout [DiskEvent]) -> Double? {
         var tail: [DiskEvent] = []
         var parkAt: Double?
-        if let delay = idle.parkAfter, served {
+        let stopAt = idle.stopAt ?? (served ? idle.stopAfter.map { clock + $0 } : nil)
+        self.stopAt = stopAt
+        // Un disque parque toujours ses têtes **avant** de couper le moteur :
+        // sans couple, plus de coussin d'air. Un disque de bureau ne le fait
+        // qu'à la coupure ; un disque à rampe, aussi au bout d'un repos.
+        let parkDelay = idle.parkAfter ?? (stopAt != nil ? .infinity : nil)
+        if let delay = parkDelay, served {
             let distance = abs(geometry.parkCylinder - headCylinder)
             let travel = seekModel.duration(distance: distance)
-            // Un disque parque toujours ses têtes **avant** de couper le
-            // moteur : sans couple, plus de coussin d'air. Si la coupure vient
-            // avant le délai d'inactivité, c'est elle qui déclenche le voyage.
+            // Si la coupure vient avant le délai d'inactivité, c'est elle qui
+            // déclenche le voyage.
             var moment = clock + delay
-            if let stopAt = idle.stopAt { moment = min(moment, stopAt - travel) }
+            if let stopAt { moment = min(moment, stopAt - travel) }
             moment = max(moment, clock)
             if distance > 0 {
                 tail.append(DiskEvent(
@@ -408,8 +610,11 @@ struct DiskMechanics {
             }
         }
 
-        if let stopAt = idle.stopAt {
+        if let stopAt {
             tail.append(DiskEvent(time: stopAt, kind: .spinDown(duration: idle.stopDuration)))
+            // Le moteur ralentit ; les têtes finissent par toucher le plateau.
+            let landing = stopAt + StartupSequence.landingDelay(stopDuration: idle.stopDuration)
+            tail.append(DiskEvent(time: landing, kind: .headLand))
         }
 
         tail.sort { $0.time < $1.time }

@@ -50,7 +50,9 @@ final class LivePass: PassFeed {
 
     let geometry: DriveGeometry
     let seekModel: SeekModel
-    let spindle: SpindleTimeline
+    private(set) var spindle: SpindleTimeline
+    /// Où attend le bras d'un disque qu'on vient d'allumer.
+    let armReady: (time: Double, cylinder: Int)?
     let phases: [PhaseDescriptor]
     let map: ClusterMapPlayer?
 
@@ -99,8 +101,10 @@ final class LivePass: PassFeed {
          geometry: DriveGeometry,
          seekModel: SeekModel,
          spindle: SpindleTimeline,
+         armReady: (time: Double, cylinder: Int)? = nil,
          phases: [PhaseDescriptor],
          map: (clusterCount: Int, initialRuns: [MapRun])? = nil) {
+        self.armReady = armReady
         self.session = session
         self.geometry = geometry
         self.seekModel = seekModel
@@ -148,6 +152,11 @@ final class LivePass: PassFeed {
         if let end = batch.end {
             self.end = end
             parkAt = end.parkAt
+            // Une coupure comptée depuis la dernière requête n'était pas connue
+            // d'avance : le plateau qu'on voit ralentit avec celui qu'on entend.
+            if let stop = end.stopAt, spindle.stopTime == nil {
+                spindle = spindle.stopping(at: stop, duration: end.stopDuration)
+            }
             cueWatermark = .infinity
         }
     }
@@ -286,7 +295,7 @@ final class LivePass: PassFeed {
 
     var platter: PlatterTrack {
         PlatterTrack(geometry: geometry, seekModel: seekModel, samples: samples,
-                     spindle: spindle, parkAt: parkAt)
+                     spindle: spindle, parkAt: parkAt, wake: armReady)
     }
 
     /// Cellule en cours d'accès, s'il y en a une à cet instant.

@@ -32,7 +32,7 @@ final class DiskNoiseEngine: ObservableObject {
     /// reprise, et quand une autre passe est chargée.
     @Published private(set) var interruption: PlaybackInterruption?
 
-    @Published var spindleLevel: Float = 0.32 { didSet { spindleMixer.outputVolume = spindleLevel } }
+    @Published var spindleLevel: Float = 0.20 { didSet { spindleMixer.outputVolume = spindleLevel } }
     @Published var transientLevel: Float = 1.0 { didSet { transientMixer.outputVolume = transientLevel } }
     @Published var masterLevel: Float = 0.85 { didSet { engine.mainMixerNode.outputVolume = masterLevel } }
 
@@ -118,10 +118,10 @@ final class DiskNoiseEngine: ObservableObject {
 
     // MARK: - Cycle de vie
 
-    init(rpm: Double) {
+    init(character: SpindleCharacter) {
         format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)
         synth = SeekSynth(sampleRate: sampleRate)
-        spindle = SpindleVoice(sampleRate: sampleRate, rpm: rpm)
+        spindle = SpindleVoice(sampleRate: sampleRate, character: character)
         sourceNode = spindle.makeSourceNode(format: format)
 
         engine.attach(sourceNode)
@@ -210,16 +210,16 @@ final class DiskNoiseEngine: ObservableObject {
         }
     }
 
-    /// Branche une passe. `rpm` suit le disque simulé : la couche de rotation
-    /// est la seule à en dépendre, et elle se reconfigure sans qu'on ait à
-    /// reconstruire le graphe.
+    /// Branche une passe. `character` suit le disque simulé — régime, plateaux,
+    /// palier : la couche de rotation est la seule à en dépendre, et elle se
+    /// reconfigure sans qu'on ait à reconstruire le graphe.
     ///
     /// La passe repart toujours de son début : il n'y a plus de chronologie
     /// où sauter, seulement une passe qui se calcule à mesure qu'on l'écoute.
-    func load(feed: PassFeed, rpm: Double) {
+    func load(feed: PassFeed, character: SpindleCharacter) {
         stop()
         interruption = nil
-        spindle.rpm = rpm
+        spindle.character = character
         self.feed = feed
         isLoaded = true
         isFinished = false
@@ -479,20 +479,45 @@ final class DiskNoiseEngine: ObservableObject {
         case .chatter(let run, _):
             // Rendu hors thread principal : un train d'une seconde représente
             // 48 000 échantillons à travers huit filtres.
-            let token = generation
             let synth = self.synth!
-            Task.detached(priority: .userInitiated) { [weak self] in
-                let buffer = synth.renderChatter(run: run,
-                                                 variation: UInt32(truncatingIfNeeded: run.count &* 7919))
-                guard let buffer else { return }
-                await MainActor.run {
-                    guard let self, self.generation == token, self.isPlaying else { return }
-                    self.player.scheduleBuffer(buffer, at: at, options: [])
-                }
+            renderAway(at: at) {
+                synth.renderChatter(run: run, variation: UInt32(truncatingIfNeeded: run.count &* 7919))
+            }
+
+        case .tickTrain(let ticks, _):
+            // Même coût, même traitement : une lecture séquentielle en produit
+            // un par seconde.
+            let synth = self.synth!
+            renderAway(at: at) {
+                synth.renderTickTrain(ticks, variation: UInt32(truncatingIfNeeded: ticks.count &* 7919))
+            }
+
+        case .unstick:
+            if let buffer = cachedTick(key: 2, render: { $0.renderUnstick(variation: 3) }) {
+                player.scheduleBuffer(buffer, at: at, options: [])
+            }
+
+        case .landing:
+            if let buffer = cachedTick(key: 3, render: { $0.renderLanding(variation: 4) }) {
+                player.scheduleBuffer(buffer, at: at, options: [])
             }
 
         case .spinUp, .spinDown:
             break
+        }
+    }
+
+    /// Rend un tampon hors du fil principal, puis le programme s'il est encore
+    /// attendu : une pause ou un changement de passe entre-temps l'écarte.
+    private func renderAway(at time: AVAudioTime,
+                            _ render: @escaping @Sendable () -> AVAudioPCMBuffer?) {
+        let token = generation
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let buffer = render() else { return }
+            await MainActor.run {
+                guard let self, self.generation == token, self.isPlaying else { return }
+                self.player.scheduleBuffer(buffer, at: time, options: [])
+            }
         }
     }
 
@@ -514,8 +539,12 @@ final class DiskNoiseEngine: ObservableObject {
 
     private func cachedTick(_ kind: SeekSynth.Tick) -> AVAudioPCMBuffer? {
         let key = kind == .headSwitch ? 0 : 1
+        return cachedTick(key: key) { $0.renderTick(kind, variation: UInt32(key + 1)) }
+    }
+
+    private func cachedTick(key: Int, render: (SeekSynth) -> AVAudioPCMBuffer?) -> AVAudioPCMBuffer? {
         if let cached = tickCache[key] { return cached }
-        let buffer = synth.renderTick(kind, variation: UInt32(key + 1))
+        let buffer = render(synth)
         tickCache[key] = buffer
         return buffer
     }

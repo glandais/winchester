@@ -137,6 +137,9 @@ struct PassEnd: Sendable {
     /// Fin de la dernière requête, zéro s'il n'y en a pas eu.
     let workEnd: Double
     let parkAt: Double?
+    /// Coupure du moteur, si la passe finit par elle.
+    var stopAt: Double? = nil
+    var stopDuration: Double = 0
     /// Tout ce qui s'entend, queue comprise.
     let duration: Double
     /// Première prise en charge de chaque phase, pour dater les phases après
@@ -197,6 +200,18 @@ struct PassSetup {
     /// Ce que dure la passe après sa dernière requête. `nil` : la durée est
     /// celle de la trace — la dernière requête, ou le parcage s'il vient après.
     var tail: Double?
+    /// Année du disque : elle décide de son palier, donc de son ronronnement.
+    var year: Int?
+
+    /// Ce que le plateau fait entendre de lui-même.
+    var character: SpindleCharacter { SpindleCharacter(geometry: geometry, year: year) }
+
+    /// Où le bras attend la première requête, et depuis quand : au bord, une
+    /// fois la recherche de la piste 0 d'une mise sous tension finie. `nil`
+    /// pour un plateau qui tournait déjà, parqué au moyeu.
+    var armReady: (time: Double, cylinder: Int)? {
+        idle.coldStart ? (spinUpAt + spinUpDuration, 0) : nil
+    }
 
     /// La rotation du plateau : la montée comme la coupure sont des dates,
     /// connues avant la moindre requête.
@@ -437,6 +452,8 @@ private struct Chain {
                           eventCount: eventCount,
                           workEnd: workEnd,
                           parkAt: parkAt,
+                          stopAt: mechanics.stopAt,
+                          stopDuration: setup.idle.stopDuration,
                           duration: duration,
                           firstStarts: firstStarts,
                           plan: plan)

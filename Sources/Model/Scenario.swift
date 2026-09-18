@@ -285,6 +285,7 @@ struct Scenario {
                             geometry: geometry,
                             seekModel: seekModel,
                             spindle: setup.spindle,
+                            armReady: setup.armReady,
                             phases: phases,
                             map: map.map { ($0.partition.clusterCount, $0.initialRuns) })
         session.start()
@@ -368,7 +369,9 @@ enum ScenarioBuilder {
                                            requests: fresh.requests,
                                            totalDuration: 0,
                                            spinUpAt: 0.35,
-                                           spinUpDuration: spinUpDuration)
+                                           spinUpDuration: spinUpDuration,
+                                           idle: .desktop(year: disk.spec.timeline.start.year,
+                                                          coldStart: true))
         let freshSeconds = (freshTrace.timings.last?.end ?? 0) + fresh.tail
 
         let launch = plan.appName.map { " puis lancement de \($0)" } ?? ""
@@ -400,11 +403,12 @@ enum ScenarioBuilder {
             setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
                              spinUpAt: 0.35,
                              spinUpDuration: spinUpDuration,
-                             // Pas d'arrêt moteur : la machine vient de démarrer.
-                             // Mais le bras n'a plus rien à faire, et la queue
-                             // du scénario est faite pour ça.
-                             idle: IdleBehavior(parkAfter: parkDelay),
-                             tail: plan.tail),
+                             // Une vraie mise sous tension, et pas d'arrêt
+                             // moteur : la machine vient de démarrer. Le bras
+                             // reste où la dernière lecture l'a laissé.
+                             idle: .desktop(year: disk.spec.timeline.start.year, coldStart: true),
+                             tail: plan.tail,
+                             year: disk.spec.timeline.start.year),
             phases: plan.phases,
             defrag: nil,
             boot: BootPlayback(osName: plan.osName,
@@ -488,8 +492,9 @@ enum ScenarioBuilder {
             // On a démarré sur la disquette ou le CD : le disque tourne déjà.
             setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
                              spinUpAt: 0, spinUpDuration: 0.9,
-                             idle: IdleBehavior(parkAfter: parkDelay),
-                             tail: tailDuration),
+                             idle: .desktop(year: disk.spec.timeline.start.year),
+                             tail: tailDuration,
+                             year: disk.spec.timeline.start.year),
             phases: phases.descriptors,
             defrag: nil,
             boot: nil,
@@ -552,8 +557,14 @@ enum ScenarioBuilder {
             seekModel: hardware.seek,
             setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
                              spinUpAt: 0.35, spinUpDuration: 1.2,
-                             idle: IdleBehavior(parkAfter: parkDelay),
-                             tail: tailDuration),
+                             // La machine s'allume le matin et s'éteint le
+                             // soir : la journée se referme sur la coupure, le
+                             // bras qui se retire et les têtes qui se posent.
+                             idle: .desktop(year: disk.spec.timeline.start.year, coldStart: true,
+                                            stopAfter: powerOffDelay,
+                                            stopDuration: spinDownDuration),
+                             tail: tailDuration,
+                             year: disk.spec.timeline.start.year),
             phases: phases,
             defrag: nil,
             boot: nil,
@@ -580,17 +591,29 @@ enum ScenarioBuilder {
 
     // MARK: - Défragmentation
 
-    /// Silence final, une fois la passe terminée. Il n'est plus tout à fait
-    /// silencieux : le bras s'y parque.
+    /// Ce qui suit la dernière requête : le disque qui tourne seul, ou, en fin
+    /// de journée, la coupure et l'atterrissage des têtes.
     private static let tailDuration = 3.5
 
-    /// Délai d'inactivité avant que le bras retourne se parquer.
+    /// Délai entre la dernière écriture d'une journée et la coupure du courant :
+    /// le temps que Windows affiche qu'on peut éteindre, ou qu'une carte ATX
+    /// coupe d'elle-même.
     ///
-    /// Une seconde, pas les minutes d'une vraie temporisation de veille : ce
-    /// qu'on veut entendre, c'est que la passe se referme sur un dernier
-    /// mouvement plutôt que sur un blanc. La queue d'un scénario le porte
-    /// largement, seek de course complète compris.
-    private static let parkDelay = 1.0
+    /// Jusqu'au chantier 25, **toutes** les passes se refermaient sur un bras
+    /// qui retournait se parquer une seconde après la dernière requête. C'était
+    /// un bon choix dramatique, mais pas de la mécanique : aucun disque de
+    /// bureau de cette période ne parquait au repos — c'est une pratique des
+    /// disques à rampe des portables des années 2000. Un disque de bureau
+    /// laisse son bras où il est et ne le retire qu'à la coupure. Le dernier
+    /// mouvement n'appartient donc plus qu'aux passes qui finissent vraiment
+    /// par une coupure, la journée ; une défragmentation, un démarrage et une
+    /// installation se referment sur le disque qui tourne.
+    private static let powerOffDelay = 1.0
+
+    /// Durée de la redescente du plateau après la coupure, au sens de
+    /// `SpindleTimeline` : l'atterrissage des têtes tombe 1,0 s après la
+    /// coupure, dans la queue de la journée.
+    private static let spinDownDuration = 3.5
 
     // MARK: - Défragmentation d'un disque de la galerie
 
@@ -616,6 +639,7 @@ enum ScenarioBuilder {
 
         return assembleDefrag(volume: volume,
                               strategy: strategy,
+                              year: disk.spec.timeline.start.year,
                               geometry: hardware.geometry,
                               seekModel: hardware.seek,
                               label: ScenarioLabel(title: disk.spec.displayName,
@@ -630,6 +654,7 @@ enum ScenarioBuilder {
     /// sur sa propre copie du volume, et émettra ses opérations à mesure.
     private static func assembleDefrag(volume: DefragVolume,
                                        strategy chosen: (any DefragStrategy)? = nil,
+                                       year: Int,
                                        geometry: DriveGeometry,
                                        seekModel: SeekModel,
                                        label: ScenarioLabel) -> Scenario {
@@ -643,8 +668,9 @@ enum ScenarioBuilder {
         // qu'un fondu pour que la couche de rotation s'installe.
         let setup = PassSetup(geometry: geometry, seekModel: seekModel,
                               spinUpAt: 0, spinUpDuration: 0.9,
-                              idle: IdleBehavior(parkAfter: parkDelay),
-                              tail: tailDuration)
+                              idle: .desktop(year: year),
+                              tail: tailDuration,
+                              year: year)
 
         return Scenario(
             kind: .defrag,

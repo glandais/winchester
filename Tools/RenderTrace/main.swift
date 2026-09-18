@@ -104,12 +104,12 @@ let scenario = request.scenario
 // son rendu pèse des gigaoctets. `PLAN_ONLY` s'arrête au bilan : c'est tout ce
 // qu'il faut pour vérifier un planificateur.
 let planOnly = ScenarioRequest.environment["PLAN_ONLY"] != nil
-let spindleGain = Float(ScenarioRequest.environment["SPINDLE_GAIN"] ?? "") ?? 0.32
+let spindleGain = Float(ScenarioRequest.environment["SPINDLE_GAIN"] ?? "") ?? 0.20
 let transientGain = Float(ScenarioRequest.environment["TRANSIENT_GAIN"] ?? "") ?? 1.0
 
 let tally = Tally()
 let rawPath = outputPath + ".raw"
-let mixer = planOnly ? nil : StreamingMixer(rpm: scenario.geometry.rpm, rawPath: rawPath,
+let mixer = planOnly ? nil : StreamingMixer(character: scenario.setup.character, rawPath: rawPath,
                                             spindleGain: spindleGain, transientGain: transientGain)
 
 guard let end = scenario.produce(batchRequests: 4_096, batchSeconds: 5, deliver: { batch in
@@ -126,7 +126,7 @@ FileHandle.standardError.write("""
 scénario      : \(scenario.label.title) — \(geometry.model)
 requêtes      : \(end.requestCount)
 seeks         : \(end.stats.seekCount) (moy. \(end.stats.averageSeekDistance) cyl.)
-lu / écrit    : \(end.stats.bytesRead / 1_000_000) / \(end.stats.bytesWritten / 1_000_000) Mo
+\(end.stats.recalibrations > 0 ? String(format: "recalibrations : %d, %.1f s d'attente\n", end.stats.recalibrations, end.stats.recalibrationSeconds) : "")lu / écrit    : \(end.stats.bytesRead / 1_000_000) / \(end.stats.bytesWritten / 1_000_000) Mo
 événements    : \(end.eventCount)
 repères audio : \(tally.cues)
 durée         : \(String(format: "%.1f", end.duration)) s

@@ -27,6 +27,26 @@ struct SpindleTimeline: Sendable {
     private let tauDown: Double
     private let revolutionsPerSecond: Double
 
+    /// La même rotation, coupée à cet instant — une coupure qu'on ne connaît
+    /// qu'à la fin du travail.
+    func stopping(at time: Double, duration: Double) -> SpindleTimeline {
+        SpindleTimeline(start: start, tau: tau, stop: time,
+                        tauDown: Self.timeConstant(forRamp: duration),
+                        revolutionsPerSecond: revolutionsPerSecond)
+    }
+
+    private init(start: Double, tau: Double, stop: Double?, tauDown: Double,
+                 revolutionsPerSecond: Double) {
+        self.start = start
+        self.tau = tau
+        self.stop = stop
+        self.tauDown = tauDown
+        self.revolutionsPerSecond = revolutionsPerSecond
+    }
+
+    /// Instant de coupure, s'il y en a une.
+    var stopTime: Double? { stop }
+
     init(spinUpAt: Double, duration: Double, rpm: Double,
          spinDownAt: Double? = nil, spinDownDuration: Double = 0) {
         self.start = spinUpAt
@@ -156,6 +176,9 @@ struct PlatterTrack {
     /// Instant où le bras repart se parquer, une fois le travail fini. `nil`
     /// pour un disque qu'on laisse là où il s'est arrêté.
     var parkAt: Double? = nil
+    /// Mise sous tension : le bras quitte le moyeu pour le bord à cet instant,
+    /// sa recherche de la piste 0 faite. `nil` : il attend au moyeu.
+    var wake: (time: Double, cylinder: Int)? = nil
 
     /// Durée de la traînée : **un tour apparent**.
     ///
@@ -243,8 +266,11 @@ struct PlatterTrack {
     /// accès, ou elle attend là où le dernier transfert l'a laissée.
     private func position(at time: Double, index: Int?) -> (Double, HeadActivity) {
         guard let index else {
-            // Rien n'a encore été lu : le bras est à sa place de repos, et c'est
-            // de là que partira le « clac » du premier accès.
+            // Rien n'a encore été lu : le bras est à sa place de repos — ou,
+            // sur un disque qu'on vient d'allumer, au bord où la recherche de
+            // la piste 0 l'a laissé. La salve elle-même n'est pas dessinée :
+            // elle dure un dixième de seconde, pendant une rampe.
+            if let wake, time >= wake.time { return (Double(wake.cylinder), .idle) }
             return (Double(geometry.parkCylinder), .parked)
         }
 

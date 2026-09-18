@@ -49,8 +49,9 @@ final class StreamingMixer {
 
     /// - Parameter rawPath: fichier brut où écrire le mixage, ou `nil` pour ne
     ///   rien écrire et tout confier à `onFlush`.
-    init(rpm: Double, rawPath: String?, spindleGain: Float = 0.32, transientGain: Float = 1.0) {
-        spindle = SpindleVoice(sampleRate: sampleRate, rpm: rpm)
+    init(character: SpindleCharacter, rawPath: String?, spindleGain: Float = 0.20,
+         transientGain: Float = 1.0) {
+        spindle = SpindleVoice(sampleRate: sampleRate, character: character)
         self.spindleGain = spindleGain
         self.transientGain = transientGain
         if let rawPath {
@@ -85,6 +86,17 @@ final class StreamingMixer {
                     tickCache[key] = synth.renderTick(kind, variation: UInt32(key + 1))
                 }
                 if let buffer = tickCache[key] { schedule(buffer, at: cue.time) }
+            case .tickTrain(let ticks, _):
+                if let buffer = synth.renderTickTrain(
+                    ticks, variation: UInt32(truncatingIfNeeded: ticks.count &* 7919)) {
+                    schedule(buffer, at: cue.time)
+                }
+            case .unstick:
+                if tickCache[2] == nil { tickCache[2] = synth.renderUnstick(variation: 3) }
+                if let buffer = tickCache[2] { schedule(buffer, at: cue.time) }
+            case .landing:
+                if tickCache[3] == nil { tickCache[3] = synth.renderLanding(variation: 4) }
+                if let buffer = tickCache[3] { schedule(buffer, at: cue.time) }
             }
         }
         // Le rendu d'un bloc triait les consignes de moteur ; elles arrivent

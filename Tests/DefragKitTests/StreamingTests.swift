@@ -452,12 +452,18 @@ struct StreamingTests {
             return "chatter \(duration) " + run.map { "\($0.offset):\($0.profile.distance)" }
                 .joined(separator: ",")
         case .tick(let kind): return "tick \(kind)"
+        case .tickTrain(let ticks, let duration):
+            return "train \(duration) " + ticks.map { "\($0.offset):\($0.kind)" }.joined(separator: ",")
+        case .unstick: return "unstick"
+        case .landing: return "landing"
         }
     }
 }
 
 /// Le constructeur de repères tel qu'il était avant le passage en flux, recopié
-/// tel quel : c'est l'oracle auquel le flux se compare.
+/// tel quel : c'est l'oracle auquel le flux se compare. Seule sa dernière étape
+/// a changé depuis, au chantier 25 : les micro-transitoires ne sont plus
+/// espacés de 18 ms mais groupés en trains, sur la trace entière d'un coup.
 private enum ReferenceCues {
 
     static func build(events unsorted: [DiskEvent], cylinders: Int) -> [AudioCue] {
@@ -480,6 +486,10 @@ private enum ReferenceCues {
                 ticks.append((event.time, .trackStep))
             case .transfer:
                 break
+            case .headUnstick:
+                cues.append(AudioCue(time: event.time, kind: .unstick))
+            case .headLand:
+                cues.append(AudioCue(time: event.time, kind: .landing))
             }
         }
 
@@ -522,7 +532,7 @@ private enum ReferenceCues {
         }
 
         var coverIndex = 0
-        var lastTickTime = -Double.infinity
+        var kept: [(time: Double, kind: HeadTick)] = []
         for tick in ticks {
             while coverIndex < covered.count && covered[coverIndex].end < tick.time {
                 coverIndex += 1
@@ -532,9 +542,26 @@ private enum ReferenceCues {
                tick.time <= covered[coverIndex].end {
                 continue
             }
-            guard tick.time - lastTickTime >= 0.018 else { continue }
-            lastTickTime = tick.time
-            cues.append(AudioCue(time: tick.time, kind: .tick(tick.kind)))
+            kept.append(tick)
+        }
+
+        var first = 0
+        while first < kept.count {
+            let start = kept[first].time
+            var last = first
+            while last + 1 < kept.count,
+                  kept[last + 1].time < kept[last].time + 0.030,
+                  kept[last + 1].time - start < 1.0 {
+                last += 1
+            }
+            if last == first {
+                cues.append(AudioCue(time: start, kind: .tick(kept[first].kind)))
+            } else {
+                let train = kept[first...last].map { TrainTick(offset: $0.time - start, kind: $0.kind) }
+                cues.append(AudioCue(time: start,
+                                     kind: .tickTrain(ticks: train, duration: kept[last].time - start)))
+            }
+            first = last + 1
         }
 
         cues.sort { $0.time < $1.time }

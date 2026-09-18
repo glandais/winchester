@@ -8,7 +8,7 @@ via AVFAudio. Application iOS de démonstration, avec deux démos prêtes à
   de 4,2 Go vieilli par deux ans de bureautique : 51,0 s, dont 40 % d'attente du
   disque, et 6 % de plus que le même contenu jamais fragmenté ;
 - **Défragmentation** — tassage à la frontière sur `dev-1993`, un FAT16 de
-  210 Mo plein à 69 % : 5 min 46, 1 414 fichiers déplacés, et un volume qui sort
+  210 Mo plein à 69 % : 5 min 47, 1 414 fichiers déplacés, et un volume qui sort
   sans un seul fichier déplaçable en morceaux.
 
 Et une galerie de vingt disques d'époque, générés sur l'appareil, qu'on peut
@@ -126,17 +126,44 @@ distance et pas seulement son amplitude.
 
 **Latence rotationnelle et transfert** — simulés secteur par secteur, avec pas de
 piste et commutation de tête en fin de cylindre. Une requête qui déborde du
-dernier cylindre est tronquée, comme le ferait le disque. Le bras est parqué au
-diamètre intérieur au repos : le premier accès après la mise en rotation est une
-course quasi complète, d'où le « clac » franc du boot.
+dernier cylindre est tronquée, comme le ferait le disque.
 
-**Le disque au repos fait encore deux choses.** Une seconde après la dernière
-requête, le bras **retourne se parquer** — la même course que le « clac »
-d'ouverture, dans l'autre sens, et c'est elle qui referme une passe au lieu d'un
-blanc. Et quand la chronologie coupe le moteur, le plateau **redescend par la
-même loi du premier ordre** qu'il est monté : sans couple, il continue de tourner
-encore `v·τ` tours. Les têtes sont toujours parquées avant la coupure, faute de
-quoi il n'y aurait plus de coussin d'air pour les porter.
+**La mise sous tension est en trois temps** (`IdleBehavior.coldStart`, pour un
+démarrage et une journée). Le moteur démarre ; dans les 50 ms, les têtes
+collées au plateau s'en **décollent** — la *stiction*, un claquement sec ; puis,
+une fois le coussin d'air établi, le disque **cherche sa piste 0 et charge son
+asservissement** : une course complète depuis la zone de parcage du moyeu, et
+quatre pas courts au bord, calés pour finir quand le disque est prêt. Le « clac »
+franc d'ouverture est donc celui-là, et non la première lecture — d'autant que
+le secteur d'amorçage est au cylindre 0, où la salve laisse le bras : un
+démarrage compte un seek de moins qu'avant le chantier 25, et dure la même chose
+à 0,1 s près. Une défragmentation ou une installation, elles, partent d'un
+plateau qui tourne déjà : leur rampe n'est qu'un fondu, le bras attend au moyeu.
+
+**Au repos, un disque de bureau laisse son bras où il est.** Jusqu'au chantier
+25, chaque passe se refermait sur un bras qui retournait se parquer une seconde
+après la dernière requête. Aucun disque à plateaux de cette période ne le
+faisait — c'est une pratique des disques à rampe des portables des années
+2000 — et c'était un choix dramatique présenté comme de la mécanique. Le
+mécanisme reste (`IdleBehavior.parkAfter`), aucun scénario ne s'en sert : une
+défragmentation, un démarrage, une installation se referment sur le disque qui
+tourne. Le dernier mouvement appartient à ce qui le produisait vraiment, **la
+coupure** : une journée s'achève une seconde après sa dernière écriture, le bras
+se retire au moyeu, le moteur est coupé, le plateau **redescend par la même loi
+du premier ordre** qu'il est monté, et quand il est tombé à 40 % de son régime
+les têtes **se posent** sur la zone d'atterrissage — le petit *crac* granuleux
+qui termine un arrêt.
+
+**Les disques d'avant 1997 se recalibrent** (`ThermalRecalibration`). Deux
+minutes après être prêt, puis toutes les quatre minutes, un disque de 1993 ou
+de 1996 finit sa commande en cours et va relire ses repères de position au
+bord, au moyeu et au milieu : une seconde de crépitement, l'événement sonore
+signature de cette génération — au point que les constructeurs ont dû sortir des
+modèles « AV » sans recalibration pour le montage vidéo. Aucun démarrage n'en
+contient (le plus long dure 70 s) ; une passe de vingt minutes en compte cinq,
+et dure d'autant plus : +0,1 à +0,7 % sur les passes de 1993 et 1996, rien
+ailleurs. Le délai compté est dans `TraceStats.recalibrationSeconds`, à part des
+seeks demandés.
 
 **Timbre de la tête** — banc de résonateurs à **fréquences fixes** (modes ~4,5 kHz
 sway et ~5,5 kHz, plus cinq autres), excité par un profil de courant dérivé des
@@ -150,6 +177,77 @@ Ils sont fusionnés en un rendu continu passé **une seule fois** dans le banc d
 résonateurs, avec le transitoire terminal replacé en fin de train. Règle héritée
 de l'émulation de lecteur de disquette de MAME, où relancer l'échantillon de pas
 donnait un résultat « much too loud, and it sounds weird ».
+
+**Trains de micro-transitoires** — la même règle vaut pour les commutations de
+tête et les pas de piste : à moins de 30 ms l'un de l'autre, ils partent en un
+train rendu d'un seul passage, l'excitation de chacun coupée au suivant. Aucun
+n'est supprimé. Une lecture séquentielle sur le Barracuda à une tête franchit
+une piste à chaque tour : sa cadence est de **108 Hz** (un tour de 8,33 ms et le
+pas), une hauteur plutôt qu'une suite de tics. Sur le Fireball à quatre têtes,
+**deux périodicités emboîtées** : la commutation à 75,7 Hz, le pas de piste tous
+les quatre tours à 18,9 Hz. Jusqu'au chantier 25 un filtre de 18 ms en
+supprimait un sur deux, et l'enveloppe mesurée tombait à 53,6 et 37,9 Hz — un
+cliquetis, pas le sifflement d'une grosse lecture.
+
+**Décollement et atterrissage** — deux one-shots, du même banc de résonateurs :
+le décollement est un claquement unique, plus grave qu'un seek (tout
+l'équipage bouge, sans profil de courant pour l'adoucir), suivi d'un bref
+frottement ; l'atterrissage, quatre contacts de plus en plus faibles et
+rapprochés — un rebond qui s'amortit — puis un frottement qui s'éteint.
+
+**Plateau** — `SpindleCharacter` et `SpindleVoice`. Du bruit filtré, et trois
+grandeurs pour le former, prises aux manuels :
+
+| disque | tr/min | plateaux | palier | repos (manuel) | modèle |
+|---|---|---|---|---|---|
+| Conner CFA170A, 1993 | 4 011 | 2 | billes | 42 dBA ≈ 4,6 B | 4,6 B |
+| Quantum Fireball, 1996 | 5 400 | 2 | billes | 3,6 B | 3,6 B |
+| Seagate U8, 1999 | 5 400 | 1 | billes | 3,2 B | 3,2 B |
+| Barracuda ATA IV, 2001 | 7 200 | 1 | fluide | 2,1 B | 2,15 B |
+| Barracuda 7200.7, 2003 | 7 200 | 1 | fluide | < 2,2 B | 2,15 B |
+| Barracuda 7200.10, 2006 | 7 200 | 2 | fluide | 2,8 B | 2,55 B |
+| Barracuda 7200.11, 2008 | 7 200 | 4 | fluide | 2,9 B | 2,95 B |
+
+- le **souffle** d'air autour des plateaux est un bruit de sillage : ses trois
+  bandes (185, 520, 1 450 Hz à 7 200 tr/min) glissent avec le régime, l'aigu y
+  pèse d'autant plus que le disque tourne vite, et sa puissance croît en
+  puissance cinq de la vitesse ; +0,4 B par doublement du nombre de plateaux —
+  l'écart que le manuel de l'ATA IV mesure entre un et deux plateaux ;
+- le **roulement à billes**, jusqu'en 2000, fait l'essentiel du bruit d'un
+  disque : un sifflement large vers 2,9 kHz et un roulage grave qui suit le
+  régime, modulés à 35 % **à chaque tour** — le battement d'un vieux disque au
+  repos. Seagate passe au palier fluide avec l'ATA IV, en 2001 ;
+- une raie de **commutation du moteur** à 24 fois la fréquence de rotation (un
+  triphasé à huit pôles : estimation, aucune fiche ne donne les pôles), un
+  vingtième du bruit.
+
+Le niveau suit les manuels **à moitié en décibels** autour du U8, **au quart**
+au-delà de 3,0 B : 25 dB entre le Conner et un 7 200 tr/min à un plateau, c'est
+un 1993 qui couvre ses seeks ou un 2003 qu'on n'entend plus sur un haut-parleur
+de téléphone. Le coude vient de l'écoute sur le téléphone, qui a trouvé les
+vieux disques trop forts à moitié partout et les récents justes. C'est une
+licence de mixage, et la seule du plateau. Mesuré sur la voix seule, à plein régime :
+
+| | RMS | centroïde | > 1,5 kHz | battement au tour |
+|---|---|---|---|---|
+| avant, tous les disques | −32,3 dB | 611–656 Hz | 14 % | 1 % |
+| Conner 1993 | −29,3 dB | 1 119 Hz | 25 % | 34 % |
+| Fireball 1996 | −31,7 dB | 1 226 Hz | 26 % | 34 % |
+| U8 1999 | −32,7 dB | 1 226 Hz | 26 % | 34 % |
+| ATA IV ×2, 7200.7 | −37,5 dB | 660 Hz | 14 % | 1 % |
+| 7200.10 | −35,5 dB | 660 Hz | 14 % | 1 % |
+| 7200.11 | −33,5 dB | 660 Hz | 14 % | 1 % |
+
+Avant le chantier 25, les huit fiches avaient **exactement** le même spectre à
+plein régime (0,0 dB d'écart par tiers d'octave) et ne différaient que par une
+raie discrète à tr/min/60. Trois familles se distinguent désormais par le
+timbre — le roulement de 1993, plus fort et plus grave dans son roulage ; celui
+de 1996-1999, qui bat à 90 Hz ; le souffle lisse du palier fluide — mais **pas
+les huit fiches**. À l'intérieur d'une famille, seul le niveau sépare les
+plateaux, de 1 à 2 dB : Fireball et U8, 7200.10 et 7200.11 ne se distinguent qu'en
+comparaison directe. Et trois fiches restent identiques, parce qu'elles le
+sont : les deux ATA IV et le 7200.7 ont un plateau, un palier fluide,
+7 200 tr/min, et 2,1 à 2,2 B au repos selon Seagate.
 
 **Retour haptique** — le Taptic Engine reçoit les mêmes repères que l'audio, donc
 sans resynchronisation. Un seek isolé est rendu par ses quatre phases : choc à la
@@ -167,8 +265,9 @@ grain. Un grondement de rotation en boucle, dont l'intensité suit la vitesse du
 plateau, est réglable séparément — il masquerait les transitoires au même niveau.
 
 **Le plateau affiché sort de la même trace que le son.** Le bras est parqué au
-moyeu tant que rien n'a été lu, descend piste après piste pendant une lecture
-séquentielle, s'en retourne se parquer une fois le travail fini, et s'élance vers
+moyeu tant que rien n'a été lu — au bord, sur un disque qu'on vient d'allumer et
+qui a cherché sa piste 0 —, descend piste après piste pendant une lecture
+séquentielle, se retire au moyeu à la coupure, et s'élance vers
 l'accès suivant au dernier moment — pas plus tôt,
 un disque ne déplace pas sa tête pour l'immobiliser ensuite le temps que le
 secteur arrive. La seule licence est l'angle : un plateau qui tourne cent vingt
@@ -205,8 +304,8 @@ conséquences, et ce sont elles qu'on entend :
   faut d'abord **évacuer** vers la fin du volume — et qui sera relu puis
   redéplacé quand viendra son tour. Sur ce volume-là, l'outil de 95 déplace
   3 997 éléments et évacue 2 892 fois : c'est ce va-et-vient, pas le volume de
-  données, qui fait durer une passe — 22 min 18, quand le tassage à la
-  frontière, qui ne déloge presque personne, finit en 5 min 46 ;
+  données, qui fait durer une passe — 22 min 24, quand le tassage à la
+  frontière, qui ne déloge presque personne, finit en 5 min 47 ;
 - chaque déplacement validé réécrit les deux copies de la FAT, au tout début de
   la partition, puis l'entrée du fichier **là où vit son répertoire** — dans la
   racine pour un fichier de la racine, ailleurs pour tous les autres. Le bras
@@ -460,7 +559,7 @@ n'existent pas encore, le rouvriront.
 | `secretaire-1999` | Windows 98 SE | 534 | 97 Mo | 57,6 s | 53 % | +8 % |
 | `gamer-2003` | Windows XP | 912 | 226 Mo | 69,4 s | 70 % | −0 % |
 | `dev-2003` | Windows XP | 386 | 172 Mo | 50,4 s | 68 % | −2 % |
-| `famille-2007` | Windows Vista | 517 | 115 Mo | 39,1 s | 53 % | +3 % |
+| `famille-2007` | Windows Vista | 517 | 115 Mo | 39,0 s | 54 % | +3 % |
 
 **Le témoin** est la colonne qui compte. C'est le même contenu posé comme au
 premier jour — mêmes fichiers, mêmes tailles, chacun d'un seul tenant, tassé
@@ -552,8 +651,8 @@ de l'attente ; sur CD et DVD, ce sont la décompression et les pauses.
 
 | | source | posé | archives | redémarrages | durée |
 |---|---|---|---:|---:|---:|
-| `gamer-1993` | 21 disquettes | 373 fichiers, 39 Mo | 0 | 2 | 12 min 09 |
-| `secretaire-1996` | CD-ROM 8x | 1 008 fichiers, 222 Mo | 46 | 3 | 7 min 11 |
+| `gamer-1993` | 21 disquettes | 373 fichiers, 39 Mo | 0 | 2 | 12 min 10 |
+| `secretaire-1996` | CD-ROM 8x | 1 008 fichiers, 222 Mo | 46 | 3 | 7 min 13 |
 | `famille-1999` | CD-ROM 32x | 2 412 fichiers, 574 Mo | 77 | 5 | 8 min 59 |
 | `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 8 min 41 |
 | `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 20 min 52 |
@@ -590,13 +689,13 @@ de 1999 durerait la nuit.
 
 | journée | activités | lu / écrit | durée |
 |---|---|---|---:|
-| `dev-1996`, jour 20 | navigation, compilation, archivage | 210 / 43 Mo | 5 min 41 |
-| `dev-1996`, jour 300 | idem | 225 / 77 Mo | 7 min 00 |
+| `dev-1996`, jour 20 | navigation, compilation, archivage | 210 / 43 Mo | 5 min 42 |
+| `dev-1996`, jour 300 | idem | 225 / 77 Mo | 7 min 01 |
 | `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 200 / 18 Mo | 1 min 39 |
 | `gamer-1999`, jour 365 | navigation, jeu | 531 / 6 Mo | 2 min 03 |
 
 **L'usure s'entend.** Sur `dev-1996`, la même journée de travail passe d'un seek
-moyen de 274 cylindres au jour 20 à 383 au jour 300 : le disque fait la même
+moyen de 273 cylindres au jour 20 à 382 au jour 300 : le disque fait la même
 chose, il le fait de plus en plus loin.
 
 ### Défragmenter un disque généré
@@ -733,7 +832,7 @@ Cela ne fait pas d'UltraDefrag le meilleur outil partout. Des deux volumes que
 XP nettoie entièrement, il nettoie l'un aussi, et laisse 51 morceaux sur
 l'autre. Et sur un volume FAT de 1996, où presque aucun fichier n'atteint 40 Mo,
 la défragmentation partielle n'a rien à mordre : sur `dev-1996`, la passe tient
-en 42 s contre 9 min 29 à l'outil de 95, parce qu'elle n'évacue personne. Elle
+en 42 s contre 9 min 31 à l'outil de 95, parce qu'elle n'évacue personne. Elle
 laisse 1 446 morceaux — et l'outil de 95, sur ce volume-là, en laisse 2 208 : à
 93 % de remplissage, il ne trouve plus où évacuer non plus, et saute les places
 qu'il ne peut pas libérer. Elle ne touche pas aux répertoires FAT, que Windows
@@ -756,8 +855,8 @@ manquent :
 
 | scénario | plein | durée, 95 → JkDefrag | évacuations, 95 | morceaux restants, 95 → JkDefrag |
 |---|---:|---:|---:|---:|
-| `dev-1993` | 69 % | 22 min 18 → 5 min 20 | 2 892 | 0 → 15 |
-| `dev-1996` | 93 % | 9 min 29 → 5 min 08 | 1 025 | 2 208 → 283 |
+| `dev-1993` | 69 % | 22 min 24 → 5 min 21 | 2 892 | 0 → 15 |
+| `dev-1996` | 93 % | 9 min 31 → 5 min 08 | 1 025 | 2 208 → 283 |
 | `secretaire-1999` | 87 % | 35 min 48 → 9 min 16 | 1 362 | 4 → 1 299 |
 | `famille-1999` | 96 % | 1 h 11 → 15 min 25 | 2 403 | 27 → 1 970 |
 | `gamer-1996` | 99 % | 8 s → 8 s | 3 | 1 541 → 1 541 |
@@ -843,14 +942,14 @@ Le catalogue ne date que les écritures, au jour près : le dernier accès y est
 dernière écriture, et à jour égal c'est le chemin qui départage — unique, puisque
 le générateur ne fait jamais coexister deux fichiers au même chemin.
 
-Les passes FAT de Windows 95 vont de 9 min 29 (`dev-1996`) à 1 h 11
+Les passes FAT de Windows 95 vont de 9 min 31 (`dev-1996`) à 1 h 11
 (`famille-1999`) sur les dix volumes où l'outil a de quoi travailler — un peu
 plus d'une heure pour les 6 Go de 1999, l'ordre de grandeur qu'on attendait
 d'un Windows 98.
-La démo de défragmentation a pris un autre outil que celui de 95 : 5 min 46 sur
-`dev-1993` au lieu de 22 min 18, pour le même résultat. Ce n'est pas la taille
+La démo de défragmentation a pris un autre outil que celui de 95 : 5 min 47 sur
+`dev-1993` au lieu de 22 min 24, pour le même résultat. Ce n'est pas la taille
 du volume qui fixe la durée : `secretaire-1993`, le plus petit disque de la
-galerie, y passe 18 min 13 — 170 Mo dont 70 % des fichiers fragmentables sont en
+galerie, y passe 18 min 18 — 170 Mo dont 70 % des fichiers fragmentables sont en
 morceaux, lus à 1,8 Mo/s — quand `dev-1996`, six fois plus gros, en prend 9.
 
 Ce qui la fixe, c'est le va-et-vient. L'outil évacue au **fond du volume**, sa
@@ -894,14 +993,14 @@ passe laisse un volume cohérent.
 
 | scénario | plein | durée, 95 → JkDefrag → frontière | morceaux restants, 95 / JkDefrag / frontière | trous libres, 95 / JkDefrag / frontière |
 |---|---:|---:|---:|---:|
-| `dev-1993` | 69 % | 22 min 18 → 5 min 20 → **5 min 46** | 0 / 15 / **0** | 2 / 11 / **1** |
-| `secretaire-1993` | 88 % | 18 min 13 → 9 min 20 → **16 min 53** | 0 / 15 / **0** | 2 / 150 / **1** |
-| `poweruser-1993` | 86 % | 21 min 17 → 6 min 30 → **11 min 34** | 0 / 67 / **0** | 1 / 51 / **1** |
+| `dev-1993` | 69 % | 22 min 24 → 5 min 21 → **5 min 47** | 0 / 15 / **0** | 2 / 11 / **1** |
+| `secretaire-1993` | 88 % | 18 min 18 → 9 min 22 → **16 min 57** | 0 / 15 / **0** | 2 / 150 / **1** |
+| `poweruser-1993` | 86 % | 21 min 22 → 6 min 32 → **11 min 37** | 0 / 67 / **0** | 1 / 51 / **1** |
 | `gamer-1993` | 100 % | 8 s → 8 s → **8 s** | 990 / 990 / **990** | 0 / 0 / **0** |
-| `dev-1996` | 93 % | 9 min 29 → 5 min 08 → **19 min 18** | 2 208 / 283 / **66** | 174 / 126 / **12** |
-| `famille-1996` | 89 % | 15 min 48 → 6 min 32 → **9 min 18** | 132 / 162 / **132** | 133 / 274 / **89** |
-| `secretaire-1996` | 76 % | 12 min 36 → 6 min 33 → **6 min 04** | 6 / 67 / **6** | 6 / 150 / **1** |
-| `gamer-1996` | 99 % | 8 s → 8 s → **57 min 11** | 1 541 / 1 541 / **4** | 2 / 1 / **1** |
+| `dev-1996` | 93 % | 9 min 31 → 5 min 08 → **19 min 21** | 2 208 / 283 / **66** | 174 / 126 / **12** |
+| `famille-1996` | 89 % | 15 min 50 → 6 min 34 → **9 min 19** | 132 / 162 / **132** | 133 / 274 / **89** |
+| `secretaire-1996` | 76 % | 12 min 38 → 6 min 34 → **6 min 05** | 6 / 67 / **6** | 6 / 150 / **1** |
+| `gamer-1996` | 99 % | 8 s → 8 s → **57 min 21** | 1 541 / 1 541 / **4** | 2 / 1 / **1** |
 | `dev-1999` | 93 % | 1 h 04 → 14 min 27 → **42 min 55** | 4 805 / 1 684 / **3** | 104 / 1 119 / **1** |
 | `famille-1999` | 96 % | 1 h 11 → 15 min 25 → **36 min 34** | 27 / 1 970 / **27** | 28 / 934 / **1** |
 | `secretaire-1999` | 87 % | 35 min 48 → 9 min 16 → **18 min 30** | 4 / 1 299 / **4** | 5 / 1 096 / **1** |
@@ -919,7 +1018,7 @@ Windows 95, et elle déplace un peu plus de données (34,8 Go contre 31,3). Depu
 que l'outil de 95 évacue au fond du volume, ce n'est plus la durée qui les
 sépare, c'est ce qu'ils laissent : sur les volumes pleins de 1999, Windows 95
 laisse jusqu'à 6 529 morceaux, la frontière 91 au plus. Elle reste trois fois
-plus longue que JkDefrag (1 h 26), qui ne fait pas le même travail : sur les
+plus longue que JkDefrag (1 h 27), qui ne fait pas le même travail : sur les
 quatre volumes de 1999, il laisse entre 1 300 et 2 000 morceaux et de 860 à
 1 120 trous. Et c'est le seul des trois à ranger `gamer-1996`, plein à 99 %, où
 l'algorithme de 1995 ne trouve plus où évacuer et rend le volume tel quel : là,
@@ -984,12 +1083,13 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
 
 ## Ce qui ne l'est pas
 
-- **La couche rotation est procédurale, et c'est le maillon faible.** La
-  littérature et tous les projets qui fonctionnent bouclent un enregistrement ;
-  synthétiser le ronronnement à partir du régime a été explicitement invalidé.
-  Ici, l'essentiel de l'énergie est du bruit filtré par trois résonances, la
-  composante tonale à tr·min⁻¹/60 restant discrète. **À remplacer par un sample
-  CC0 bouclé.**
+- **La couche rotation est procédurale, et c'est toujours le maillon faible.**
+  La littérature et tous les projets qui fonctionnent bouclent un
+  enregistrement ; synthétiser le ronronnement comme une série harmonique du
+  régime a été explicitement invalidé. Depuis le chantier 25 le régime, le
+  nombre de plateaux et le palier forment le spectre et le niveau, pris aux
+  manuels — mais la forme des bandes reste un choix, et un enregistrement par
+  époque vaudrait mieux. **À remplacer par des samples CC0 bouclés.**
 - Aucun échantillon n'est embarqué : tout est synthétisé. Pour la couche tête
   c'est défendable, c'est justement la couche où aucun asset isolé de seek sain
   n'est disponible en CC0.
@@ -1017,7 +1117,7 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   démarrage, et un NTFS de 2007 reste au-dessus de 700 Mo pour la même raison.
 - **Une passe de défragmentation n'est jamais accélérée** : ce qui la raccourcit,
   c'est la taille du volume et l'outil. Les 220 Mo de `dev-1993` se tassent en
-  5 min 46 à la frontière et en 22 min 18 sous l'outil de 95 ; un volume de
+  5 min 47 à la frontière et en 22 min 24 sous l'outil de 95 ; un volume de
   l'époque plus grand ou plus plein y passe jusqu'à plus d'une heure, et la
   galerie le montre. Le modèle est le même dans les trois cas.
 - Le défragmenteur modélisé ne fait pas de passe de vérification, ne relit pas

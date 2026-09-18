@@ -17,7 +17,9 @@ struct SoundMix: Codable, Equatable, Sendable {
 
     /// Les trois façons d'écouter que proposent les maquettes.
     enum Preset: String, CaseIterable, Identifiable, Sendable {
-        /// Le mixage d'origine, réglé au casque.
+        /// Le mixage d'origine, réglé au casque. Rotation à 20 % depuis le
+        /// chantier 25 : le plateau d'un disque à roulements de 1993 est bien
+        /// plus fort qu'avant, et 32 % le mettait au-dessus des seeks à l'oreille.
         case headphones
         /// Le haut-parleur de l'iPhone n'a pas de grave : la rotation monte, et
         /// le grondement haptique rend dans la main ce que l'oreille n'a plus.
@@ -41,7 +43,7 @@ struct SoundMix: Codable, Equatable, Sendable {
         var mix: SoundMix {
             switch self {
             case .headphones:
-                return SoundMix(spindleLevel: 0.32, transientLevel: 1.0, masterLevel: 0.85,
+                return SoundMix(spindleLevel: 0.20, transientLevel: 1.0, masterLevel: 0.85,
                                 hapticsEnabled: true, hapticIntensity: 0.85,
                                 spindleHaptics: true, spindleHapticLevel: 0.45)
             case .speaker:
