@@ -30,6 +30,13 @@ let sampleRate = 48_000.0
 ///
 /// `FULL_BLOCKS=1` lui fait déplacer par blocs pleins, comme le recollage
 /// économe : XP, UltraDefrag et JkDefrag seulement.
+///
+/// `boot:` avec une `STRATEGY`, c'est le démarrage du disque **tel que cette
+/// passe le laisse** — ce que fait l'app quand on démarre un disque rangé. La
+/// passe est planifiée sans être simulée, et son bilan suit celui du
+/// démarrage :
+///
+///     PLAN_ONLY=1 STRATEGY=smart SCENARIO=boot:dev-1999 /tmp/rendertrace /dev/null
 enum ScenarioRequest {
 
     /// Ce qu'une demande produit : le scénario, et le disque installé quand
@@ -97,10 +104,30 @@ enum ScenarioRequest {
             return Request(scenario: ScenarioBuilder.build(install: install), installed: install)
         }
         let disk = try DiskGenerator.generate(spec)
+        if wantsBoot, let tool = strategy() {
+            return try rangedBoot(disk, by: tool)
+        }
         let scenario = wantsBoot
             ? ScenarioBuilder.build(boot: disk)
             : try ScenarioBuilder.build(generated: disk, using: strategy())
         return Request(scenario: scenario)
+    }
+
+    /// Le bilan de la dernière passe planifiée pour un démarrage rangé.
+    nonisolated(unsafe) static var rangingPlan: DefragPlan?
+
+    /// `boot:<profil>` avec une `STRATEGY` : le démarrage du disque que cette
+    /// passe laisse — ce que fait l'app quand on démarre un disque rangé. La
+    /// passe est planifiée sans être simulée ; seul le démarrage est rendu.
+    private static func rangedBoot(_ disk: GeneratedDisk, by tool: any DefragStrategy) throws -> Request {
+        let volume = try GeneratedVolumeBridge.volume(from: disk)
+        let prepared = ScenarioBuilder.prepared(tool, for: disk)
+        let plan = prepared.plan(volume: volume, into: OperationSink { _, _, _, _ in })
+        rangingPlan = plan
+        let places = Dictionary(plan.arrangement.map { ($0.id, $0.extents) },
+                                uniquingKeysWith: { _, last in last })
+        let ranged = disk.rearranged(extents: places)
+        return Request(scenario: ScenarioBuilder.build(boot: ranged, rangedBy: tool.label))
     }
 
     /// Une démo : son disque du catalogue est généré ici comme n'importe quel

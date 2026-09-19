@@ -132,6 +132,7 @@ repères audio : \(tally.cues)
 durée         : \(String(format: "%.1f", end.duration)) s
 \(end.plan.map(describe) ?? "")
 \(scenario.boot.map { describe($0, duration: end.duration) } ?? "")
+\(ScenarioRequest.rangingPlan.map { "rangé par la passe :\n" + describe($0) } ?? "")
 \(scenario.install.flatMap { playback in request.installed.map { describe(playback, installed: $0, geometry: geometry, duration: end.duration) } } ?? "")
 \(scenario.dayPlayback.map { describe($0, stats: end.stats, duration: end.duration) } ?? "")
 \(describePhases(spans, throughput: throughput))

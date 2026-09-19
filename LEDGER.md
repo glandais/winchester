@@ -5786,3 +5786,170 @@ de `final`.
   enregistrement libre, et le rejeu ne le suit pas.
 - **Les trois cibles de fragmentation**, toujours entre la borne basse livrée
   et l'entrelacement.
+
+---
+
+## Chantier 28 — le rangement intelligent
+
+**Fait** · branche `rangement-intelligent`
+
+### Le problème
+
+Un rangement pour FAT et NTFS, qui s'adapte aux vingt disques de la galerie
+et minimise trois mesures prises **après** la passe : la durée du
+démarrage du disque rangé, le nombre de morceaux des fichiers fragmentés, le
+nombre de trous de l'espace libre. La durée de la passe n'en est pas.
+
+Aucun outil existant ne visait le démarrage, et aucun bilan ne le mesurait
+après une passe : l'app sait démarrer un disque rangé, pas RenderTrace.
+`SCENARIO=boot:<profil>` accepte donc une `STRATEGY` — la passe est planifiée
+sans être simulée, le disque réarrangé est démarré, et le bilan de la passe
+suit celui du démarrage. `Tools/Measure/smart.sh` démarre chaque disque après
+chaque outil de son format ; `smart.py`, `passes.py` et `smart-table.py`
+tabulent.
+
+Ce que faisaient les outils existants (binaire `base`, commit du lot 8 plus
+cette seule mesure), en sommant les douze FAT et les huit NTFS :
+
+| | démarrage FAT | morceaux FAT | trous FAT | démarrage NTFS | morceaux NTFS | trous NTFS |
+|---|---:|---:|---:|---:|---:|---:|
+| disque livré | 597,5 s | — | — | 351,1 s | — | — |
+| Windows 95 / XP | 576,5 s | 15 129 | 1 349 | 348,5 s | 125 927 | 73 089 |
+| JkDefrag | 584,3 s | 9 333 | 4 511 | 346,1 s | 13 763 | 8 904 |
+| UltraDefrag | 593,2 s | 36 054 | 16 931 | 348,9 s | 34 935 | 44 164 |
+| frontière / recollage | 589,0 s | 1 382 | 129 | 355,6 s | 8 411 | 3 451 |
+
+Ranger ne fait presque rien au démarrage : 3 % au mieux sur FAT, et le
+recollage économe le **ralentit** sur NTFS.
+
+### Ce qu'il y avait à gagner
+
+Avant d'écrire une stratégie, un rangement posé à la main (un « oracle »
+jetable dans RenderTrace) : tous les fichiers bout à bout, dans l'ordre de
+l'arborescence, ou les fichiers du démarrage d'abord, dans l'ordre où il les
+lit. Le second retire de 3,5 à 6 s aux démarrages FAT et de 1,5 à 2,5 s aux
+NTFS par rapport au premier ; y ajouter les répertoires dans l'ordre de leur
+première lecture, 0,3 s de plus. Le poser derrière la zone MFT plutôt que
+dedans coûte 0,3 s au pire. Ce qui reste du temps de disque est de la lecture
+séquentielle et de la latence : la borne est là.
+
+L'information n'est pas un privilège de simulateur. Le préchargeur de
+Windows XP écrit dans `Layout.ini` ce que lit un démarrage, et le défragmenteur
+de XP range ces fichiers à la suite ; « Réorganiser les fichiers programme »
+de Windows 98 lisait les journaux du moniteur de tâches. `BootLayout` est cette
+liste, tirée du démarrage planifié (`BootPlan.readOrder`, dans l'ordre de la
+première lecture de données, répertoires compris), et confiée par
+`ScenarioBuilder.prepared` à qui sait la lire (`BootLayoutConsumer`).
+
+### Les décisions
+
+**Un seul moteur, celui du tassage à la frontière.** C'est déjà lui qui laisse
+FAT sans morceau déplaçable et d'un seul trou. La passe y ajoute trois temps
+(`SmartDefragStrategy`) :
+
+1. **le bloc de démarrage** : chaque élément de `Layout.ini`, à la frontière,
+   dans l'ordre, par `place` ; ce qui gêne est poussé au fond du volume. Une
+   fois posé, le bloc devient un obstacle et la frontière repart de zéro. Un
+   élément qui ne tient pas devant un obstacle saute l'obstacle : sur
+   `dev-2003`, les métafichiers de 8 clusters qui suivent la zone MFT faisaient
+   sauter les gros fichiers du lancement, évacués au fond puis rangés là — le
+   démarrage était **plus lent** (52,6 s) que celui du disque livré ;
+2. **la queue d'abord** (`compactTailFirst`) : les fenêtres qui suivent la
+   dernière assez grande pour tout l'espace libre sont balayées avant le reste.
+   Tassé vers le début, l'espace libre finissait semé entre les morceaux du
+   fichier d'échange (`famille-1996`, 95 trous) ou entre de petits métafichiers
+   NTFS (`famille-2007`, 21). Deux pièges en route : pendant ce balayage, tout
+   l'espace libre est **derrière** la frontière, où l'évacuation ne cherche que
+   dans les refuges — la tête entière en devient un, relu à chaque évacuation ;
+   et après lui, la queue pleine doit devenir un obstacle, sans quoi le second
+   balayage comptait sur ses fenêtres et abandonnait des fichiers (822 sur
+   `famille-1996`) ;
+3. **le tassage** du reste.
+
+**Chasser entier, mais seulement ce qui est surtout dans la place**
+(`clear`). `place` pousse morceau par morceau, et ce qui part en morceaux au
+fond revient en morceaux : sur `famille-2003`, un fichier de 1,3 Go finissait
+en 4 495 morceaux. Chasser chaque occupant entier dans le plus petit trou à sa
+taille corrigeait cela, mais déménageait aussi un fichier de 500 Mo pour un
+cluster qui mordait sur la place : 33 Go déplacés sur `secretaire-1999`, un
+volume de 4,5 Go. D'où la règle : entier si plus de la moitié du fichier est
+dans la place, sinon le morceau qui gêne.
+
+**Sur NTFS, les géants suivent le bloc** (`giants`, plus du quart de l'espace
+libre). `famille-2003` porte 41 imports musicaux de 0,65 et 1,3 Go ; les
+métafichiers épars de la fin du volume la découpent en fenêtres, et le
+balayage y arrivait avec eux et un espace libre semé en refuges. Première
+tentative, les poser d'abord en haut des fenêtres de fin, du plus gros au plus
+petit : 64 Go de va-et-vient sur ce volume de 40 Go, 14 géants qui échouaient
+quand même, 18 trous. Derrière le bloc, là où la frontière passe de toute
+façon : 72 Go en tout au lieu de 93, 14 trous.
+
+**Une zone MFT épuisée n'est plus respectée** (`withoutSpentZone`). Sur
+`dev-2003`, plein à 95 %, les fichiers occupent 741 000 des 791 000 clusters de
+la zone, et 585 des 589 trous restants étaient entre eux. Au-delà de la moitié
+occupée, la zone ne réserve plus rien, et la passe la tasse : 1 trou.
+
+**Le tampon de l'époque** : 256 Ko sur FAT comme Windows 95, 4 Mo sur NTFS
+comme XP. Il ne change que la durée de la passe.
+
+**Une seule stratégie, `smart`**, comme UltraDefrag et JkDefrag, et non deux
+(`smartFAT`, `smartNTFS`, les noms des étapes de mesure) : tout ce qui sépare
+les deux formats — le tampon, les géants, la zone MFT — se lit sur le volume au
+moment de planifier. L'écran de choix n'a qu'un outil à proposer, sur les deux
+formats.
+
+### Ce que chaque étape a changé
+
+Binaires sous `MEASURE_DIR=.build/measure-smart` : `base`, `s1` (bloc, frontière
+qui continue derrière lui), `s2` (bloc en obstacle et repartir de zéro, chasser
+entier, géants en haut du volume), `s3` (zone épuisée, queue d'abord), `s4`
+(chasser seulement ce qui est surtout dans la place, géants derrière le bloc,
+tampons), `final` (identique à `s4` en mesures), `one` (la même passe sous un
+seul identifiant : bilans identiques à `final`, au nom de l'outil près).
+
+| étape | démarrage FAT | trous FAT | démarrage NTFS | morceaux NTFS | trous NTFS | passes FAT / NTFS |
+|---|---:|---:|---:|---:|---:|---:|
+| s1 | 519,9 s | 114 | 329,3 s | 4 471 | 800 | |
+| s2 | 518,5 s | 123 | 323,9 s | 0 | 646 | |
+| s3 | 518,5 s | 46 | 323,3 s | 0 | 42 | 10 h 22 / 29 h 54 |
+| final | 518,5 s | 49 | 323,3 s | 0 | 38 | 4 h 41 / 15 h 43 |
+
+Les morceaux FAT restent à 1 382 d'un bout à l'autre : ce sont tous ceux des
+fichiers d'échange, et les 990 de `gamer-1993`, plein à 100 %.
+
+### Ce qui valide
+
+- **Par volume** (table du README) : le démarrage est le plus court des cinq
+  outils de son format sur les vingt disques, sauf `gamer-1993` où rien ne
+  bouge. Les morceaux sont au plus ceux du meilleur autre outil — zéro sur les
+  huit NTFS. Les trous aussi, sauf `gamer-1999` : 24 contre 18 à la frontière
+  seule.
+- Le bloc atteint la borne de l'oracle : 50,0 s sur `dev-2003`, 37,1 s sur
+  `dev-1993`, 52,0 s sur `famille-1999`, 35,1 s sur `famille-2007`.
+- **Rien d'autre ne bouge** : les 12 passes de la frontière et les 20
+  démarrages des disques livrés sont identiques à `base` au bilan près — les
+  deux retouches du moteur (`place(far:)`, `repairInHoles` depuis la frontière)
+  ne changent rien quand la frontière part de zéro.
+- `swift test` : tout passe, dont cinq tests nouveaux (le bloc dans l'ordre de
+  lecture, les fenêtres de queue remplies, la zone épuisée tassée et la zone
+  vide respectée, une passe complète sur le volume vieilli, `Layout.ini` qui
+  nomme chaque élément une fois) ; l'invariant « aucun plan n'écrit sur une
+  donnée vivante » couvre désormais les quinze stratégies.
+- L'app compile ; l'écran « Avec quel outil ? » propose le rangement sur les
+  deux formats, avec les fourchettes mesurées.
+
+### Laissé ouvert
+
+- **La durée des passes NTFS** : un tassage complet, 1,3 To et 15 h 43 pour les
+  huit volumes. Combler les trous par des fichiers pris au-delà de la fin
+  prévue, plutôt que faire glisser la suite, déplacerait à peu près l'espace
+  libre seulement ; greffé sur le moteur de la frontière, l'essai a ramené
+  `secretaire-2007` de 254 à 81 Go mais laissé 10 trous au lieu d'un sur
+  `dev-2003`. Il faudrait un moteur à lui.
+- **`gamer-1999`** (24 trous) et **`famille-2003`** (14) : l'espace libre ne
+  tient dans aucune fenêtre seule, ou les géants laissent des refuges.
+- **Les lectures partielles** : un gros fichier dont le démarrage ne lit que la
+  tête est posé entier dans le bloc, et la tête saute sa queue.
+- **`Layout.ini` est parfait ici** : il vient du démarrage planifié, exactement
+  celui qu'on mesure ensuite. Le vrai retient les six derniers démarrages, et
+  ne connaît pas l'application du jour.

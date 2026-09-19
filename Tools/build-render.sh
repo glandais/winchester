@@ -29,6 +29,7 @@ MODEL_SOURCES="
     Sources/Model/Workload.swift
     Sources/Model/Platter.swift
     Sources/Model/BootSession.swift
+    Sources/Model/BootLayout.swift
     Sources/Model/InstallSession.swift
     Sources/Model/MachineWriter.swift
     Sources/Model/DaySession.swift
@@ -46,6 +47,7 @@ MODEL_SOURCES="
     Sources/Model/UltraDefragStrategy.swift
     Sources/Model/FrontierCompactionStrategy.swift
     Sources/Model/FragmentMergeStrategy.swift
+    Sources/Model/SmartDefragStrategy.swift
     Sources/Model/GeneratedVolume.swift
     Sources/Model/ClusterMap.swift
     Sources/Model/OperationSink.swift

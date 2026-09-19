@@ -335,7 +335,9 @@ extension FrontierCompactionStrategy {
         /// fois que la frontière en croise un.
         mutating func repairInHoles(phase: Int) {
             var holes: [Extent] = []
-            var cursor: UInt32 = 0
+            // Sous la frontière, tout est rangé : un trou qui y reste est un
+            // refuge, pas une destination.
+            var cursor: UInt32 = frontier
             while let run = volume.bitmap.nextFreeRun(from: cursor) {
                 holes.append(run)
                 cursor = run.end
@@ -673,7 +675,12 @@ extension FrontierCompactionStrategy {
         /// fichier d'un seul tenant — ses tronçons descendent un par un dans le
         /// trou que le précédent vient de quitter — et qui recolle un fichier
         /// en morceaux.
-        mutating func place(_ file: Int, at start: UInt32, phase: Int) -> Bool {
+        ///
+        /// `far` pousse ce qui gêne au fond du volume plutôt que juste
+        /// au-dessus : quand la suite de la frontière ne suit pas l'ordre du
+        /// volume, un voisin poussé juste au-dessus serait repoussé à la place
+        /// suivante.
+        mutating func place(_ file: Int, at start: UInt32, far: Bool = false, phase: Int) -> Bool {
             let size = volume.files[file].clusterCount
             let end = start + size
             report.placements += 1
@@ -717,7 +724,7 @@ extension FrontierCompactionStrategy {
                 }
                 // Près d'ici : ce qui gêne est d'ordinaire un fichier voisin, que
                 // la frontière retrouvera tout de suite après.
-                guard evacuate(owner, piece: piece, above: end, wrapFrom: piece.end, far: false, phase: phase)
+                guard evacuate(owner, piece: piece, above: end, wrapFrom: piece.end, far: far, phase: phase)
                 else { return false }
             }
             return true

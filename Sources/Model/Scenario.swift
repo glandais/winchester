@@ -634,6 +634,7 @@ enum ScenarioBuilder {
     /// l'intérêt de l'exercice.
     static func build(generated disk: GeneratedDisk,
                       using strategy: (any DefragStrategy)? = nil) throws -> Scenario {
+        let strategy = strategy.map { prepared($0, for: disk) }
         let volume = try GeneratedVolumeBridge.volume(from: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
                                                    atLeast: volume.partition.totalSectors)
@@ -653,6 +654,13 @@ enum ScenarioBuilder {
                                                    summary: disk.spec.summary
                                                        ?? "Passe de défragmentation sur un disque généré",
                                                    volumeNote: note))
+    }
+
+    /// L'outil, muni de ce que le système lui confie : `Layout.ini` pour qui
+    /// sait le lire (`BootLayoutConsumer`).
+    static func prepared(_ strategy: any DefragStrategy, for disk: GeneratedDisk) -> any DefragStrategy {
+        guard let consumer = strategy as? any BootLayoutConsumer else { return strategy }
+        return consumer.informed(by: BootLayout(disk: disk))
     }
 
     /// Décrit la passe d'un outil sur un volume et un disque donnés.

@@ -511,6 +511,10 @@ struct BootPlan {
     let appName: String?
     let phases: [PhaseDescriptor]
     let requests: [BlockRequest]
+    /// Les fichiers ouverts, dans l'ordre où le démarrage les a lus : ce que
+    /// le préchargeur de Windows XP écrit dans `Layout.ini` pour que le
+    /// défragmenteur les range à la suite (`BootLayout`).
+    let readOrder: [UInt32]
     let filesRead: Int
     let bytesRead: Int
     let bytesWritten: Int
@@ -564,7 +568,6 @@ enum BootPlanner {
         // on ne le demande qu'une fois, et seulement aux actes qui filtrent
         // par répertoire.
         var pathCache: [UInt32: String] = [:]
-
         for (index, act) in script.acts.enumerated() {
             switch act.source {
             case .idle:
@@ -585,6 +588,7 @@ enum BootPlanner {
                         appName: app?.displayName,
                         phases: script.phases,
                         requests: builder.requests,
+                        readOrder: builder.readOrder,
                         filesRead: builder.filesRead,
                         bytesRead: builder.bytesRead,
                         bytesWritten: builder.bytesWritten,
@@ -727,6 +731,11 @@ enum BootPlanner {
         var stampedFiles = 0
         var stampWrites = 0
         var thinkSeconds: Double = 0
+        /// Les éléments du volume — fichiers, et répertoires qui ont des
+        /// clusters (`FileCatalog.itemID`) — dans l'ordre où le démarrage en
+        /// lit les données pour la première fois.
+        var readOrder: [UInt32] = []
+        private var readItems: Set<UInt32> = []
 
         /// Répertoires dont l'entrée a déjà été lue : sur FAT, on ne relit pas
         /// un répertoire pour chaque fichier qu'il contient.
@@ -871,6 +880,7 @@ enum BootPlanner {
                     residentFiles += 1
                 } else {
                     touched = min(Int(record.logicalSize), query.bytesPerFile)
+                    if readItems.insert(record.id).inserted { readOrder.append(record.id) }
                     emitData(record.extents, limit: touched, isWrite: false, phase: phase)
                     bytesRead += touched
                     if rng.unitInterval() < query.writeBack {
@@ -1005,6 +1015,9 @@ enum BootPlanner {
             } else {
                 range = indexBuffersRead.insert(UInt64(id) << 32 | UInt64(last)).inserted
                     ? last..<(last + 1) : last..<last
+            }
+            if !range.isEmpty, readItems.insert(FileCatalog.itemID(ofDirectory: id)).inserted {
+                readOrder.append(FileCatalog.itemID(ofDirectory: id))
             }
             for access in partition.directoryAccesses(directory.extents, clusters: range) {
                 if partition.format.isFAT {

@@ -115,6 +115,15 @@ struct DefragTool: Identifiable {
                        sound: "Des blocs lus morceau par morceau puis écrits d'un coup, et un point de contrôle tous les seize déplacements.",
                        periodFormats: [], onlyOn: .ntfs, isAdvanced: false,
                        measured: [.ntfs: "de quelques secondes à 20 min"]),
+            // Le rangement intelligent vise ce qu'on mesure après la passe —
+            // le démarrage, les morceaux, les trous —, pas sa durée.
+            DefragTool(strategy: strategy("smart"),
+                       name: "Rangement intelligent",
+                       origin: "écrit pour DiskNoise · tous formats",
+                       principle: "Pose en tête ce que lit le démarrage, dans l'ordre où il le lit, puis tasse le reste derrière : plus un morceau, presque plus de trous.",
+                       sound: "Un grand déménagement au début du disque, puis la navette du tassage ; long sur NTFS, où tout le contenu passe sous les têtes.",
+                       periodFormats: [], onlyOn: nil, isAdvanced: false,
+                       measured: [.fat: "de 8 min à 1 h", .ntfs: "de 5 min à 4 h"]),
             jk("jkDefragForcedFill", "Tasser au début",
                "Remplit chaque trou par la fin du fragment le plus haut du volume.",
                "Court, mais il casse plus de fichiers qu'il n'en répare.",

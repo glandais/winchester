@@ -804,7 +804,7 @@ rien : le planificateur travaille en extents, et un volume de 320 Go ne lui
 coûte pas plus cher qu'un de 180 Mo. Ce qui change avec le format, c'est
 l'**outil** — parce que c'est lui que le format datait.
 
-#### Six défragmenteurs, dont deux d'époque
+#### Huit défragmenteurs, dont deux d'époque
 
 Sur un volume FAT, c'est la passe livrée avec Windows 95 puis 98 : tasser tous
 les fichiers contre le début du volume, dans l'ordre du parcours de
@@ -826,8 +826,10 @@ JkDefrag s'obtient aussi dans ses autres modes, décrits plus bas.
 Les deux derniers n'imitent aucun outil, et ont été écrits ici à partir de ce
 que les quatre autres font mal : le **tassage à la frontière**
 (`STRATEGY=frontierCompaction`) pour FAT, et le **recollage économe**
-(`STRATEGY=fragmentMerge`) pour les gros volumes NTFS. Ils sont décrits en
-dernier.
+(`STRATEGY=fragmentMerge`) pour les gros volumes NTFS. Le **rangement
+intelligent** (`STRATEGY=smart`), pour les deux formats, vise ce qu'on
+mesure *après* la passe : le démarrage, les morceaux, les trous. Ils sont
+décrits en dernier.
 
 Dans l'app, tous se choisissent sur l'écran « Avec quel outil ? » qui suit
 **Défragmenter ce disque**. L'outil d'époque y est présélectionné ; les deux
@@ -1172,6 +1174,76 @@ apporte en propre, c'est la qualité à durée voisine. Elle ne recopie jamais u
 entier : sur `dev-2007`, où un grand trou accueille tout, XP et JkDefrag
 finissent sans un morceau, et elle en laisse 1 254.
 
+#### Ranger pour démarrer
+
+Les six outils précédents se jugent à ce qu'ils laissent — morceaux, trous — et
+à ce qu'ils coûtent. Le **rangement intelligent** (`smart`) se
+juge à trois mesures prises *après* la passe : les morceaux, les trous, et la
+durée du **démarrage** du disque rangé. La durée de la passe n'en fait pas
+partie.
+
+Le démarrage est le seul des trois qu'aucun outil ne visait, et c'est lui qui
+décide de la méthode. Ce qu'il lit — noyau, pilotes, services, polices,
+application — tient en quelques centaines de mégaoctets, et le système sait
+dans quel ordre : le préchargeur de Windows XP l'écrit dans `Layout.ini` pour
+que le défragmenteur les range à la suite, et « Réorganiser les fichiers
+programme » de Windows 98 se servait des journaux du moniteur de tâches. La
+passe reçoit donc cette liste (`BootLayout`), tirée du démarrage planifié, et
+pose chaque élément en tête du volume — derrière la zone MFT sur NTFS —, dans
+l'ordre de sa première lecture, répertoires compris. Ce qui occupe la place en
+est chassé, entier quand il y est surtout, sinon le seul morceau qui gêne.
+
+Le reste est tassé derrière par le moteur du tassage à la frontière, avec deux
+retouches. Les fenêtres qui suivent la dernière assez grande pour recevoir tout
+l'espace libre sont remplies **d'abord** : sans cela l'espace libre finit semé
+entre les morceaux du fichier d'échange ou de petits métafichiers NTFS — 99
+trous sur `famille-1996`. Et sur NTFS, les fichiers qui pèsent plus du quart
+de l'espace libre suivent le bloc de démarrage, parce que les fenêtres de la fin
+du volume ne leur garderaient pas de place ; une zone MFT que les fichiers
+occupent déjà à plus de moitié n'est plus respectée, parce qu'elle ne réserve
+plus rien.
+
+| scénario | plein | démarrage : livré / meilleur outil / **intelligent** | morceaux restants : meilleur outil / **intelligent** | trous libres : meilleur outil / **intelligent** | passe |
+|---|---:|---:|---:|---:|---:|
+| `dev-1993` | 69 % | 41,6 / 41,1 / **37,1** | 0 / **0** | 1 / **1** | 8 min 42 |
+| `gamer-1993` | 100 % | 29,6 / 29,6 / **29,6** | 990 / **990** | 0 / **0** | 8 s |
+| `secretaire-1993` | 88 % | 36,0 / 35,5 / **31,9** | 0 / **0** | 1 / **1** | 17 min 41 |
+| `poweruser-1993` | 86 % | 42,4 / 41,6 / **38,6** | 0 / **0** | 1 / **1** | 13 min 57 |
+| `dev-1996` | 93 % | 58,8 / 57,6 / **52,6** | 43 / **43** | 1 / **1** | 12 min 50 |
+| `famille-1996` | 89 % | 54,5 / 52,2 / **48,5** | 145 / **145** | 99 / **16** | 12 min 46 |
+| `gamer-1996` | 99 % | 45,4 / 45,4 / **39,9** | 6 / **6** | 1 / **1** | 1 h 00 |
+| `secretaire-1996` | 76 % | 54,9 / 54,5 / **50,6** | 2 / **2** | 1 / **1** | 8 min 36 |
+| `dev-1999` | 93 % | 57,3 / 51,3 / **45,1** | 3 / **3** | 1 / **1** | 37 min 16 |
+| `famille-1999` | 96 % | 63,3 / 58,2 / **52,0** | 42 / **42** | 3 / **1** | 33 min 10 |
+| `gamer-1999` | 97 % | 56,2 / 54,3 / **46,3** | 147 / **147** | 18 / **24** | 55 min 54 |
+| `secretaire-1999` | 87 % | 57,5 / 52,2 / **46,3** | 4 / **4** | 2 / **1** | 20 min 06 |
+| `dev-2003` | 95 % | 51,8 / 51,7 / **50,0** | 64 / **0** | 130 / **1** | 35 min 54 |
+| `famille-2003` | 95 % | 29,5 / 28,2 / **26,4** | 1137 / **0** | 168 / **14** | 1 h 56 |
+| `gamer-2003` | 9 % | 70,0 / 69,9 / **66,8** | 0 / **0** | 22 / **3** | 5 min 16 |
+| `secretaire-2003` | 94 % | 36,4 / 35,7 / **33,0** | 2758 / **0** | 835 / **2** | 51 min 45 |
+| `dev-2007` | 86 % | 48,3 / 47,4 / **44,2** | 0 / **0** | 197 / **5** | 2 h 49 |
+| `famille-2007` | 93 % | 39,9 / 37,8 / **35,1** | 803 / **0** | 296 / **1** | 3 h 50 |
+| `gamer-2007` | 90 % | 32,3 / 31,0 / **27,9** | 356 / **0** | 673 / **2** | 2 h 53 |
+| `secretaire-2007` | 88 % | 42,9 / 42,9 / **39,9** | 0 / **0** | 195 / **10** | 2 h 40 |
+
+« Meilleur outil » est, pour chaque colonne et chaque volume, le meilleur des
+quatre autres outils de son format — Windows 95, JkDefrag, UltraDefrag et le
+tassage à la frontière sur FAT ; XP, JkDefrag, UltraDefrag et le recollage
+économe sur NTFS —, démarré de la même façon (`SCENARIO=boot:<profil>` avec une
+`STRATEGY`). Sur les douze FAT, les démarrages passent de 597,5 s livrés et
+573,5 s au mieux à **518,5 s** ; sur les huit NTFS, de 351,1 et 344,6 s à
+**323,3 s**. Le bloc de démarrage atteint la borne mesurée en posant à la main
+un rangement idéal : sur `dev-2003`, 50,0 s dans les deux cas. Les morceaux qui
+restent sur FAT sont tous ceux du fichier d'échange, que personne ne déplace, et
+`gamer-1993`, plein à 100 %, reste tel quel. Les trous tombent de 129 à 49 sur
+FAT et de 2 516 à 38 sur NTFS ; un volume fait exception, `gamer-1999`, où la
+frontière seule en laisse 18 et le rangement 24.
+
+Le prix est la passe. Sur FAT, elle dure 4 h 41 pour les douze volumes, contre
+4 h 12 au tassage à la frontière et 4 h 16 à Windows 95. Sur NTFS, c'est un
+tassage complet : 1,3 To déplacés et 15 h 43 pour les huit volumes, jusqu'à
+3 h 50 sur `famille-2007`, quand le recollage économe s'en tient à 1 h 28.
+
 Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
 démarrage :
 
@@ -1379,6 +1451,10 @@ par étape, le jeu complet des bilans, les comparaisons — sous
 ./Tools/Measure/readme-tables.py m1           # les tables mesurées du README
 ./Tools/Measure/run.sh m1 disks               # les vingt volumes, un à la fois
 ./Tools/Measure/extents.py base m1            # morceaux par fichier, répertoires, coût
+./Tools/Measure/smart.sh m1                   # chaque disque démarré après chaque outil
+./Tools/Measure/smart.py base m1              # démarrage rangé, morceaux, trous
+./Tools/Measure/passes.py m1:smart         # durée et volume des passes
+./Tools/Measure/smart-table.py base m1        # la table du rangement intelligent
 ```
 
 Le bilan d'un volume (`SCENARIO=disk:<profil>`) donne l'histogramme du nombre
@@ -1508,6 +1584,11 @@ Sources/Model/
     FragmentMergeStrategy.swift  recoller les petits morceaux et consolider
                            l'espace libre d'un gros volume NTFS, par blocs
                            pleins et points de contrôle ; sur demande
+    SmartDefragStrategy.swift  ranger pour le démarrage : ce qu'il lit en
+                           tête, dans l'ordre de Layout.ini, la queue du volume
+                           remplie, le reste tassé ; tous formats, sur demande
+    BootLayout.swift       Layout.ini : ce qu'un démarrage lit, dans l'ordre,
+                           confié au défragmenteur qui sait le lire
     DiskSimulator.swift    mécanique du disque, une requête après l'autre :
                            seek, latence, transfert, tampon et vidages
     DriveCache.swift       le disque dans sa machine : bus, coût de commande,
