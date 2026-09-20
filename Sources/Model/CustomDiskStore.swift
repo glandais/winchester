@@ -19,7 +19,7 @@ struct CustomDiskStore {
         let base = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                                  appropriateFor: nil, create: true))
             ?? FileManager.default.temporaryDirectory
-        return CustomDiskStore(url: base.appendingPathComponent("DiskNoise", isDirectory: true)
+        return CustomDiskStore(url: base.appendingPathComponent("Winchester", isDirectory: true)
                                         .appendingPathComponent("disques.json"))
     }
 

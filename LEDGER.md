@@ -3005,7 +3005,7 @@ Deux obstacles :
 
 ### Le problème
 
-Montrer DiskNoise sur YouTube : un démarrage, une défragmentation, plus tard une
+Montrer Winchester sur YouTube : un démarrage, une défragmentation, plus tard une
 installation. Filmer l'application n'est pas possible proprement. Le simulateur
 enregistre l'écran **sans le son**, l'application n'a aucun point d'entrée
 d'automatisation (ni argument de lancement, ni lien profond), et une

@@ -26,13 +26,13 @@ struct SimulatorScreen: View {
     /// fois par seconde sans que personne le voie.
     let isVisible: Bool
 
-    init(model: SimulationModel, engine: DiskNoiseEngine, isVisible: Bool) {
+    init(model: SimulationModel, engine: WinchesterEngine, isVisible: Bool) {
         _model = ObservedObject(wrappedValue: model)
         _clock = StateObject(wrappedValue: ClockRelay(engine: engine))
         self.isVisible = isVisible
     }
 
-    private var engine: DiskNoiseEngine { clock.engine }
+    private var engine: WinchesterEngine { clock.engine }
     private var time: Double { engine.currentTime }
 
     /// Un plein écran le recouvre : la carte, ou le mode ambiance.

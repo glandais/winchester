@@ -15,7 +15,7 @@ struct InstrumentsScreen: View {
     @StateObject private var clock: ClockRelay
     let isVisible: Bool
 
-    init(model: SimulationModel, engine: DiskNoiseEngine, isVisible: Bool) {
+    init(model: SimulationModel, engine: WinchesterEngine, isVisible: Bool) {
         _model = ObservedObject(wrappedValue: model)
         _clock = StateObject(wrappedValue: ClockRelay(engine: engine))
         self.isVisible = isVisible

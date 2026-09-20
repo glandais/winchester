@@ -67,7 +67,7 @@ final class NowPlaying {
             ?? model.dayPlayback.map({ "Jour \($0.day), \($0.date)" }) ?? model.boot?.osName {
             info[MPMediaItemPropertyArtist] = tool
         }
-        info[MPMediaItemPropertyAlbumTitle] = "DiskNoise"
+        info[MPMediaItemPropertyAlbumTitle] = "Winchester"
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 }

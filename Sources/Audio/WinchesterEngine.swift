@@ -18,7 +18,7 @@ import Combine
 /// l'horloge du player, ce qui donne une précision à l'échantillon sans avoir
 /// à écrire un mélangeur maison dans le callback de rendu.
 @MainActor
-final class DiskNoiseEngine: ObservableObject {
+final class WinchesterEngine: ObservableObject {
 
     @Published private(set) var isPlaying = false
     @Published private(set) var currentTime: Double = 0

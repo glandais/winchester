@@ -1,6 +1,6 @@
-name: DiskNoise
+name: Winchester
 options:
-  bundleIdPrefix: fr.glandais
+  bundleIdPrefix: io.github.glandais
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -19,7 +19,7 @@ packages:
     path: .
 
 targets:
-  DiskNoise:
+  Winchester:
     type: application
     platform: iOS
     dependencies:
@@ -39,10 +39,10 @@ targets:
         UIBackgroundModes: [audio]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: fr.glandais.disknoise
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.glandais.winchester
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: "YES"
-        INFOPLIST_KEY_CFBundleDisplayName: DiskNoise
+        INFOPLIST_KEY_CFBundleDisplayName: Winchester
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: "YES"
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"

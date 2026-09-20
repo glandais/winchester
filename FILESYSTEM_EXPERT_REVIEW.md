@@ -1,6 +1,6 @@
 # Revue critique de la simulation de système de fichiers
 
-Relecture du noyau de simulation **FAT16 / VFAT / FAT32 / NTFS** de DiskNoise,
+Relecture du noyau de simulation **FAT16 / VFAT / FAT32 / NTFS** de Winchester,
 du point de vue de quelqu'un qui a passé ces systèmes au `DEBUG`, au
 `FSCTL_GET_RETRIEVAL_POINTERS` et au `dd` entre 1993 et 2007.
 

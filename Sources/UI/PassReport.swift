@@ -210,7 +210,7 @@ private struct PassReportScreen: View {
 
     /// Le bilan en texte, tel qu'il se colle dans un message.
     private var shareText: String {
-        var lines = ["DiskNoise — \(record.title)",
+        var lines = ["Winchester — \(record.title)",
                      "\(record.toolLabel), \(FrenchFormat.duration(record.duration))"]
         if let before = record.before, let after = record.after {
             lines.append("Fichiers fragmentés : \(before.fragmentedFiles) → \(after.fragmentedFiles)")

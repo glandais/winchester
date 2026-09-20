@@ -83,7 +83,7 @@ final class PassSession: @unchecked Sendable {
         // 512 Ko d'un fil secondaire n'y suffirait pas toujours.
         thread.stackSize = 16 << 20
         thread.qualityOfService = .userInitiated
-        thread.name = "DiskNoise.pass"
+        thread.name = "Winchester.pass"
         thread.start()
     }
 

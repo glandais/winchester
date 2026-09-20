@@ -38,7 +38,7 @@ import AVFAudio
 // définitif, et rien d'autre qu'une fenêtre de quelques secondes ne reste en
 // mémoire. C'est ce qui permet de rendre une passe de plusieurs heures.
 
-let outputPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "disknoise.wav"
+let outputPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "winchester.wav"
 let requested = ScenarioRequest.environment["SCENARIO"] ?? ""
 
 // `life:<profil>` ne rend aucun son : il fait défiler la vie du disque et dit

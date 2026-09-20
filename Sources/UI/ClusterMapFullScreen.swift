@@ -100,7 +100,7 @@ private struct FullScreenMapChrome<Map: View, Transport: View>: View {
 struct DefragFullScreenMap: View {
 
     @ObservedObject var model: SimulationModel
-    @ObservedObject var engine: DiskNoiseEngine
+    @ObservedObject var engine: WinchesterEngine
     @State private var selected: Int?
 
     private var time: Double { engine.currentTime }

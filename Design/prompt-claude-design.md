@@ -1,6 +1,6 @@
-# DiskNoise — prompt Claude Design
+# Winchester — prompt Claude Design
 
-Conçois une application iPhone (SwiftUI, iOS 26, mode sombre d'abord) appelée **DiskNoise**. Elle fait **entendre, sentir et voir** un disque dur à plateaux des années 1993 à 2007 en train de démarrer ou de se défragmenter. Le moteur existe et marche déjà. Ce qu'il manque, c'est une interface qu'une personne curieuse, nostalgique mais pas technicienne, prend en main en 30 secondes. Elle doit rester assez riche pour qu'un passionné ait envie de comparer des passes pendant une heure.
+Conçois une application iPhone (SwiftUI, iOS 26, mode sombre d'abord) appelée **Winchester**. Elle fait **entendre, sentir et voir** un disque dur à plateaux des années 1993 à 2007 en train de démarrer ou de se défragmenter. Le moteur existe et marche déjà. Ce qu'il manque, c'est une interface qu'une personne curieuse, nostalgique mais pas technicienne, prend en main en 30 secondes. Elle doit rester assez riche pour qu'un passionné ait envie de comparer des passes pendant une heure.
 
 Livre des maquettes haute fidélité des écrans ci-dessous, en portrait, plus la carte en plein écran en paysage, avec le parcours entre les écrans.
 

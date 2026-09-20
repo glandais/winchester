@@ -8,7 +8,7 @@ import DiskCore
 struct SettingsScreen: View {
 
     @ObservedObject var model: SimulationModel
-    let engine: DiskNoiseEngine
+    let engine: WinchesterEngine
     @State private var opened: Set<Explanation> = []
     @AppStorage(OnboardingView.seenKey) private var onboardingSeen = false
     @State private var showsSound = false

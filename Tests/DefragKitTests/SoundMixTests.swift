@@ -7,7 +7,7 @@ import Foundation
 struct SoundMixTests {
 
     private static func defaults() -> UserDefaults {
-        let name = "disknoise-\(UUID().uuidString)"
+        let name = "winchester-\(UUID().uuidString)"
         return UserDefaults(suiteName: name)!
     }
 

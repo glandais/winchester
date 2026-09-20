@@ -24,7 +24,7 @@ private struct PassMiniPlayer: View {
         }
     }
 
-    private func bar(_ engine: DiskNoiseEngine) -> some View {
+    private func bar(_ engine: WinchesterEngine) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if let notice = notice(engine) {
                 Text(notice)
@@ -52,7 +52,7 @@ private struct PassMiniPlayer: View {
     }
 
     /// « EN COURS · RETOUR D'ARRIÈRE-PLAN », ou la raison d'une pause subie.
-    private func notice(_ engine: DiskNoiseEngine) -> String? {
+    private func notice(_ engine: WinchesterEngine) -> String? {
         if let interruption = engine.interruption {
             return "INTERROMPUE À \(FrenchFormat.duration(interruption.time).uppercased()) · \(interruption.label.uppercased())"
         }
@@ -61,7 +61,7 @@ private struct PassMiniPlayer: View {
         return "\(state) · RETOUR D'ARRIÈRE-PLAN"
     }
 
-    private func row(_ engine: DiskNoiseEngine) -> some View {
+    private func row(_ engine: WinchesterEngine) -> some View {
         HStack(spacing: 12) {
             Circle()
                 .fill(model.activityLED ? Theme.read : Color.white.opacity(0.10))
@@ -91,7 +91,7 @@ private struct PassMiniPlayer: View {
 
     /// La phase et le temps écouté ; l'avancement d'abord, au retour, puisque
     /// c'est ce qu'on vient chercher.
-    private func detail(_ engine: DiskNoiseEngine) -> String {
+    private func detail(_ engine: WinchesterEngine) -> String {
         var parts: [String] = []
         if (returned || engine.interruption != nil), let progress = model.defragProgress {
             parts.append(FrenchFormat.percent(progress))

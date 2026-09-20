@@ -1,4 +1,8 @@
-# DiskNoise — spike
+# Winchester — spike
+
+Le nom vient de l'IBM 3340 « 30/30 », baptisé *Winchester* en 1973 — le
+premier disque à plateaux scellé avec ses têtes, l'ancêtre direct de ceux
+que cette application fait entendre.
 
 Simulation d'I/O **au niveau bloc** d'un disque dur à plateaux, convertie en son
 via AVFAudio. Application iOS de démonstration, avec deux démos prêtes à
@@ -1366,7 +1370,7 @@ Le découpage qui rend cela tenable :
   isolation : ce sont des calculs purs, appelables depuis n'importe quel fil.
   `SeekSynth` est `Sendable` — tout son état est immuable — d'où la possibilité
   de rendre un train de crépitements sur une tâche détachée.
-- `DiskNoiseEngine`, `DiskHaptics`, `SimulationModel` et `DiskLibraryModel` sont
+- `WinchesterEngine`, `DiskHaptics`, `SimulationModel` et `DiskLibraryModel` sont
   `@MainActor` : ils pilotent des objets AVFoundation, Core Haptics et l'état
   publié de l'interface.
 - Les allers-retours entre les deux se font par valeurs `Sendable` et retours
@@ -1383,7 +1387,7 @@ Le découpage qui rend cela tenable :
 
 ```sh
 xcodegen generate
-open DiskNoise.xcodeproj
+open Winchester.xcodeproj
 ```
 
 Le noyau se construit et se teste sans passer par Xcode :
@@ -1404,7 +1408,7 @@ rendu hors-ligne ci-dessous, qui compile et fait tourner la chaîne entière.
 Ou directement :
 
 ```sh
-xcodebuild -project DiskNoise.xcodeproj -scheme DiskNoise \
+xcodebuild -project Winchester.xcodeproj -scheme Winchester \
     -destination "platform=iOS Simulator,id=<UDID>" \
     -derivedDataPath .build/DerivedData build
 ```
@@ -1658,7 +1662,7 @@ Sources/Audio/
     Biquad.swift           filtres RBJ, bruit xorshift
     SeekSynth.swift        banc de résonateurs, excitation, trains
     SpindleVoice.swift     couche continue procédurale
-    DiskNoiseEngine.swift  graphe AVAudioEngine, transport, programmation des
+    WinchesterEngine.swift  graphe AVAudioEngine, transport, programmation des
                            repères tirés de la passe, attente du producteur
 Sources/Haptics/
     DiskHaptics.swift      Core Haptics : motifs de seek, texture des trains

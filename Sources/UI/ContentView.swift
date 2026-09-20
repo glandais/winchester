@@ -107,7 +107,7 @@ struct ContentView: View {
 @MainActor
 final class ClockRelay: ObservableObject {
 
-    let engine: DiskNoiseEngine
+    let engine: WinchesterEngine
 
     /// Coupé, plus rien ne passe. Rouvert, un seul changement est envoyé, pour
     /// que l'écran rattrape d'un coup l'état qu'il a manqué.
@@ -117,7 +117,7 @@ final class ClockRelay: ObservableObject {
 
     private var subscription: AnyCancellable?
 
-    init(engine: DiskNoiseEngine) {
+    init(engine: WinchesterEngine) {
         self.engine = engine
         subscription = engine.objectWillChange.sink { [weak self] _ in
             MainActor.assumeIsolated {

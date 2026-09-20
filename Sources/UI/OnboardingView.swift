@@ -12,7 +12,7 @@ struct OnboardingView: View {
     /// le revoir.
     static let seenKey = "onboardingSeen"
 
-    let engine: DiskNoiseEngine
+    let engine: WinchesterEngine
     /// Appelé quand on quitte l'accueil, par « Passer » comme par le dernier
     /// bouton.
     let onFinish: () -> Void
@@ -20,7 +20,7 @@ struct OnboardingView: View {
     @State private var page = 0
     @State private var hapticsEnabled: Bool
 
-    init(engine: DiskNoiseEngine, onFinish: @escaping () -> Void) {
+    init(engine: WinchesterEngine, onFinish: @escaping () -> Void) {
         self.engine = engine
         self.onFinish = onFinish
         _hapticsEnabled = State(initialValue: engine.hapticsEnabled)

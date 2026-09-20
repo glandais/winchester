@@ -1,6 +1,6 @@
 # Journal de l'interface
 
-Les chantiers qui font passer DiskNoise d'un banc d'essai à une application
+Les chantiers qui font passer Winchester d'un banc d'essai à une application
 qu'on prend en main en trente secondes. `LEDGER.md` garde la trace du modèle
 physique ; ce fichier-ci garde celle de l'interface : ce qui était prévu, ce
 qui a été fait, et pourquoi on s'en est écarté.
@@ -34,7 +34,7 @@ détail et le pourquoi.
 | [U9](#chantier-u9--construire-un-disque-usagé) | assistant, Mes disques | 06, 07, 17 | `DiskWizard`, `ProfileIssues`, `CustomDiskStore` | `babfe93`, `64d759a` |
 | [U10](#chantier-u10--son-vibrations-ambiance) | son, ambiance, arrière-plan | 15, 16 | `SoundSheet`, `AmbientScreen`, `SoundMix`, `NowPlaying` | `9a20fee` |
 | [U11](#chantier-u11--accueil-et-explications) | accueil, fiches « Pourquoi » | 01, 14 | `OnboardingView`, `Explanations` | `0d81c88` |
-| [U12](#chantier-u12--états-et-accessibilité) | interruptions, accessibilité | 17 | `DiskNoiseEngine`, `MapZones`, `Theme` | `e52eb52` |
+| [U12](#chantier-u12--états-et-accessibilité) | interruptions, accessibilité | 17 | `WinchesterEngine`, `MapZones`, `Theme` | `e52eb52` |
 
 ## Ce qui reste
 
@@ -527,7 +527,7 @@ trois des outils existants (`6da1772`). L'écran de choix les suit :
 - **Recollage économe** (`fragmentMerge`), sur NTFS seulement ; mesuré de 8 s à
   23 min 37 sur les huit volumes NTFS.
 - Ni l'un ni l'autre n'est marqué « D'époque », et leur carte dit « écrit pour
-  DiskNoise ».
+  Winchester ».
 - **« Déplacer par blocs pleins »**, un interrupteur au-dessus de **Lancer la
   passe**, quand l'outil choisi a l'option (`DefragPlanner.withFullBlocks`) :
   XP, UltraDefrag et les modes de JkDefrag. Il dit que ce n'est pas le
@@ -545,7 +545,7 @@ FAT »), recollage proposé, interrupteur visible avec XP présélectionné.
 ### Le problème
 
 L'onglet Passe était resté le long défilement d'avant, moins ce que U0 avait
-déménagé : titre « DiskNoise », panneau du volume avec sa carte et un
+déménagé : titre « Winchester », panneau du volume avec sa carte et un
 paragraphe de chiffres, plateau, bandeau de phase, frise, transport. Le
 pourcentage était une ligne sous la carte, le temps écoulé au fond de la
 frise, et seuls **Relancer** et lecture/pause existaient.
@@ -1095,7 +1095,7 @@ projet : non, faute de mode audio d'arrière-plan déclaré.
   vérifiée une fois par seconde : c'est l'heure du coucher qu'on règle, et une
   passe qui attend son calcul ne doit pas la repousser. À l'échéance, le moteur
   **baisse le son en huit secondes** puis met en pause
-  (`DiskNoiseEngine.pauseFadingOut`) ; le fondu agit sur le mélangeur, pas sur
+  (`WinchesterEngine.pauseFadingOut`) ; le fondu agit sur le mélangeur, pas sur
   le niveau général enregistré, et toute lecture ou pause l'annule.
   En Debug, une durée de 10 s s'ajoute à la liste pour le vérifier.
 - **Arrière-plan** : `UIBackgroundModes = audio`, déclaré dans
@@ -1245,7 +1245,7 @@ génération en cours, annulée ou échouée a son panneau dans la fiche d'un di
 
 ### Les décisions — les états
 
-- **`DiskNoiseEngine` suit les interruptions** : fin de session audio
+- **`WinchesterEngine` suit les interruptions** : fin de session audio
   (`interruptionNotification`), sortie retirée (`routeChange`,
   `oldDeviceUnavailable`), graphe reconfiguré
   (`AVAudioEngineConfigurationChange`). Chacune **met en pause** et garde

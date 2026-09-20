@@ -12,7 +12,7 @@ import SwiftUI
 /// mixage à chaque fois.
 struct SoundSheet: View {
 
-    let engine: DiskNoiseEngine
+    let engine: WinchesterEngine
     @Environment(\.dismiss) private var dismiss
     @State private var revision = 0
     @State private var showsAdvanced = false
@@ -200,7 +200,7 @@ struct SoundSheet: View {
         revision += 1
     }
 
-    private func binding<Value>(_ keyPath: ReferenceWritableKeyPath<DiskNoiseEngine, Value>) -> Binding<Value> {
+    private func binding<Value>(_ keyPath: ReferenceWritableKeyPath<WinchesterEngine, Value>) -> Binding<Value> {
         let engine = engine
         let revision = $revision
         return Binding(get: { engine[keyPath: keyPath] },

@@ -9,7 +9,7 @@ struct CustomDiskStoreTests {
 
     private static func store() -> CustomDiskStore {
         CustomDiskStore(url: FileManager.default.temporaryDirectory
-            .appendingPathComponent("disknoise-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("winchester-\(UUID().uuidString)", isDirectory: true)
             .appendingPathComponent("disques.json"))
     }
 

@@ -1,8 +1,8 @@
 import SwiftUI
 
 @main
-struct DiskNoiseApp: App {
-    init() { DiskNoiseEngine.configureSession() }
+struct WinchesterApp: App {
+    init() { WinchesterEngine.configureSession() }
 
     var body: some Scene {
         WindowGroup {

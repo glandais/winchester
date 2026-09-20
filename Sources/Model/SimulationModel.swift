@@ -17,7 +17,7 @@ final class SimulationModel: ObservableObject {
     /// La passe en cours d'écoute.
     @Published private(set) var live: LivePass
 
-    let engine: DiskNoiseEngine
+    let engine: WinchesterEngine
 
     /// Les scénarios décrits, pas leurs passes : un disque de la galerie coûte
     /// sa conversion en volume, qu'on ne refait pas à chaque aller-retour.
@@ -78,7 +78,7 @@ final class SimulationModel: ObservableObject {
         self.cache = [.builtin(kind): scenario]
         self.demoDisks = [kind: disk]
         self.disk = disk
-        self.engine = DiskNoiseEngine(character: scenario.setup.character)
+        self.engine = WinchesterEngine(character: scenario.setup.character)
         engine.mix = SoundMix.load(from: .standard)
         engine.load(feed: live, character: scenario.setup.character)
         captureStart()
