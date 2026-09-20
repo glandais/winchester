@@ -1351,3 +1351,141 @@ génération en cours, annulée ou échouée a son panneau dans la fiche d'un di
   une vue ferait planter l'app.
 - La carte en pouce de la passe n'avait pas de rémanence : sous « Réduire les
   animations », elle est inchangée.
+
+## Chantier 30 — le cycle de vie d'un disque, à l'écran
+
+Branche `parcours`, 20 septembre 2026. Commits `43d72f0` (recalage de l'audit),
+`09e8c7c` (lot A), `aa3e04b` (lot B), et le lot C ci-dessous.
+
+### Le problème
+
+`UX_REVIEW.md` était le seul des quatre audits non soldé : huit constats, sept
+pistes, zéro correction. Le dernier mot de `LEDGER.md` le disait — « attend son
+propre chantier ».
+
+L'écart central tenait en une phrase : **l'utilisateur pense « mon disque »**.
+Il le défragmente, il revient sur sa fiche, et rien ne s'en souvient. Le disque
+rangé n'existait que derrière un bouton du bilan, et tout s'évaporait à la
+fermeture.
+
+### Les décisions — lot A, ce que l'écran dit du modèle
+
+- **Une seule conversion des octets**, `FrenchUnits`, posée dans `DiskCore`.
+  C'est le seul module que le modèle et l'interface voient tous les deux, et
+  c'est précisément pourquoi la division était écrite deux fois : `FrenchFormat`
+  divisait par 2²⁰ côté écran, six divisions à la main par 10⁶ ailleurs. Le même
+  disque s'annonçait « 210 Mo » sur sa fiche et « 220 Mo » sur la Passe.
+- Le mégaoctet du projet est **binaire**, celui du catalogue (`sizeMB × 2²⁰`) :
+  c'est le seul qui rende au disque étiqueté 210 Mo ses 210 Mo à l'écran. Le
+  choix entre binaire et décimal reste posé **au générateur**, pas à
+  l'affichage ; si les fiches d'époque annoncent des mégaoctets décimaux, c'est
+  `sizeBytes` qu'il faudra reprendre.
+- **Les débits gardent le décimal**, seule exception, écrite une fois et
+  justifiée là où elle est : ils se comparent aux fiches constructeur des
+  manuels, qui comptent toutes en 10⁶.
+- **Le libellé des métadonnées suit le format** : `DefragStrategy.phases(on:)`
+  avec un défaut, et `PhaseDescriptor.commit(on:)` qui écrit une fois la vraie
+  phrase des deux familles. Trois outils annonçaient « les derniers
+  enregistrements de MFT et la bitmap du volume » aux douze volumes FAT.
+- **Les libellés disent ce qu'ils comptent** : la Passe compte des *éléments*
+  (répertoires compris depuis le lot 4), la fiche porte « des fragmentables »
+  sous ses 16 %, et « jusqu'ici » devient « en tout » une fois la passe finie.
+
+### Les décisions — lot B, l'état du disque
+
+- **`PassDigest`**, le résumé d'une passe : deux cents octets contre les
+  quelques mégaoctets d'un `PassRecord`, qui tient le disque entier et reste en
+  mémoire. `PassHistoryStore` l'écrit dans Application Support, à côté de « Mes
+  disques ». C'est la piste 4 : les bilans gardés, **résumés, sans leurs
+  cartes**.
+- **L'élagage à 120 protège la dernière passe de chaque disque** : c'est elle
+  qui porte son état, et un disque rangé il y a trois mois doit pouvoir le dire
+  même si on en a écouté cent autres depuis.
+- **Un historique illisible ne fait pas tomber le lancement.** À la différence
+  de « Mes disques », qui lève : perdre des passes entendues n'est pas perdre le
+  travail de quelqu'un.
+- **Un outil qui n'a rien recollé n'a rien rangé.** `isTidying` compare l'avant
+  et l'après : une passe blanche se dit autrement (« passé sans rien ranger »)
+  plutôt que de faire mentir la carte.
+- **La bascule d'origine/rangé emporte les tuiles**, pas seulement la carte :
+  montrer la carte d'après au-dessus des chiffres d'avant n'aurait comblé que la
+  moitié de l'écart. Elle vit le temps de la session, comme l'arrangement dont
+  elle vient.
+
+### Les décisions — lot C, la navigation
+
+- **Le bandeau passe autour de la pile** et non sur sa racine. Il y avait été
+  posé pour ne pas recouvrir le bas des écrans poussés ; en `safeAreaInset` de
+  la `NavigationStack`, il réserve sa place au lieu de recouvrir, et les écrans
+  poussés cessent d'être muets sur la passe en cours.
+- **La pile de l'onglet Disques remonte dans `ContentView`.** C'est ce qui
+  permet au titre de la Passe de mener à la fiche : il pousse le disque sur la
+  pile et bascule d'onglet. Le titre n'est un bouton que lorsque la passe vient
+  d'un disque de la galerie.
+- **Le défilement sort du plein écran.** `DiskLifeModel` naissait avec la vue
+  et mourait avec elle ; il est gardé par disque dans l'écran des disques, et
+  fabriqué dans une action — le créer dans le `fullScreenCover` le referait à
+  chaque ouverture. Le commentaire de `SimulationModel.load` promettait que « le
+  défilement reprendra ensuite au lendemain » ; il le fait.
+- **Le bilan d'une journée rend la main au défilement**, et seulement quand il y
+  en a un à rouvrir : un bilan relu après relancement ne propose rien plutôt que
+  de repartir du jour 0.
+- **L'assistant rend sa sélection à la galerie en partant.** Il fabrique par
+  `library.build`, qui prend `selectedID` : la fiche ouverte en dessous se
+  mettait à montrer le brouillon et y restait. Partir vers la passe, en
+  revanche, la laisse sur le brouillon — c'est bien lui qu'on écoute.
+- **Fermer sur un brouillon fabriqué demande**, avec trois issues : enregistrer
+  et fermer, fermer sans enregistrer, continuer. Six étapes et une fabrication
+  ne se perdent pas sur un bouton.
+- **Remplacer une passe en cours demande** — un seul moteur. La question ne se
+  pose que si le moteur joue vraiment : une passe finie, en pause au bout ou pas
+  commencée ne se « remplace » pas, et relancer ce qu'on écoute déjà non plus.
+
+### Ce qui valide
+
+- **289 tests**, dont seize neufs : `FrenchUnitsTests` et `ScreenWordingTests`
+  pour le lot A — la conversion unique, l'écart voulu entre les deux
+  dénominateurs de fragmentation, et qu'aucun outil n'annonce de MFT sur FAT —,
+  `PassHistoryTests` pour le lot B — aller-retour par le fichier en ISO 8601,
+  fichier illisible, élagage, passe blanche, état relu par une instance neuve.
+- **À l'écran**, sur « Développeur, 1993 » en UltraDefrag, passe entendue
+  jusqu'au bout : 210 Mo · FAT16 des deux côtés, « Déplacé 47 Mo en tout » comme
+  au bilan, la phase 4 qui annonce les deux copies de la table d'allocation,
+  « 4 027 éléments » contre « 4 016 fichiers » sur la fiche, « 16 % des
+  fragmentables ».
+- **Le cycle de relancement**, qui est le cœur du lot B : l'app fermée et
+  réinstallée, la carte porte « Rangé par UltraDefrag · il y a 1 min », la fiche
+  porte l'avant → après, la liste des passes entendues est là — et la bascule a
+  disparu, sa carte ne survivant pas, par conception.
+- **La navigation du lot C**, une passe tournant : le titre de la Passe ouvre la
+  fiche du disque, qui porte le bandeau — ce qu'aucun écran poussé ne faisait —,
+  la carte de la galerie porte « EN ÉCOUTE », lancer la seconde démo demande si
+  l'on remplace, et Revivre fermé au jour 12 rouvre au jour 12.
+
+Un défaut trouvé en vérifiant, et corrigé : porter le défilement dans un
+dictionnaire d'état et le lire depuis le `fullScreenCover` ouvrait un écran
+**noir**. Le contenu d'un `fullScreenCover` est capturé à la présentation, donc
+avec la valeur d'avant la mutation qui venait d'y ranger le défilement. C'est
+l'élément présenté qui le porte désormais.
+
+### Laissé ouvert
+
+- **La présélection de l'outil** (§4 de l'audit) : l'outil d'époque est proposé
+  en premier avec la deuxième durée la plus longue du format, et les deux outils
+  rapides sont plus bas dans la liste. C'est une décision de produit, pas un
+  défaut.
+- **La légende de la fiche ne nomme pas les répertoires**, là où celle de la
+  Passe le fait. La case jaune, elle, se voit bien sur la carte en pouce :
+  l'audit disait le contraire, c'est un erratum.
+- **Seul l'assistant (§2.7) n'a pas été rejoué à l'écran** : la garde du
+  brouillon et la sélection rendue à la galerie tiennent sur le code et la
+  compilation. Le reste du lot C a été vérifié — bandeau sur la fiche poussée
+  pendant une passe, « EN ÉCOUTE » sur la carte, titre de la Passe qui ouvre la
+  fiche, question du remplacement, et Revivre fermé au jour 12 puis rouvert au
+  jour 12.
+- **Mes disques, Installer, Démarrer, la comparaison de deux passes,
+  VoiceOver** : toujours pas rejoués à l'écran, comme le §7 de l'audit le disait
+  déjà.
+- **Le défilement ne survit pas au lancement**, seulement à son plein écran.
+  Garder une vie en cours demanderait de sérialiser son état de rejeu, ce qui
+  n'est pas le même travail que garder un résumé de passe.

@@ -6329,4 +6329,7 @@ c'est son chantier.
   garantis.
 - **Les fourchettes de l'écran de choix d'outil** sont recopiées à la main des
   bilans : `readme-tables.py` ne les vérifie pas.
-- `UX_REVIEW.md`, hors du périmètre de ce lot, attend son propre chantier.
+- ~~`UX_REVIEW.md`, hors du périmètre de ce lot, attend son propre chantier.~~
+  Fait : chantier 30, branche `parcours`, trois lots — les unités et les
+  libellés, l'état du disque gardé d'un lancement à l'autre, la navigation.
+  Six pistes sur sept prises ; le détail est dans `LEDGER-UI.md`.

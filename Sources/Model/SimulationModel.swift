@@ -377,6 +377,16 @@ final class SimulationModel: ObservableObject {
     /// dont se contente HDDSynth pour déclencher ses sons.
     var activityLED: Bool { live.requestRate > 0.5 }
 
+    /// Le disque en cours d'écoute, quand il y en a un et que le moteur tourne.
+    ///
+    /// C'est ce que la galerie marque « en écoute » : le bandeau disait bien
+    /// qu'une passe tournait, mais aucune carte ne disait laquelle
+    /// (`UX_REVIEW.md` §2.3).
+    var playingDiskID: String? {
+        guard engine.isPlaying || engine.isBuffering else { return nil }
+        return disk?.spec.id
+    }
+
     /// Le temps écouté dans chaque phase, dans l'ordre où elles sont apparues.
     var phaseTimes: [PhaseTime] { live.phaseTimes }
     var phases: [PhaseDescriptor] { live.phases }

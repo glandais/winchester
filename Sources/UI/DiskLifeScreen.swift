@@ -11,15 +11,22 @@ import DiskCore
 struct DiskLifeScreen: View {
 
     @ObservedObject var model: SimulationModel
-    @StateObject private var life: DiskLifeModel
+    /// Le défilement, tenu **hors** de ce plein écran.
+    ///
+    /// Il naissait avec la vue et mourait avec elle : on avançait jusqu'au jour
+    /// 12, on écoutait le jour 13, on rouvrait Revivre, et l'écran repartait du
+    /// jour 0 (`UX_REVIEW.md` §2.6). Le commentaire de `SimulationModel.load`
+    /// promettait que « le défilement reprendra ensuite au lendemain » ; il le
+    /// fait désormais.
+    @ObservedObject var life: DiskLifeModel
     /// La journée est lancée : on ferme et on ouvre l'onglet de la passe.
     let onListen: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
-    init(disk: GeneratedDisk, model: SimulationModel, onListen: @escaping () -> Void) {
+    init(life: DiskLifeModel, model: SimulationModel, onListen: @escaping () -> Void) {
         _model = ObservedObject(wrappedValue: model)
-        _life = StateObject(wrappedValue: DiskLifeModel(disk: disk))
+        _life = ObservedObject(wrappedValue: life)
         self.onListen = onListen
     }
 

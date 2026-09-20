@@ -98,12 +98,37 @@ struct DiskWizardSheet: View {
     @State private var draft: ProfileSpec
     @State private var step = 0
     @State private var saved = false
+    /// Le disque que la galerie montrait avant l'assistant.
+    ///
+    /// L'assistant fabrique par `library.build`, qui prend la sélection de la
+    /// galerie : la fiche ouverte en dessous se mettait alors à montrer le
+    /// brouillon, et y restait après « Fermer » (`UX_REVIEW.md` §2.7). On lui
+    /// rend sa sélection en partant.
+    @State private var previousSelection: String?
+    /// Fermer perdrait un brouillon fabriqué et non enregistré.
+    @State private var confirmsClose = false
     @Environment(\.dismiss) private var dismiss
 
     init(library: DiskLibraryModel, spec: ProfileSpec, onHandover: @escaping DiskHandover) {
         self.library = library
         self.onHandover = onHandover
         _draft = State(initialValue: spec)
+        _previousSelection = State(initialValue: library.selectedID)
+    }
+
+    /// Un brouillon fabriqué que « Mes disques » ne connaît pas : le fermer le
+    /// perd, et il a coûté six étapes et une fabrication.
+    private var losesDraft: Bool {
+        library.selectedID == draft.id && library.state.disk != nil
+            && !library.customs.contains { $0.id == draft.id }
+    }
+
+    /// Ferme, en rendant à la galerie le disque qu'elle montrait.
+    private func close() {
+        if library.selectedID != previousSelection, let previousSelection {
+            library.selectedID = previousSelection
+        }
+        dismiss()
     }
 
     private static let titles = ["Le matériel", "Le format", "Le système et les logiciels",
@@ -142,8 +167,23 @@ struct DiskWizardSheet: View {
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Fermer") { dismiss() }
+                    Button("Fermer") {
+                        if losesDraft { confirmsClose = true } else { close() }
+                    }
                 }
+            }
+            .confirmationDialog("Fermer sans enregistrer ?", isPresented: $confirmsClose,
+                                titleVisibility: .visible) {
+                Button("Enregistrer et fermer") {
+                    library.save(draft)
+                    saved = true
+                    close()
+                }
+                Button("Fermer sans enregistrer", role: .destructive) { close() }
+                Button("Continuer", role: .cancel) {}
+            } message: {
+                Text("« \(draft.displayName) » est fabriqué mais n'est pas dans Mes disques : "
+                     + "sa graine et son histoire seraient perdues.")
             }
         }
         .tint(Theme.read)
@@ -225,6 +265,9 @@ struct DiskWizardSheet: View {
         if library.selectedID == draft.id {
             DiskLibraryView(model: library) { disk, activity, strategy in
                 try onHandover(disk, activity, strategy)
+                // Partir vers la passe laisse la galerie sur le brouillon :
+                // c'est bien lui qu'on écoute, et sa fiche est celle qu'on
+                // retrouvera en revenant.
                 dismiss()
             }
 

@@ -18,6 +18,9 @@ struct ContentView: View {
     @StateObject private var model = SimulationModel()
     @StateObject private var library = DiskLibraryModel()
     @State private var tab: AppTab = .disks
+    /// La pile de l'onglet Disques. Tenue ici parce que la Passe y pousse la
+    /// fiche du disque qu'on écoute : son titre y mène (`UX_REVIEW.md` §2.4).
+    @State private var disksPath: [String] = []
     @State private var nowPlaying: NowPlaying?
     @AppStorage(OnboardingView.seenKey) private var onboardingSeen = false
     /// Quand l'app est passée en arrière-plan, pour savoir au retour si l'absence
@@ -32,16 +35,29 @@ struct ContentView: View {
     /// mais aucun écran ne suit plus son horloge.
     private var isActive: Bool { scenePhase == .active }
 
+    /// Ouvre la fiche d'un disque depuis n'importe où : bascule sur l'onglet
+    /// Disques et pose la fiche au sommet de sa pile.
+    ///
+    /// C'est ce qui manquait à la Passe, dont le nom du disque était un titre
+    /// mort : pour retrouver la fiche, il fallait deviner que l'onglet Disques
+    /// avait gardé sa pile (`UX_REVIEW.md` §2.4).
+    private func openDisk(_ id: String) {
+        if disksPath.last != id { disksPath = [id] }
+        tab = .disks
+    }
+
     var body: some View {
         TabView(selection: $tab) {
             // Le bandeau est posé par l'écran lui-même, sur la racine de sa pile :
             // autour de la pile, il recouvrait le bas des écrans poussés.
-            DisksScreen(model: model, library: library, showsMiniPlayer: tab != .pass,
+            DisksScreen(model: model, library: library, path: $disksPath,
+                        showsMiniPlayer: tab != .pass,
                         returnedFromBackground: returnedFromBackground) { tab = .pass }
                 .tabItem { Label("Disques", systemImage: "internaldrive") }
                 .tag(AppTab.disks)
 
-            SimulatorScreen(model: model, engine: model.engine, isVisible: isActive && tab == .pass)
+            SimulatorScreen(model: model, engine: model.engine, isVisible: isActive && tab == .pass,
+                            onOpenDisk: openDisk)
                 .tabItem { Label("Passe", systemImage: "waveform") }
                 .tag(AppTab.pass)
 

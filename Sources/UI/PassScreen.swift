@@ -25,11 +25,16 @@ struct SimulatorScreen: View {
     /// Un onglet caché reste en vie : sans cela, il suivrait l'horloge soixante
     /// fois par seconde sans que personne le voie.
     let isVisible: Bool
+    /// Ouvre la fiche du disque écouté. Le nom en titre était mort : il fallait
+    /// deviner que l'onglet Disques avait gardé sa pile (`UX_REVIEW.md` §2.4).
+    let onOpenDisk: (String) -> Void
 
-    init(model: SimulationModel, engine: WinchesterEngine, isVisible: Bool) {
+    init(model: SimulationModel, engine: WinchesterEngine, isVisible: Bool,
+         onOpenDisk: @escaping (String) -> Void = { _ in }) {
         _model = ObservedObject(wrappedValue: model)
         _clock = StateObject(wrappedValue: ClockRelay(engine: engine))
         self.isVisible = isVisible
+        self.onOpenDisk = onOpenDisk
     }
 
     private var engine: WinchesterEngine { clock.engine }
@@ -113,11 +118,27 @@ struct SimulatorScreen: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(model.label.title)
-                        .font(.dynamic(size: 22, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
+                    // Le titre mène à la fiche quand la passe vient d'un disque
+                    // de la galerie ; sinon c'est un titre, et il le reste.
+                    Button {
+                        if let id = model.disk?.spec.id { onOpenDisk(id) }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(model.label.title)
+                                .font(.dynamic(size: 22, weight: .bold, design: .rounded))
+                                .foregroundStyle(Theme.text)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                            if model.disk != nil {
+                                Image(systemName: "chevron.right")
+                                    .font(.dynamic(size: 13, weight: .semibold))
+                                    .foregroundStyle(Theme.dim)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .allowsHitTesting(model.disk != nil)
+                    .accessibilityHint(model.disk != nil ? "Ouvrir la fiche du disque" : "")
                     Text(model.defrag?.strategy.label ?? model.install.map(installTitle)
                          ?? model.dayPlayback.map(dayTitle) ?? model.boot.map(bootTitle)
                          ?? model.geometry.model)

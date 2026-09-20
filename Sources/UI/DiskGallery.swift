@@ -80,6 +80,8 @@ struct DiskGallery: View {
     /// Ce que chaque disque garde de ce qu'on lui a fait, d'un lancement à
     /// l'autre : c'est ce que porte la dernière ligne d'une carte.
     @ObservedObject var history: PassHistory
+    /// Le disque qu'on écoute, pour le marquer dans la liste.
+    var playingDiskID: String?
 
     @State private var year: Int?
     @State private var persona: Persona?
@@ -116,7 +118,8 @@ struct DiskGallery: View {
                 ForEach(shown, id: \.id) { spec in
                     NavigationLink(value: spec.id) {
                         DiskCard(spec: spec, fragmentedRatio: model.fragmentedRatios[spec.id],
-                                 state: history.state(of: spec.id))
+                                 state: history.state(of: spec.id),
+                                 isPlaying: playingDiskID == spec.id)
                     }
                     .buttonStyle(.plain)
                 }
@@ -159,6 +162,8 @@ struct DiskCard: View {
     let fragmentedRatio: Double?
     /// Ce qu'on a déjà fait à ce disque, gardé d'un lancement à l'autre.
     var state: DiskState?
+    /// C'est ce disque-là qu'on écoute en ce moment.
+    var isPlaying = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -167,6 +172,15 @@ struct DiskCard: View {
                     Text(spec.displayName)
                         .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
+                    if isPlaying {
+                        Text("EN ÉCOUTE")
+                            .font(.dynamic(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.background)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 4).fill(Theme.read))
+                            .accessibilityLabel("Disque en cours d'écoute")
+                    }
                     Spacer()
                     Text(spec.fileSystemLabel)
                         .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))

@@ -11,6 +11,9 @@ struct DisksScreen: View {
 
     @ObservedObject var model: SimulationModel
     @ObservedObject var library: DiskLibraryModel
+    /// La pile de l'onglet, tenue par `ContentView` : le titre de la Passe y
+    /// pousse la fiche du disque qu'on écoute.
+    @Binding var path: [String]
     let showsMiniPlayer: Bool
     /// L'app revient d'arrière-plan pendant une passe.
     var returnedFromBackground = false
@@ -18,7 +21,6 @@ struct DisksScreen: View {
     /// Montre l'onglet de la passe.
     let onOpenPass: () -> Void
 
-    @State private var path: [String] = []
     @State private var report: PassRecord?
     @State private var wizard: ProfileSpec?
     @State private var renaming: ProfileSpec?
@@ -26,6 +28,18 @@ struct DisksScreen: View {
     @State private var deleting: ProfileSpec?
     /// Le disque dont on fait défiler la vie.
     @State private var reviving: RevivedDisk?
+    /// Les défilements en cours, par disque : ils survivent à la fermeture de
+    /// leur plein écran, pour qu'on reprenne là où on s'était arrêté
+    /// (`UX_REVIEW.md` §2.6). Un défilement pèse une carte et deux courbes.
+    @State private var lives: [String: DiskLifeModel] = [:]
+    /// Un lancement retenu le temps de demander si l'on remplace la passe en
+    /// cours. Un seul moteur : lancer quoi que ce soit remplaçait ce qu'on
+    /// écoutait, sans prévenir (`UX_REVIEW.md` §2.8).
+    @State private var pendingLaunch: PendingLaunch?
+    /// Ce qu'un lancement différé a refusé. Le lancement immédiat, lui, lève
+    /// jusqu'à la fiche, qui écrit la raison sous son bouton ; une fois la
+    /// question posée, cette fiche n'est plus là pour l'entendre.
+    @State private var launchFailure: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -51,7 +65,8 @@ struct DisksScreen: View {
                             .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                             .padding(.top, 6)
-                        DiskGallery(model: library, history: model.history)
+                        DiskGallery(model: library, history: model.history,
+                                    playingDiskID: model.playingDiskID)
                     }
                     .padding(16)
                 }
@@ -59,19 +74,38 @@ struct DisksScreen: View {
             // Le titre ne s'affiche pas — l'écran a le sien — mais c'est lui
             // que prend le bouton de retour de la fiche.
             .navigationTitle("Disques")
-            .passMiniPlayer(model: model, isShown: showsMiniPlayer, returned: returnedFromBackground,
-                            onOpen: onOpenPass)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $report) { record in
-                PassReportSheet(model: model, record: record, onLaunched: onOpenPass)
+                PassReportSheet(model: model, record: record, onLaunched: onOpenPass,
+                                onResumeLife: resumeLife(of: record))
             }
             .sheet(item: $wizard) { spec in
                 DiskWizardSheet(library: library, spec: spec) { disk, activity, strategy in
                     try launch(disk, as: activity, using: strategy)
                 }
             }
+            .confirmationDialog("Remplacer la passe en cours ?",
+                                isPresented: Binding(get: { pendingLaunch != nil },
+                                                     set: { if !$0 { pendingLaunch = nil } }),
+                                titleVisibility: .visible) {
+                Button("Remplacer") {
+                    let launch = pendingLaunch
+                    pendingLaunch = nil
+                    launch?.start()
+                }
+                Button("Continuer d'écouter", role: .cancel) { pendingLaunch = nil }
+            } message: {
+                Text("« \(pendingLaunch?.running ?? "") » est en cours d'écoute. "
+                     + "Il n'y a qu'un moteur : la nouvelle passe prend sa place.")
+            }
+            .alert("La passe n'a pas pu démarrer", isPresented: Binding(
+                get: { launchFailure != nil }, set: { if !$0 { launchFailure = nil } })) {
+                Button("Fermer", role: .cancel) { launchFailure = nil }
+            } message: {
+                Text(launchFailure ?? "")
+            }
             .fullScreenCover(item: $reviving) { revived in
-                DiskLifeScreen(disk: revived.disk, model: model, onListen: onOpenPass)
+                DiskLifeScreen(life: revived.life, model: model, onListen: onOpenPass)
             }
             .alert("Renommer le disque", isPresented: Binding(get: { renaming != nil },
                                                               set: { if !$0 { renaming = nil } })) {
@@ -101,6 +135,12 @@ struct DisksScreen: View {
                 }
             }
         }
+        // Le bandeau est posé autour de la pile et non sur sa racine : sinon
+        // les écrans poussés en étaient privés, et rien n'y disait qu'une passe
+        // tournait (`UX_REVIEW.md` §2.3). En `safeAreaInset` de la pile, il
+        // réserve sa place sur tous les écrans au lieu d'en recouvrir le bas.
+        .passMiniPlayer(model: model, isShown: showsMiniPlayer, returned: returnedFromBackground,
+                        onOpen: onOpenPass)
     }
 
     /// Ce qu'on demande à un disque : une passe, qu'on écoute tout de suite, ou
@@ -108,11 +148,45 @@ struct DisksScreen: View {
     private func launch(_ disk: GeneratedDisk, as activity: GeneratedActivity,
                         using strategy: (any DefragStrategy)?) throws {
         guard activity != .life else {
-            reviving = RevivedDisk(disk: disk)
+            // Le défilement est fabriqué ici, dans une action, et gardé : le
+            // créer dans le `fullScreenCover` le referait à chaque ouverture,
+            // et l'écran repartirait du jour 0 comme avant.
+            let life = lives[disk.spec.id] ?? DiskLifeModel(disk: disk)
+            lives[disk.spec.id] = life
+            reviving = RevivedDisk(disk: disk, life: life)
             return
         }
-        try model.load(generated: disk, as: activity, using: strategy)
-        play()
+        // Le défilement ne touche pas au moteur ; tout le reste le prend.
+        try replacingPass {
+            try model.load(generated: disk, as: activity, using: strategy)
+            play()
+        }
+    }
+
+    /// Ce qui tourne en ce moment, s'il faut demander avant de le remplacer.
+    ///
+    /// Une passe finie, en pause au bout, ou pas encore commencée ne se
+    /// « remplace » pas : on ne demande que si le moteur joue vraiment.
+    private var runningPass: String? {
+        let engine = model.engine
+        guard engine.isPlaying || engine.isBuffering, !engine.isFinished else { return nil }
+        return model.label.title
+    }
+
+    /// Exécute un lancement, ou le retient le temps d'une question.
+    ///
+    /// Sans passe en cours, la levée traverse jusqu'à l'appelant — la fiche du
+    /// disque écrit la raison sous son bouton. Une fois la question posée, la
+    /// levée arrive trop tard pour elle : on la garde ici.
+    private func replacingPass(_ start: @escaping () throws -> Void) rethrows {
+        guard let running = runningPass else { return try start() }
+        pendingLaunch = PendingLaunch(running: running) {
+            do {
+                try start()
+            } catch {
+                launchFailure = error.localizedDescription
+            }
+        }
     }
 
     /// Les disques construits dans l'app, enregistrés d'une session à l'autre.
@@ -133,7 +207,8 @@ struct DisksScreen: View {
             ForEach(library.customs) { spec in
                 NavigationLink(value: spec.id) {
                     DiskCard(spec: spec, fragmentedRatio: library.fragmentedRatios[spec.id],
-                             state: model.history.state(of: spec.id))
+                             state: model.history.state(of: spec.id),
+                             isPlaying: model.playingDiskID == spec.id)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -182,13 +257,16 @@ struct DisksScreen: View {
 
     private func launch(_ kind: ScenarioKind) {
         let selection = ScenarioSelection.builtin(kind)
-        if model.selection == selection {
-            // Le même scénario, déjà entendu jusqu'au bout : on le relance.
+        // Relancer ce qu'on écoute déjà n'est pas le remplacer.
+        guard model.selection != selection else {
             if model.engine.isFinished { model.restart() }
-        } else {
-            model.select(selection)
+            play()
+            return
         }
-        play()
+        replacingPass {
+            model.select(selection)
+            play()
+        }
     }
 
     private func play() {
@@ -198,9 +276,36 @@ struct DisksScreen: View {
     }
 }
 
+extension DisksScreen {
+
+    /// Rouvrir le défilement du disque d'un bilan de journée, s'il en reste un.
+    ///
+    /// Le défilement survit à son plein écran mais pas au lancement de l'app :
+    /// un bilan relu le lendemain n'a plus de défilement à rouvrir, et le
+    /// bouton ne se montre pas plutôt que de repartir du jour 0.
+    func resumeLife(of record: PassRecord) -> (() -> Void)? {
+        guard record.kind == .day, let disk = record.disk,
+              let life = lives[disk.spec.id] else { return nil }
+        return { reviving = RevivedDisk(disk: disk, life: life) }
+    }
+}
+
+/// Un lancement en attente de confirmation : ce qu'il remplacerait, et ce
+/// qu'il fera si on le confirme.
+struct PendingLaunch {
+    let running: String
+    let start: () -> Void
+}
+
 /// Un disque dont on fait défiler la vie. Le plein écran en veut un
 /// identifiant, et un disque généré n'en porte pas.
+///
+/// L'élément porte **aussi le défilement**, au lieu de le laisser chercher
+/// dans un dictionnaire d'état : le contenu d'un `fullScreenCover` est capturé
+/// à la présentation, donc avec la valeur de l'écran d'avant la mutation. Le
+/// défilement venait d'y être rangé, et le plein écran s'ouvrait vide — noir.
 struct RevivedDisk: Identifiable {
     let disk: GeneratedDisk
+    let life: DiskLifeModel
     var id: String { disk.spec.id }
 }

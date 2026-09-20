@@ -12,9 +12,13 @@ simulateur (iPhone 17 Pro Max, iOS 26.5, build Debug de `a2af0e6`) le
 Revérifié une seconde fois le 20 septembre 2026 sur `ef6b676`, par lecture du
 code seule : entre les deux commits, `Sources/UI` n'a reçu que le renommage en
 Winchester et quatre durées mesurées dans `DefragToolChoice`, et lot 9 (`c069557`)
-n'a touché que le modèle, les tests et le README. Les huit constats tiennent,
-aucune des sept pistes n'a été prise ; les lignes citées sont celles de
-`ef6b676`. Rien n'a été corrigé ici.
+n'a touché que le modèle, les tests et le README. Les huit constats tenaient
+tous ; les lignes citées sont celles de `ef6b676`.
+
+**Depuis, le chantier 30 les a repris**, en trois lots sur la branche
+`parcours`. Chaque constat porte ci-dessous son état — *corrigé*, avec le lot
+qui l'a fait, ou *ouvert*. Le document reste celui de l'audit : il n'a pas été
+réécrit après coup, seulement annoté.
 
 Parcours rejoué : accueil → « Développeur, 1993 » → Défragmenter → UltraDefrag
 → passe entendue jusqu'au bout (2 min 31) → bilan → retour à la fiche et à
@@ -41,7 +45,7 @@ le retrouver rangé. C'est l'écart central de cet audit.
 
 ## 2. Constats, du plus grave au moins grave
 
-### 2.1 Un disque défragmenté ne le reste pas — *vu à l'écran*
+### 2.1 Un disque défragmenté ne le reste pas — *vu à l'écran* · **corrigé (lot B)**
 
 UltraDefrag sur « Développeur, 1993 » : 321 → 2 fichiers fragmentés. De retour
 sur la fiche, les tuiles disent toujours **16 % fragmentés**, et la carte est
@@ -51,14 +55,14 @@ ligne « UltraDefrag · 35 morceaux · 461 trous à la fin », tout en bas de la
 fiche, sous « Plus de détails ». Le disque rangé n'existe que derrière un
 bouton du bilan, « Démarrer ce disque rangé ».
 
-### 2.2 Tout s'évapore au relancement — *code*
+### 2.2 Tout s'évapore au relancement — *code* · **corrigé (lot B)**
 
 `SimulationModel.records` vit en mémoire, douze au plus
 (`SimulationModel.swift:50`). Seules les recettes de « Mes disques »
 survivent (`CustomDiskStore`). Au lancement suivant : ni historique, ni
 pourcentage sur les cartes, et la Passe revient sur la démo de démarrage.
 
-### 2.3 Le disque en cours n'est signalé nulle part hors de l'accueil — *vu à l'écran*
+### 2.3 Le disque en cours n'est signalé nulle part hors de l'accueil — *vu à l'écran* · **corrigé (lot C)**
 
 Pendant la défragmentation, puis pendant l'écoute du jour 13, la fiche du
 disque qu'on écoute n'a **ni bandeau de lecture ni aucun signe** : le
@@ -66,14 +70,14 @@ mini-lecteur n'est posé que sur la racine de la pile de l'onglet Disques
 (`DisksScreen.swift:62`), les écrans poussés en sont privés. Sur l'accueil, le
 bandeau est là, mais aucune carte ne porte « en écoute ».
 
-### 2.4 La Passe ne ramène pas au disque — *vu à l'écran*
+### 2.4 La Passe ne ramène pas au disque — *vu à l'écran* · **corrigé (lot C)**
 
 Le nom du disque est en titre de l'onglet Passe, et ne se touche pas. Pour
 retrouver la fiche, il faut deviner que l'onglet Disques a gardé sa pile. Le
 sélecteur de scénarios a disparu de l'écran ; `SimulationModel.selections`
 (`SimulationModel.swift:99`) et son cache n'ont plus de lecteur.
 
-### 2.5 La suite n'est proposée que par le bilan, et le bilan se perd — *code*
+### 2.5 La suite n'est proposée que par le bilan, et le bilan se perd — *code* · **corrigé en partie (lots B et C)**
 
 - La carte « Passe terminée » ne vit que tant que la passe est la courante :
   « Relancer » ou tout autre lancement la fait disparaître.
@@ -83,14 +87,14 @@ sélecteur de scénarios a disparu de l'écran ; `SimulationModel.selections`
 - Le bilan d'une journée n'offre rien (`PassReport.swift:120`, `EmptyView`),
   alors que son commentaire promet de « rouvrir » le défilement.
 
-### 2.6 Revivre repart toujours du jour 0 — *vu à l'écran*
+### 2.6 Revivre repart toujours du jour 0 — *vu à l'écran* · **corrigé (lot C)**
 
 Avancé jusqu'au jour 12, « Écouter le jour 13 », puis Revivre rouvert :
 « JOUR 0 / 730 », « Écouter le jour 1 ». Le `DiskLifeModel` naît avec le plein
 écran et meurt avec lui. Le commentaire « le défilement reprendra ensuite au
 lendemain » (`SimulationModel.swift:168`) décrit ce qui ne se passe pas.
 
-### 2.7 L'assistant — *code*
+### 2.7 L'assistant — *code* · **corrigé (lot C)**
 
 - « Fermer » après avoir fabriqué un brouillon non enregistré le perd sans
   demander.
@@ -99,12 +103,12 @@ lendemain » (`SimulationModel.swift:168`) décrit ce qui ne se passe pas.
   montre le brouillon (`DiskLibraryView` lit `model.selected`, pas l'`id` de
   la fiche).
 
-### 2.8 Une passe en remplace une autre sans prévenir — *code*
+### 2.8 Une passe en remplace une autre sans prévenir — *code* · **corrigé (lot C)**
 
 Un seul moteur : lancer une démo ou un disque pendant une passe la remplace,
 sans confirmation.
 
-## 3. Ce que l'écran dit du modèle
+## 3. Ce que l'écran dit du modèle — **corrigé (lot A)**
 
 Aucun nombre n'est faux ; ce sont les libellés qui ne disent pas ce qu'ils
 comptent. Diagnostic croisé avec la session du chantier `experts`.
@@ -127,18 +131,21 @@ en Mio alors que les fiches d'époque annoncent des mégaoctets décimaux, le
 disque simulé est 5 % plus grand que son étiquette — le décimal à l'affichage
 le montrerait.
 
-## 4. Détails vus en passant
+## 4. Détails vus en passant — **corrigés, sauf un**
 
-- La tuile « Mo déplacés » dit encore « jusqu'ici » une fois la passe finie.
-- « Répertoires » est dans la légende de la Passe, mais aucune case jaune ne se
-  voit sur la carte en pouce, et la légende de la fiche ne la nomme pas : la
-  catégorie du lot 4 n'a toujours pas été vue sur une carte.
-- Au choix de l'outil, l'outil d'époque est présélectionné avec sa durée la
+- ~~La tuile « Mo déplacés » dit encore « jusqu'ici » une fois la passe
+  finie.~~ Lot A : « en tout » dès que le plan est rendu.
+- « Répertoires » est dans la légende de la Passe, et **la case jaune se voit
+  bien** sur la carte en pouce — constat erratum du 20 septembre 2026, vérifié
+  sur « Développeur, 1993 » en UltraDefrag. Ce qui tient : la légende de la
+  fiche ne nomme toujours pas la catégorie, là où celle de la Passe le fait.
+- *(ouvert)* Au choix de l'outil, l'outil d'époque est présélectionné avec sa durée la
   plus longue en tête (« de 6 min à 1 h » pour le défragmenteur Windows 95 sur
   FAT, `DefragToolChoice.swift:78`) : parmi les outils non avancés proposés sur
   ce format, seul le Rangement intelligent est plus long (« de 8 min à 1 h »),
   et les deux plus rapides sont plus bas dans la liste.
-- Instruments : « max 1,8 → 1,2 Mo/s » sous le débit ne se lit pas seul.
+- ~~Instruments : « max 1,8 → 1,2 Mo/s » sous le débit ne se lit pas seul.~~
+  Lot A : « plafond 1,8 Mo/s au bord, 1,2 au centre ».
 
 ## 5. Ce qui marche
 
@@ -152,7 +159,11 @@ le montrerait.
 - Les écrans du lot 7 (choix de l'outil, Instruments) : XP grisé avec sa
   raison, « Où passe le temps » et « Distance des seeks » lisibles.
 
-## 6. Pistes, par priorité
+## 6. Pistes, par priorité — six sur sept prises
+
+Les pistes 1 à 7 ont été traitées par le chantier 30, à l'exception de la
+présélection de l'outil (§4), laissée ouverte. Le détail lot par lot est dans
+`LEDGER-UI.md`.
 
 1. **Donner un état au disque**, au moins pour la session : « Rangé par
    UltraDefrag · il y a 3 min » sur la carte et la fiche, et une bascule
@@ -172,7 +183,14 @@ le montrerait.
 ## 7. Laissé ouvert
 
 - Mes disques, Installer, Démarrer, la comparaison de deux passes et le
-  retour d'arrière-plan n'ont pas été rejoués à l'écran.
-- VoiceOver n'a pas été passé sur le parcours.
-- Le constat 2.2 (bilans perdus au relancement) est lu dans le code, pas
-  observé.
+  retour d'arrière-plan n'ont pas été rejoués à l'écran. **Toujours vrai** : le
+  chantier 30 a rejoué la défragmentation et le cycle de relancement, pas ceux-là.
+- VoiceOver n'a pas été passé sur le parcours. **Toujours vrai.**
+- ~~Le constat 2.2 (bilans perdus au relancement) est lu dans le code, pas
+  observé.~~ Observé depuis, en le corrigeant : l'app fermée et réinstallée,
+  l'état du disque est sur sa carte (lot B).
+- **Nouveau** : ce que le lot C a changé à la navigation — bandeau sur les
+  écrans poussés, marque « en écoute », titre de la Passe, reprise de Revivre,
+  les deux gardes de l'assistant et du remplacement de passe — n'a été vérifié
+  à l'écran que sur le parcours de la défragmentation. Le reste tient sur le
+  code et la compilation.

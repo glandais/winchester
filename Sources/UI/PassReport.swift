@@ -13,12 +13,16 @@ struct PassReportSheet: View {
     /// La passe vient d'être lancée : la feuille se ferme, l'onglet Passe
     /// s'ouvre.
     let onLaunched: () -> Void
+    /// Rouvre le défilement du disque, là où il en est. Absent là où il n'y a
+    /// pas de défilement à rouvrir — depuis l'onglet Passe, par exemple.
+    var onResumeLife: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            PassReportScreen(model: model, record: record, onLaunched: launched)
+            PassReportScreen(model: model, record: record, onLaunched: launched,
+                             onResumeLife: onResumeLife.map { resume in { dismiss(); resume() } })
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Fermer") { dismiss() }
@@ -40,6 +44,8 @@ private struct PassReportScreen: View {
     @ObservedObject var model: SimulationModel
     let record: PassRecord
     let onLaunched: () -> Void
+    /// Rouvre le défilement, quand l'écran d'où vient le bilan en a un.
+    var onResumeLife: (() -> Void)?
 
     var body: some View {
         ZStack {
@@ -115,9 +121,16 @@ private struct PassReportScreen: View {
         VStack(spacing: 10) {
             if let disk = record.disk {
                 if record.kind == .day {
-                    // Le défilement a la main sur la suite : le bilan ne
-                    // propose rien d'autre que de le rouvrir.
-                    EmptyView()
+                    // Le défilement a la main sur la suite, et c'est bien lui
+                    // que le bilan propose : il n'offrait rien du tout, alors
+                    // que son commentaire promettait de le rouvrir
+                    // (`UX_REVIEW.md` §2.5).
+                    if let onResumeLife {
+                        Button(action: onResumeLife) {
+                            actionLabel("Reprendre la vie du disque",
+                                        systemImage: "clock.arrow.circlepath", primary: true)
+                        }
+                    }
                 } else if record.installed != nil {
                     Button {
                         model.loadInstalledBoot(from: record)
