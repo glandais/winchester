@@ -7,8 +7,14 @@ que l'écran en dit.
 
 Méthode : lecture du code de `develop`, puis le parcours rejoué sur le
 simulateur (iPhone 17 Pro Max, iOS 26.5, build Debug de `a2af0e6`) le
-19 septembre 2026. Tous les constats ont été revérifiés sur `d72aa81`
-(lot 8) : ils tiennent, et les lignes citées sont celles de ce commit. Rien n'a été corrigé ici.
+19 septembre 2026. Tous les constats ont été revérifiés sur `d72aa81` (lot 8).
+
+Revérifié une seconde fois le 20 septembre 2026 sur `ef6b676`, par lecture du
+code seule : entre les deux commits, `Sources/UI` n'a reçu que le renommage en
+Winchester et quatre durées mesurées dans `DefragToolChoice`, et lot 9 (`c069557`)
+n'a touché que le modèle, les tests et le README. Les huit constats tiennent,
+aucune des sept pistes n'a été prise ; les lignes citées sont celles de
+`ef6b676`. Rien n'a été corrigé ici.
 
 Parcours rejoué : accueil → « Développeur, 1993 » → Défragmenter → UltraDefrag
 → passe entendue jusqu'au bout (2 min 31) → bilan → retour à la fiche et à
@@ -82,7 +88,7 @@ sélecteur de scénarios a disparu de l'écran ; `SimulationModel.selections`
 Avancé jusqu'au jour 12, « Écouter le jour 13 », puis Revivre rouvert :
 « JOUR 0 / 730 », « Écouter le jour 1 ». Le `DiskLifeModel` naît avec le plein
 écran et meurt avec lui. Le commentaire « le défilement reprendra ensuite au
-lendemain » (`SimulationModel.swift:171`) décrit ce qui ne se passe pas.
+lendemain » (`SimulationModel.swift:168`) décrit ce qui ne se passe pas.
 
 ### 2.7 L'assistant — *code*
 
@@ -105,10 +111,10 @@ comptent. Diagnostic croisé avec la session du chantier `experts`.
 
 | Vu à l'écran | Cause | Où |
 |---|---|---|
-| Phase 4 « Les derniers enregistrements de MFT et la bitmap du volume » sur un **FAT16** | Libellé en dur, sans condition de format — **vrai défaut**, sur les douze volumes FAT | `UltraDefragStrategy.swift:147`, `WindowsXPStrategy.swift:153`, `FragmentMergeStrategy.swift:91` |
+| Phase 4 « Les derniers enregistrements de MFT et la bitmap du volume » sur un **FAT16** | Libellé en dur, sans condition de format — **vrai défaut**, sur les douze volumes FAT | `UltraDefragStrategy.swift:147`, `WindowsXPStrategy.swift:153`, `FragmentMergeStrategy.swift:92` |
 | Fiche 4 016 fichiers, bilan « 4 027 fichiers » | Le bilan compte des éléments, répertoires compris (lot 4) | `GeneratedVolume.swift` |
 | Fiche 16 % fragmentés, bilan « 8,0 % » | Rapporté aux fichiers fragmentables d'un côté, à tous de l'autre | `AllocationMetrics` |
-| Fiche 210 Mo, Passe « 220 Mo · FAT16 » | Mo de 2²⁰ d'un côté, de 10⁶ de l'autre | `FrenchFormat.megabytes` (`Theme.swift:153`) contre `VolumeLayout.swift:175` |
+| Fiche 210 Mo, Passe « 220 Mo · FAT16 » | Mo de 2²⁰ d'un côté, de 10⁶ de l'autre | `FrenchFormat.megabytes` (`Theme.swift:153`) contre `VolumeLayout.swift:173` |
 | Passe « 49 Mo déplacés », bilan « 47 Mo » pour la même passe | Idem | `PassScreen.swift:345` et `:388` contre `FrenchFormat.megabytes` |
 | Débit des Instruments | ÷ 10⁶ à la main | `InstrumentsScreen.swift:392`, `:402` |
 
@@ -127,8 +133,11 @@ le montrerait.
 - « Répertoires » est dans la légende de la Passe, mais aucune case jaune ne se
   voit sur la carte en pouce, et la légende de la fiche ne la nomme pas : la
   catégorie du lot 4 n'a toujours pas été vue sur une carte.
-- Au choix de l'outil, l'outil d'époque est présélectionné avec « de 8 min à
-  1 h » : c'est le plus long qu'on propose d'abord.
+- Au choix de l'outil, l'outil d'époque est présélectionné avec sa durée la
+  plus longue en tête (« de 6 min à 1 h » pour le défragmenteur Windows 95 sur
+  FAT, `DefragToolChoice.swift:78`) : parmi les outils non avancés proposés sur
+  ce format, seul le Rangement intelligent est plus long (« de 8 min à 1 h »),
+  et les deux plus rapides sont plus bas dans la liste.
 - Instruments : « max 1,8 → 1,2 Mo/s » sous le débit ne se lit pas seul.
 
 ## 5. Ce qui marche
