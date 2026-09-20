@@ -77,6 +77,9 @@ extension ProfileSpec {
 struct DiskGallery: View {
 
     @ObservedObject var model: DiskLibraryModel
+    /// Ce que chaque disque garde de ce qu'on lui a fait, d'un lancement à
+    /// l'autre : c'est ce que porte la dernière ligne d'une carte.
+    @ObservedObject var history: PassHistory
 
     @State private var year: Int?
     @State private var persona: Persona?
@@ -112,7 +115,8 @@ struct DiskGallery: View {
             LazyVStack(spacing: 10) {
                 ForEach(shown, id: \.id) { spec in
                     NavigationLink(value: spec.id) {
-                        DiskCard(spec: spec, fragmentedRatio: model.fragmentedRatios[spec.id])
+                        DiskCard(spec: spec, fragmentedRatio: model.fragmentedRatios[spec.id],
+                                 state: history.state(of: spec.id))
                     }
                     .buttonStyle(.plain)
                 }
@@ -153,6 +157,8 @@ private struct FilterChip: View {
 struct DiskCard: View {
     let spec: ProfileSpec
     let fragmentedRatio: Double?
+    /// Ce qu'on a déjà fait à ce disque, gardé d'un lancement à l'autre.
+    var state: DiskState?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -179,7 +185,12 @@ struct DiskCard: View {
                         .foregroundStyle(Theme.text.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let fragmentedRatio {
+                // L'état du disque prime sur son taux de départ : c'est ce
+                // qu'on lui a fait qu'on vient chercher en revenant, et la
+                // carte ne disait rien jusqu'ici (`UX_REVIEW.md` §2.1).
+                if let digest = state?.tidied ?? state?.last {
+                    DiskStateBadge(digest: digest)
+                } else if let fragmentedRatio {
                     Text("déjà généré · \(FrenchFormat.percent(fragmentedRatio)) fragmentés")
                         .font(.dynamic(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.read)
@@ -200,6 +211,8 @@ struct DiskCard: View {
 struct DiskDetailScreen: View {
 
     @ObservedObject var library: DiskLibraryModel
+    /// Ce que ce disque garde de ce qu'on lui a fait, d'un lancement à l'autre.
+    @ObservedObject var history: PassHistory
     let id: String
     /// Les passes entendues sur ce disque, et le bilan qu'on en ouvre.
     var records: [PassRecord] = []
@@ -214,8 +227,10 @@ struct DiskDetailScreen: View {
             Theme.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    DiskLibraryView(model: library, onHandover: onHandover)
-                    if !records.isEmpty { history }
+                    DiskLibraryView(model: library, onHandover: onHandover,
+                                    state: history.state(of: id),
+                                    tidyMap: tidied?.map, tidyDisk: tidied?.disk)
+                    if !history.state(of: id).isEmpty { heard }
                 }
                 .padding(16)
             }
@@ -244,8 +259,8 @@ struct DiskDetailScreen: View {
         .onAppear { library.open(id) }
     }
 
-    private func icon(of record: PassRecord) -> String {
-        switch record.kind {
+    private func icon(of digest: PassDigest) -> String {
+        switch digest.kind {
         case .defrag:  return "waveform"
         case .boot:    return "power"
         case .install: return "opticaldisc"
@@ -253,56 +268,93 @@ struct DiskDetailScreen: View {
         }
     }
 
-    private func title(of record: PassRecord) -> String {
-        switch record.kind {
-        case .defrag:  return record.toolLabel
-        case .install: return "Installation de \(record.toolLabel)"
-        case .boot:    return record.rangedBy.map { "Démarrage, rangé par \($0)" } ?? "Démarrage"
-        case .day:     return "Journée d'usage, \(record.toolLabel.lowercased())"
+    private func title(of digest: PassDigest) -> String {
+        switch digest.kind {
+        case .defrag:  return digest.toolLabel
+        case .install: return "Installation de \(digest.toolLabel)"
+        case .boot:    return "Démarrage"
+        case .day:     return "Journée d'usage, \(digest.toolLabel.lowercased())"
         }
+    }
+
+    /// Le disque tel que le dernier outil l'a laissé pendant cette session, et
+    /// sa carte : de quoi montrer l'avant et l'après sur la fiche.
+    ///
+    /// Les deux viennent du bilan complet, qui meurt avec la session : au
+    /// relancement il ne reste que la ligne d'état, et la bascule disparaît.
+    /// Le disque rangé se refait à chaque passage — reposer les extents d'un
+    /// volume de quelques milliers de fichiers coûte quelques millisecondes,
+    /// et le garder demanderait de le porter dans l'état d'une vue.
+    private var tidied: (map: (grid: MapGrid, shades: [ClusterShade]), disk: GeneratedDisk)? {
+        guard let record = records.last(where: {
+            $0.kind == .defrag && $0.diskID == id && $0.endMap != nil && !$0.arrangement.isEmpty
+        }), let map = record.endMap, let original = record.disk else { return nil }
+        let places = Dictionary(record.arrangement.map { ($0.id, $0.extents) },
+                                uniquingKeysWith: { _, last in last })
+        return (map, original.rearranged(extents: places))
     }
 
     /// Ce qu'on a déjà écouté de ce disque, de la plus récente à la plus
     /// ancienne passe.
-    private var history: some View {
+    ///
+    /// La liste est celle des **résumés**, qui survivent au relancement ; le
+    /// bilan complet, lui, ne vit que le temps de la session qui l'a produit.
+    /// Une ligne dont le bilan est encore là s'ouvre ; les plus anciennes
+    /// disent ce qu'elles ont donné sans prétendre le remontrer.
+    private var heard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("PASSES ENTENDUES")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
-            ForEach(records.reversed()) { record in
+            ForEach(history.state(of: id).passes) { digest in
+                let record = records.first { $0.id == digest.id && $0.kind != .boot }
                 Button {
-                    if record.kind != .boot { onOpenRecord(record) }
+                    if let record { onOpenRecord(record) }
                 } label: {
-                    HStack {
-                        Image(systemName: icon(of: record))
-                            .foregroundStyle(Theme.dim)
-                            .frame(width: 18)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(title(of: record))
-                                .font(.dynamic(size: 13))
-                                .foregroundStyle(Theme.text)
-                            if let after = record.after {
-                                Text("\(FrenchFormat.integer(after.fragments)) morceaux · \(FrenchFormat.integer(after.freeHoles)) trous à la fin")
-                                    .font(.dynamic(size: 10, design: .monospaced))
-                                    .foregroundStyle(Theme.dim)
-                            }
-                        }
-                        Spacer()
-                        Text(FrenchFormat.duration(record.duration))
-                            .font(.dynamic(size: 12, design: .monospaced))
-                            .foregroundStyle(Theme.dim)
-                        if record.kind != .boot {
-                            Image(systemName: "chevron.right")
-                                .font(.dynamic(size: 11, weight: .semibold))
-                                .foregroundStyle(Theme.dim)
-                        }
-                    }
-                    .contentShape(Rectangle())
+                    row(digest, openable: record != nil)
                 }
                 .buttonStyle(.plain)
+                // Pas `disabled` : il grise la ligne entière, et une passe
+                // d'avant-hier n'est pas une commande indisponible — c'est un
+                // fait, qui se lit. Seul le chevron dit ce qui s'ouvre.
+                .allowsHitTesting(record != nil)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
+    }
+
+    private func row(_ digest: PassDigest, openable: Bool) -> some View {
+        HStack {
+            Image(systemName: icon(of: digest))
+                .foregroundStyle(Theme.dim)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title(of: digest))
+                    .font(.dynamic(size: 13))
+                    .foregroundStyle(Theme.text)
+                Text(subtitle(of: digest))
+                    .font(.dynamic(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.dim)
+            }
+            Spacer()
+            Text(FrenchFormat.duration(digest.duration))
+                .font(.dynamic(size: 12, design: .monospaced))
+                .foregroundStyle(Theme.dim)
+            if openable {
+                Image(systemName: "chevron.right")
+                    .font(.dynamic(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.dim)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    /// Ce que la passe a donné, et quand : la date est ce qui manquait pour
+    /// s'y retrouver entre deux passes du même outil.
+    private func subtitle(of digest: PassDigest) -> String {
+        let when = FrenchFormat.sinceNow(digest.finishedAt)
+        guard let fragments = digest.fragmentsAfter, let holes = digest.holesAfter else { return when }
+        return "\(FrenchFormat.integer(fragments)) morceaux · \(FrenchFormat.integer(holes)) trous · \(when)"
     }
 }

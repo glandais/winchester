@@ -51,7 +51,7 @@ struct DisksScreen: View {
                             .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                             .padding(.top, 6)
-                        DiskGallery(model: library)
+                        DiskGallery(model: library, history: model.history)
                     }
                     .padding(16)
                 }
@@ -93,7 +93,7 @@ struct DisksScreen: View {
                 Text("Son histoire est perdue ; les disques d'époque ne sont pas touchés.")
             }
             .navigationDestination(for: String.self) { id in
-                DiskDetailScreen(library: library, id: id,
+                DiskDetailScreen(library: library, history: model.history, id: id,
                                  records: model.records.filter { $0.diskID == id },
                                  onOpenRecord: { report = $0 },
                                  onEdit: { wizard = $0 }) { disk, activity, strategy in
@@ -132,7 +132,8 @@ struct DisksScreen: View {
             }
             ForEach(library.customs) { spec in
                 NavigationLink(value: spec.id) {
-                    DiskCard(spec: spec, fragmentedRatio: library.fragmentedRatios[spec.id])
+                    DiskCard(spec: spec, fragmentedRatio: library.fragmentedRatios[spec.id],
+                             state: model.history.state(of: spec.id))
                 }
                 .buttonStyle(.plain)
                 .contextMenu {

@@ -38,6 +38,10 @@ final class SimulationModel: ObservableObject {
     /// Les passes entendues jusqu'au bout, dans l'ordre. C'est ce que lisent
     /// le bilan et la comparaison.
     @Published private(set) var records: [PassRecord] = []
+    /// Ce qui survit au relancement : le résumé de chaque passe, et par lui
+    /// l'état des disques. Les `records` ci-dessus tiennent le disque entier et
+    /// meurent avec la session ; l'historique, lui, tient dans un fichier.
+    let history: PassHistory
     /// Numéro de la passe en cours ; un bilan le porte, pour qu'on sache qu'il
     /// parle d'elle.
     private(set) var passNumber = 0
@@ -59,7 +63,8 @@ final class SimulationModel: ObservableObject {
     /// La carte de la passe : le volume à ranger, ou celui qu'on installe.
     var mapSource: (partition: PartitionGeometry, initialRuns: [MapRun])? { scenario.map }
 
-    init() {
+    init(history: PassHistory = PassHistory()) {
+        self.history = history
         // La démo de démarrage tourne sur un disque du catalogue : il se
         // fabrique. Quelques dizaines de millisecondes pour un volume de 1999,
         // payées une fois au lancement — la galerie, elle, fabrique hors du fil
@@ -296,6 +301,9 @@ final class SimulationModel: ObservableObject {
         record.disk = disk
         records.append(record)
         if records.count > Self.recordLimit { records.removeFirst(records.count - Self.recordLimit) }
+        // Le bilan complet meurt avec la session ; son résumé lui survit, et
+        // c'est lui qui donnera son état au disque au prochain lancement.
+        history.record(record)
     }
 
     private var recordKind: PassRecord.Kind {

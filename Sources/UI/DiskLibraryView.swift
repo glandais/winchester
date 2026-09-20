@@ -16,10 +16,26 @@ struct DiskLibraryView: View {
     /// empêche normalement d'atteindre.
     let onHandover: DiskHandover
 
+    /// Ce qu'on a déjà fait à ce disque, gardé d'un lancement à l'autre.
+    var state = DiskState()
+    /// La carte du disque **rangé**, quand une passe de cette session-ci l'a
+    /// produite. Elle ne survit pas à la fermeture — un bilan garde le volume
+    /// entier —, et c'est pourquoi la bascule disparaît au relancement là où
+    /// la ligne d'état, elle, reste.
+    var tidyMap: (grid: MapGrid, shades: [ClusterShade])?
+    /// Le disque tel que l'outil l'a laissé : ses tuiles, sous la carte rangée.
+    ///
+    /// Sans lui, la bascule montrerait la carte d'après au-dessus des chiffres
+    /// d'avant — la moitié de l'écart que cette fiche est censée combler.
+    var tidyDisk: GeneratedDisk?
+
     @State private var handoverFailure: String?
     @State private var showsTools = false
     @State private var showsFullScreenMap = false
     @State private var showsDetails = false
+    /// La carte montrée : celle du volume vieilli, ou celle qu'un outil a
+    /// laissée. Revient d'elle-même à l'origine quand la seconde n'existe pas.
+    @State private var showsTidied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -30,8 +46,13 @@ struct DiskLibraryView: View {
             case let .running(fraction, day, fileCount, fill):
                 progress(fraction: fraction, day: day, fileCount: fileCount, fill: fill)
             case let .ready(disk):
+                // Ce qu'on lui a fait, avant ce qu'il est : c'est la première
+                // chose qu'on vient chercher en revenant sur un disque.
+                if let digest = state.tidied ?? state.last {
+                    DiskStateBadge(digest: digest, compact: false)
+                }
                 map
-                metrics(of: disk)
+                metrics(of: shownDisk(or: disk))
                 explanationCard(for: disk)
                 handover(for: disk)
                 details(of: disk)
@@ -180,10 +201,34 @@ struct DiskLibraryView: View {
 
     // MARK: - Résultat
 
+    /// La carte affichée : celle du volume tel que son histoire l'a laissé, ou
+    /// celle qu'un outil vient d'en faire.
+    private var shownMap: (grid: MapGrid, shades: [ClusterShade]) {
+        guard showsTidied, let tidyMap else { return (model.grid, model.shades) }
+        return tidyMap
+    }
+
+    /// Le disque dont on lit les chiffres : celui d'origine, ou le rangé quand
+    /// la bascule est dessus. Les deux vont ensemble — carte et tuiles.
+    private func shownDisk(or original: GeneratedDisk) -> GeneratedDisk {
+        showsTidied ? (tidyDisk ?? original) : original
+    }
+
     private var map: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // La bascule n'apparaît que si un outil a rangé ce disque pendant
+            // cette session : la carte du disque rangé ne survit pas à la
+            // fermeture, seule sa ligne d'état reste.
+            if tidyMap != nil {
+                Picker("Carte du volume", selection: $showsTidied) {
+                    Text("D'origine").tag(false)
+                    Text("Rangé").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Carte du volume, d'origine ou rangé")
+            }
             ZStack(alignment: .topTrailing) {
-                ClusterMapView(grid: model.grid, shades: model.shades)
+                ClusterMapView(grid: shownMap.grid, shades: shownMap.shades)
                     .contentShape(Rectangle())
                     .onTapGesture { showsFullScreenMap = true }
                 // Le plein écran vaut ici autant que pour une passe : c'est

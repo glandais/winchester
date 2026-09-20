@@ -141,6 +141,27 @@ enum FrenchFormat {
         FrenchUnits.megabytes(bytes, smallInKilobytes: smallInKilobytes)
     }
 
+    /// Depuis quand, en français courant : « à l'instant », « il y a 3 min »,
+    /// « hier », puis la date en toutes lettres au-delà d'une semaine.
+    ///
+    /// Écrit à la main comme le reste de ce fichier : `RelativeDateTimeFormatter`
+    /// dirait « il y a 3 minutes » là où une carte n'a la place que de « 3 min »,
+    /// et suivrait la locale de l'appareil alors que toute l'application est en
+    /// français.
+    static func sinceNow(_ date: Date, now: Date = Date()) -> String {
+        let minutes = Int(now.timeIntervalSince(date) / 60)
+        if minutes < 1 { return "à l'instant" }
+        if minutes < 60 { return "il y a \(minutes)\u{00A0}min" }
+        let hours = minutes / 60
+        if hours < 24 { return "il y a \(hours)\u{00A0}h" }
+        let days = hours / 24
+        if days == 1 { return "hier" }
+        if days < 7 { return "il y a \(days)\u{00A0}jours" }
+        let civil = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: date)
+        guard let year = civil.year, let month = civil.month, let day = civil.day else { return "plus tôt" }
+        return "le " + Self.date(CivilDate(year: year, month: month, day: day))
+    }
+
     /// Un temps écouté : « 42 s », « 12 min 41 », « 1 h 07 ».
     static func duration(_ seconds: Double) -> String {
         let total = max(Int(seconds.rounded()), 0)
