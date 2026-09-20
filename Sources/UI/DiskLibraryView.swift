@@ -212,8 +212,13 @@ struct DiskLibraryView: View {
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 3),
                          spacing: 9) {
             MetricTile(label: "Fichiers", value: FrenchFormat.integer(m.fileCount))
+            // Rapporté aux seuls fichiers fragmentables, quand la Passe et les
+            // Instruments le rapportent à tous les éléments : les deux taux
+            // sont justes et diffèrent, alors la tuile dit sur quoi elle porte
+            // (`UX_REVIEW.md` §3).
             MetricTile(label: "Fragmentés",
                        value: FrenchFormat.percent(m.fragmentedRatioAmongFragmentable),
+                       note: "des fragmentables",
                        accent: true)
             MetricTile(label: "Morceaux/f.", value: FrenchFormat.decimal(m.meanExtentsPerFile, digits: 2))
             MetricTile(label: "Trous", value: FrenchFormat.integer(m.freeRunCount))
@@ -290,7 +295,7 @@ struct DiskLibraryView: View {
             }
             return "NTFS choisit le trou qui convient plutôt que le premier venu, et tient "
                 + "les données à l'écart de sa zone MFT : seuls "
-                + "\(FrenchFormat.percent(m.fragmentedRatioAmongFragmentable)) des fichiers sont en "
+                + "\(FrenchFormat.percent(m.fragmentedRatioAmongFragmentable)) des fichiers fragmentables sont en "
                 + "morceaux. Ceux-là le sont beaucoup — le pire en compte "
                 + "\(FrenchFormat.integer(m.maxExtentsPerFile)) —, et ce sont eux qui portent la "
                 + "moyenne à \(FrenchFormat.decimal(m.meanExtentsPerFile, digits: 2)) morceaux par fichier."
@@ -378,6 +383,8 @@ struct DiskLibraryView: View {
 private struct MetricTile: View {
     let label: String
     let value: String
+    /// Ce sur quoi la valeur porte, quand un autre écran compte autrement.
+    var note: String?
     var accent = false
 
     var body: some View {
@@ -392,6 +399,13 @@ private struct MetricTile: View {
                 .foregroundStyle(accent ? Theme.read : Theme.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+            if let note {
+                Text(note)
+                    .font(.dynamic(size: 9, design: .monospaced))
+                    .foregroundStyle(Theme.dim)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 11)

@@ -341,9 +341,11 @@ struct SimulatorScreen: View {
         let before = playback.before
         return VStack(alignment: .leading, spacing: 10) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
-                StatTile(label: "Mo déplacés",
-                         value: FrenchFormat.integer(Int(model.movedBytes / 1_000_000)),
-                         unit: "jusqu'ici")
+                // « jusqu'ici » ne se dit que tant que la passe court : une
+                // fois le plan rendu, le compteur est définitif.
+                StatTile(label: "Déplacé",
+                         value: FrenchFormat.megabytes(UInt64(max(model.movedBytes, 0))),
+                         unit: plan == nil ? "jusqu'ici" : "en tout")
                 StatTile(label: "Seek moyen",
                          value: FrenchFormat.integer(model.totals.averageSeekDistance),
                          unit: "cyl.", why: .seekLaw)
@@ -354,10 +356,16 @@ struct SimulatorScreen: View {
                          value: plan.map { FrenchFormat.integer($0.evacuations) } ?? "—",
                          unit: plan == nil ? "au bilan" : "au total", why: .evacuations)
             }
-            Text("Au départ : \(FrenchFormat.integer(before.fileCount)) fichiers, "
+            // « éléments » et non « fichiers » : depuis le lot 4 les répertoires
+            // sont des occupants comme les autres, et ce compteur les inclut —
+            // d'où les onze de plus que la fiche du disque (`UX_REVIEW.md` §3).
+            // Le taux, lui, est rapporté à tout le catalogue, quand la fiche le
+            // rapporte aux seuls fichiers fragmentables : le dire, les deux
+            // nombres se lisent côte à côte.
+            Text("Au départ : \(FrenchFormat.integer(before.fileCount)) éléments, "
                  + "\(FrenchFormat.percent(before.fragmentedRatio)) fragmentés, "
                  + "\(FrenchFormat.integer(before.freeHoles)) trous dans l'espace libre."
-                 + (plan.map { " À l'arrivée : \(FrenchFormat.integer($0.after.fragmentedFiles)) fichiers fragmentés, "
+                 + (plan.map { " À l'arrivée : \(FrenchFormat.integer($0.after.fragmentedFiles)) éléments fragmentés, "
                      + "\(FrenchFormat.integer($0.after.freeHoles)) trous." } ?? ""))
                 .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
@@ -384,9 +392,9 @@ struct SimulatorScreen: View {
                 StatTile(label: "Fichiers posés",
                          value: FrenchFormat.integer(placed),
                          unit: "sur \(FrenchFormat.integer(install.files))")
-                StatTile(label: "Mo écrits",
-                         value: FrenchFormat.integer(Int(model.movedBytes / 1_000_000)),
-                         unit: "jusqu'ici")
+                StatTile(label: "Écrit",
+                         value: FrenchFormat.megabytes(UInt64(max(model.movedBytes, 0))),
+                         unit: finished ? "en tout" : "jusqu'ici")
                 StatTile(label: "Source", value: install.medium, unit: "le système")
                 StatTile(label: "Redémarrages",
                          value: FrenchFormat.integer(install.reboots),

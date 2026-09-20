@@ -69,6 +69,22 @@ struct PhaseDescriptor: Identifiable {
     let detail: String
 }
 
+/// Ce qu'une phase de validation écrit vraiment, selon le format.
+///
+/// Sur NTFS, l'enregistrement de MFT du fichier et `$Bitmap` ; sur FAT, les
+/// deux copies de la table d'allocation et l'entrée de répertoire. Écrit ici
+/// une fois pour les trois outils qui le disent.
+extension PhaseDescriptor {
+
+    static func commit(on format: VolumeFormat,
+                       label: String = "Écriture des métadonnées") -> PhaseDescriptor {
+        PhaseDescriptor(id: "commit", label: label,
+                        detail: format.isFAT
+                            ? "Les deux copies de la table d'allocation et les entrées de répertoire"
+                            : "Les derniers enregistrements de MFT et la bitmap du volume")
+    }
+}
+
 struct VolumeStats {
     let fill: Double
     let fragmentedFiles: Int

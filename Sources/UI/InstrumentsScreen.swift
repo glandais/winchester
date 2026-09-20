@@ -91,8 +91,11 @@ struct InstrumentsScreen: View {
                            color: Theme.read)
             InstrumentTile(label: "Débit",
                            value: FrenchFormat.decimal(window.megabytesLastSecond, digits: 1) + "\u{00A0}Mo/s",
-                           detail: "max \(FrenchFormat.decimal(geometry.outerSustainedMBs, digits: 1)) → "
-                               + "\(FrenchFormat.decimal(geometry.innerSustainedMBs, digits: 1)) Mo/s",
+                           // « max 1,8 → 1,2 Mo/s » ne se lisait pas seul : la
+                           // flèche est celle du bord vers le centre du plateau,
+                           // où les pistes sont plus courtes (`UX_REVIEW.md` §4).
+                           detail: "plafond \(FrenchFormat.decimal(geometry.outerSustainedMBs, digits: 1)) Mo/s au bord, "
+                               + "\(FrenchFormat.decimal(geometry.innerSustainedMBs, digits: 1)) au centre",
                            series: window.megabytesPerSecond,
                            color: Theme.write)
             InstrumentTile(label: "Seek moyen",
@@ -287,7 +290,10 @@ struct InstrumentsScreen: View {
             .monospacedDigit()
         }
         return VStack(alignment: .leading, spacing: 10) {
-            row("Fichiers fragmentés",
+            // Le taux entre parenthèses est celui de tout le catalogue,
+            // répertoires compris ; la fiche du disque affiche celui des
+            // fragmentables, plus élevé.
+            row("Éléments fragmentés",
                 "\(FrenchFormat.integer(before.fragmentedFiles)) (\(FrenchFormat.percent(before.fragmentedRatio)))",
                 after.map { "\(FrenchFormat.integer($0.fragmentedFiles)) (\(FrenchFormat.percent($0.fragmentedRatio)))" })
             row("Morceaux à recoller",
@@ -389,7 +395,7 @@ private struct RecentActivity {
             if lastSecond.contains(bucket.index) {
                 requestsLastSecond += bucket.requests
                 readsLastSecond += bucket.detail.readRequests
-                megabytesLastSecond += Double(bucket.bytes) / 1_000_000
+                megabytesLastSecond += FrenchUnits.megabytesPerSecond(Double(bucket.bytes))
             }
             let slot = seconds - 1 - (current - Int(bucket.start))
             guard slot >= 0 && slot < seconds else { continue }
@@ -399,7 +405,7 @@ private struct RecentActivity {
             distance[slot] += bucket.seekDistance
         }
         requestsPerSecond = requests.map(Double.init)
-        megabytesPerSecond = bytes.map { Double($0) / 1_000_000 }
+        megabytesPerSecond = bytes.map { FrenchUnits.megabytesPerSecond(Double($0)) }
         seeksPerSecond = seeks.map(Double.init)
         averageSeekPerSecond = zip(distance, seeks).map { $1 > 0 ? Double($0) / Double($1) : 0 }
     }

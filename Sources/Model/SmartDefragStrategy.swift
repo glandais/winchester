@@ -50,18 +50,23 @@ struct SmartDefragStrategy: DefragStrategy, BootLayoutConsumer {
         format.isFAT ? 256 * 1024 : 4 * 1024 * 1024
     }
 
-    let phases: [PhaseDescriptor] = [
-        PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                        detail: "Lecture des tables, parcours de l'arborescence et de Layout.ini"),
-        PhaseDescriptor(id: "boot", label: "Bloc de démarrage",
-                        detail: "Ce que lit le démarrage, posé en tête du volume dans l'ordre où il le lit"),
-        PhaseDescriptor(id: "compact", label: "Tassage",
-                        detail: "La queue du volume remplie, puis le reste tassé derrière le bloc"),
-        PhaseDescriptor(id: "commit", label: "Écriture des tables",
-                        detail: "Réécriture des tables d'allocation"),
-        PhaseDescriptor(id: "done", label: "Terminé",
-                        detail: "Démarrage d'un trait, fichiers d'un seul tenant, espace libre d'un tenant"),
-    ]
+    var phases: [PhaseDescriptor] { phases(on: .fat16) }
+
+    /// Tous formats lui aussi : « réécriture des tables d'allocation » ne veut
+    /// rien dire sur un NTFS, qui décrit ses fichiers par extents dans la MFT.
+    func phases(on format: VolumeFormat) -> [PhaseDescriptor] {
+        [
+            PhaseDescriptor(id: "analyse", label: "Analyse du volume",
+                            detail: "Lecture des tables, parcours de l'arborescence et de Layout.ini"),
+            PhaseDescriptor(id: "boot", label: "Bloc de démarrage",
+                            detail: "Ce que lit le démarrage, posé en tête du volume dans l'ordre où il le lit"),
+            PhaseDescriptor(id: "compact", label: "Tassage",
+                            detail: "La queue du volume remplie, puis le reste tassé derrière le bloc"),
+            PhaseDescriptor.commit(on: format, label: "Écriture des tables"),
+            PhaseDescriptor(id: "done", label: "Terminé",
+                            detail: "Démarrage d'un trait, fichiers d'un seul tenant, espace libre d'un tenant"),
+        ]
+    }
 
     func informed(by layout: BootLayout) -> SmartDefragStrategy {
         var copy = self

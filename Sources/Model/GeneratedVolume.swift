@@ -230,10 +230,7 @@ extension GeneratedVolumeBridge {
                            UInt64(sectors) * UInt64(DriveGeometry.bytesPerSector))
         // Même typographie que les deux disques écrits à la main : espace fine
         // insécable dans le régime, virgule décimale.
-        let size = spec.disk.sizeMB >= 1_024
-            ? String(format: "%.1f Go", Double(spec.disk.sizeMB) / 1_024)
-                .replacingOccurrences(of: ".", with: ",")
-            : "\(spec.disk.sizeMB) Mo"
+        let size = FrenchUnits.megabytes(spec.disk.sizeBytes)
         let rpm = String(format: "%d\u{202F}%03d", spec.disk.rpm / 1_000, spec.disk.rpm % 1_000)
         let label = "IDE \(size) · \(rpm) tr/min"
         let year = spec.timeline.start.year

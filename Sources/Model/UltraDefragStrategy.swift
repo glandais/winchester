@@ -136,18 +136,23 @@ struct UltraDefragStrategy: DefragStrategy {
     /// c'est délibéré : ce sont deux sons différents. La première est une suite
     /// de gros transferts d'un bout à l'autre du volume, la seconde une
     /// succession de rafales courtes autour des mêmes cylindres.
-    let phases: [PhaseDescriptor] = [
-        PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                        detail: "Les fichiers cassés, classés du plus fragmenté au moins"),
-        PhaseDescriptor(id: "defrag", label: "Défragmentation",
-                        detail: "Chaque fichier cassé recopié d'un seul tenant, tant qu'un trou l'accepte"),
-        PhaseDescriptor(id: "partial", label: "Défragmentation partielle",
-                        detail: "Sur les fichiers trop gros pour tenir ailleurs : recoller les petits morceaux, laisser les gros"),
-        PhaseDescriptor(id: "commit", label: "Écriture des métadonnées",
-                        detail: "Les derniers enregistrements de MFT et la bitmap du volume"),
-        PhaseDescriptor(id: "done", label: "Terminé",
-                        detail: "Le rapport compte séparément ce qui a été réparé entièrement et partiellement"),
-    ]
+    var phases: [PhaseDescriptor] { phases(on: .ntfs) }
+
+    /// Seul outil de la liste à tourner sur les deux familles de format :
+    /// c'est lui qui annonçait une MFT aux douze volumes FAT du catalogue.
+    func phases(on format: VolumeFormat) -> [PhaseDescriptor] {
+        [
+            PhaseDescriptor(id: "analyse", label: "Analyse du volume",
+                            detail: "Les fichiers cassés, classés du plus fragmenté au moins"),
+            PhaseDescriptor(id: "defrag", label: "Défragmentation",
+                            detail: "Chaque fichier cassé recopié d'un seul tenant, tant qu'un trou l'accepte"),
+            PhaseDescriptor(id: "partial", label: "Défragmentation partielle",
+                            detail: "Sur les fichiers trop gros pour tenir ailleurs : recoller les petits morceaux, laisser les gros"),
+            PhaseDescriptor.commit(on: format),
+            PhaseDescriptor(id: "done", label: "Terminé",
+                            detail: "Le rapport compte séparément ce qui a été réparé entièrement et partiellement"),
+        ]
+    }
 
     // MARK: - Planification
 

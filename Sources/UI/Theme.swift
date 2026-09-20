@@ -104,22 +104,10 @@ struct ScreenTitle: View {
 /// insécable entre les milliers, virgule décimale, mois en toutes lettres.
 enum FrenchFormat {
 
-    private static let thin = "\u{202F}"
-
-    static func integer(_ value: Int) -> String {
-        let digits = String(abs(value))
-        var groups: [Substring] = []
-        var end = digits.endIndex
-        while end > digits.startIndex {
-            let start = digits.index(end, offsetBy: -3, limitedBy: digits.startIndex) ?? digits.startIndex
-            groups.insert(digits[start..<end], at: 0)
-            end = start
-        }
-        return (value < 0 ? "−" : "") + groups.joined(separator: thin)
-    }
+    static func integer(_ value: Int) -> String { FrenchUnits.integer(value) }
 
     static func decimal(_ value: Double, digits: Int) -> String {
-        String(format: "%.\(digits)f", value).replacingOccurrences(of: ".", with: ",")
+        FrenchUnits.decimal(value, digits: digits)
     }
 
     /// La part d'un bloc de carte : « = 43 clusters » quand elle tombe juste,
@@ -146,14 +134,11 @@ enum FrenchFormat {
 
     /// Une taille en Mo, en Go au-delà d'un gigaoctet, avec une décimale sous
     /// dix mégaoctets ; en Ko sous un mégaoctet si on le demande.
+    ///
+    /// La conversion est celle de `FrenchUnits`, et il n'y en a pas d'autre :
+    /// voir ce qu'une seconde a coûté (`UX_REVIEW.md` §3).
     static func megabytes(_ bytes: UInt64, smallInKilobytes: Bool = false) -> String {
-        if smallInKilobytes && bytes < 1_048_576 {
-            return integer(Int(bytes / 1_024)) + "\u{00A0}Ko"
-        }
-        let mb = Double(bytes) / 1_048_576
-        if mb >= 1_024 { return decimal(mb / 1_024, digits: 1) + "\u{00A0}Go" }
-        if mb < 10 { return decimal(mb, digits: 1) + "\u{00A0}Mo" }
-        return integer(Int(mb.rounded())) + "\u{00A0}Mo"
+        FrenchUnits.megabytes(bytes, smallInKilobytes: smallInKilobytes)
     }
 
     /// Un temps écouté : « 42 s », « 12 min 41 », « 1 h 07 ».

@@ -149,8 +149,7 @@ struct WindowsXPStrategy: DefragStrategy {
                         detail: "Lecture de la MFT : quels fichiers sont en morceaux, et où sont les trous"),
         PhaseDescriptor(id: "defrag", label: "Défragmentation des fichiers",
                         detail: "Chaque fichier cassé relu d'un bout à l'autre, réécrit d'un seul tenant"),
-        PhaseDescriptor(id: "commit", label: "Écriture des métadonnées",
-                        detail: "Les derniers enregistrements de MFT et la bitmap du volume"),
+        PhaseDescriptor.commit(on: .ntfs),
         PhaseDescriptor(id: "done", label: "Terminé",
                         detail: "Le rapport liste ce qui est resté en morceaux, faute de trou assez grand"),
     ]

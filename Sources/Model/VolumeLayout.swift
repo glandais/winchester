@@ -166,12 +166,11 @@ struct PartitionGeometry {
         return (rounded + DriveGeometry.bytesPerSector - 1) / DriveGeometry.bytesPerSector
     }
 
-    var capacityDescription: String {
-        let bytes = Double(capacityBytes)
-        return bytes >= 1_000_000_000
-            ? String(format: "%.1f Go", bytes / 1_000_000_000).replacingOccurrences(of: ".", with: ",")
-            : String(format: "%.0f Mo", bytes / 1_000_000)
-    }
+    /// La capacité de la partition, par la seule conversion du projet.
+    ///
+    /// Elle divisait par 10⁶ quand la fiche du disque divisait par 2²⁰ : le
+    /// même volume s'y annonçait « 220 Mo » et « 210 Mo » (`UX_REVIEW.md` §3).
+    var capacityDescription: String { FrenchUnits.megabytes(UInt64(max(capacityBytes, 0))) }
 }
 
 // MARK: - Ce que coûte une validation

@@ -33,6 +33,16 @@ protocol DefragStrategy: Sendable {
     /// tableau est celui que portent ses opérations.
     var phases: [PhaseDescriptor] { get }
 
+    /// Les mêmes étapes, dites pour le format du volume qu'on écoute.
+    ///
+    /// Trois outils annonçaient « les derniers enregistrements de MFT et la
+    /// bitmap du volume » à l'écriture des métadonnées — sur un FAT16 aussi,
+    /// qui n'a pas de MFT : le libellé était en dur, et les douze volumes FAT
+    /// du catalogue le portaient (`UX_REVIEW.md` §3). L'ordre et le nombre des
+    /// phases ne changent pas, puisque c'est l'indice qui relie une opération
+    /// à son étape ; seul ce qu'on en dit change.
+    func phases(on format: VolumeFormat) -> [PhaseDescriptor]
+
     /// Le volume passé n'est pas modifié — une stratégie travaille sur sa
     /// propre copie, où elle rejoue chaque déplacement pour connaître l'état
     /// d'arrivée.
@@ -56,6 +66,10 @@ protocol DefragStrategy: Sendable {
 }
 
 extension DefragStrategy {
+
+    /// Par défaut, un outil dit ses étapes de la même façon sur tous les
+    /// formats : seuls ceux qui nomment une métadonnée ont à redire.
+    func phases(on format: VolumeFormat) -> [PhaseDescriptor] { phases }
 
     /// Toute la passe d'un coup, opérations comprises : ce dont les tests ont
     /// besoin pour relire un plan.

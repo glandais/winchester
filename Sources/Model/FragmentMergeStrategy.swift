@@ -88,8 +88,7 @@ struct FragmentMergeStrategy: DefragStrategy {
                         detail: "Les fichiers cassés, et les trous hors de la zone MFT"),
         PhaseDescriptor(id: "merge", label: "Recollage",
                         detail: "Les petits morceaux recopiés d'un seul tenant, et les petits fichiers qui séparent deux trous déplacés"),
-        PhaseDescriptor(id: "commit", label: "Écriture des métadonnées",
-                        detail: "Les derniers enregistrements de MFT et la bitmap du volume"),
+        PhaseDescriptor.commit(on: .ntfs),
         PhaseDescriptor(id: "done", label: "Terminé",
                         detail: "Les gros morceaux n'ont pas bougé"),
     ]

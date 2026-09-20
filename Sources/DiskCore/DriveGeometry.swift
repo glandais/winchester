@@ -83,8 +83,7 @@ public struct DriveGeometry: Sendable {
     public var capacityBytes: Int { totalSectors * Self.bytesPerSector }
 
     public var capacityDescription: String {
-        let gb = Double(capacityBytes) / 1_000_000_000
-        return String(format: "%.1f Go", gb)
+        FrenchUnits.megabytes(UInt64(max(capacityBytes, 0)))
     }
 
     public func sectorsPerTrack(cylinder: Int) -> Int {

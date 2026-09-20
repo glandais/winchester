@@ -696,7 +696,7 @@ enum ScenarioBuilder {
             geometry: geometry,
             seekModel: seekModel,
             setup: setup,
-            phases: strategy.phases,
+            phases: strategy.phases(on: partition.format),
             defrag: DefragPlayback(partition: partition,
                                    strategy: strategy,
                                    before: volume.stats,
