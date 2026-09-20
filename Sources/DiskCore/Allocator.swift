@@ -4,20 +4,13 @@ import Foundation
 /// peut pas deviner.
 ///
 /// Il n'y en a que trois, et c'est tout ce que les systèmes de l'époque
-/// distinguaient. Deux autres ont existé et ont été retirés au lot 8, parce
-/// qu'ils promettaient une mécanique que rien n'exerçait :
-///
-/// - `.boot` — « au plus près du début du volume », pour `IO.SYS` et les
-///   fichiers de `Layout.ini`. Aucune catégorie de fichier ne le rendait, et il
-///   n'a pas à exister : `IO.SYS` tombe en tête parce que `FORMAT /S` l'écrit
-///   le premier sur un volume vide, et `Layout.ini` est l'affaire du
-///   défragmenteur, qui repasse plus tard ;
-/// - `.temporary` — les `.obj`, le cache du navigateur, `~WRD0001.TMP`, que
-///   son commentaire disait « placés à part ». Les deux allocateurs le
-///   traitaient exactement comme un fichier ordinaire, et c'était juste :
-///   aucun système de fichiers de l'époque ne ségrégeait les temporaires. Ce
-///   sont eux qui creusent les trous, **parce qu'ils sont placés comme les
-///   autres** et effacés plus tôt.
+/// distinguaient. Il n'y a pas d'indice « de démarrage » : `IO.SYS` tombe en
+/// tête parce que `FORMAT /S` l'écrit le premier sur un volume vide, et
+/// `Layout.ini` est l'affaire du défragmenteur, qui repasse plus tard. Ni
+/// d'indice « temporaire » : aucun système de fichiers de l'époque ne
+/// ségrégeait les temporaires, et ce sont eux qui creusent les trous **parce
+/// qu'ils sont placés comme les autres** et effacés plus tôt. (Les deux ont
+/// existé ici, sans rien exercer : `LEDGER.md`, chantier 27.)
 public enum AllocationHint: Sendable, Hashable {
 
     /// Zone système : proche du début, mais sans la contrainte du premier

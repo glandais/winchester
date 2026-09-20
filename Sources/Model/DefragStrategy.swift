@@ -146,11 +146,6 @@ enum DefragOperations {
         }
         let buffer = UInt32(max(bufferBytes / partition.clusterBytes, 1))
 
-        var sourceIndex = 0
-        var sourceOffset: UInt32 = 0
-        var destinationIndex = 0
-        var destinationOffset: UInt32 = 0
-
         // Ce que la destination recouvre de la source : ces clusters-là ne
         // repassent pas en « libre », ils changent simplement de contenu.
         // Triés une fois pour être cherchés par dichotomie : un refuge
@@ -160,38 +155,132 @@ enum DefragOperations {
             ? destination.filter { !$0.isEmpty }.sorted { $0.start < $1.start }
             : destination
 
+        // 1. Les tronçons, dans l'ordre du fichier.
+        var chunks: [MoveChunk] = []
+        var sourceIndex = 0
+        var sourceOffset: UInt32 = 0
+        var destinationIndex = 0
+        var destinationOffset: UInt32 = 0
         while sourceIndex < source.count && destinationIndex < destination.count {
             let from = source[sourceIndex]
             let to = destination[destinationIndex]
             let length = min(from.length - sourceOffset, to.length - destinationOffset, buffer)
             guard length > 0 else { break }
-
-            let readStart = from.start + sourceOffset
-            let writeStart = to.start + destinationOffset
-
-            sink.emit(DiskOperation(
-                kind: .readExtent, phase: phase,
-                lba: partition.lba(ofCluster: Int(readStart)),
-                sectors: Int(length) * partition.clusterSectors,
-                isWrite: false, issueTime: 0, cluster: Int(readStart)))
-
-            let first = sink.mutationMark
-            sink.record(MapMutation(start: Int(writeStart), count: Int(length),
-                                    category: category, contiguous: contiguous))
-            recordFreed(start: readStart, length: length, kept: kept, into: sink)
-
-            sink.emit(DiskOperation(
-                kind: .writeExtent, phase: phase,
-                lba: partition.lba(ofCluster: Int(writeStart)),
-                sectors: Int(length) * partition.clusterSectors,
-                isWrite: true, issueTime: 0, cluster: Int(writeStart),
-                mutationStart: first, mutationCount: sink.mutationMark - first))
-
+            chunks.append(MoveChunk(read: from.start + sourceOffset,
+                                    write: to.start + destinationOffset, length: length))
             sourceOffset += length
             destinationOffset += length
             if sourceOffset == from.length { sourceIndex += 1; sourceOffset = 0 }
             if destinationOffset == to.length { destinationIndex += 1; destinationOffset = 0 }
         }
+
+        // 2. Dans l'ordre où ils peuvent l'être sans rien perdre.
+        let (order, unordered) = safeOrder(chunks)
+        func read(_ chunk: MoveChunk) {
+            sink.emit(DiskOperation(
+                kind: .readExtent, phase: phase,
+                lba: partition.lba(ofCluster: Int(chunk.read)),
+                sectors: Int(chunk.length) * partition.clusterSectors,
+                isWrite: false, issueTime: 0, cluster: Int(chunk.read)))
+        }
+        func write(_ chunk: MoveChunk) {
+            let first = sink.mutationMark
+            sink.record(MapMutation(start: Int(chunk.write), count: Int(chunk.length),
+                                    category: category, contiguous: contiguous))
+            recordFreed(start: chunk.read, length: chunk.length, kept: kept, into: sink)
+            sink.emit(DiskOperation(
+                kind: .writeExtent, phase: phase,
+                lba: partition.lba(ofCluster: Int(chunk.write)),
+                sectors: Int(chunk.length) * partition.clusterSectors,
+                isWrite: true, issueTime: 0, cluster: Int(chunk.write),
+                mutationStart: first, mutationCount: sink.mutationMark - first))
+        }
+        for index in order {
+            read(chunks[index])
+            write(chunks[index])
+        }
+        // Un cycle — deux morceaux qui s'écrasent l'un l'autre — ne se
+        // résout pas tronçon par tronçon : tout ce qui en reste est lu, puis
+        // écrit.
+        for index in unordered { read(chunks[index]) }
+        for index in unordered { write(chunks[index]) }
+    }
+
+    /// Un tronçon de `move` : ce qu'il lit, où il l'écrit.
+    struct MoveChunk: Equatable {
+        let read: UInt32
+        let write: UInt32
+        let length: UInt32
+        var readEnd: UInt32 { read + length }
+        var writeEnd: UInt32 { write + length }
+    }
+
+    /// L'ordre dans lequel copier les tronçons d'un déplacement sans écrire
+    /// sur un morceau du fichier que personne n'a encore lu.
+    ///
+    /// Un tronçon lit sa source puis l'écrit : il peut écraser ce qu'il vient
+    /// de lire, ou ce qu'un tronçon précédent a lu, jamais ce qu'un tronçon
+    /// suivant lira. Or la destination d'un fichier fragmenté recouvre souvent
+    /// ses propres morceaux, et pas toujours dans l'ordre : un morceau posé
+    /// plus loin dans le fichier mais plus tôt sur le disque, au début de la
+    /// place visée, serait recouvert par le premier tronçon avant d'avoir été
+    /// lu. C'est ce qu'un copieur fait d'un chevauchement quand il copie à
+    /// l'envers — l'ordre d'un `memmove` —, et c'est ce que fait tout outil qui
+    /// ne détruit pas ce qu'il déplace.
+    ///
+    /// L'ordre du fichier est gardé chaque fois qu'il est sûr, c'est-à-dire
+    /// presque toujours ; sinon, un tronçon passe après ceux dont il recouvre
+    /// la source, et à contraintes égales le premier dans le fichier passe le
+    /// premier. Rend aussi ce qu'un cycle a laissé sans ordre.
+    static func safeOrder(_ chunks: [MoveChunk]) -> (order: [Int], unordered: [Int]) {
+        let natural = Array(chunks.indices)
+        guard chunks.count > 1 else { return (natural, []) }
+        let byRead = chunks.indices.sorted { chunks[$0].read < chunks[$1].read }
+        // Les tronçons dont la source recoupe l'écriture du tronçon `i`.
+        func overwritten(by i: Int) -> [Int] {
+            let chunk = chunks[i]
+            var low = 0, high = byRead.count
+            while low < high {
+                let middle = (low + high) / 2
+                if chunks[byRead[middle]].readEnd <= chunk.write { low = middle + 1 } else { high = middle }
+            }
+            var hits: [Int] = []
+            while low < byRead.count, chunks[byRead[low]].read < chunk.writeEnd {
+                if byRead[low] != i { hits.append(byRead[low]) }
+                low += 1
+            }
+            return hits
+        }
+        let edges = chunks.indices.map(overwritten)
+        guard edges.enumerated().contains(where: { i, later in later.contains { $0 > i } }) else {
+            return (natural, [])
+        }
+        // `j` doit passer avant `i` dès que `i` écrit sur ce que `j` lit.
+        var waiting = [Int](repeating: 0, count: chunks.count)
+        var unlocks = [[Int]](repeating: [], count: chunks.count)
+        for (i, sources) in edges.enumerated() {
+            waiting[i] = sources.count
+            for j in sources { unlocks[j].append(i) }
+        }
+        // Les tronçons prêts, le premier du fichier en dernier : on le prend.
+        var ready = Array(chunks.indices.filter { waiting[$0] == 0 }.reversed())
+        var order: [Int] = []
+        order.reserveCapacity(chunks.count)
+        while let next = ready.popLast() {
+            order.append(next)
+            for i in unlocks[next] {
+                waiting[i] -= 1
+                guard waiting[i] == 0 else { continue }
+                var low = 0, high = ready.count
+                while low < high {
+                    let middle = (low + high) / 2
+                    if ready[middle] > i { low = middle + 1 } else { high = middle }
+                }
+                ready.insert(i, at: low)
+            }
+        }
+        let placed = Set(order)
+        return (order, natural.filter { !placed.contains($0) })
     }
 
     /// Le même déplacement, mais par **blocs pleins** : chaque écriture de

@@ -138,9 +138,12 @@ et prend celui du Fireball — une hypothèse.
 
 **Latence rotationnelle et transfert** — simulés secteur par secteur, avec pas de
 piste et commutation de tête en fin de cylindre. Une requête qui déborde du
-dernier cylindre est tronquée, comme le ferait le disque.
+dernier cylindre est tronquée, comme le ferait le disque. La commutation de
+tête vaut six dixièmes du pas de piste : **un ordre de grandeur**. Le seul
+manuel du catalogue qui publie les deux temps, celui du Fireball, les donne
+égaux — 3,0 ms chacun — ; les égaler allongerait les démarrages de 0,8 s au plus.
 
-**Le tampon du disque** (`DriveBuffer`, `DriveInterface`, chantier 26). Chaque
+**Le tampon du disque** (`DriveBuffer`, `DriveInterface`). Chaque
 fiche du catalogue porte son tampon et la politique que son constructeur y
 appliquait à la mise sous tension, relevés dans les manuels ; un disque de la
 galerie prend celui de la fiche de son année, et le bus de la machine de son
@@ -163,26 +166,32 @@ année :
   disque lit donc **aussi quand l'hôte calcule** : ses pas de piste ne suivent
   plus seulement les requêtes ;
 - **le tampon est segmenté** comme le décrit le manuel du Fireball — autant
-  d'entrées que la taille en loge, la moins récemment servie cède la place.
-  Aucun nombre de segments n'est posé : il tombe de la taille du tampon devant
-  celle d'une piste, une entrée sur le Fireball, une trentaine sur le 7200.10 ;
+  d'entrées que la taille en loge, la plus ancienne cède la place. C'est une
+  file : une entrée relue n'est pas rajeunie, là où le Conner annonce une
+  gestion « au plus anciennement utilisé ». Aucun nombre de segments n'est
+  posé : il tombe de la taille du tampon devant celle d'une piste, une entrée
+  sur le Fireball, une trentaine sur le 7200.10 ;
 - **la lecture sans latence** : une requête qui tient sur une piste commence au
-  secteur qui se présente, et un tour suffit. Seul le manuel du Fireball
-  l'annonce (« Read-on-arrival ») ; les Seagate la reçoivent par hypothèse, le
-  Conner non ;
+  secteur qui se présente, et un tour suffit. **Aucun manuel ne la décrit** :
+  le « Read-on-arrival » du Fireball, qui en a longtemps tenu lieu de source,
+  qualifie un temps de seek — la lecture commence dès que la tête arrive,
+  avant la fin de l'asservissement. Le mécanisme est plausible pour un tampon
+  segmenté, et toutes les fiches sauf le Conner le reçoivent par hypothèse ;
 - **le cache d'écriture** acquitte une écriture dès qu'il la tient, et la pose
   plus tard, dans l'ordre de l'ascenseur, en fusionnant ce qui se touche : dès
   que l'hôte n'a rien à demander, ou quand il faut de la place. Les écritures
   qui arrivent plus vite que le disque ne les pose partent **en salves** —
-  douze par vidage pour l'outil de XP sur `dev-2007` ; celles qu'un installeur
-  espace de calcul sont posées une à une, pendant qu'il calcule ;
+  4,9 écritures par vidage en moyenne pour l'outil de XP sur `dev-2007` ;
+  celles qu'un installeur espace de calcul sont posées une à une, pendant
+  qu'il calcule ;
 - **le bus borne ce que le tampon sert**, et **chaque commande coûte** 0,2 ms —
   la mise en place DMA mesurée par Microsoft Research sur un Pentium II en
-  1999 —, 0,5 ms sur le Conner, dont le constructeur donne ce chiffre. Sans
-  lecture anticipée, ce coût ferait manquer le secteur suivant à chaque
-  requête contiguë, et un tour de plateau avec : les vingt démarrages dureraient
-  2 à 7 s de plus. C'est le mécanisme qui masquait, sur un vrai disque, le tour
-  que le chantier 20 a corrigé.
+  1999 —, 0,5 ms sur le Conner, dont le constructeur donne ce chiffre. Mesurée
+  sur un Pentium II, elle est prêtée aux dix ans de la galerie : c'est une
+  mesure d'un point. Sans lecture anticipée, ce coût ferait manquer le secteur
+  suivant à chaque requête contiguë : les vingt démarrages dureraient 1,7 à 11,4 s
+  de plus. C'est le mécanisme qui masquait, sur un vrai disque, le tour de
+  plateau qu'une mécanique sans coût de commande ne perd pas.
 
 **La mise sous tension est en trois temps** (`IdleBehavior.coldStart`, pour un
 démarrage et une journée). Le moteur démarre ; dans les 50 ms, les têtes
@@ -192,23 +201,25 @@ asservissement** : une course complète depuis la zone de parcage du moyeu, et
 quatre pas courts au bord, calés pour finir quand le disque est prêt. Le « clac »
 franc d'ouverture est donc celui-là, et non la première lecture — d'autant que
 le secteur d'amorçage est au cylindre 0, où la salve laisse le bras : un
-démarrage compte un seek de moins qu'avant le chantier 25, et dure la même chose
-à 0,1 s près. Une défragmentation ou une installation, elles, partent d'un
-plateau qui tourne déjà : leur rampe n'est qu'un fondu, le bras attend au moyeu.
+démarrage n'a pas de premier seek vers le cylindre 0. Une défragmentation ou une
+installation, elles, partent d'un plateau qui tourne déjà : leur rampe n'est
+qu'un fondu, et le bras attend au moyeu — une convention, puisque aucun disque de
+bureau n'y parquait : là où le dernier accès l'a laissé, le modèle ne le sait
+pas.
 
-**Au repos, un disque de bureau laisse son bras où il est.** Jusqu'au chantier
-25, chaque passe se refermait sur un bras qui retournait se parquer une seconde
-après la dernière requête. Aucun disque à plateaux de cette période ne le
-faisait — c'est une pratique des disques à rampe des portables des années
-2000 — et c'était un choix dramatique présenté comme de la mécanique. Le
-mécanisme reste (`IdleBehavior.parkAfter`), aucun scénario ne s'en sert : une
+**Au repos, un disque de bureau laisse son bras où il est.** Aucun disque à
+plateaux de cette période ne parquait ses têtes une seconde après la dernière
+requête — c'est une pratique des disques à rampe des portables des années
+2000. Le mécanisme existe (`IdleBehavior.parkAfter`), aucun scénario ne s'en sert : une
 défragmentation, un démarrage, une installation se referment sur le disque qui
 tourne. Le dernier mouvement appartient à ce qui le produisait vraiment, **la
 coupure** : une journée s'achève une seconde après sa dernière écriture, le bras
 se retire au moyeu, le moteur est coupé, le plateau **redescend par la même loi
 du premier ordre** qu'il est monté, et quand il est tombé à 40 % de son régime
 les têtes **se posent** sur la zone d'atterrissage — le petit *crac* granuleux
-qui termine un arrêt.
+qui termine un arrêt. La seconde avant la coupure et les 3,5 s de la
+redescente sont des choix de rendu : le manuel du Fireball donne dix secondes
+d'arrêt complet.
 
 **Les disques d'avant 1997 se recalibrent** (`ThermalRecalibration`). Deux
 minutes après être prêt, puis toutes les quatre minutes, un disque de 1993 ou
@@ -216,7 +227,7 @@ de 1996 finit sa commande en cours et va relire ses repères de position au
 bord, au moyeu et au milieu : une seconde de crépitement, l'événement sonore
 signature de cette génération — au point que les constructeurs ont dû sortir des
 modèles « AV » sans recalibration pour le montage vidéo. Aucun démarrage n'en
-contient (le plus long dure 70 s) ; une passe de vingt minutes en compte cinq,
+contient (le plus long dure 68 s) ; une passe de vingt minutes en compte cinq,
 et dure d'autant plus : +0,1 à +0,7 % sur les passes de 1993 et 1996, rien
 ailleurs. Le délai compté est dans `TraceStats.recalibrationSeconds`, à part des
 seeks demandés.
@@ -241,9 +252,9 @@ n'est supprimé. Une lecture séquentielle sur le Barracuda à une tête franchi
 une piste à chaque tour : sa cadence est de **108 Hz** (un tour de 8,33 ms et le
 pas), une hauteur plutôt qu'une suite de tics. Sur le Fireball à quatre têtes,
 **deux périodicités emboîtées** : la commutation à 75,7 Hz, le pas de piste tous
-les quatre tours à 18,9 Hz. Jusqu'au chantier 25 un filtre de 18 ms en
-supprimait un sur deux, et l'enveloppe mesurée tombait à 53,6 et 37,9 Hz — un
-cliquetis, pas le sifflement d'une grosse lecture.
+les quatre tours à 18,9 Hz. Un filtre de 18 ms en supprimerait un sur deux, et
+l'enveloppe tomberait à 53,6 et 37,9 Hz — un cliquetis, pas le sifflement d'une
+grosse lecture.
 
 **Décollement et atterrissage** — deux one-shots, du même banc de résonateurs :
 le décollement est un claquement unique, plus grave qu'un seek (tout
@@ -277,12 +288,17 @@ grandeurs pour le former, prises aux manuels :
   triphasé à huit pôles : estimation, aucune fiche ne donne les pôles), un
   vingtième du bruit.
 
+Régime, plateaux et palier viennent des manuels ; ce qui les met en son — les
+fréquences des bandes, le battement de 35 %, le vingtième de la raie — est
+estimé : aucun manuel ne publie de spectre.
+
 Le niveau suit les manuels **à moitié en décibels** autour du U8, **au quart**
 au-delà de 3,0 B : 25 dB entre le Conner et un 7 200 tr/min à un plateau, c'est
 un 1993 qui couvre ses seeks ou un 2003 qu'on n'entend plus sur un haut-parleur
 de téléphone. Le coude vient de l'écoute sur le téléphone, qui a trouvé les
 vieux disques trop forts à moitié partout et les récents justes. C'est une
-licence de mixage, et la seule du plateau. Mesuré sur la voix seule, à plein régime :
+licence de mixage ; l'autre est le niveau de la rotation dans le préréglage
+« Casque », ramené de 32 à 20 % à l'écoute. Mesuré sur la voix seule, à plein régime :
 
 | | RMS | centroïde | > 1,5 kHz | battement au tour |
 |---|---|---|---|---|
@@ -294,9 +310,9 @@ licence de mixage, et la seule du plateau. Mesuré sur la voix seule, à plein r
 | 7200.10 | −35,5 dB | 660 Hz | 14 % | 1 % |
 | 7200.11 | −33,5 dB | 660 Hz | 14 % | 1 % |
 
-Avant le chantier 25, les huit fiches avaient **exactement** le même spectre à
-plein régime (0,0 dB d'écart par tiers d'octave) et ne différaient que par une
-raie discrète à tr/min/60. Trois familles se distinguent désormais par le
+Sans ces trois grandeurs, les huit fiches auraient **exactement** le même
+spectre à plein régime (0,0 dB d'écart par tiers d'octave) et ne différeraient
+que par une raie discrète à tr/min/60. Trois familles se distinguent par le
 timbre — le roulement de 1993, plus fort et plus grave dans son roulage ; celui
 de 1996-1999, qui bat à 90 Hz ; le souffle lisse du palier fluide — mais **pas
 les huit fiches**. À l'intérieur d'une famille, seul le niveau sépare les
@@ -482,14 +498,14 @@ la même journée de développeur, rejouée sur les trois allocateurs, donne tro
 volumes qui n'ont rien à voir, et toute la différence vient du placement.
 
 **Une exception, dite et mesurée.** L'allocateur NTFS borne sa recherche de
-trous par trois constantes introduites pour le coût de calcul — la tolérance
+trous par quatre constantes introduites pour le coût de calcul — la tolérance
 d'un trou trop grand, la fenêtre de trous examinés, l'horizon parcouru dans la
-bitmap. Aucune ne vient d'une source, et ensemble elles règlent la
-fragmentation : sur `famille-2003`, l'horizon seul la fait aller de 4,6 à
-21,2 % des fichiers fragmentables. Elles ne poussent pas toutes vers la
-contiguïté — élargir la tolérance ou l'horizon la *réduit* —, et aucune ne
-rejoint la cible de 40 à 60 %. L'en-tête de `NTFSAllocator` porte la table
-entière ; les valeurs n'ont pas changé, on sait maintenant ce qu'elles pèsent.
+bitmap, les fenêtres du dernier recours. **Aucune ne vient d'une source**, et
+ensemble elles règlent la fragmentation : sur `famille-2003`, l'horizon seul la
+fait aller de 4,6 à 21,2 % des fichiers fragmentables. Elles ne poussent pas
+toutes vers la contiguïté — élargir la tolérance ou l'horizon la *réduit* —, et
+aucune ne rejoint la cible de 40 à 60 %. L'en-tête de `NTFSAllocator` porte la
+table entière, et `CalibrationTests` la régénère.
 
 **Un chemin ne désigne qu'un fichier présent.** L'histoire nomme les fichiers
 d'après ce qu'ils sont — `MODULE.C`, `SAVE.DAT`, `M0.OBJ` — sans savoir ce qui
@@ -513,12 +529,13 @@ compilateur qui produit son `.obj`, un navigateur qui reçoit une page, Word qui
 sérialise son document, un logiciel de téléchargement ou de compression ne la
 connaissent pas : leur fichier grandit par **paquets** — un cluster sur FAT, où
 le pilote prolonge la chaîne à chaque écriture, 64 Ko sur NTFS, ce que le
-gestionnaire de cache vide d'un coup. La question est posée programme par
+gestionnaire de cache vide d'un coup (une taille estimée : le mécanisme est
+celui du cache de NT, le chiffre n'a pas de source). La question est posée programme par
 programme (`FileSpec.sizeKnownInAdvance`), jamais par taux. Sur FAT elle ne
 change rien tant qu'un programme écrit seul — cluster par cluster au curseur,
 il prend ce qu'il aurait pris d'un coup —, et c'est sur NTFS qu'elle se voit :
 chaque paquet va dans le trou le plus juste pour lui, et la traîne des fichiers
-en 2 à 16 morceaux passe de 1,9 à 10,3 % des fichiers fragmentables sur
+en 2 à 16 morceaux passe de 1,9 à 10,9 % des fichiers fragmentables sur
 `secretaire-2003`. Plusieurs programmes qui écrivent **en même temps** se
 disputeraient le curseur et s'entrelaceraient ; le simulateur sait le faire,
 mais ne le fait pas : il faudrait savoir à quel débit et à quelle heure chacun
@@ -577,9 +594,10 @@ ensemble et au même débit, et n'est pas retenu.
 2,7 millions d'événements — se génère en 1,6 s en release, dont 0,4 s pour les
 noms uniques. Les deux disques des démos, fabriqués au lancement, prennent 50
 et 32 ms. L'écriture par paquets coûte surtout sur les NTFS pleins, où chaque
-paquet de 64 Ko cherche son trou : `famille-2003` était passé de 0,6 à 3,2 s au
-chantier 23, et revient à 2,1 s depuis qu'une extension cherche près du fichier
-qu'elle prolonge plutôt que depuis le curseur de l'allocateur. Il passe de longues
+paquet de 64 Ko cherche son trou : `famille-2003` en prend 2,1 s, trois fois et
+demie ce qu'il coûtait quand chaque fichier naissait d'un seul tenant, et moins
+qu'une extension qui partirait du curseur de l'allocateur plutôt que du fichier
+qu'elle prolonge. Il passe de longues
 périodes plein hors de sa zone MFT, où chaque écriture va chercher des trous
 épars sur tout le volume : c'est un index à deux niveaux au-dessus de la bitmap
 qui saute les régions pleines, sans rien changer à la place trouvée. La génération tourne
@@ -611,22 +629,24 @@ ouvre des fichiers.
 **La durée n'est pas décrétée, elle est mesurée.** Un démarrage n'est pas une
 suite de lectures collées : entre deux fichiers, la machine décompresse,
 relocalise, initialise, et le disque attend. Ce temps de calcul est le
-**plancher** d'un démarrage — deux constantes par époque, calées pour que le
-total tombe sur les durées d'alors — et tout ce qui dépasse ce plancher est du
-disque. Sur les vingt profils il pèse entre 30 et 73 % du total, et les vingt
-démarrages tiennent entre 29,5 et 70,0 s.
+**plancher** d'un démarrage — deux constantes par époque, calées sur des cibles
+qui **ne sont pas des mesures d'époque** : les durées que le modèle donnait
+avant la relecture de ses experts — et tout ce qui dépasse ce plancher est du
+disque. Sur les vingt profils il pèse entre 30 et 72 % du total, et les vingt
+démarrages tiennent entre 29,0 et 67,9 s.
 
-Ces constantes ont été recalées deux fois, aux chantiers 22 et 26, et elles
-vivent dans une seule table (`ThinkModel.boot`). Le premier calage absorbait,
-sans le savoir, un tour de plateau perdu à chaque requête d'une lecture
-contiguë et une table FAT lue deux fois au montage ; les deux corrigés, ce qui
-manquait aux vingt démarrages était proportionnel aux mégaoctets lus, et seul le
-coût de calcul par mégaoctet a bougé. Le second suit les trois caches — celui du
-disque, `SMARTDRV`, VCACHE — : les écarts ne désignent plus aucune constante,
-c'est encore le coût par mégaoctet qui bouge, et il **monte** pour 2003 et
-2007. Le disque servi par son tampon révèle un plancher processeur plus lourd
-qu'on ne le lui prêtait ; ce sont les cibles de ces époques, qui ne sont pas des
-mesures, qu'il faudrait rediscuter.
+Ces constantes vivent dans une seule table (`ThinkModel.boot`), et seul le coût
+de calcul **par mégaoctet** y bouge d'un calage à l'autre : ce que les
+corrections du disque ont déplacé — un tour de plateau perdu à chaque requête
+contiguë, une table FAT lue deux fois, les trois caches, les enregistrements de
+MFT épars — est un coût de lecture, au mégaoctet. Avec quatre profils par
+époque, les écarts ne départagent plus les deux constantes ; c'est la
+physique qui choisit. Pour 2003 et 2007, l'ajustement retombe sur 0,19 et
+0,15 s par mégaoctet : un disque qui va chercher chaque enregistrement de MFT
+là où il est coûte ce que le plancher processeur ne coûtait pas. Le niveau
+reste injustifié — un Vista à peine plus rapide qu'un XP sur des processeurs
+trois ou quatre fois plus rapides — et c'est aux cibles de le dire : seules des
+mesures d'époque le trancheraient.
 
 | | système | fichiers | lu | durée | dont calcul | témoin |
 |---|---|---|---|---|---|---|
@@ -635,9 +655,9 @@ mesures, qu'il faudrait rediscuter.
 | `gamer-1996` | Windows 95 | 346 | 36 Mo | 45,4 s | 48 % | +5 % |
 | `famille-1999` | Windows 98 SE | 620 | 110 Mo | 63,3 s | 54 % | +8 % |
 | `secretaire-1999` | Windows 98 SE | 534 | 97 Mo | 57,5 s | 52 % | +9 % |
-| `gamer-2003` | Windows XP | 912 | 226 Mo | 70,0 s | 73 % | −0 % |
-| `dev-2003` | Windows XP | 386 | 172 Mo | 51,8 s | 70 % | −2 % |
-| `famille-2007` | Windows Vista | 517 | 115 Mo | 39,9 s | 55 % | +4 % |
+| `gamer-2003` | Windows XP | 912 | 226 Mo | 67,9 s | 72 % | −0 % |
+| `dev-2003` | Windows XP | 386 | 172 Mo | 50,1 s | 69 % | −2 % |
+| `famille-2007` | Windows Vista | 517 | 115 Mo | 38,8 s | 54 % | +3 % |
 
 **Le témoin** est la colonne qui compte. C'est le même contenu posé comme au
 premier jour — mêmes fichiers, mêmes tailles, chacun d'un seul tenant, tassé
@@ -657,8 +677,8 @@ la même conclusion : défragmenter n'accélérait pas le démarrage, et c'est u
 rangement à part — `layout.ini` — qui s'en chargeait.
 
 **Sur NTFS, le témoin ne gagne pas toujours.** Sur les huit volumes, l'écart va
-de −1 % (`dev-2003`) à +3 %, et trois volumes
-démarrent aussi vite ou plus vite que leur témoin. NTFS choisit le trou qui
+de −2 % (`dev-2003`) à +4 %, et trois volumes démarrent aussi vite ou plus vite
+que leur témoin. NTFS choisit le trou qui
 convient plutôt que le premier venu, et sa disposition réelle peut battre un
 rangement naïf qui empile tout dans l'ordre du répertoire. Le témoin garde donc
 son sens de borne — il dit ce qu'un rangement bête donnerait — mais il n'est pas
@@ -671,31 +691,33 @@ introduit le préchargeur de démarrage — il garde la trace des derniers
 démarrages et **range la liste par position sur le disque**, métadonnées
 comprises, pour tout relire d'une course ; Vista a poussé l'idée avec
 SuperFetch. Le modèle fait les deux, et le gain est là où on l'attend : sur
-`famille-2007`, le seek moyen passe de 44 114 à 18 757 cylindres, le nombre
-de seeks de 890 à 635, et le démarrage de 43,6 à 38,6 s. La même étape crépite
+`famille-2007`, le seek moyen passe de 15 240 à 8 798 cylindres, le nombre
+de seeks de 1 448 à 865, et le démarrage de 45,2 à 38,8 s. La même étape crépite
 en 1995 et ronronne en 2003.
 
 **La seconde est la date de dernier accès.** Jusqu'à XP, toute lecture la
 réécrit — dans l'enregistrement de MFT sur NTFS, dans l'entrée de répertoire
 sous VFAT —, et Vista l'a désactivée par défaut. Au premier démarrage de la
 journée, chaque fichier lu salit donc ses métadonnées **ailleurs** que là où on
-vient de lire, et le cache les écrit par paquets : sur `gamer-2003`, 912 dates
-réécrites en 33 écritures ; sur `famille-2007`, aucune. MS-DOS n'avait pas ce
-champ.
+vient de lire, et le cache les écrit par pages de 4 Ko : sur `gamer-2003`, 912
+dates réécrites en 388 écritures — les enregistrements des fichiers d'un
+démarrage sont épars dans la MFT, et une page en porte rarement plus de deux ou
+trois ; sur `famille-2007`, aucune. MS-DOS n'avait pas ce champ.
 
 Ce qui rend ce préchargement décisif, c'est le format. Sur FAT16, ouvrir un
 fichier ne coûte presque rien : la première table est lue entière au montage et
 tient en mémoire. Sur FAT32 elle fait des mégaoctets : le pilote en lit les
 pages à la demande, au fil des chaînes qu'il suit, et un fichier fragmenté
-renvoie le bras vers la table en tête du volume — de 220 à 350 pages sur un
+renvoie le bras vers la table en tête du volume — de 220 à 355 pages sur un
 démarrage de Windows 98. Et ces pages ne restent pas : elles vivent dans VCACHE
-avec les données des fichiers, qui les poussent dehors, et de 68 à 99 d'entre
+avec les données des fichiers, qui les poussent dehors, et de 64 à 111 d'entre
 elles sont **relues** plus tard, quand une chaîne y repasse — le va-et-vient
 d'un Windows 98 fatigué. La taille de VCACHE, 16 Mo pour une machine de 64 Mo,
 est la règle de réglage de l'époque ; son vrai défaut était dynamique. Sous
 MS-DOS, `SMARTDRV` lit par éléments de 8 Ko, 16 Ko d'avance, et sert une partie
 de ce que le démarrage redemande ; sur un disque à 1,5 Mo/s, lire par éléments
-et d'avance coûte plus que ce que le cache rend : de 1,1 à 1,7 s par démarrage. Sur NTFS, chaque ouverture lit l'enregistrement de MFT qui décrit le
+et d'avance coûte plus que ce que le cache rend : de 1,2 à 1,8 s par démarrage.
+Sur NTFS, chaque ouverture lit l'enregistrement de MFT qui décrit le
 fichier — en tête du volume, quand les données sont ailleurs. Sans lecture
 groupée, c'est deux courses quasi complètes du bras par fichier sur un volume de
 320 Go, et un démarrage qui ne ressemble à rien : c'est exactement ce que donne
@@ -740,8 +762,8 @@ de l'attente ; sur CD et DVD, ce sont la décompression et les pauses.
 | `gamer-1993` | 21 disquettes | 373 fichiers, 39 Mo | 0 | 2 | 12 min 07 |
 | `secretaire-1996` | CD-ROM 8x | 1 008 fichiers, 222 Mo | 46 | 3 | 7 min 14 |
 | `famille-1999` | CD-ROM 32x | 2 412 fichiers, 574 Mo | 77 | 5 | 8 min 09 |
-| `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 7 min 47 |
-| `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 18 min 58 |
+| `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 7 min 43 |
+| `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 18 min 54 |
 
 ### Revivre un disque généré
 
@@ -777,7 +799,7 @@ de 1999 durerait la nuit.
 |---|---|---|---:|
 | `dev-1996`, jour 20 | navigation, compilation, archivage | 142 / 36 Mo | 5 min 23 |
 | `dev-1996`, jour 300 | idem | 154 / 65 Mo | 6 min 35 |
-| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 200 / 20 Mo | 1 min 38 |
+| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 200 / 20 Mo | 1 min 36 |
 | `gamer-1999`, jour 365 | navigation, jeu | 531 / 6 Mo | 2 min 00 |
 
 **L'usure s'entend.** Sur `dev-1996`, la même journée de travail passe d'un seek
@@ -837,29 +859,28 @@ outils d'époque et les deux écrits ici ne sont proposés que sur leur format, 
 les déplacements par blocs pleins s'y activent pour XP, UltraDefrag et JkDefrag.
 
 L'écart n'est pas de degré. Passer la stratégie de 95 sur le 320 Go de
-`famille-2007` tasse des centaines de gigaoctets par tampons de 256 Ko : près de
-cinq millions de requêtes, plus de sept heures de passe simulée, pour ranger
-870 fichiers sur 12 247. La passe de XP sur le même volume tient en **90 398
-requêtes et 16 min 14**.
+`famille-2007` tasse des centaines de gigaoctets par tampons de 256 Ko : 4 857 273
+requêtes et 7 h 16 de passe simulée pour ranger 2 576 fichiers sur 12 247. La
+passe de XP sur le même volume tient en **203 573 requêtes et 20 min 52**.
 
 | scénario NTFS     | plein | requêtes | durée      | déplacés | fragmentés avant → après | morceaux avant → après |
 |-------------------|------:|---------:|-----------:|---------:|--------------------------|------------------------|
 | `gamer-2003`      |   9 % |      223 |        8 s |       10 | 10 → **0**               | 89 → **0**             |
-| `secretaire-2003` |  94 % |   16 300 |   2 min 09 |      963 | 1 276 → 313              | 36 167 → 29 142        |
+| `secretaire-2003` |  94 % |   16 300 |   2 min 10 |      965 | 1 276 → 311              | 36 167 → 29 147        |
 | `famille-2003`    |  95 % |   27 871 |   2 min 26 |      288 | 333 → 45                 | 37 649 → 24 120        |
-| `dev-2003`        |  95 % |   17 114 |   2 min 52 |      114 | 126 → 12                 | 8 342 → 341            |
+| `dev-2003`        |  95 % |   17 144 |   2 min 55 |      115 | 126 → 11                 | 8 342 → 337            |
 | `secretaire-2007` |  88 % |   35 477 |  19 min 06 |      395 | 395 → **0**              | 10 429 → **0**         |
 | `famille-2007`    |  93 % |  203 573 |  20 min 52 |     2433 | 2 576 → 143              | 147 376 → 54 360       |
-| `gamer-2007`      |  90 % |  105 057 |  25 min 45 |     1565 | 1 692 → 127              | 59 735 → 17 964        |
+| `gamer-2007`      |  90 % |  105 391 |  25 min 55 |     1566 | 1 692 → 126              | 59 735 → 17 832        |
 | `dev-2007`        |  86 % |  173 411 |  44 min 12 |     1412 | 1 412 → **0**            | 71 203 → **0**         |
 
 La colonne qui compte est la dernière : cet outil-là ne déloge personne, donc
 il échoue quand aucun trou n'est à la taille, et il le dit dans son rapport.
 Et **le remplissage ne suffit pas à le prédire**. `dev-2003` et
 `secretaire-2003` sont deux volumes de 40 Go remplis à 94-95 % : le premier
-répare 109 fichiers sur 123, le second 887 sur 1 181. La taille de ce qu'il y a à
+répare 115 fichiers sur 126, le second 965 sur 1 276. La taille de ce qu'il y a à
 réparer ne l'explique pas non plus — 21 Mo par fichier déplacé chez le
-développeur, 0,6 Mo chez la secrétaire. Ce qui sépare les deux volumes n'est pas établi : il
+développeur, 1,2 Mo chez la secrétaire. Ce qui sépare les deux volumes n'est pas établi : il
 faudrait compter les échecs par taille, et regarder où tombent les trous.
 
 **Tous ces outils sont soumis à la même règle du volume.** Sur NTFS, les
@@ -873,9 +894,12 @@ pour UltraDefrag, qui tient sa propre liste. Pour XP, la règle ne change
 presque rien : un gros fichier cassé se déplace en plus de cinq secondes, et un
 point de contrôle est passé quand vient le suivant. Le chiffre de cinq
 secondes, le seul choisi dans ce réglage, ne décide pas non plus du résultat :
-à une seconde ou à trente, les tables ci-dessous bougent de quelques fichiers.
-Seule l'hypothèse d'un point de contrôle unique en fin de passe les change — sur
-`dev-2007`, XP laisserait alors 66 fichiers en morceaux au lieu de 0.
+à une seconde ou à trente, XP et JkDefrag laissent au plus 17 fichiers cassés de
+plus ou de moins. Ces secondes sont comptées sur une horloge que le
+planificateur estime d'après les disques de 2003 à 2006 du catalogue, seek
+moyen et débit compris. Seule l'hypothèse d'un point de contrôle unique en fin
+de passe change le résultat — sur `dev-2007`, XP laisserait alors 769 fichiers en
+morceaux au lieu de 0.
 
 #### Recoller au lieu de déplacer
 
@@ -892,18 +916,17 @@ sujet : un fichier ramené de quarante morceaux à deux y reste « fragmenté »
 
 | scénario NTFS     | morceaux restants, XP | UltraDefrag |  requêtes XP → UD |    durée XP → UD |
 |-------------------|----------------------:|------------:|------------------:|-----------------:|
-| `secretaire-2003` |                29 142 |      15 431 |   16 300 → 44 899 | 2 min 09 → 5 min 27 |
+| `secretaire-2003` |                29 147 |      15 431 |   16 300 → 44 899 | 2 min 10 → 5 min 27 |
 | `famille-2003`    |                24 120 |      17 964 |   27 871 → 40 755 | 2 min 26 → 3 min 54 |
-| `dev-2003`        |                   341 |          64 |   17 114 → 18 148 | 2 min 52 → 3 min 31 |
+| `dev-2003`        |                   337 |          64 |   17 144 → 18 148 | 2 min 55 → 3 min 31 |
 | `secretaire-2007` |                     0 |           0 |   35 477 → 28 555 | 19 min 06 → 18 min 46 |
 | `famille-2007`    |                54 360 |       1 087 | 203 573 → 303 289 | 20 min 52 → 31 min 13 |
-| `gamer-2007`      |                17 964 |         356 | 105 057 → 127 075 | 25 min 45 → 37 min 18 |
+| `gamer-2007`      |                17 832 |         356 | 105 391 → 127 075 | 25 min 55 → 37 min 18 |
 | `dev-2007`        |                     0 |          33 | 173 411 → 156 706 | 44 min 12 → 37 min 42 |
 
-Sur `famille-2007`, les 134 532 morceaux que XP laisse derrière lui tombent à
-**1 634** — 99 % de moins — pendant que le nombre de fichiers fragmentés, lui,
-reste à 157. Le prix est près de quatre fois plus de requêtes et un peu plus de
-deux fois plus de temps.
+Sur `famille-2007`, les 54 360 morceaux que XP laisse derrière lui tombent à
+**1 087** — 98 % de moins — pendant que le nombre de fichiers fragmentés, lui,
+reste à 146. Le prix est 1,5 fois plus de requêtes et 1,5 fois plus de temps.
 
 UltraDefrag ne réutilise pas dans un tour l'espace qu'il vient de libérer : il
 ne relit sa liste de trous qu'en tête de tour, même quand le point de contrôle
@@ -911,12 +934,10 @@ de Windows est passé entre-temps. Et il range des fichiers **dans la zone
 réservée à la MFT** : son source ne la retire des régions libres que sous
 Windows 2000 et avant, parce qu'il a sa propre routine d'optimisation de la MFT.
 Sur `gamer-2007`, c'est le plus grand trou du volume. Ses destinations sont donc
-à la fois plus lointaines et plus grandes — sur `dev-2007`, le seek moyen
-passait de 30 614 cylindres chez XP à 51 355 avant que le chantier 26 ne donne
-au disque un cache d'écriture ; depuis qu'il pose ses écritures dans l'ordre de
-l'ascenseur, l'écart ne se voit plus dans la moyenne (21 199 contre 20 090) — et
-un morceau inversé compte pour deux : la
-tête le lit dans l'ordre du fichier. L'outil de XP, lui, respecte la zone ;
+à la fois plus lointaines et plus grandes — sur `dev-2007`, le seek moyen est de
+28 641 cylindres contre 25 650 chez XP, le cache d'écriture posant les
+écritures des deux dans l'ordre de l'ascenseur — et un morceau inversé compte
+pour deux : la tête le lit dans l'ordre du fichier. L'outil de XP, lui, respecte la zone ;
 aucune source ne le dit, et c'est une hypothèse que le code nomme comme telle.
 
 Cela ne fait pas d'UltraDefrag le meilleur outil partout. Des deux volumes que
@@ -940,8 +961,8 @@ pris plus haut, au cluster près si une combinaison existe, sinon par le plus
 haut qui tient ; puis remettre en zone ce que l'optimisation a dérangé. Une
 destination est toujours un trou déjà libre.
 
-Sur FAT, il fait en quelques minutes ce que Windows 95 fait en dix minutes à
-une heure, et il laisse plus de morceaux derrière lui dès que les trous
+Sur FAT, il fait en quelques minutes ce que Windows 95 fait en 5 min 47 à
+57 min 12, et il laisse plus de morceaux derrière lui dès que les trous
 manquent :
 
 | scénario | plein | durée, 95 → JkDefrag | évacuations, 95 | morceaux restants, 95 → JkDefrag |
@@ -954,7 +975,7 @@ manquent :
 
 À 99 %, il ne fait presque rien : un outil qui n'évacue personne a besoin de
 trous. **Et l'outil de 95 non plus** : sur `gamer-1996`, dont les quelques centaines de
-clusters libres ne logent aucun de ses gros fichiers, il n'évacue que trois
+clusters libres ne logent aucun de ses gros fichiers, il n'évacue que quatre
 occupants avant de se retrouver bloqué partout, et rend le volume intact. C'est la limite
 réelle de l'algorithme de 1995, et c'est pourquoi l'outil demandait de faire de
 la place avant de le lancer.
@@ -974,24 +995,23 @@ Une tranche de `Defragment` peut déborder de la fin du fichier : l'original
 calcule sa taille avant de sauter les morceaux déjà bien placés, et ne la
 recalcule pas. Windows la **borne** à la fin du fichier plutôt que de la
 refuser — le pilote FAT le fait explicitement, et Microsoft documente qu'un
-déplacement au-delà de la taille allouée est permis sur NTFS. Sur `famille-1999`,
-le volume où JkDefrag fait son plus mauvais score, 152 tranches débordent : les
-recopier ramène ce qu'il laisse de 2 918 à 1 970 morceaux. Il reste le plus
-mauvais score de l'outil.
+déplacement au-delà de la taille allouée est permis sur NTFS. Les tranches qui
+débordent sont donc recopiées. Sur `famille-1999`, le volume FAT où JkDefrag
+fait son plus mauvais score, il laisse 1 824 morceaux.
 
 Sur NTFS, les morceaux restants restent du même ordre de grandeur qu'avec
-UltraDefrag, mieux sur deux volumes, un peu moins bien sur trois. Mais la passe range
-tout le volume et déplace bien plus que les seuls fichiers cassés — 3,9 Go sur
+UltraDefrag, mieux sur trois volumes, un peu moins bien sur deux. Mais la passe range
+tout le volume et déplace bien plus que les seuls fichiers cassés — 4,0 Go sur
 `gamer-2003`, plein à 9 % et sans un fichier en morceaux :
 
 | scénario | plein | morceaux restants, XP | UltraDefrag | JkDefrag | durée, XP → JkDefrag | Go déplacés, XP → JkDefrag |
 |---|---:|---:|---:|---:|---:|---:|
-| `secretaire-2003` | 94 % | 29 142 | 15 431 | 7 538 | 2 min 09 → 14 min 26 | 1,1 → 4,8 |
-| `famille-2003` | 95 % | 24 120 | 17 964 | 4 762 | 2 min 26 → 12 min 37 | 1,5 → 7,7 |
-| `dev-2003` | 95 % | 341 | 64 | 130 | 2 min 52 → 5 min 11 | 2,3 → 4,2 |
+| `secretaire-2003` | 94 % | 29 147 | 15 431 | 7 565 | 2 min 10 → 15 min 04 | 1,1 → 5,1 |
+| `famille-2003` | 95 % | 24 120 | 17 964 | 4 650 | 2 min 26 → 12 min 39 | 1,5 → 7,8 |
+| `dev-2003` | 95 % | 337 | 64 | 139 | 2 min 55 → 5 min 03 | 2,4 → 4,2 |
 | `gamer-2003` | 9 % | 0 | 0 | 0 | 8 s → 3 min 41 | 0,0 → 4,0 |
-| `famille-2007` | 93 % | 54 360 | 1 087 | 803 | 20 min 52 → 1 h 04 | 30,9 → 105,3 |
-| `gamer-2007` | 90 % | 17 964 | 356 | 530 | 25 min 45 → 1 h 01 | 43,8 → 101,9 |
+| `famille-2007` | 93 % | 54 360 | 1 087 | 805 | 20 min 52 → 1 h 02 | 30,9 → 102,9 |
+| `gamer-2007` | 90 % | 17 832 | 356 | 517 | 25 min 55 → 1 h 02 | 44,0 → 103,6 |
 
 La zone MFT que voient ces passes est la zone **courante**, réduite de moitié
 chaque fois que le reste du volume s'est rempli, et non la réserve d'origine :
@@ -1024,9 +1044,9 @@ morceaux contre 1 329 au mode 2. Sur NTFS, elle ne l'est qu'au point de
 contrôle suivant, et `FindGap`, qui relit le bitmap juste après l'évacuation,
 la trouve encore prise : le fichier part dans le trou suivant, en morceaux s'il
 le faut. L'auteur de JkDefrag décrit ce cas dans son code. Sur `famille-2007`,
-le tri par nom déplace 68 Go en 84 194 évacuations et 50 min 30, et laisse
-80 772 morceaux sur les 147 376 du départ ; `gamer-2007` en sort avec 44 622
-morceaux, contre 530 au mode 2. Sur un volume NTFS plein, un tri de JkDefrag
+le tri par nom déplace 59 Go en 87 517 évacuations et 45 min 56, et laisse
+85 700 morceaux sur les 147 376 du départ ; `gamer-2007` en sort avec 44 736
+morceaux, contre 517 au mode 2. Sur un volume NTFS plein, un tri de JkDefrag
 range à peine.
 
 Le catalogue ne date que les écritures, au jour près : le dernier accès y est la
@@ -1044,14 +1064,13 @@ morceaux, lus à 1,8 Mo/s — quand `dev-1996`, six fois plus gros, en prend 6.
 
 Ce qui la fixe, c'est le va-et-vient. L'outil évacue au **fond du volume**, sa
 zone de manœuvre, où la frontière ne repasse qu'à la fin : `dev-1999` déplace
-11 218 Mo pour un contenu de 6 Go, en 4 086 évacuations. Tant qu'il reposait ses
-évacués juste au-dessus de la frontière, qui les rattrapait quelques fichiers
-plus loin, la même passe déplaçait neuf fois son contenu et durait 5 h 32 —
-`secretaire-1999` seize fois, en 4 h 33. Le prix de la correction est sur les
-volumes pleins : quand la frontière arrive au fond, elle y trouve ses propres
-réfugiés et plus de place au-dessus, et `dev-1999` en sort avec 4 805 morceaux
-au lieu de 1 717. C'est pour cela que l'outil d'époque demandait de faire de la
-place avant de le lancer.
+11 218 Mo pour un contenu de 6 Go, en 4 086 évacuations. Reposer les évacués
+juste au-dessus de la frontière, qui les rattraperait quelques fichiers plus
+loin, ferait déplacer à la passe jusqu'à seize fois son contenu. Le prix est sur
+les volumes pleins : quand la frontière arrive au fond, elle y trouve ses
+propres réfugiés et plus de place au-dessus, et `dev-1999` en sort avec 3 357
+morceaux. C'est pour cela que l'outil d'époque demandait de faire de la place
+avant de le lancer.
 
 #### Tasser sans changer l'ordre
 
@@ -1098,21 +1117,19 @@ passe laisse un volume cohérent.
 
 Les morceaux qui restent sont **tous ceux du fichier d'échange**, que personne
 ne déplace : aucun fichier déplaçable ne sort de la passe en morceaux. Les trous
-qui restent sont entre ces morceaux — sur `dev-1996`, 66 morceaux ne laissent
-plus que 12 trous. Une exception : `gamer-1993`, plein à 100 % depuis que ses
+qui restent sont entre ces morceaux — sur `dev-1996`, 43 morceaux ne laissent
+plus qu'un trou. Une exception : `gamer-1993`, plein à 100 % depuis que ses
 répertoires ont pris ses derniers clusters libres. Sans les deux clusters dont
 la navette a besoin, la passe ne peut rien, et elle le rend tel quel.
 
 Sur les douze volumes, la passe dure 4 h 13 au total contre 4 h 16 pour
 Windows 95, et elle déplace à peu près autant de données (34,1 Go contre 33,9).
-Depuis que l'outil de 95 évacue au fond du volume, ce n'est plus la durée qui
-les sépare — l'avantage passe de l'un à l'autre au gré d'un chantier ; le
-cache d'écriture l'avait donné à Windows 95 au chantier 26, les volumes FAT
-recomptés au chantier 27 le rendent à la frontière —, c'est ce qu'ils
-laissent : sur les volumes pleins de 1999, Windows 95 laisse jusqu'à 6 678
-morceaux, la frontière 147 au plus. Elle est près de quatre fois plus longue
-que JkDefrag (1 h 09), qui ne fait pas le même travail : sur les quatre
-volumes de 1999, il laisse entre 1 100 et 1 850 morceaux et de 790 à 1 110
+Ce n'est pas la durée qui les sépare — elles sont à quelques minutes l'une de
+l'autre, et la moindre correction du modèle fait passer l'avantage de l'un à
+l'autre —, c'est ce qu'ils laissent : sur les volumes pleins de 1999, Windows 95
+laisse jusqu'à 6 678 morceaux, la frontière 147 au plus. Elle est 3,7 fois plus
+longue que JkDefrag (1 h 09), qui ne fait pas le même travail : sur les quatre
+volumes de 1999, il laisse entre 1 108 et 1 824 morceaux et de 789 à 1 101
 trous. Et c'est le seul des trois à ranger `gamer-1996`, plein à 99 %, où
 l'algorithme de 1995 ne trouve plus où évacuer et rend le volume tel quel : là,
 tout passe par une navette de deux clusters, et chaque tronçon se paie d'une
@@ -1124,8 +1141,8 @@ remplissage.
 
 Sur les volumes NTFS de 2003 et 2007, la place ne manque plus — 2 à 33 Go
 libres — mais la taille : le tassage à la frontière y déplace tout le contenu
-du volume, jusqu'à 488 Go et six heures de passe. Et la fragmentation y est
-faite de miettes : sur `famille-2007`, 870 fichiers cassés en 173 194 morceaux.
+du volume, jusqu'à 389 Go et 4 h 36 de passe. Et la fragmentation y est
+faite de miettes : sur `famille-2007`, 2 576 fichiers cassés en 147 376 morceaux.
 Chacun coûte une lecture : c'est leur nombre, pas leur poids, qui fait la durée.
 
 Le **recollage économe** ne déplace donc que ce qui coûte peu. Une suite de
@@ -1147,29 +1164,27 @@ bras par morceau. La zone MFT n'est jamais une destination.
 
 | scénario | plein | durée, XP / UltraDefrag / JkDefrag / recollage | morceaux restants | trous libres |
 |---|---:|---:|---:|---:|
-| `dev-2003` | 95 % | 2 min 52 / 3 min 31 / 5 min 11 / **2 min 16** | 341 / 64 / 130 / **277** | 1 300 / 1 076 / 584 / **130** |
-| `famille-2003` | 95 % | 2 min 26 / 3 min 54 / 12 min 37 / **15 min 56** | 24 120 / 17 964 / 4 762 / **1 137** | 7 111 / 8 160 / 2 533 / **168** |
-| `secretaire-2003` | 94 % | 2 min 09 / 5 min 27 / 14 min 26 / **19 min 56** | 29 142 / 15 431 / 7 538 / **2 758** | 6 428 / 10 646 / 3 815 / **835** |
+| `dev-2003` | 95 % | 2 min 55 / 3 min 31 / 5 min 03 / **2 min 16** | 337 / 64 / 139 / **277** | 1 300 / 1 076 / 601 / **130** |
+| `famille-2003` | 95 % | 2 min 26 / 3 min 54 / 12 min 39 / **15 min 56** | 24 120 / 17 964 / 4 650 / **1 137** | 7 111 / 8 160 / 2 495 / **168** |
+| `secretaire-2003` | 94 % | 2 min 10 / 5 min 27 / 15 min 04 / **19 min 56** | 29 147 / 15 431 / 7 565 / **2 758** | 6 414 / 10 646 / 3 825 / **835** |
 | `gamer-2003` | 9 % | 8 s / 8 s / 3 min 41 / **10 s** | 0 / 0 / 0 / **0** | 98 / 97 / 22 / **45** |
-| `dev-2007` | 86 % | 44 min 12 / 37 min 42 / 1 h 13 / **8 min 15** | 0 / 33 / 0 / **1 254** | 6 214 / 5 870 / 272 / **197** |
-| `famille-2007` | 93 % | 20 min 52 / 31 min 13 / 1 h 04 / **20 min 19** | 54 360 / 1 087 / 803 / **1 321** | 35 483 / 7 271 / 609 / **296** |
-| `gamer-2007` | 90 % | 25 min 45 / 37 min 18 / 1 h 01 / **19 min 07** | 17 964 / 356 / 530 / **1 502** | 13 064 / 7 763 / 874 / **673** |
-| `secretaire-2007` | 88 % | 19 min 06 / 18 min 46 / 39 min 44 / **2 min 35** | 0 / 0 / 0 / **162** | 3 391 / 3 281 / 195 / **1 107** |
+| `dev-2007` | 86 % | 44 min 12 / 37 min 42 / 1 h 14 / **8 min 15** | 0 / 33 / 0 / **1 254** | 6 205 / 5 870 / 272 / **197** |
+| `famille-2007` | 93 % | 20 min 52 / 31 min 13 / 1 h 02 / **20 min 19** | 54 360 / 1 087 / 805 / **1 321** | 35 478 / 7 271 / 618 / **296** |
+| `gamer-2007` | 90 % | 25 min 55 / 37 min 18 / 1 h 02 / **19 min 07** | 17 832 / 356 / 517 / **1 502** | 13 016 / 7 763 / 882 / **673** |
+| `secretaire-2007` | 88 % | 19 min 06 / 18 min 46 / 39 min 39 / **2 min 35** | 0 / 0 / 0 / **162** | 3 387 / 3 281 / 193 / **1 107** |
 
-Sur les huit volumes, la passe dure 1 h 28, contre 1 h 57 pour XP, 2 h 17 pour
+Sur les huit volumes, la passe dure 1 h 29, contre 1 h 58 pour XP, 2 h 18 pour
 UltraDefrag et 4 h 35 pour JkDefrag, et laisse moins de morceaux (8 411) et
-moins de trous (3 451) que chacun d'eux. Elle est redevenue la plus rapide au
-chantier 27. Le cache d'écriture du disque avait ramené XP de 2 h 40 à 1 h 28 au
-chantier 26 — ses destinations sont contiguës, et le disque les pose par salves
-de trois à douze écritures selon le volume, quand celles du recollage sont
-éparses, à peine plus d'une par vidage. Puis les volumes de 2007 ont gagné les
+moins de trous (3 451) que chacun d'eux. Sa durée tient à deux choses qui se
+compensent. Le cache d'écriture du disque pose les destinations de XP,
+contiguës, par salves de 2,3 à 14,0 écritures selon le volume, quand celles du
+recollage sont éparses, 1,2 par vidage. Mais les volumes de 2007 portent les
 fichiers en quelques morceaux que leur donne un NTFS qui étend un fichier près
-de lui (`NTFSAllocator`) : XP a davantage de fichiers à recopier en entier
-(1 h 28 → 1 h 57), quand le recollage, qui ne déplace que les morceaux, n'en
-est pas ralenti (1 h 40 → 1 h 28). Les blocs pleins ne comptent
-presque plus : donnés à XP et à UltraDefrag (`FULL_BLOCKS=1`), ils les mènent à
-1 h 55 et 2 h 16, sans changer ce qu'ils laissent — à un fichier près, les
-points de contrôle ne tombant plus aux mêmes déplacements. Ce que la passe
+de lui (`NTFSAllocator`), et XP les recopie en entier, quand le recollage ne
+déplace que les morceaux. Les blocs pleins ne comptent presque plus : donnés à
+XP et à UltraDefrag (`FULL_BLOCKS=1`), ils les mènent à 1 h 55 et 2 h 16, sans
+changer ce qu'ils laissent — à un fichier près, les points de contrôle ne
+tombant plus aux mêmes déplacements. Ce que la passe
 apporte en propre, c'est la qualité à durée voisine. Elle ne recopie jamais un fichier
 entier : sur `dev-2007`, où un grand trou accueille tout, XP et JkDefrag
 finissent sans un morceau, et elle en laisse 1 254.
@@ -1217,32 +1232,32 @@ plus rien.
 | `famille-1999` | 96 % | 63,3 / 58,2 / **52,0** | 42 / **42** | 3 / **1** | 33 min 10 |
 | `gamer-1999` | 97 % | 56,2 / 54,3 / **46,3** | 147 / **147** | 18 / **24** | 55 min 54 |
 | `secretaire-1999` | 87 % | 57,5 / 52,2 / **46,3** | 4 / **4** | 2 / **1** | 20 min 06 |
-| `dev-2003` | 95 % | 51,8 / 51,7 / **50,0** | 64 / **0** | 130 / **1** | 35 min 54 |
-| `famille-2003` | 95 % | 29,5 / 28,2 / **26,4** | 1137 / **0** | 168 / **14** | 1 h 56 |
-| `gamer-2003` | 9 % | 70,0 / 69,9 / **66,8** | 0 / **0** | 22 / **3** | 5 min 16 |
-| `secretaire-2003` | 94 % | 36,4 / 35,7 / **33,0** | 2758 / **0** | 835 / **2** | 51 min 45 |
-| `dev-2007` | 86 % | 48,3 / 47,4 / **44,2** | 0 / **0** | 197 / **5** | 2 h 49 |
-| `famille-2007` | 93 % | 39,9 / 37,8 / **35,1** | 803 / **0** | 296 / **1** | 3 h 50 |
-| `gamer-2007` | 90 % | 32,3 / 31,0 / **27,9** | 356 / **0** | 673 / **2** | 2 h 53 |
-| `secretaire-2007` | 88 % | 42,9 / 42,9 / **39,9** | 0 / **0** | 195 / **10** | 2 h 40 |
+| `dev-2003` | 95 % | 50,1 / 50,1 / **48,4** | 64 / **0** | 130 / **1** | 35 min 54 |
+| `famille-2003` | 95 % | 29,0 / 27,7 / **25,8** | 1137 / **0** | 168 / **14** | 1 h 56 |
+| `gamer-2003` | 9 % | 67,9 / 67,8 / **64,8** | 0 / **0** | 22 / **3** | 5 min 16 |
+| `secretaire-2003` | 94 % | 35,7 / 34,9 / **32,2** | 2758 / **0** | 835 / **2** | 51 min 45 |
+| `dev-2007` | 86 % | 46,7 / 45,9 / **42,8** | 0 / **0** | 197 / **5** | 2 h 49 |
+| `famille-2007` | 93 % | 38,8 / 36,8 / **34,0** | 805 / **0** | 296 / **1** | 3 h 50 |
+| `gamer-2007` | 90 % | 31,5 / 30,3 / **27,2** | 356 / **0** | 673 / **2** | 2 h 53 |
+| `secretaire-2007` | 88 % | 41,6 / 41,7 / **38,8** | 0 / **0** | 193 / **10** | 2 h 40 |
 
 « Meilleur outil » est, pour chaque colonne et chaque volume, le meilleur des
 quatre autres outils de son format — Windows 95, JkDefrag, UltraDefrag et le
 tassage à la frontière sur FAT ; XP, JkDefrag, UltraDefrag et le recollage
 économe sur NTFS —, démarré de la même façon (`SCENARIO=boot:<profil>` avec une
 `STRATEGY`). Sur les douze FAT, les démarrages passent de 597,5 s livrés et
-573,5 s au mieux à **518,5 s** ; sur les huit NTFS, de 351,1 et 344,6 s à
-**323,3 s**. Le bloc de démarrage atteint la borne mesurée en posant à la main
-un rangement idéal : sur `dev-2003`, 50,0 s dans les deux cas. Les morceaux qui
+573,5 s au mieux à **518,5 s** ; sur les huit NTFS, de 341,3 et 335,2 s à
+**314,0 s**. Le bloc de démarrage atteint la borne d'un rangement idéal posé à
+la main, que le journal mesure (`LEDGER.md`, chantier 28). Les morceaux qui
 restent sur FAT sont tous ceux du fichier d'échange, que personne ne déplace, et
 `gamer-1993`, plein à 100 %, reste tel quel. Les trous tombent de 129 à 49 sur
-FAT et de 2 516 à 38 sur NTFS ; un volume fait exception, `gamer-1999`, où la
+FAT et de 2 514 à 38 sur NTFS ; un volume fait exception, `gamer-1999`, où la
 frontière seule en laisse 18 et le rangement 24.
 
-Le prix est la passe. Sur FAT, elle dure 4 h 41 pour les douze volumes, contre
-4 h 12 au tassage à la frontière et 4 h 16 à Windows 95. Sur NTFS, c'est un
+Le prix est la passe. Sur FAT, elle dure 4 h 42 pour les douze volumes, contre
+4 h 13 au tassage à la frontière et 4 h 16 à Windows 95. Sur NTFS, c'est un
 tassage complet : 1,3 To déplacés et 15 h 43 pour les huit volumes, jusqu'à
-3 h 50 sur `famille-2007`, quand le recollage économe s'en tient à 1 h 28.
+3 h 50 sur `famille-2007`, quand le recollage économe s'en tient à 1 h 29.
 
 Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
 démarrage :
@@ -1257,19 +1272,35 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
 - **La couche rotation est procédurale, et c'est toujours le maillon faible.**
   La littérature et tous les projets qui fonctionnent bouclent un
   enregistrement ; synthétiser le ronronnement comme une série harmonique du
-  régime a été explicitement invalidé. Depuis le chantier 25 le régime, le
+  régime a été explicitement invalidé. Le régime, le
   nombre de plateaux et le palier forment le spectre et le niveau, pris aux
   manuels — mais la forme des bandes reste un choix, et un enregistrement par
   époque vaudrait mieux. **À remplacer par des samples CC0 bouclés.**
 - Aucun échantillon n'est embarqué : tout est synthétisé. Pour la couche tête
   c'est défendable, c'est justement la couche où aucun asset isolé de seek sain
   n'est disponible en CC0.
+- **Des constantes sont des ordres de grandeur, et le disent dans leur code.**
+  Aucune source ne donne la commutation de tête (six dixièmes du pas de piste,
+  que le manuel du Fireball contredit), la lecture sans latence, le coût de
+  commande hors de la machine de 1999 qui l'a mesuré, le paquet d'écriture de
+  64 Ko de NTFS, le bloc de huit clusters de la MFT, une validation de journal
+  sur huit, les quatre bornes de recherche de `NTFSAllocator`, les bandes et le
+  battement du roulement, la seconde avant la coupure et la redescente du
+  plateau — ni les cibles de démarrage sur lesquelles `ThinkModel` est calé.
+  `LEDGER-EXPERTS.md` en tient la liste.
 - **Les défragmenteurs écrivent par requêtes de 4 Mo** (XP, JkDefrag) et de
   256 Ko (Windows 95), que personne ne découpe. Les installations et les
   journées, elles, ne dépassent plus 256 secteurs — la limite d'une commande
   ATA sans LBA48, 64 Ko sous XP —, et un découpage fait à l'interface du disque
   vaudrait pour tous ; les passes le paieraient d'un coût de commande par
   tranche, que la lecture anticipée et le cache d'écriture rendraient petit.
+- **NTFS sans compression, sans fichiers creux, sans flux additionnels**, et
+  sans `$UsnJrnl` ni `$Secure` : les répertoires compressés de 2003, alloués par
+  unités de seize clusters, fragmenteraient à coup sûr ; le journal des
+  modifications de Vista est réécrit en continu. Un fichier aux extents trop
+  nombreux pour un enregistrement de MFT n'y prend pas les enregistrements
+  supplémentaires d'un `$ATTRIBUTE_LIST`, et les liens physiques de WinSxS sont
+  comptés comme des copies.
 - Pas de réordonnancement des commandes, pas de NCQ. File FIFO : représentatif
   d'un contrôleur IDE de l'époque, et c'est ce qui rend le crépitement si
   dense. Seul le cache d'écriture du disque pose ce qu'il a acquitté dans l'ordre
@@ -1441,14 +1472,15 @@ par étape, le jeu complet des bilans, les comparaisons — sous
 
 ```sh
 ./Tools/Measure/snapshot.sh base              # avant de toucher au code
-./Tools/Measure/run.sh base full              # 340 bilans, ~5 min
+./Tools/Measure/run.sh base full              # 340 bilans, ~5 à 7 min
 # … une correction …
 ./Tools/Measure/snapshot.sh m1 && ./Tools/Measure/run.sh m1 boots   # 3 s
 ./Tools/Measure/boots.py base m1              # les vingt démarrages et leur cible
 ./Tools/Measure/boots.py --steps base m1 m2   # l'effet de chaque étape
 ./Tools/Measure/compare.py base m1 defrag- --identical   # ce qui n'a pas bougé
 ./Tools/Measure/fit-think.py m1               # quelle constante de ThinkModel
-./Tools/Measure/readme-tables.py m1           # les tables mesurées du README
+./Tools/Measure/readme-tables.py m1 --check   # le README contre les bilans
+./Tools/Measure/readme-tables.py m1 --write   # tables et prose, réécrites
 ./Tools/Measure/run.sh m1 disks               # les vingt volumes, un à la fois
 ./Tools/Measure/extents.py base m1            # morceaux par fichier, répertoires, coût
 ./Tools/Measure/smart.sh m1                   # chaque disque démarré après chaque outil
@@ -1463,9 +1495,20 @@ génération — la meilleure de trois — et une **empreinte** de toutes les
 extents : deux binaires qui la partagent ont posé les mêmes clusters aux mêmes
 fichiers.
 
-`readme-tables.py` se valide d'abord en reproduisant le README du commit
+Chaque étape est construite dans son propre dossier, avec son paquet de
+ressources : deux worktrees qui mesurent en même temps ne se volent pas le
+binaire. `run.sh` signale un bilan tronqué, et `compare.py --identical` sort en
+erreur sur un bilan qui diffère, qui manque, ou sur une étape vide.
+
+`readme-tables.py` tient **tous** les chiffres que le README tire d'un bilan :
+les tables, reconnues à leur en-tête, et la prose, écrite dans le script comme
+elle l'est dans le README, chaque chiffre y étant un champ. `--check` dit
+lequel ment. Quelques phrases comparent la galerie à un modèle privé d'un
+mécanisme ; elles demandent les bilans d'un binaire jetable, nommé en argument
+(`nora=…`, `nopf=…`, `nosd=…`, `cp1=…`, `cp30=…`, `cpend=…`), et sont dites non
+vérifiées sans lui. Il se valide d'abord en reproduisant le README du commit
 précédent à partir des bilans de ce commit-là ; la table des trois allocateurs
-n'en sort pas (voir son en-tête).
+et celle du rangement intelligent n'en sortent pas (voir son en-tête).
 
 ## Vidéos
 

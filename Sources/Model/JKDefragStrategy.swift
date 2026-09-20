@@ -226,9 +226,9 @@ struct JKDefragStrategy: DefragStrategy {
     }
 
     /// Les étapes du mode 2, dans l'ordre où l'écran de JkDefrag les annonçait.
-    /// Les trois zones de `OptimizeVolume` n'en font qu'une : la zone des
-    /// répertoires est vide dans la galerie, et découper le reste n'apprendrait
-    /// rien à l'écran.
+    /// Les trois zones de `OptimizeVolume` n'en font qu'une à l'écran : la
+    /// passe les parcourt l'une après l'autre, et une phase par zone
+    /// n'apprendrait rien de plus.
     private static let fastOptimizePhases: [PhaseDescriptor] = [
         PhaseDescriptor(id: "analyse", label: "Analyse du volume",
                         detail: "Les fichiers, leur zone, et les trois bandes du volume"),

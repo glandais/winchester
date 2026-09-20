@@ -156,6 +156,53 @@ struct AllocationInvariantTests {
         #expect(report.isClean, "\(strategyID) à \(Int(fill * 100)) % : \(report.description)")
     }
 
+    /// Le second cas, qui tient au déplacement lui-même et pas à la stratégie :
+    /// une destination qui recouvre un morceau du **même** fichier que la copie
+    /// n'a pas encore lu.
+    ///
+    /// Copier tronçon par tronçon dans l'ordre du fichier l'écrase avant de le
+    /// lire. Deux formes, mesurées sur la galerie avant la correction — huit
+    /// volumes sur vingt, jusqu'à 15 182 clusters sur `secretaire-1999` : un
+    /// fichier qui glisse de quelques clusters vers le haut, et un fichier dont
+    /// le second morceau est posé au début de la place visée.
+    @Test("Un déplacement ne recouvre pas ce qu'il n'a pas encore lu",
+          arguments: [
+            // Un glissement de deux clusters vers le haut, tampon de 64.
+            ([Extent(start: 0, length: 100)], [Extent(start: 2, length: 100)]),
+            // Le second morceau au début de la place : le premier tronçon
+            // l'écrasait.
+            ([Extent(start: 150, length: 40), Extent(start: 100, length: 40)],
+             [Extent(start: 100, length: 80)]),
+            // Deux morceaux qui s'échangent : un cycle, lu entier avant d'écrire.
+            ([Extent(start: 40, length: 40), Extent(start: 0, length: 40)],
+             [Extent(start: 0, length: 80)]),
+          ])
+    func moveNeverOverwritesUnreadSource(source: [Extent], destination: [Extent]) {
+        let partition = PartitionGeometry(startLBA: 0, clusterCount: 400,
+                                          clusterSectors: 8, format: .fat16)
+        let sink = OperationSink()
+        DefragOperations.move(source: source, destination: destination, category: .document,
+                              contiguous: true, phase: 0, partition: partition,
+                              bufferBytes: 64 * partition.clusterBytes, into: sink)
+        // Chaque cluster de la source doit être lu avant qu'une écriture ne
+        // tombe dessus, et chacun est lu.
+        var unread = Set(source.flatMap { Int($0.start)..<Int($0.end) })
+        let sourceClusters = unread
+        for operation in sink.operations {
+            guard let start = operation.cluster else { continue }
+            let clusters = start..<(start + operation.sectors / partition.clusterSectors)
+            if operation.isWrite {
+                let lost = unread.intersection(clusters)
+                #expect(lost.isEmpty, "\(lost.count) clusters écrasés avant d'être lus")
+            } else {
+                unread.subtract(clusters)
+            }
+        }
+        #expect(unread.isEmpty)
+        let read = sink.operations.filter { !$0.isWrite }.reduce(0) { $0 + $1.sectors }
+        #expect(read / partition.clusterSectors == sourceClusters.count)
+    }
+
     /// Le cas qui faisait écrire la passe de 1995 sur une donnée vivante, réduit
     /// à ce qui le produit : un occupant trop gros pour la place qui reste.
     ///

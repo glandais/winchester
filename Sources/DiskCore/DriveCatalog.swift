@@ -159,7 +159,9 @@ public struct WriteSeek: Sendable, Equatable {
 /// celui du Conner Cougar de 1992 annonce un tampon « segmentable » géré au
 /// plus anciennement utilisé. Les manuels Seagate n'en disent rien. Le modèle
 /// applique donc la règle du Fireball à tous : autant d'entrées que la taille en
-/// loge, la moins récemment servie cède la place. Le nombre de flux servis
+/// loge, **la plus ancienne cède la place**. C'est une file et non la gestion
+/// « au plus anciennement utilisé » du Conner : une entrée relue n'est pas
+/// rajeunie. L'écart n'a pas été mesuré. Le nombre de flux servis
 /// n'est pas posé ; il tombe de la taille du tampon devant celle d'une piste —
 /// une seule sur le Fireball, dont la piste externe fait 69 Ko, une trentaine
 /// sur le 7200.10.
@@ -177,6 +179,15 @@ public struct DriveBuffer: Sendable, Equatable {
     public let writeCache: Bool
     /// Lecture sans latence : une requête qui tient sur la piste commence au
     /// secteur qui se présente, et le tampon remet les morceaux dans l'ordre.
+    ///
+    /// **Une hypothèse, pour toutes les fiches qui l'ont.** Aucun manuel du
+    /// catalogue ne décrit ce réordonnancement. Le « Read-on-arrival » du
+    /// Fireball TM, qui a longtemps servi de source, qualifie un **temps de
+    /// seek** — « Seek times: Read-on-arrival, Typical 12.0 ms », contre 14,0
+    /// pour une écriture : la lecture commence dès que la tête arrive, avant la
+    /// fin de l'asservissement — et le même manuel le désactive pour tenir ses
+    /// taux d'erreur. Le mécanisme est plausible pour un disque à tampon
+    /// segmenté ; il n'est pas sourcé. Le Conner de 1993 ne l'a pas.
     public let zeroLatencyRead: Bool
     /// Débit le plus élevé de l'interface côté disque, en Mo/s : le mode le
     /// plus rapide que le disque accepte. La machine peut en imposer un plus
@@ -207,7 +218,9 @@ public struct DriveBuffer: Sendable, Equatable {
     /// cleanup activity takes approximately 200 µs » par requête en lecture,
     /// moins de 50 µs en écriture. Le modèle prend 200 µs dans les deux sens ;
     /// aucune source ne donne ce coût sur les machines de 2003 et 2007, plus
-    /// rapides, où il est sans doute surestimé.
+    /// rapides, où il est sans doute surestimé, ni sur le Fireball de 1996, trois
+    /// ans avant la mesure et derrière un bus PIO — où il est sans doute
+    /// sous-estimé. **Une mesure d'un point**, étendue à dix ans.
     public static let measuredOverheadMs = 0.2
 }
 
@@ -224,9 +237,13 @@ public enum DriveCatalog {
     /// centre et une garde au bord. Cette largeur est le seul paramètre du
     /// modèle qui ne vienne pas d'une fiche — elle vaut environ 28 mm sur
     /// toute la période, et c'est elle qui convertit une densité de pistes en
-    /// nombre de cylindres. Réglée à 1,10 pouce, elle fait retomber le débit
-    /// externe du Barracuda 7200.7 et du 7200.10 sur celui de leurs manuels à
-    /// 5 % près, alors que le débit n'entre pas dans le calage.
+    /// nombre de cylindres. Réglée à 1,10 pouce, elle faisait retomber le débit
+    /// externe brut du Barracuda 7200.7 et du 7200.10 sur celui de leurs
+    /// manuels à 5 % près — contre la fiche du 7200.10 d'alors, qui portait les
+    /// 78 Mo/s des 750 Go. Contre la bonne, 72 Mo/s, le brut la dépasse de
+    /// 10 % ; c'est la lecture simulée, commutations comprises, qui se compare
+    /// aux manuels (`SequentialThroughputTests`). Le débit n'entre pas dans le
+    /// calage.
     public static let dataBandInches = 1.10
 
     /// Rayon externe de la zone de données d'un plateau 3,5 pouces, en pouces.
@@ -263,7 +280,8 @@ public enum DriveCatalog {
                       + "manuel du Fireball TM 1080AT (81-111394-02, 1996), celui du "
                       + "540/1080AT de 1995 étant introuvable : 76 Ko de cache à "
                       + "segmentation adaptative, « read look-ahead, and write cache "
-                      + "enabled » à la mise sous tension, « Read-on-arrival firmware »"),
+                      + "enabled » à la mise sous tension. La lecture sans latence n'y est "
+                      + "pas : « Read-on-arrival » y qualifie un seek (voir `zeroLatencyRead`)"),
             writeSeek: WriteSeek(
                 readAverageMs: 12.0, writeAverageMs: 14.0,
                 readTrackToTrackMs: 3.0, writeTrackToTrackMs: 3.0,
@@ -464,7 +482,9 @@ extension DriveCatalog {
                 innerRatio(year: year))
     }
 
-    private static func innerRatio(year: Int) -> Double {
+    /// Le rapport entre les secteurs de la piste interne et ceux de la piste
+    /// externe pour un disque de cette année (`innerRatioByYear`, interpolé).
+    public static func innerRatio(year: Int) -> Double {
         let table = innerRatioByYear
         let (low, high) = bracket(year: year, in: table.map(\.year))
         let span = Double(table[high].year - table[low].year)

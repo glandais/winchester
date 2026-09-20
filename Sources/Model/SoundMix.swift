@@ -17,9 +17,10 @@ struct SoundMix: Codable, Equatable, Sendable {
 
     /// Les trois façons d'écouter que proposent les maquettes.
     enum Preset: String, CaseIterable, Identifiable, Sendable {
-        /// Le mixage d'origine, réglé au casque. Rotation à 20 % depuis le
-        /// chantier 25 : le plateau d'un disque à roulements de 1993 est bien
-        /// plus fort qu'avant, et 32 % le mettait au-dessus des seeks à l'oreille.
+        /// Le mixage d'origine, réglé au casque. Rotation à 20 % : le plateau
+        /// d'un disque à roulements de 1993 est fort, et à 32 % il passait
+        /// au-dessus des seeks à l'oreille — un réglage d'écoute, pas une
+        /// donnée.
         case headphones
         /// Le haut-parleur de l'iPhone n'a pas de grave : la rotation monte, et
         /// le grondement haptique rend dans la main ce que l'oreille n'a plus.

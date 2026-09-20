@@ -50,38 +50,32 @@ extension ThinkModel {
 
     /// Le plancher processeur d'un démarrage, par système.
     ///
-    /// **C'est le seul endroit où une durée de démarrage est calée**, et il l'a
-    /// été trois fois (`LEDGER.md`, chantiers 20, 22 et 26). Les cibles sont les
-    /// vingt durées que le modèle donnait avant la relecture des experts,
-    /// elles-mêmes posées sur les durées d'époque.
+    /// **C'est le seul endroit où une durée de démarrage est calée**, et les
+    /// cibles ne sont **pas des mesures d'époque** : ce sont les vingt durées
+    /// que le modèle donnait avant la relecture des experts (`BOOT_TARGETS`,
+    /// `Tools/Measure/bilan.py`). Caler dessus revient à demander au modèle
+    /// corrigé de retomber sur les durées du modèle d'avant ; ce qui défend une
+    /// constante, c'est la forme de l'ajustement, pas le niveau qu'il atteint.
     ///
-    /// Le premier calage absorbait, sans le savoir, un défaut du disque : un
-    /// tour de plateau perdu à chaque requête d'une lecture contiguë, et une
-    /// table FAT lue deux fois au montage. Les deux corrigés, ce qui manquait
-    /// aux vingt démarrages s'est révélé **proportionnel aux mégaoctets lus**,
-    /// et non au nombre de fichiers ouverts — la signature d'un coût par
-    /// requête de transfert. C'est donc `perMegabyte` seul qui a bougé ;
-    /// `perFile` décrit toujours ce qu'il décrivait.
+    /// `perMegabyte` seul bouge d'un calage à l'autre, pour une raison
+    /// physique : ce que les corrections du disque ont déplacé — le tour de
+    /// plateau perdu, la table lue deux fois, les caches, les enregistrements
+    /// de MFT épars — est un coût de lecture, au mégaoctet. Les résidus, eux,
+    /// ne départagent plus les deux constantes : avec quatre profils par
+    /// époque, fichiers et mégaoctets sont colinéaires (`fit-think.py`).
     ///
-    /// Le troisième calage suit les trois caches du chantier 26 — celui du
-    /// disque, `SMARTDRV`, VCACHE. Les résidus, cette fois, ne désignent
-    /// aucune constante : `perFile` seul et `perMegabyte` seul laissent les
-    /// mêmes, à un dixième de seconde près, sur quatre époques sur cinq. C'est
-    /// encore `perMegabyte` qui bouge, pour une raison physique et non
-    /// statistique : ce qu'un cache déplace, c'est le coût de la lecture
-    /// séquentielle, au mégaoctet. Et il **monte** pour 2003 et 2007 : le
-    /// disque servi par son tampon révèle un plancher processeur plus lourd
-    /// que celui qu'on lui prêtait, 0,16 s par mégaoctet pour un Vista de
-    /// 2007. Rien dans la description ne le justifie — les cibles de ces deux
-    /// époques ne sont pas des mesures, et c'est elles qu'il faudrait
-    /// rediscuter, pas ce chiffre.
+    /// Le niveau de 2003 et 2007 — 0,19 et 0,15 s par mégaoctet, un Vista à
+    /// peine sous un XP sur des processeurs trois ou quatre fois plus rapides —
+    /// n'est justifié par rien dans la description : c'est la question des
+    /// cibles, que seules des mesures d'époque trancheraient. L'histoire des
+    /// calages est dans `LEDGER.md` (chantiers 22, 26 et 29).
     static func boot(_ os: String) -> ThinkModel {
         switch os {
-        case "msdos-6.22+win31": ThinkModel(perFile: 0.045, perMegabyte: 0.65)  // 0,80 avant le chantier 26, 0,60 avant le 22
-        case "win95-osr1":       ThinkModel(perFile: 0.022, perMegabyte: 0.42)  // 0,41 ; 0,34
-        case "win98se":          ThinkModel(perFile: 0.015, perMegabyte: 0.24)  // 0,25 ; 0,22
-        case "winxp-sp1":        ThinkModel(perFile: 0.009, perMegabyte: 0.20)  // 0,19 ; 0,13
-        default:                 ThinkModel(perFile: 0.009, perMegabyte: 0.16)  // Vista : 0,15 ; 0,09
+        case "msdos-6.22+win31": ThinkModel(perFile: 0.045, perMegabyte: 0.65)
+        case "win95-osr1":       ThinkModel(perFile: 0.022, perMegabyte: 0.42)
+        case "win98se":          ThinkModel(perFile: 0.015, perMegabyte: 0.24)
+        case "winxp-sp1":        ThinkModel(perFile: 0.009, perMegabyte: 0.19)
+        default:                 ThinkModel(perFile: 0.009, perMegabyte: 0.15)  // Vista
         }
     }
 }

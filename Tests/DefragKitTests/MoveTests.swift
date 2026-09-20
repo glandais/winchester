@@ -8,8 +8,9 @@ import DiskCore
 /// Le calcul des clusters libérés cherche désormais la destination par
 /// dichotomie, au lieu de la parcourir à chaque tronçon. L'oracle est l'ancien
 /// calcul, recopié tel quel : sur des destinations morcelées, dans le désordre
-/// et recouvrant la source, les mutations doivent être les mêmes, dans le même
-/// ordre.
+/// et recouvrant la source, les mutations de chaque tronçon doivent être les
+/// mêmes. Leur ordre est celui de `DefragOperations.safeOrder`, qui fait passer
+/// un tronçon après ceux dont il recouvre la source.
 @Suite("Déplacement d'un fichier")
 struct MoveTests {
 
@@ -54,7 +55,8 @@ struct MoveTests {
     /// Les mutations de l'ancien `move`, avec son `freed` d'origine.
     private static func oracle(source: [Extent], destination: [Extent],
                                buffer: UInt32) -> [MapMutation] {
-        var mutations: [MapMutation] = []
+        var groups: [[MapMutation]] = []
+        var chunks: [DefragOperations.MoveChunk] = []
         var sourceIndex = 0
         var sourceOffset: UInt32 = 0
         var destinationIndex = 0
@@ -68,15 +70,16 @@ struct MoveTests {
             guard length > 0 else { break }
             let readStart = from.start + sourceOffset
             let writeStart = to.start + destinationOffset
-            mutations.append(MapMutation(start: Int(writeStart), count: Int(length),
-                                         category: .document))
-            mutations.append(contentsOf: freed(start: readStart, length: length, kept: kept))
+            chunks.append(DefragOperations.MoveChunk(read: readStart, write: writeStart, length: length))
+            groups.append([MapMutation(start: Int(writeStart), count: Int(length), category: .document)]
+                          + freed(start: readStart, length: length, kept: kept))
             sourceOffset += length
             destinationOffset += length
             if sourceOffset == from.length { sourceIndex += 1; sourceOffset = 0 }
             if destinationOffset == to.length { destinationIndex += 1; destinationOffset = 0 }
         }
-        return mutations
+        let (order, unordered) = DefragOperations.safeOrder(chunks)
+        return (order + unordered).flatMap { groups[$0] }
     }
 
     private static func freed(start: UInt32, length: UInt32,

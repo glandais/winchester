@@ -193,6 +193,11 @@ public struct NTFSProfile: FileSystemProfile {
     /// étendant l'allocation du fichier à chaque vidage. Un fichier dont
     /// personne n'a déclaré la taille (`SetEndOfFile`) grandit donc de 64 Ko
     /// en 64 Ko.
+    ///
+    /// **Une estimation** : le mécanisme est celui du gestionnaire de cache,
+    /// la taille du paquet n'est tirée d'aucune source citée ici. Elle décide
+    /// pourtant de la traîne de fichiers en deux à seize morceaux des NTFS de
+    /// la galerie.
     public var writePacketBytes: UInt64 { 64 * 1_024 }
 
     /// Part du volume que NTFS réserve à la croissance de la MFT et tient à

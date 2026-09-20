@@ -5,8 +5,11 @@
     ./Tools/Measure/compare.py base m1 defrag- 0.5     # passes qui bougent de plus de 0,5 %
     ./Tools/Measure/compare.py base m1 --identical     # bilans identiques au texte près
 
-`--identical` compare le texte entier, ligne « génération de … » exceptée : c'est
-ce qui prouve qu'une correction n'a rien touché qu'elle ne devait pas.
+`--identical` compare le texte entier, ligne « génération de … » et lignes
+vides exceptées : c'est ce qui prouve qu'une correction n'a rien touché
+qu'elle ne devait pas. Il sort en erreur si un bilan diffère, s'il manque d'un
+côté, ou si la première étape n'en a aucun — une preuve sur rien n'en est pas
+une.
 """
 import glob
 import os
@@ -23,12 +26,19 @@ names = sorted(os.path.basename(f)[:-4]
                for f in glob.glob(os.path.join(MEASURE, f"out-{a}", f"{prefix}*.txt")))
 
 if "--identical" in sys.argv:
-    strip = lambda t: "\n".join(l for l in t.splitlines() if not l.startswith("génération"))
-    changed = [n for n in names if strip(text(a, n)) != strip(text(b, n))]
-    print(f"{len(names) - len(changed)} identiques, {len(changed)} différents")
+    if not names:
+        sys.exit(f"aucun bilan « {prefix}* » dans out-{a}")
+    strip = lambda t: "\n".join(l.rstrip() for l in t.splitlines()
+                                if l.strip() and not l.startswith("génération"))
+    missing = [n for n in names if not os.path.exists(os.path.join(MEASURE, f"out-{b}", f"{n}.txt"))]
+    changed = [n for n in names if n not in missing and strip(text(a, n)) != strip(text(b, n))]
+    print(f"{len(names) - len(changed) - len(missing)} identiques, {len(changed)} différents, "
+          f"{len(missing)} absents de out-{b}")
     for n in changed:
         print("  " + n)
-    sys.exit(0)
+    for n in missing:
+        print("  absent : " + n)
+    sys.exit(1 if changed or missing else 0)
 
 for n in names:
     x, y = common(text(a, n)), common(text(b, n))

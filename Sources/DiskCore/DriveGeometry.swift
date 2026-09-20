@@ -126,8 +126,14 @@ public struct DriveGeometry: Sendable {
     }
 
     /// Cylindre de parcage du bras, moteur à l'arrêt : le diamètre intérieur,
-    /// ou une rampe juste au-delà. Le premier accès part donc du moyeu, et
-    /// c'est ce qui en fait une course quasi complète.
+    /// ou une rampe juste au-delà. Un disque qu'on allume en part pour chercher
+    /// sa piste 0 (`DiskMechanics.start`).
+    ///
+    /// Une passe sur un plateau qui tourne déjà part aussi de là, et ce n'est
+    /// **pas** un fait : aucun disque de bureau de la période ne parquait au
+    /// repos, et le bras est resté où le dernier accès l'a laissé. Le modèle ne
+    /// le sait pas ; le moyeu est une convention, qui fait du premier accès
+    /// d'une passe une course presque complète.
     public var parkCylinder: Int { cylinders - 1 }
 
     /// Décalage angulaire du secteur 0 d'une piste à la suivante : le *skew*,

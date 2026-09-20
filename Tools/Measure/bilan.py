@@ -42,13 +42,16 @@ def _float(pattern, t):
 
 
 def common(t):
-    """Ce que tout bilan porte : durée, requêtes, seeks, lu et écrit."""
+    """Ce que tout bilan porte : durée, requêtes, seeks, lu et écrit, et ce que
+    le cache d'écriture du disque a différé."""
     return dict(duration=_float(r"^durée\s+: ([\d.]+)", t),
                 requests=_int(r"^requêtes\s+: (\d+)", t),
                 seeks=_int(r"^seeks\s+: (\d+)", t),
                 meanSeek=_int(r"moy\. (\d+) cyl", t),
                 read=_int(r"^lu / écrit\s+: (\d+)", t),
-                written=_int(r"^lu / écrit\s+: \d+ / (\d+)", t))
+                written=_int(r"^lu / écrit\s+: \d+ / (\d+)", t),
+                cachedWrites=_int(r"(\d+) écritures différées", t),
+                destages=_int(r"posées en (\d+) vidages", t))
 
 
 def boot(step, profile):
@@ -59,7 +62,10 @@ def boot(step, profile):
              think=_float(r"^calcul\s+: ([\d.]+)", t),
              witness=re.search(r"soit ([-+]\d+) %", t).group(1),
              stamped=_int(r"dates d'accès : (\d+)", t),
-             stampWrites=_int(r"réécrites en (\d+)", t))
+             stampWrites=_int(r"réécrites en (\d+)", t),
+             diskShare=_int(r"^disque\s+: [\d.]+ s \((\d+) % de l'attente\)", t),
+             fatPages=_int(r"table FAT32 : (\d+) pages lues", t),
+             fatReread=_int(r"dont (\d+) relues après éviction", t))
     return d
 
 
@@ -69,7 +75,8 @@ def defrag(step, profile, tool, full_blocks=False):
     if d["duration"] is None:
         return None  # outil refusé sur ce format
     pair = lambda label: tuple(map(int, re.search(label + r"\s+: (\d+) avant, (\d+) après", t).groups()))
-    d.update(fill=_int(r"(\d+) % plein", t),
+    d.update(files=_int(r"clusters de \d+ Ko, (\d+) fichiers", t),
+             fill=_int(r"(\d+) % plein", t),
              moved=_int(r"^déplacements\s+: (\d+) fichiers", t),
              evacuations=_int(r"(\d+) évacuations", t),
              movedMB=_int(r"^déplacé\s+: (\d+) Mo", t),
@@ -129,3 +136,22 @@ def duration(seconds):
 def gigabytes(mb):
     """Les Go du README sont des Mo divisés par 1 024."""
     return decimal(mb / 1024)
+
+
+def rounded(x):
+    """L'arrondi du README : au plus proche, la moitié vers le haut."""
+    return int(x + 0.5) if x >= 0 else -int(-x + 0.5)
+
+
+def signed(x):
+    """+3, −2, −0 : les écarts au témoin comme le README les écrit."""
+    return str(x).replace("-", "−") if str(x).startswith("-") else f"+{x}"
+
+
+WORDS = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix",
+         "onze", "douze", "treize", "quatorze", "quinze", "seize"]
+
+
+def word(n):
+    """Un petit nombre en toutes lettres, comme la prose l'écrit."""
+    return WORDS[n] if 0 <= n < len(WORDS) else number(n)

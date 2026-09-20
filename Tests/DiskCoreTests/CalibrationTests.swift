@@ -188,7 +188,7 @@ struct CalibrationTests {
 
     /// Les cibles du cahier des charges, et ce que le modèle produit.
     ///
-    /// Deux d'entre elles ne sont **pas** atteintes, et le test le dit au lieu
+    /// Trois d'entre elles ne sont **pas** atteintes, et le test le dit au lieu
     /// de l'arrondir. L'analyse est au bas de ce fichier.
     @Test("dev-1996 après dix-huit mois : 35 à 50 % de fichiers fragmentés")
     func developer1996() throws {
@@ -237,10 +237,13 @@ struct CalibrationTests {
         let disk = try Self.generate("secretaire-1999")
         print(Self.describe(disk))
         withKnownIssue("le modèle produit 6 % depuis que le hint système ne force plus le cluster 0") {
-            #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.10)
+            #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.15)
         }
+        // Fourchette de non-régression autour de ce que le modèle produit
+        // (5,5 %), comme pour dev-1996 : la borne haute de la cible n'en est
+        // pas une.
         #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.03)
-        #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.25)
+        #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.10)
     }
 
     @Test("famille-2003 : le remplissage est la variable de premier ordre")
@@ -254,7 +257,11 @@ struct CalibrationTests {
         withKnownIssue("le modèle produit 8 % : NTFS place bien même à 95 % — voir la note") {
             #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.40)
         }
-        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.01)
+        // Fourchette de non-régression : le volume est chaotique — 6, 11, 13
+        // puis 7,6 % d'un lot à l'autre, 4,6 à 21 % selon les constantes de
+        // `NTFSAllocator` —, elle laisse passer ce bruit et rien de plus.
+        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.04)
+        #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.16)
         // Mais les gros fichiers écrits en fin de course, eux, sont en miettes.
         #expect(disk.metrics.maxExtentsPerFile > 500)
     }
@@ -265,29 +272,15 @@ struct CalibrationTests {
     /// fourchette visée n'est pas un réglage, c'est un allocateur qui place
     /// moins bien.
     ///
-    /// Le facteur a été de douze, puis de deux, et il se resserre encore.
-    /// D'abord parce que `NTFSAllocator` renvoyait son curseur système au début
-    /// de la plage de données à chaque échec, ce qui tassait les fichiers
-    /// système en tête de volume et laissait le reste étrangement propre ;
-    /// ensuite parce que le hint `.system` forçait, sur VFAT et FAT32, le
-    /// cluster 0 pour toutes les DLL et tous les fichiers de mise à jour, ce
-    /// qu'aucun pilote n'a jamais fait — c'était un fragmenteur de plus, du
-    /// côté FAT cette fois. Une fois et demie, c'est ce que le modèle produisait
-    /// une fois les deux retirés.
-    ///
-    /// Puis un quart de plus seulement, depuis le lot 4 : NTFS reçoit par
-    /// paquets de 64 Ko les fichiers dont le programme ne connaît pas la
-    /// taille, et chaque paquet va dans le trou le plus juste pour lui ; FAT,
-    /// qui les recevait déjà cluster par cluster au curseur, n'y change rien.
-    /// Ce n'est pas une fourchette qu'on élargit pour que le modèle y entre :
-    /// c'est la mesure, et le titre la suit.
-    ///
-    /// Deux fois et demie depuis le lot 8, et ce n'est pas l'allocateur qui a
-    /// changé de nature : `famille-2003` est un volume chaotique, à 95 % de
-    /// remplissage, que trois cents clusters de `$Bitmap` enfin réservés ont
-    /// fait passer de 10,5 à 7,6 % (`NTFSAllocator`). La borne reste celle du
-    /// quart, qui tient quel que soit le hasard des trous.
-    @Test("Le même usage fragmente au moins un quart de plus sur FAT32 que sur NTFS")
+    /// La borne est **fixe** : deux fois, le rapport qu'annonçait le cahier des
+    /// charges une fois retirés les deux mécanismes qui n'avaient jamais existé
+    /// (le curseur système de `NTFSAllocator` renvoyé au début, le hint
+    /// `.system` au cluster 0 sur FAT32). Elle a été élargie quatre fois, de
+    /// 2,5 à 1,25, pour suivre la mesure ; une borne qui suit son sujet ne
+    /// contraint plus rien, et le rapport est revenu à 2,5. Si un chantier la
+    /// fait tomber, c'est à lui de dire pourquoi — pas au test de s'y ranger.
+    /// `famille-2003` est un volume chaotique (`NTFSAllocator`), d'où la marge.
+    @Test("Le même usage fragmente au moins deux fois plus sur FAT32 que sur NTFS")
     func fileSystemDominatesTheOutcome() throws {
         let fat32 = try Self.generate("famille-1999")
         let ntfs = try Self.generate("famille-2003")
@@ -295,7 +288,57 @@ struct CalibrationTests {
         #expect(fat32.metrics.fill > 0.90)
         #expect(ntfs.metrics.fill > 0.90)
         #expect(fat32.metrics.fragmentedRatioAmongFragmentable
-                > ntfs.metrics.fragmentedRatioAmongFragmentable * 1.25)
+                > ntfs.metrics.fragmentedRatioAmongFragmentable * 2)
+    }
+
+    /// La table de l'en-tête de `NTFSAllocator` : ce que chacune de ses bornes
+    /// de recherche pèse sur la fragmentation, bougée seule. Elle est imprimée
+    /// telle que l'en-tête la porte ; c'est ce test qui la refait, et non un
+    /// binaire jetable qu'il faudrait réécrire à chaque fois.
+    ///
+    /// Aucune n'est sourcée : ce qui est vérifié ici, c'est ce que l'en-tête en
+    /// dit — aucune ne rejoint la cible de `famille-2003`, et c'est l'horizon
+    /// qui la fait le plus varier.
+    @Test("Les bornes de recherche de NTFSAllocator, mesurées une à une")
+    func ntfsSearchBoundsWeighOnFragmentation() throws {
+        let profiles = ["famille-2003", "secretaire-2003", "dev-2007", "famille-2007"]
+        let standard = NTFSAllocator.SearchBounds.standard
+        func with(_ change: (inout NTFSAllocator.SearchBounds) -> Void) -> NTFSAllocator.SearchBounds {
+            var bounds = standard
+            change(&bounds)
+            return bounds
+        }
+        let settings: [(String, NTFSAllocator.SearchBounds)] = [
+            ("tel quel (2, 64, 65 536)", standard),
+            ("`reuseTolerance` = 4", with { $0.reuseTolerance = 4 }),
+            ("`reuseTolerance` = `.max`", with { $0.reuseTolerance = .max }),
+            ("`window` = 16", with { $0.window = 16 }),
+            ("`window` = 256", with { $0.window = 256 }),
+            ("`horizon` = 16 384", with { $0.horizon = 16_384 }),
+            ("`horizon` = 262 144", with { $0.horizon = 262_144 }),
+        ]
+        var ratios: [[Double]] = []
+        var lines: [String] = []
+        for (label, bounds) in settings {
+            let row = try profiles.map { id in
+                try DiskGenerator.generate(try ScenarioLibrary.load(id), ntfsSearch: bounds)
+                    .metrics.fragmentedRatioAmongFragmentable
+            }
+            ratios.append(row)
+            let cells = row.map { String(format: "%.1f %%", $0 * 100).replacingOccurrences(of: ".", with: ",") }
+            lines.append("/// | \(label.padding(toLength: 28, withPad: " ", startingAt: 0)) | "
+                         + cells.joined(separator: " | ") + " |")
+        }
+        print("\n" + lines.joined(separator: "\n"))
+
+        // Aucune ne rejoint la cible de famille-2003 (40 à 60 %).
+        #expect(ratios.allSatisfy { $0[0] < 0.40 })
+        // L'horizon est celle qui fait le plus varier famille-2003.
+        let span = { (rows: ArraySlice<[Double]>) in
+            (rows.map { $0[0] } + [ratios[0][0]]).max()! - (rows.map { $0[0] } + [ratios[0][0]]).min()!
+        }
+        #expect(span(ratios[5...6]) > span(ratios[1...2]))
+        #expect(span(ratios[5...6]) > span(ratios[3...4]))
     }
 
     /// L'asymétrie entre profils est ce qui rend l'application crédible : si
@@ -332,7 +375,7 @@ struct CalibrationTests {
 
 // MARK: - Ce que le modèle ne produit pas, et pourquoi
 //
-// Deux des quatre cibles du cahier des charges ne sont pas atteintes. Le
+// Trois des quatre cibles du cahier des charges ne sont pas atteintes. Le
 // diagnostic tient en une phrase : **le taux de fichiers fragmentés mesure
 // d'abord la population du volume, et seulement ensuite l'allocateur.**
 //

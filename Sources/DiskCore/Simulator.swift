@@ -96,10 +96,11 @@ public struct Simulator<A: Allocator> {
 
     /// Les programmes d'une même journée écrivent-ils en même temps ?
     ///
-    /// Vrai sous Windows 95 et après, faux sous MS-DOS, qui n'exécute qu'un
-    /// programme à la fois — Windows 3.1 compris, qui passe par lui pour chaque
-    /// écriture. C'est une propriété du système, pas un réglage : un volume de
-    /// 1993 rejoue sa journée dans l'ordre où elle a été écrite.
+    /// Le tourniquet sait les entrelacer, paquet par paquet ; **aucun volume de
+    /// la galerie ne s'en sert** (`DiskGenerator.runsProgramsConcurrently`, qui
+    /// dit pourquoi). Il n'y a donc pas de valeur par défaut : un appelant qui
+    /// veut l'entrelacement le demande, et tout autre prend le chemin de la
+    /// production, dans l'ordre où la journée a été écrite.
     public let concurrent: Bool
 
     /// Événements entre deux vérifications d'annulation et deux rapports
@@ -140,7 +141,7 @@ public struct Simulator<A: Allocator> {
     private var reportsDirectoryGrowth = false
 
     public init(allocator: A, catalog: FileCatalog = FileCatalog(),
-                logger: GenerationLogger = SilentLogger(), concurrent: Bool = true,
+                logger: GenerationLogger = SilentLogger(), concurrent: Bool,
                 directories: DirectoryFormat? = nil) {
         self.directories = directories
         self.packetClusters = allocator.profile.writePacketClusters

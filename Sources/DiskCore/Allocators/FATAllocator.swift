@@ -26,6 +26,15 @@ public struct FATAllocator: Allocator {
         /// Scan complet depuis le premier cluster de données, à chaque
         /// allocation. Le cluster 2 de la FAT, ici le cluster 0 : la bitmap ne
         /// représente que la zone de données.
+        ///
+        /// C'est MS-DOS **d'un démarrage à l'autre**, pas à l'intérieur d'une
+        /// session : depuis DOS 3, le DPB porte un pointeur « dernier cluster
+        /// alloué » d'où part la recherche, mais il est volatil — remis à zéro
+        /// au démarrage, au changement de média, perdu dès qu'un programme
+        /// touche la FAT. Sur des machines qu'on éteint chaque soir, la texture
+        /// est celle d'un scan depuis le début ; le modèle l'applique à chaque
+        /// écriture, là où une remise à zéro à chaque journée serait plus
+        /// fidèle (`FILESYSTEM_EXPERT_REVIEW.md` § 5.6).
         case fromVolumeStart
         /// Reprise au dernier cluster alloué, avec retour au début en fin de
         /// volume.

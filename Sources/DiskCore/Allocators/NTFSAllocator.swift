@@ -22,23 +22,29 @@ import Foundation
 ///   to reduce fragmentation »), qui ne prend la position courante que pour un
 ///   fichier qui n'a encore rien.
 ///
-/// **Trois constantes de ce fichier règlent la fragmentation**, et c'est la
-/// seule entorse du noyau au principe qu'elle n'est jamais un paramètre. Elles
-/// ont été introduites pour le coût de calcul ; chacune se défend — voir leurs
-/// commentaires —, et aucune ne vient d'une source. Le lot 8 les a mesurées,
-/// une à la fois, en fichiers fragmentés parmi les fragmentables :
+/// **Quatre bornes de recherche règlent la fragmentation** (`SearchBounds`),
+/// et c'est la seule entorse du noyau au principe qu'elle n'est jamais un
+/// paramètre. Elles existent pour le coût de calcul ; chacune se défend — voir
+/// leurs commentaires —, et **aucune ne vient d'une source** : ni la
+/// documentation de NTFS, ni le pilote de Linux, ni `mkntfs` ne disent jusqu'où
+/// Windows cherche un trou. Ce qu'elles pèsent est mesuré, une à la fois, en
+/// fichiers fragmentés parmi les fragmentables — la table que régénère
+/// `CalibrationTests.ntfsSearchBoundsWeighOnFragmentation` :
 ///
 /// | réglage                      | `famille-2003` | `secretaire-2003` | `dev-2007` | `famille-2007` |
 /// |------------------------------|-------:|-------:|------:|-------:|
 /// | tel quel (2, 64, 65 536)      | 7,6 %  | 13,6 % | 9,1 % | 21,1 % |
 /// | `reuseTolerance` = 4          | 9,4 %  | 12,4 % | 9,2 % | 20,2 % |
 /// | `reuseTolerance` = `.max`     | 5,8 %  | 13,1 % | 8,1 % | 16,5 % |
-/// | `searchWindow` = 16           | 12,8 % | 13,6 % | 7,6 % | 18,3 % |
-/// | `searchWindow` = 256          | 11,1 % | 14,2 % | 8,6 % | 19,8 % |
-/// | `searchHorizon` = 16 384      | 21,2 % | 14,7 % | 6,9 % | 21,6 % |
-/// | `searchHorizon` = 262 144     | 4,6 %  | 12,6 % | 7,2 % | 12,9 % |
+/// | `window` = 16                 | 12,8 % | 13,6 % | 7,6 % | 18,3 % |
+/// | `window` = 256                | 11,1 % | 14,2 % | 8,6 % | 19,8 % |
+/// | `horizon` = 16 384            | 21,2 % | 14,7 % | 6,9 % | 21,6 % |
+/// | `horizon` = 262 144           | 4,6 %  | 12,6 % | 7,2 % | 12,9 % |
 ///
-/// Quatre choses en sortent :
+/// La quatrième, les seize fenêtres du dernier recours (`fallbackWindows`),
+/// n'est pas dans la table : elle ne joue que sur un volume sans espace vierge.
+///
+/// Ce qui en sort :
 ///
 /// - **elles ne poussent pas toutes vers la contiguïté.** Élargir la tolérance
 ///   jusqu'au best-fit pur, ou l'horizon, *réduit* la fragmentation : ce que
@@ -49,25 +55,17 @@ import Foundation
 ///   la tolérance ne va que de 5,8 à 9,4. Un facteur quatre tient à une borne
 ///   de recherche, et c'est ce qu'il faut dire quand on cite ce que le modèle
 ///   produit sur ce volume ;
-/// - **ce volume est chaotique** : poser `$Bitmap` à sa place — trois cents
-///   clusters derrière la zone MFT, rien d'autre — l'a fait passer de 10,5 à
-///   7,6 %. Au-delà du premier chiffre, son taux ne dit rien ; les volumes
-///   moins pleins bougent d'un point ou deux ;
+/// - **ce volume est chaotique** : trois cents clusters de `$Bitmap` posés
+///   derrière la zone MFT suffisent à le faire passer de 10,5 à 7,6 %. Au-delà
+///   du premier chiffre, son taux ne dit rien ; les volumes moins pleins
+///   bougent d'un point ou deux ;
 /// - **aucune ne rejoint la cible** de 40 à 60 % sur `famille-2003`
 ///   (`CalibrationTests`). Le manque est ailleurs — dans l'écriture en
 ///   séquence de la chronologie, que l'entrelacement lèverait
 ///   (`DiskGenerator.runsProgramsConcurrently`).
 ///
 /// Leur coût, lui, est sans ambiguïté : sans tolérance, la génération de
-/// `dev-2007` passe de 1,7 à 14,6 s, celle de `secretaire-2007` de 0,4 à 2,2.
-/// Les valeurs restent celles qu'elles étaient ; ce qui a changé, c'est qu'on
-/// sait ce qu'elles pèsent.
-///
-/// Une quatrième, `growthMarginClusters` — 64 Ko de marge cherchés derrière un
-/// fichier neuf —, a été retirée au lot 8 : au-delà du `highWater` il n'y a
-/// qu'un trou, et chercher la marge y donnait toujours le même premier
-/// cluster. Les huit volumes NTFS de la galerie ressortaient à l'identique
-/// sans elle, empreinte comprise.
+/// `dev-2007` est huit fois plus longue.
 ///
 /// La « réutilisation paresseuse » des clusters libérés est modélisée par une
 /// préférence pour l'espace jamais servi : la libération, elle, est immédiate,
@@ -121,38 +119,56 @@ public struct NTFSAllocator: Allocator {
     /// vierge.
     public private(set) var highWater: UInt32
 
-    /// Un trou n'est repris que si sa taille ne dépasse pas ce multiple du
-    /// besoin. Au-delà, l'allocateur préfère l'espace vierge plutôt que de
-    /// couper un grand bloc en deux.
-    ///
-    /// Un réglage de fragmentation, mesuré dans l'en-tête.
-    private let reuseTolerance: UInt32 = 2
+    /// Les bornes de la recherche de trous : quatre constantes introduites pour
+    /// le coût de calcul, qui règlent aussi la fragmentation (voir l'en-tête).
+    /// Les valeurs de la galerie sont `standard` ; les autres ne servent qu'à
+    /// mesurer ce qu'elles pèsent.
+    public struct SearchBounds: Sendable, Equatable {
+        /// Un trou n'est repris que si sa taille ne dépasse pas ce multiple du
+        /// besoin. Au-delà, l'allocateur préfère l'espace vierge plutôt que de
+        /// couper un grand bloc en deux.
+        public var reuseTolerance: UInt32
+        /// Trous examinés avant de se décider. NTFS ne connaît pas l'état
+        /// complet de son volume à chaque écriture : il tient un cache partiel
+        /// de sa table d'occupation et prend le meilleur trou qu'il y voit.
+        /// C'est ce que fait cette fenêtre — et sans elle, chaque allocation
+        /// parcourrait les dizaines de milliers de trous d'un volume de 80 Go.
+        public var window: Int
+        /// Distance maximale parcourue dans la bitmap à la recherche d'un trou :
+        /// 65 536 clusters, soit 8 Ko de table d'occupation — l'ordre de
+        /// grandeur de ce qu'un pilote garde en cache, sans source qui le
+        /// chiffre. Au-delà, l'allocateur renonce et va prendre de l'espace
+        /// vierge. C'est la borne qui décide du coût de la génération : sans
+        /// elle, chaque écriture traverse les zones pleines qui séparent les
+        /// trous, et un volume de 80 Go devient quadratique.
+        public var horizon: UInt32
+        /// Fenêtres d'un `horizon` que le dernier recours parcourt, quand il n'y
+        /// a plus de vierge, avant de répartir le fichier sur les plus gros
+        /// morceaux (`scatter`). Seize fois 65 536 clusters, c'est 4 Go sur un
+        /// volume en clusters de 4 Ko.
+        public var fallbackWindows: Int
 
-    /// Trous examinés avant de se décider. NTFS ne connaît pas l'état complet de
-    /// son volume à chaque écriture : il tient un cache partiel de sa table
-    /// d'occupation et prend le meilleur trou qu'il y voit. C'est ce que fait
-    /// cette fenêtre — et sans elle, chaque allocation parcourrait les dizaines
-    /// de milliers de trous d'un volume de 80 Go.
-    ///
-    /// Un réglage de fragmentation, mesuré dans l'en-tête.
-    private let searchWindow = 64
+        public init(reuseTolerance: UInt32, window: Int, horizon: UInt32, fallbackWindows: Int) {
+            self.reuseTolerance = reuseTolerance
+            self.window = window
+            self.horizon = horizon
+            self.fallbackWindows = fallbackWindows
+        }
 
-    /// Distance maximale parcourue dans la bitmap à la recherche d'un trou :
-    /// 65 536 clusters, soit 8 Ko de table d'occupation — l'ordre de grandeur
-    /// de ce qu'un pilote garde réellement en cache. Au-delà, l'allocateur
-    /// renonce et va prendre de l'espace vierge.
-    ///
-    /// C'est la borne qui décide du coût de la génération : sans elle, chaque
-    /// écriture traverse les zones pleines qui séparent les trous, et un volume
-    /// de 80 Go devient quadratique.
-    ///
-    /// Un réglage de fragmentation, mesuré dans l'en-tête.
-    private let searchHorizon: UInt32 = 1 << 16
+        public static let standard = SearchBounds(reuseTolerance: 2, window: 64,
+                                                  horizon: 1 << 16, fallbackWindows: 16)
+    }
+
+    public let search: SearchBounds
+    private var reuseTolerance: UInt32 { search.reuseTolerance }
+    private var searchWindow: Int { search.window }
+    private var searchHorizon: UInt32 { search.horizon }
 
     /// Bloc par lequel `$MFT` s'agrandit hors de sa zone. NTFS n'étend jamais
     /// la table d'un enregistrement à la fois : il en demande un paquet — au
     /// moins huit — et cherche de quoi le poser d'un seul tenant. Huit clusters
     /// couvrent ce minimum quelle que soit la taille de cluster du volume.
+    /// **Un ordre de grandeur**, sans source citée.
     private let mftGrowthClusters: UInt32 = 8
 
     /// Point de départ du prochain parcours. Il avance avec les allocations, ce
@@ -176,9 +192,11 @@ public struct NTFSAllocator: Allocator {
     public init(profile: NTFSProfile = NTFSProfile(),
                 clusterCount: UInt32,
                 initialMFTRecords: UInt64 = 32,
-                mirrorPlacement: MirrorPlacement = .nearStart) {
+                mirrorPlacement: MirrorPlacement = .nearStart,
+                search: SearchBounds = .standard) {
         precondition(profile.supports(clusterCount: clusterCount))
         self.ntfs = profile
+        self.search = search
         self.bitmap = ClusterBitmap(clusterCount: clusterCount)
         self.mftRecordCount = initialMFTRecords
         self.mftPeakRecords = initialMFTRecords
@@ -233,8 +251,7 @@ public struct NTFSAllocator: Allocator {
         /// ne soit pas réservée à la MFT. C'est là que `mkntfs` pose ses
         /// métafichiers non résidents (`allocate_scattered_clusters`, qui part
         /// de `g_mft_zone_end`), et là que le simulateur lit et écrit la
-        /// table. Jusqu'au lot 8, il l'y lisait sans que le générateur l'y ait
-        /// posée : le premier fichier de données prenait sa place.
+        /// table.
         public let bitmap: Extent
     }
 
@@ -330,6 +347,10 @@ public struct NTFSAllocator: Allocator {
     /// Microsoft ne détaille pas l'algorithme. La moitié rendue est la plus
     /// éloignée de la MFT, pour que celle-ci garde de quoi grandir d'un seul
     /// tenant.
+    ///
+    /// Si la MFT a déjà débordé de sa zone, aucun de ses extents n'y finit, et
+    /// la moitié se compte depuis le début de la zone : elle cède la moitié de
+    /// ce qui lui reste, pas tout.
     ///
     /// - Returns: `false` si la zone n'a plus rien à rendre.
     private mutating func yieldMFTZone() -> Bool {
@@ -453,7 +474,7 @@ public struct NTFSAllocator: Allocator {
             wrapped = false
         }
         var windows = 0
-        while windows < 16 {
+        while windows < search.fallbackWindows {
             if probe >= range.upperBound {
                 guard !wrapped else { break }
                 wrapped = true

@@ -20,6 +20,13 @@ six relecteurs en lecture seule ; chaque trouvaille reprise ici a été revérif
 à la main dans le fichier qu'elle cite. Rien n'est estimé ; ce qui n'a pas pu
 être vérifié est au § 6.
 
+> **Ce qu'il est devenu.** Cet audit est un instantané du 19 septembre 2026 au
+> matin. Le lot 9 (chantier 29 de `LEDGER.md`) l'a pris pour commande ; chaque
+> trouvaille du § 3 porte désormais son **état**, le § 4 dit ce que le solde en
+> a retenu, le § 6 ce qui a pu être vérifié depuis. Le texte d'origine n'est
+> pas retouché : les états sont ajoutés, en citation, sous ce qu'ils
+> concernent.
+
 ---
 
 ## 1. Verdict
@@ -164,6 +171,14 @@ trois fois (chantiers 20, 22 et 26) » ; le chantier 20 écrit lui-même
 « `ThinkModel` n'a **pas** été recalé » (`LEDGER.md:3332`), et le README dit
 « deux fois ».
 
+> **État : corrigée.** Gabriel a tranché pour 0,19 / 0,15. Mesuré sur le
+> binaire du code final : 2003 à +0,6 % de sa somme cible, 2007 à +1,0 %, les
+> vingt démarrages entre −4,1 et +5,7 %. La conclusion est réécrite dans le
+> solde, le README et le docstring de `ThinkModel.boot` (qui ne compte plus les
+> calages, et renvoie au journal) ; le signe du chantier 27 est corrigé dans
+> le journal, avec une note qui le dit. L'ajustement du chantier 26 (0,199 /
+> 0,157) a été refait sur ses propres bilans, à l'identique (§ 6).
+
 **T2. Dix-sept chiffres de prose du README sont faux à `HEAD`.** Les tables
 sont régénérées ; le texte autour ne l'a pas été. Chaque ligne ci-dessous est
 démentie par un bilan de `out-audit`, et pour la plupart par la table voisine :
@@ -196,7 +211,25 @@ le journal ni le README ne le disent. Correction : faire imprimer ces chiffres
 par `readme-tables.py` (il en sort déjà une vingtaine sous « chiffres de
 prose ») ; une trentaine de lignes de Python, puis une passe de relecture.
 
+> **État : corrigée, et l'outil en a trouvé d'autres.** `readme-tables.py` tient
+> désormais la prose comme les tables : chaque phrase du README qui cite un
+> bilan y est écrite telle quelle, ses chiffres en champs, et `--check` dit
+> lequel ment. Validé sur les bilans du commit audité : les 63 lignes de table
+> sortent identiques, et 28 phrases portaient au moins un chiffre faux —
+> 55 champs, les dix-sept de cette table et une douzaine d'autres (le journal du
+> chantier 29 les liste). Les dates d'accès de `gamer-2003` : le README dit
+> maintenant 388 écritures et pourquoi — une page de `$MFT` en porte rarement
+> plus de deux ou trois. Le README final est à zéro écart, prose et tables, y
+> compris la table du rangement intelligent. Ce que l'outil ne couvre pas est
+> dit dans son en-tête et dans le journal.
+
 **T3. « Ce qu'aucun lot n'a pris : plus rien » est faux** — détail au § 4.
+
+> **État : corrigée.** Le solde remplace la phrase par la liste du § 4, chaque
+> ligne avec son état : sept demandes de la revue système de fichiers (une
+> écartée, deux dites dans le README, un commentaire corrigé, le reste en
+> attente), huit points de chantier (un corrigé — c'était une faute —, un dit,
+> six en attente), et les constantes déclarées.
 
 ### Sérieuses — un test ou une constante qui ne tient pas ce qu'on lui prête
 
@@ -212,6 +245,13 @@ anticipée, d'après le solde lui-même, qui tient désormais cet invariant.
 mise sous tension + démarrage : la durée que `thinkTimeIsAFloor` borne n'est pas
 celle de l'application. Correction : le même test avec `.era(year: 2001)`, à une
 tolérance à mesurer ; ~25 lignes.
+
+> **État : corrigée.** Le même test avec `.era(year: 2001)` : l'égalité tient
+> **exactement** (10⁻¹⁶ s), commandes comprises — elles se paient pendant que la
+> tête lit d'avance. Un test compagnon, sans lecture anticipée, mesure 1,4 à
+> 2,2 ms de plus par requête : c'est lui qui prouve que le premier contraint.
+> Laissé : l'assemblage cache + mise sous tension + démarrage, dans
+> `Scenario.swift`, reste hors du paquet.
 
 **T5. Une borne a suivi son sujet quatre fois, et ne contraint plus rien.**
 `CalibrationTests.fileSystemDominatesTheOutcome`, rapport FAT32 / NTFS du taux
@@ -241,6 +281,16 @@ dit encore « deux d'entre elles » (`:191`, `:335`). À l'inverse,
 du lot 5) et `DriveModelTests:81` (demi-intervalle) ont été **resserrées** :
 le réflexe n'est pas général.
 
+> **État : corrigée pour la borne, en partie pour la famille.** La borne est
+> remise à ×2, fixe, et le docstring dit pourquoi elle ne suivra plus la
+> mesure ; elle échoue sur le code du lot 7 (16,9 contre 13,0 %, ×1,3) et passe
+> à `HEAD` (18,8 contre 7,6 %). `secretaire-1999` et `famille-2003` ont des
+> fourchettes bilatérales (3–10 % et 4–16 %) ; le problème connu de
+> `secretaire-1999` vise sa cible, 15 %, et non plus 10. « Deux d'entre elles »
+> est devenu « trois ». Laissés : `MFTGrowthTests` et `AllocatorComparisonTests`
+> (non repris par la commande), et la suite qui ne tourne qu'en release ou avec
+> `DISKCORE_CALIBRATION`, ce qui est son choix de coût.
+
 **T6. La commutation de tête à 0,6 × le piste-à-piste est contredite par un
 manuel du dossier.** `SeekModel.swift:308-322` : « toujours plus rapide qu'un pas
 de piste… ce qu'aucun disque n'a jamais fait », source : « l'ordre de grandeur
@@ -251,6 +301,13 @@ disque, et le skew de tête en hérite. Le solde range E6 parmi les erreurs
 « corrigées contre une fiche » ; c'est une constante de catégorie « ordre de
 grandeur », non déclarée.
 
+> **État : déclarée, pas dérivée.** Un seul manuel publie les deux temps ; en
+> faire la règle de huit fiches aurait été tourner une constante sur un point.
+> Le docstring de `SeekModel.headSwitch` et le README disent l'ordre de
+> grandeur et la table 4-3, que confirme la table 5-3 (décalages de 21 et 28
+> intervalles servo, pour 3 et 4 ms). Mesuré : égaler la commutation au pas de
+> piste allongerait les démarrages de 0 à 0,8 s. La dériver reste ouvert.
+
 **T7. « Read-on-arrival » n'est pas une lecture sans latence.** Le README
 (`:169-171`) et `DriveCatalog.swift:266` donnent le manuel du Fireball pour
 source de la lecture qui « commence au secteur qui se présente ». Dans ce
@@ -260,6 +317,10 @@ Read-on-arrival, Typical 12.0 ms », opposé à « Average write 14.0 ms »
 is disabled to meet this specification » (`:2020`). Rien n'y décrit un
 réordonnancement dans le tampon. Le solde ne déclare en hypothèse que « la
 lecture sans latence des Seagate » : elle l'est pour **toutes** les fiches.
+
+> **État : corrigée.** La source est retirée de la fiche du Fireball, du
+> docstring de `DriveBuffer.zeroLatencyRead` et du README ; le mécanisme est dit
+> plausible, non sourcé, pour toutes les fiches sauf le Conner.
 
 **T8. L'assertion « la cible est libre, pour les huit stratégies » existe dans
 une stratégie, et en debug.** Un seul `assert`, `Windows95Strategy.swift:205` ;
@@ -278,6 +339,18 @@ Dans la même veine, le seul test d'un lot supprimé par un autre :
 `bootFilesStayAtTheStart` (lot 2) retiré au lot 8 avec `AllocationHint.boot`.
 Le retrait est argumenté ; mais plus rien ne vérifie qu'`IO.SYS` est en tête de
 volume.
+
+> **État : corrigée, et elle a trouvé une faute.** `GalleryAllocationAuditTests`
+> rejoue l'audit sur les vingt volumes en release, vingt-quatre plans par
+> volume (les quatorze stratégies, et en blocs pleins les dix qui en ont
+> l'option). Lancé sur le code du lot, il **a échoué** : Windows 95 écrivait sur
+> une donnée vivante sur huit volumes sur vingt, jusqu'à 1 816 écritures et
+> 111 195 clusters sur `famille-2007`. C'était le second recouvrement du
+> chantier 20 — une destination qui recouvre un morceau du même fichier pas
+> encore lu —, que le chantier 20 croyait absent de la galerie parce qu'il
+> l'avait cherché sur le volume d'essai. Corrigé dans `DefragOperations.move`
+> avec l'accord de Gabriel (chantier 29) ; l'audit de galerie passe. Laissé :
+> rien ne vérifie plus qu'`IO.SYS` est en tête de volume.
 
 ### Moyennes — la règle n'est pas appliquée partout
 
@@ -298,12 +371,24 @@ journal) ; `DriveGeometry.swift:128-131` ; `Simulator.swift:97-102` (« Vrai sou
 Windows 95 et après… pas un réglage », contredit par `DiskGenerator:273-289`).
 Une douzaine d'autres faits de galerie non datés, sans contradiction constatée.
 
+> **État : corrigée pour les huit fichiers.** Les faits de galerie en sont
+> sortis ou renvoient au README ; `DriveCatalog.dataBandInches` date son « à
+> 5 % près » de l'ancienne fiche du 7200.10 ; `DriveGeometry.parkCylinder` dit
+> que partir du moyeu est une convention. La douzaine d'autres n'a pas été
+> reprise.
+
 **T10. `OperationSink.plannedPositioning` n'a pas suivi la correction du
 7200.10.** 12,7 ms et 50 Mo/s sont dérivés, dans leur commentaire, d'un seek de
 8,5 ms et de « 58 et 78 Mo/s » (`OperationSink.swift:75-80`). Le lot 8 a corrigé
 la fiche à 11,0 ms et 72 Mo/s. Ces deux constantes fixent l'horloge des points
 de contrôle de XP et de JkDefrag. Le README assure que la cadence « ne décide
 pas du résultat » ; c'est plausible et je ne l'ai pas remesuré.
+
+> **État : corrigée, et remesurée.** Les deux valeurs sont tirées du catalogue
+> (seek moyen et débit des fiches de 2003 à 2006, rapport au moyeu de
+> `DriveCatalog.innerRatio`) : 13,9 ms au lieu de 12,7, 49,4 Mo/s au lieu de 50.
+> Une fiche corrigée corrige désormais l'horloge. La cadence a été remesurée à
+> 1 s, 30 s et en fin de passe ; le README dit ce qu'elle change.
 
 **T11. Des constantes « justifiées par la cible seule » hors de la liste
 déclarée.** L'inventaire compte dix-huit constantes des lots qui sont des ordres
@@ -325,6 +410,17 @@ de 1993, 1996 et 1999, calés exactement comme ceux que le solde met en cause.
 qui est déjà sur le disque : U8 3,5 B en seek contre 3,2 au repos, ATA IV 2,8 /
 3,3, 7200.7 3,4, 7200.10 3,2, 7200.11 3,2.
 
+> **État : déclarées ; le niveau des seeks laissé.** Le paquet de 64 Ko, le bloc
+> de huit clusters, la validation sur huit, les seize fenêtres (nommées dans
+> `NTFSAllocator.SearchBounds`), le délai de coupure et la redescente (face aux
+> dix secondes du Fireball), les bandes et le battement du roulement, le coût de
+> commande prêté au Fireball de 1996 : chacun le dit dans son code, le README
+> en fait une ligne de « Ce qui ne l'est pas », le solde les liste. Le préréglage
+> « Casque » est dit seconde licence de mixage. Les `perMegabyte` de 1993 à
+> 1999 relèvent de la même phrase que ceux de 2003 et 2007 : le docstring de
+> `ThinkModel` la dit pour toutes les époques. Sourcer le niveau des seeks
+> changerait le son : c'est un chantier d'écoute, pas celui-ci.
+
 **T12. Les constantes de `NTFSAllocator` sont dites, mesurées, et non
 régénérables.** La revue demandait « un test qui génère et imprime les trois
 taux ». La table de l'en-tête vient de binaires jetables qui lisaient
@@ -336,6 +432,12 @@ que le dernier paragraphe du solde dénonce. La ligne « tel quel » se vérifie
 `firstFitRun` partaient du même point au-delà de `highWater`, où il n'y a qu'un
 trou, et seule une longueur jetée changeait.
 
+> **État : corrigée.** Les quatre bornes sont des `SearchBounds` injectables
+> (valeurs de la galerie inchangées, bilans identiques), et
+> `CalibrationTests.ntfsSearchBoundsWeighOnFragmentation` régénère la table :
+> les vingt-huit valeurs de l'en-tête sortent **identiques**. L'en-tête dit
+> qu'aucune ne vient d'une source, et a perdu son journal (T14).
+
 ### Le code, comme code
 
 **T13. L'entrelacement coupé est allumé par défaut dans les tests.**
@@ -346,6 +448,11 @@ jamais. ~305 lignes mortes en production, qui dupliquent `create`, `append` et
 `replaceViaTemporary` : un lot futur corrigera l'un sans l'autre. Correction :
 retirer la valeur par défaut ; 1 ligne, plus 4 tests à rendre explicites.
 
+> **État : corrigée.** Plus de défaut. Des vingt constructions des tests, trois
+> demandent l'entrelacement — celles qui le testent — et dix-sept le chemin de
+> la production ; aucune ne dépendait du défaut, toutes passent. Laissé : le
+> code de l'entrelacement reste, par la décision du lot 4.
+
 **T14. « Le README dit le modèle tel qu'il est, le journal dit pourquoi » n'est
 pas tenu.** Mentions « lot *N* » ou « chantier *N* » : de 1 à 27 dans
 `Sources/`, de 0 à 13 dans le README (« Elle est redevenue la plus rapide au
@@ -353,6 +460,14 @@ chantier 27 », « Jusqu'au chantier 25… »). Le pire : 45 lignes de journal, 
 comprise, dans l'en-tête de `NTFSAllocator` ; 14 lignes dans `Allocator.swift`
 pour décrire deux cas d'enum retirés ; `// 0,80 avant le chantier 26, 0,60
 avant le 22` sur la table de `ThinkModel`.
+
+> **État : corrigée là où c'était du journal.** L'en-tête de `NTFSAllocator`,
+> `Allocator.swift`, la table et le docstring de `ThinkModel`, `FormatOverhead`,
+> `GeneratedVolume`, `VolumeLayout`, `InstallSession`, `DiskSimulator`,
+> `DriveCache`, `PassPipeline`, `Scenario`, `SoundMix`, `Windows95Strategy` ;
+> dans le README, les « jusqu'au chantier *N* » et « au chantier *N* ». Gardés :
+> les renvois au journal (« `LEDGER.md`, chantier 23 »), qui disent où chercher
+> le pourquoi, et les chiffres de réglage datés, que la règle du lot 5 garde.
 
 **T15. Détails vérifiés.** Le tampon du disque est une FIFO — un succès ne
 remonte pas le segment (`DiskSimulator.swift:589-596`) — quand son commentaire
@@ -365,6 +480,16 @@ volent le binaire, dans un projet qui travaille à un worktree par chantier
 étape vide. `SmartDrive.read` plante sur `sectors == 0` (aucun appelant).
 `run.sh` annonce 340 bilans : le compte est juste ; « ~2 min 30 » en a pris
 6 min 36 ici, six relecteurs tournant à côté.
+
+> **État : traitée, sauf les coûts.** Le tampon est dit une file dans le code,
+> le docstring de `DriveBuffer` et le README ; `SpindleVoice` tire ses bandes une
+> fois par disque et réécrit ses tableaux en place (WAV identiques au bit près,
+> démarrage à froid et journée) ; `snapshot.sh` construit dans le dossier de
+> l'étape ; `compare.py --identical` sort en erreur sur une étape vide, un
+> bilan qui diffère ou qui manque ; `run.sh` signale un bilan tronqué et
+> annonce 5 à 7 min ; `SmartDrive.read` rend une lecture vide sans planter, et
+> un test le dit. Laissés : le planificateur quadratique de la frontière, la
+> génération de `famille-2003`.
 
 **Coûts.** Le tassage à la frontière est toujours quadratique (`physical()`,
 `vcn()` intouchés, `LEDGER.md:4747` : « rien n'y a été fait »), et ce point
@@ -413,6 +538,24 @@ rien » : elle ferme un inventaire que personne n'a refait depuis les revues, et
 le lot 8, qui devait ramasser ce que les sept premiers s'étaient passé, a
 ramassé ce que **le lot 7 avait listé**.
 
+> **Ce que le lot 9 en a fait** — le solde de `LEDGER-EXPERTS.md` en porte la
+> table :
+>
+> - § 8 n° 14 et § 6.8 (la résidence) : **en attente**, et c'est la demande la
+>   plus lourde de la liste — elle change les volumes ;
+> - § 6.6 (`yieldMFTZone`) : **écartée**, sur la lecture même de ce paragraphe :
+>   la zone cède une moitié ; le docstring le dit ;
+> - § 5.6 : le **commentaire corrigé** ; la remise à zéro du hint chaque journée
+>   **en attente** ;
+> - § 4.2 et § 4.4 (`$UsnJrnl`, `$Secure`, `$ATTRIBUTE_LIST`, WinSxS) : **en
+>   attente**, et **dits** dans le README avec la compression, les fichiers
+>   creux et les flux, que la revue demandait seulement de dire ;
+> - § 7 : **en attente** pour `MachineWriter` et `InstallSession` ;
+> - le second recouvrement de `DefragOperations.move` : **corrigé** — c'était
+>   une faute, sur huit volumes de la galerie (T8) ;
+> - la position de départ du bras : **dite** ; les six autres points de
+>   chantier **en attente**, chacun nommé dans le solde.
+
 ---
 
 ## 5. Ce que chaque passe a coûté et rendu
@@ -446,6 +589,30 @@ ramassé ce que **le lot 7 avait listé**.
 - `Sources/Audio`, `Haptics`, `UI` (+256 lignes) ne sont dans aucune cible de
   test ; lus, pas exécutés.
 
+> **Ce qui a pu être vérifié depuis** (chantier 29) :
+>
+> - **l'ajustement du chantier 26** : refait sur ses propres bilans, qui sont
+>   restés sur le disque, avec les constantes d'avant son recalage — 0,199 et
+>   0,157, résidus compris. Le binaire du lot 7, reconstruit depuis `a2af0e6`,
+>   diffère de l'ancien octet à octet (construit ailleurs, le chemin s'inscrit)
+>   mais redonne ses vingt démarrages à l'identique ;
+> - **`nomft`** : reconstruit depuis `HEAD`, il redonne les démarrages du binaire
+>   du chantier 27. L'attribution de la dérive tient par époque ; au profil
+>   près, le journal disait 0,1 s et c'est 0,5 (`famille-2003`) — il porte une
+>   note ;
+> - **`knobs`** : la table des constantes NTFS est régénérée par un test, à
+>   l'identique ;
+> - **`nora`**, « sans préchargeur », « point de contrôle unique » : remesurés
+>   sur le code final ; les trois chiffres du README étaient faux (2 à 7 s pour
+>   1,7 à 11,4 ; 890 seeks à 44 114 cylindres pour 1 448 à 15 240 ; 66 fichiers
+>   pour 769), et `readme-tables.py` les vérifie désormais, binaire jetable
+>   nommé en argument ;
+> - **l'invariant de T4 avec le cache** : écrit ;
+> - **les sources hors dossier** : toujours pas relues ;
+> - **rien n'a été écouté**, toujours ;
+> - `Sources/Audio` : le seul changement du lot qui y touche est vérifié par deux
+>   WAV identiques au bit près ; `Haptics` et `UI` n'ont pas bougé.
+
 ---
 
 ## 7. Si un lot 9
@@ -467,3 +634,9 @@ Par rendement, sans toucher au modèle avant la quatrième ligne :
    retirer comme source ; `plannedPositioning` à rederiver.
 6. **Sortir le journal du code** (T14), et appliquer la règle des docstrings
    aux huit fichiers de T9.
+
+> **Fait au lot 9, dans cet ordre**, avec deux écarts à ce plan : la quatrième
+> ligne a été décidée par Gabriel (0,19 / 0,15) sur les deux options chiffrées ;
+> et la troisième a touché au modèle, parce que l'audit de galerie a trouvé une
+> faute que Gabriel a demandé de corriger. Le reste n'y touche pas : les 340
+> bilans de l'étape `neutral` sont identiques à ceux de ce matin.

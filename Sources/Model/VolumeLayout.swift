@@ -47,9 +47,7 @@ enum VolumeFormat: Sendable {
     /// de secours de l'ensemble est posée au secteur 6, et `FORMAT` réserve le
     /// reste. Sur NTFS, aucun : `$Boot` est le cluster 0 du volume, un
     /// métafichier comme les autres, et seule la copie du secteur d'amorçage,
-    /// au tout dernier secteur, est hors des clusters. Jusqu'au lot 8, le
-    /// modèle réservait ici les seize secteurs de `$Boot` **en plus** des deux
-    /// clusters que le générateur lui donne.
+    /// au tout dernier secteur, est hors des clusters.
     var reservedSectors: Int { FormatOverhead.reservedSectors(kind) }
 
     var label: String {
@@ -279,9 +277,10 @@ extension PartitionGeometry {
             ]
         case .ntfs:
             // Un seul enregistrement MFT réécrit, et la bitmap du volume. La
-            // MFT est en tête du volume, mais un enregistrement n'est pas la
-            // table entière : c'est un kilo-octet. Et, une validation sur
-            // huit, la page de journal que les précédentes ont remplie.
+            // MFT est près du début du volume, derrière les 64 Mo du journal ;
+            // un enregistrement n'est pas la table entière : c'est un
+            // kilo-octet. Et, une validation sur huit, la page de journal que
+            // les précédentes ont remplie.
             var accesses = [
                 MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
                                sectors: mftRecordSectors),

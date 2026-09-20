@@ -12,10 +12,10 @@ cd "$(dirname "$0")/../.."
 STEP="${1:?usage : snapshot.sh <étape>}"
 DIR="${MEASURE_DIR:-.build/measure}/bin-$STEP"
 
-./Tools/build-render.sh /tmp/rendertrace >/dev/null
 rm -rf "$DIR"
 mkdir -p "$DIR"
-cp /tmp/rendertrace "$DIR/"
-# L'exécutable cherche son paquet à côté de lui.
-cp -R .build/release/DiskCore_DiskCore.bundle "$DIR/"
+# Construit droit dans le dossier de l'étape, pas dans un chemin partagé : deux
+# worktrees qui mesurent en même temps se voleraient le binaire. Le script pose
+# le paquet de ressources à côté de l'exécutable, où celui-ci le cherche.
+./Tools/build-render.sh "$(cd "$DIR" && pwd)/rendertrace" >/dev/null
 echo "$DIR"

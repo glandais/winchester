@@ -604,22 +604,24 @@ enum ScenarioBuilder {
 
     /// Délai entre la dernière écriture d'une journée et la coupure du courant :
     /// le temps que Windows affiche qu'on peut éteindre, ou qu'une carte ATX
-    /// coupe d'elle-même.
+    /// coupe d'elle-même. **Un ordre de grandeur**, sans source.
     ///
-    /// Jusqu'au chantier 25, **toutes** les passes se refermaient sur un bras
-    /// qui retournait se parquer une seconde après la dernière requête. C'était
-    /// un bon choix dramatique, mais pas de la mécanique : aucun disque de
-    /// bureau de cette période ne parquait au repos — c'est une pratique des
-    /// disques à rampe des portables des années 2000. Un disque de bureau
-    /// laisse son bras où il est et ne le retire qu'à la coupure. Le dernier
-    /// mouvement n'appartient donc plus qu'aux passes qui finissent vraiment
-    /// par une coupure, la journée ; une défragmentation, un démarrage et une
-    /// installation se referment sur le disque qui tourne.
+    /// Aucun disque de bureau de cette période ne parquait au repos — c'est une
+    /// pratique des disques à rampe des portables des années 2000 : il laisse
+    /// son bras où il est et ne le retire qu'à la coupure. Le dernier mouvement
+    /// n'appartient donc qu'aux passes qui finissent vraiment par une coupure,
+    /// la journée ; une défragmentation, un démarrage et une installation se
+    /// referment sur le disque qui tourne.
     private static let powerOffDelay = 1.0
 
     /// Durée de la redescente du plateau après la coupure, au sens de
     /// `SpindleTimeline` : l'atterrissage des têtes tombe 1,0 s après la
     /// coupure, dans la queue de la journée.
+    ///
+    /// **Un choix de rendu, pas une fiche** : le seul manuel du catalogue qui
+    /// chiffre l'arrêt, celui du Fireball TM, donne « Drive Ready to Power Down
+    /// 10.0 seconds » (table 4-3), trois fois plus. Une redescente de dix
+    /// secondes allongerait d'autant la queue de chaque journée.
     private static let spinDownDuration = 3.5
 
     // MARK: - Défragmentation d'un disque de la galerie

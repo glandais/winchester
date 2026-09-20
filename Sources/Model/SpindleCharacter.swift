@@ -24,6 +24,12 @@ import DiskCore
 /// le même bruit — un sifflement de roulement modulé à chaque tour d'un côté,
 /// un souffle d'air de l'autre.
 ///
+/// Ce qui met ces trois grandeurs en son, en revanche, **est estimé** : aucun
+/// manuel ne donne de spectre. Les bandes du roulement (2 900 et 640 Hz), sa
+/// modulation de 35 % à chaque tour, la raie de commutation au vingtième du
+/// bruit et ses vingt-quatre commutations par tour sont des ordres de
+/// grandeur, pas des données de fiche.
+///
 /// Niveaux au repos relevés sur les manuels (puissance acoustique, en bels) :
 ///
 /// | disque | année | tr/min | plateaux | palier | repos |

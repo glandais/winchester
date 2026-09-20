@@ -49,8 +49,6 @@ extension ClusterCategory {
 ///
 /// Derrière les seize métafichiers, les répertoires, qu'un installeur crée
 /// avant d'y copier, puis les fichiers vivants, dans l'ordre de leur création.
-/// Jusqu'au lot 8, le numéro était le rang dans l'ordre de lecture : les
-/// enregistrements lus se suivaient toujours.
 struct MFTNumbering {
     let files: [UInt32: Int]
     let directories: [UInt32: Int]

@@ -301,22 +301,27 @@ extension SeekModel {
     /// de 1996 quel que soit le disque décrit — un disque de 2003 se retrouvait
     /// avec un piste-à-piste deux fois trop long, c'est-à-dire avec le
     /// crépitement d'un disque d'une décennie plus tôt.
-    /// Commutation de tête, dérivée du piste-à-piste.
+    /// Commutation de tête, rapportée au piste-à-piste.
     ///
     /// Elle n'a rien à voir avec le seek moyen, qui est ce que la mise à
     /// l'échelle globale lui appliquait : une commutation est un basculement
-    /// électronique du préampli suivi d'une micro-correction d'asservissement,
-    /// sans le moindre déplacement de bras. Elle est donc **toujours plus
-    /// rapide** qu'un pas de piste, et elle décroît comme lui — pas comme la
-    /// course complète de l'actionneur. Mise à l'échelle par le seek moyen,
+    /// électronique du préampli suivi d'une correction d'asservissement, sans
+    /// déplacement de bras, et elle décroît comme le pas de piste — pas comme
+    /// la course complète de l'actionneur. Mise à l'échelle par le seek moyen,
     /// elle finissait à 1,48 ms sur un Barracuda ATA IV dont le pas de piste
-    /// vaut 0,95 : changer de tête y coûtait plus cher que déplacer le bras,
-    /// ce qu'aucun disque n'a jamais fait.
+    /// vaut 0,95.
     ///
-    /// Les six dixièmes du pas de piste placent ces disques entre 0,6 et
-    /// 1,8 ms, l'ordre de grandeur annoncé sur la période. Le plancher est le
-    /// repositionnement fin : une commutation se termine par lui, elle ne peut
-    /// donc pas être plus courte.
+    /// **Le facteur 0,6 est un ordre de grandeur, pas une donnée de fiche.**
+    /// Un seul manuel du catalogue publie les deux temps, celui du Fireball
+    /// TM, et il les donne **égaux** : « Sequential Cylinder Switch Time
+    /// 3.0 ms », « Sequential Head Switch Time 3.0 ms » (table 4-3) — la
+    /// correction de piste, après une commutation, coûte autant qu'un pas.
+    /// Ses décalages le confirment : 21 intervalles servo pour la tête, 28 pour
+    /// le cylindre, calés sur 3 et 4 ms (table 5-3). Les manuels Seagate ne
+    /// publient pas la commutation. Le modèle garde 0,6 × le pas de piste —
+    /// 1,8 ms pour ce Fireball, au lieu de 3,0 —, et le décalage de tête en
+    /// hérite. Le plancher est le repositionnement fin : une commutation se
+    /// termine par lui, elle ne peut pas être plus courte.
     static func headSwitch(trackToTrackMs trackToTrack: Double) -> Double {
         max(0.6 * trackToTrack / 1_000, 0.000_2)
     }

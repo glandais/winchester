@@ -348,12 +348,21 @@ doit être corrigé « au jugé » — c'est justement la règle du projet.
 
 ## Le solde — ce que huit lots ont fait des trois revues
 
-Écrit à la fin du lot 7, le 18 septembre 2026, et soldé au lot 8 le même jour.
-Les trois relectures ont été dépouillées ici en sept lots, plus un huitième
-fait de ce qu'aucun n'avait pris ; chacun est devenu un chantier de `LEDGER.md`, qui
-dit ses décisions, ses sources et ses mesures. Ce qui suit n'en répète pas le
-détail : c'est le compte de ce que les revues demandaient, et de ce qu'il en
-reste.
+Écrit à la fin du lot 7, le 18 septembre 2026, soldé au lot 8 le même jour,
+relu de l'extérieur le 19 (`AUDIT-EXPERTS.md`) et corrigé au lot 9. Les trois
+relectures ont été dépouillées ici en sept lots, plus un huitième fait de ce
+qu'aucun n'avait pris ; chacun est devenu un chantier de `LEDGER.md`, qui dit ses
+décisions, ses sources et ses mesures. Le neuvième est celui de l'audit : il ne
+reprend pas les revues, il rend vrai ce que ce solde en disait. Ce qui suit n'en
+répète pas le détail : c'est le compte de ce que les revues demandaient, et de
+ce qu'il en reste.
+
+L'audit résumait ce solde, tel que le lot 8 l'avait laissé, en une phrase :
+**honnête sur ce qu'il compte, et faux sur ce qu'il croit avoir compté.** Trois
+conditions le rendaient vrai — la liste de ce qui reste, la conclusion sur les
+cibles de démarrage, la prose du README. Elles sont levées au lot 9 ; ce qui ne
+l'est pas est dit comme tel, et l'audit porte l'état de chacune de ses
+trouvailles.
 
 | lot | chantier | commit | ce qu'il a fait |
 |---|---|---|---|
@@ -364,7 +373,8 @@ reste.
 | 5 | 24 | `50b5150` | la règle NTFS des clusters retenus portée par le volume, la zone MFT d'UltraDefrag, Windows 95 qui évacue au fond, les répertoires FAT que Windows ne déplace pas, la tranche bornée, les chiffres des docstrings |
 | 6 | 25 | `f4c64d2` | le régime dans le timbre, les trains de micro-transitoires, la mise sous tension en trois temps, la recalibration thermique, la coupure et l'atterrissage |
 | 7 | 26 | `a2af0e6` | le tampon du disque et sa fiche, le bus et le coût de commande, `SMARTDRV`, l'éviction de VCACHE ; le recalage final |
-| 8 | 27 | ce commit | le reste : les constantes de `NTFSAllocator` mesurées et dites, l'extension cherchée près du fichier, le débit comparé à ce que la fiche mesure, le settle d'écriture, le plafond des requêtes, les deux indices morts, la place du format, `$Bitmap`, les numéros de MFT, l'arrondi à la page |
+| 8 | 27 | `d72aa81` | le reste : les constantes de `NTFSAllocator` mesurées et dites, l'extension cherchée près du fichier, le débit comparé à ce que la fiche mesure, le settle d'écriture, le plafond des requêtes, les deux indices morts, la place du format, `$Bitmap`, les numéros de MFT, l'arrondi à la page |
+| 9 | 29 | ce commit | l'audit du solde : la prose du README tirée des bilans, quatre tests armés, une cinquième faute trouvée par l'un d'eux et corrigée, `ThinkModel` recalé pour 2003 et 2007, l'horloge des points de contrôle tirée du catalogue, les constantes non sourcées déclarées, le journal sorti du code |
 
 ### Ce qui a été corrigé
 
@@ -372,11 +382,22 @@ reste.
   échouait avant. F2 — le tour de plateau perdu — a été corrigé deux fois : par
   le skew, au lot 1, qui rendait la mécanique idéale ; puis par la lecture
   anticipée, au lot 7, quand le coût de commande a rendu le tour au disque et
-  qu'il a fallu ce que les vrais disques avaient pour le masquer.
+  qu'il a fallu ce que les vrais disques avaient pour le masquer. Le lot 9 l'a
+  vérifié sur le disque qu'on écoute : avec le tampon d'époque, découper une
+  lecture contiguë ne coûte rien, à 10⁻¹⁶ s près.
+- **Une cinquième, de la famille de F1**, trouvée au lot 9 par l'audit
+  d'allocation enfin rejoué sur la galerie : une destination qui recouvre un
+  morceau du même fichier pas encore lu l'écrasait (`DefragOperations.move`).
+  Le chantier 20 l'avait vue sur un volume construit à la main, et la croyait
+  absente de la galerie ; Windows 95 la déclenchait sur huit volumes sur vingt,
+  jusqu'à 111 195 clusters sur `famille-2007`. Les tronçons sont désormais
+  copiés dans l'ordre d'un `memmove`.
 - **Les huit erreurs de fait** (E1 à E8), toutes au lot 2, contre une table de
   `FORMAT`, une fiche ou la documentation de NTFS. Une mesure de la revue a été
   corrigée au passage : l'inversion de la commutation de tête touchait cinq
-  fiches sur huit, pas six.
+  fiches sur huit, pas six. E6 corrige l'inversion, pas la valeur : six
+  dixièmes du pas de piste sont un ordre de grandeur, que le seul manuel
+  publiant les deux temps — le Fireball, 3,0 ms chacun — contredit (lot 9).
 - **Les deux manques structurels** : l'allocation incrémentale et les
   répertoires, au lot 4 ; l'entrelacement, écrit, n'est pas retenu (plus bas).
 - **Ce que le modèle ne faisait pas, et qui s'entend** : le cache et la lecture
@@ -385,8 +406,8 @@ reste.
   le coût de commande et le débit du bus (lot 7), le settle d'écriture (lot 8),
   lu dans les colonnes « Write » des manuels.
 - **Les quatre recoupements** : la calibration qui absorbait les artefacts a été
-  recalée deux fois, aux lots 3 et 7, et une seule fois par lot, après toutes
-  ses corrections ; la règle de volume des clusters retenus est portée par le
+  recalée aux lots 3 et 7, une seule fois par lot, après toutes ses
+  corrections, puis au lot 9 pour 2003 et 2007 seulement ; la règle de volume des clusters retenus est portée par le
   volume (lot 5) ; les chiffres de docstrings ont une règle (lot 5 : un fait de
   galerie en sort, un chiffre de réglage reste daté). Le deuxième — le réglage
   de fragmentation que `NTFSAllocator` portait sans le dire — est mesuré et
@@ -398,9 +419,11 @@ reste.
 **Ce qui était jugé juste** n'a été retiré par aucun lot ; plusieurs points ont
 été revérifiés en passant, et tiennent : la borne de visites de `FindBestItem`
 (pic de 197 609 pour deux millions, lot 5), la sortie de la zone MFT par
-`Fixup`, la garantie du tassage à la frontière (l'audit d'allocation du lot 1
-la rejoue sur les treize plans), les modes acoustiques à fréquences fixes (lot
-6).
+`Fixup`, la garantie du tassage à la frontière, les modes acoustiques à
+fréquences fixes (lot 6). La garantie du tassage n'était rejouée que sur un
+volume d'essai de seize mille clusters ; depuis le lot 9 elle l'est sur les
+vingt volumes, avec tous les plans de l'application, et elle tient — c'est ce
+rejeu qui a trouvé la cinquième faute, chez Windows 95.
 
 ### Ce qui a été écarté, et pourquoi
 
@@ -423,6 +446,13 @@ la rejoue sur les treize plans), les modes acoustiques à fréquences fixes (lot
   0,90 aurait mis deux disques sur trois à −16 %.
 - **`growthMarginClusters`** (lot 8) a été retiré, pas mesuré à 0 et 16 : il
   ne changeait aucun cluster, les huit empreintes NTFS le prouvent.
+- **La commutation de tête prise au Fireball** (lot 9) : un seul manuel publie
+  les deux temps, et en faire la règle des huit fiches serait tourner une
+  constante sur un point. Déclarée, mesurée (0 à 0,8 s par démarrage), pas
+  changée.
+- **`yieldMFTZone` quand la MFT a débordé** (revue système, § 6.6) : la zone ne
+  cède pas « tout d'un coup » mais la moitié de ce qui lui reste, comptée depuis
+  son début. La lecture de la revue était fausse ; le docstring le dit.
 
 ### Ce qui reste
 
@@ -445,41 +475,98 @@ anticipée, comme la revue le prédisait, parce que les fichiers qu'un démarrag
 lit sont presque tous d'un seul tenant — le même manque, vu d'ailleurs.
 
 **L'entrelacement**, écrit et coupé au lot 4 : le code est là, derrière
-`DiskGenerator.runsProgramsConcurrently`.
+`DiskGenerator.runsProgramsConcurrently`. Depuis le lot 9, `Simulator` n'a plus
+de valeur par défaut : seuls les trois tests du tourniquet le demandent.
 
 **Les estimations du lot 6**, à trancher sur source : la période et le motif de
 la recalibration thermique, les 24 commutations du moteur par tour, le seuil
 d'atterrissage à 40 % du régime, les 50 ms du décollement, le palier fluide en
-2001 pour toute la galerie, la conversion dBA → bels du Conner ; et le niveau
-des seeks, calé sur rien, qui oblige à la seule licence de mixage du plateau.
+2001 pour toute la galerie, la conversion dBA → bels du Conner, les bandes et le
+battement du roulement ; et le niveau des seeks, qui oblige à une licence de
+mixage du plateau. Celui-là n'est pas « calé sur rien » : les manuels du dossier
+donnent la puissance acoustique en seek à côté de celle du repos (U8 3,5 B contre
+3,2, ATA IV 2,8 et 3,3, 7200.7 3,4, 7200.10 3,2, 7200.11 3,2). Le sourcer
+changerait le son ; c'est un chantier d'écoute.
 
-**Les hypothèses du lot 7** : la lecture sans latence et la segmentation des
-Seagate, la profondeur de la lecture anticipée, le coût de commande après 1999,
-le bus des machines de 2003 et 2007, la mémoire de la machine de 1993 et la
-taille de VCACHE, un cache d'écriture que le système ne vide jamais.
+**Les hypothèses du lot 7** : la lecture sans latence — pour **toutes** les
+fiches qui l'ont, le Fireball compris, dont le « Read-on-arrival » qualifie un
+seek et non un réordonnancement —, la segmentation des Seagate, qui est une
+file là où le Conner annonce « au plus anciennement utilisé », la profondeur de
+la lecture anticipée, le coût de commande hors de 1999 (avant comme après), le
+bus des machines de 2003 et 2007, la mémoire de la machine de 1993 et la taille
+de VCACHE, un cache d'écriture que le système ne vide jamais.
 
-**Les cibles de durée de démarrage** ne sont pas des mesures d'époque, et le
-recalage final le montre : pour tenir celles de 2003 et 2007, le coût de calcul
-au mégaoctet doit monter, à un niveau que rien ne justifie. Ce sont elles qu'il
-faut rediscuter, ou remplacer par des mesures.
+**Les cibles de durée de démarrage** ne sont pas des mesures d'époque : ce sont
+les durées que le modèle donnait avant la relecture, et caler dessus revient à
+demander au modèle corrigé de retomber sur le modèle fautif. Le lot 7 avait
+monté le coût au mégaoctet de XP et de Vista (0,19 → 0,20, 0,15 → 0,16) et en
+concluait que le cache révélait un plancher processeur plus lourd. C'était un
+disque à qui manquaient les seeks de MFT que le lot 8 lui a rendus : à `HEAD` du
+lot 8, l'ajustement **redescend** à 0,192 et 0,148. Le lot 9 a recalé à 0,19 et
+0,15, sur décision de Gabriel — le lot 7 avait compensé un manque que le lot 8 a
+corrigé. Le **niveau**, lui, reste injustifié : 0,15 s par mégaoctet pour un
+Vista, à peine sous un XP sur des processeurs trois ou quatre fois plus
+rapides. Il date du lot 3 (0,09 → 0,15), et seules des mesures d'époque le
+trancheraient.
 
-**Ce qu'aucun lot n'a pris** : plus rien. Le lot 8 a fait ce que les revues
-demandaient et que les sept premiers s'étaient passé. Il laisse deux choses
-qu'il a trouvées en le faisant, et qui ne sont pas des demandes des revues :
+**Ce qu'aucun lot n'a pris.** Le solde du lot 8 disait « plus rien ». C'était
+faux : il soldait une liste que personne n'avait refaite depuis les revues.
+L'audit l'a refaite (`AUDIT-EXPERTS.md`, § 4) ; la voici, chaque ligne avec son
+état.
+
+*Demandes de la revue système de fichiers, ni faites ni écartées par écrit
+jusqu'au lot 9* :
+
+| § de la revue | demande | état |
+|---|---|---|
+| § 8 n° 14, § 6.8 | un fichier résident compte 1 Ko de MFT dans le remplissage ; `SizeModel` descend sous 700 octets | **en attente.** `secretaire-2007` compte 0 résident sur 17 011 fichiers, et seuls les profils développeur en ont (864 sur `dev-2003`, 947 sur `dev-2007`) : la résidence, le trait distinctif de NTFS, reste décorative. Elle change les volumes, donc tout ce qui s'y mesure |
+| § 6.6 | `yieldMFTZone` quand la MFT a débordé | **écartée** au lot 9 : la zone cède la moitié de ce qui lui reste, pas tout (plus haut) |
+| § 5.6 | le commentaire de `fromVolumeStart` ; le hint de MS-DOS remis à zéro chaque journée | **commentaire corrigé** au lot 9 ; la remise à zéro par journée **en attente** — elle change les volumes de 1993 |
+| § 4.2 | `$UsnJrnl`, réécrit en continu sous Vista, et `$Secure` | **en attente**, dit dans le README (« Ce qui ne l'est pas ») |
+| § 4.4 | `$ATTRIBUTE_LIST` pour les fichiers aux extents trop nombreux ; les liens physiques de WinSxS comptés comme des copies | **en attente**, dits dans le README |
+| § 4.4 | compression, fichiers creux, flux additionnels : « défendable, à dire » | **dit** dans le README au lot 9 |
+| § 7 | numéro de MFT distinct du rang d'écriture | fait au lot 8 pour le démarrage et les défragmenteurs ; **en attente** pour `MachineWriter` et `InstallSession`, qui numérotent encore par rang |
+
+*Points qu'un chantier avait laissés ouverts sans qu'ils remontent ici* :
+
+| chantier | point | état |
+|---|---|---|
+| 20 | le second recouvrement de `DefragOperations.move` | **corrigé** au lot 9 — c'était une faute, et la galerie la déclenchait |
+| 20 | `DEFRAG.EXE` déplaçait par tronçons, pas par fichiers entiers ; la passe de 95 ne fait rien sur les volumes à 99 % | en attente |
+| 23 | la racine FAT16 à 512 entrées, que rien n'applique à l'allocation ; trente répertoires pour un XP qui en compte des milliers | en attente |
+| 23, 24 | le planificateur du tassage à la frontière, quadratique | en attente |
+| 24 | `MoveItem4`, l'entrée `..` des répertoires FAT, l'attente du point de contrôle non jouée | en attente |
+| 21 | le piste-à-piste du Conner, emprunté | en attente |
+| 25 | la position de départ du bras sur un plateau qui tourne déjà : le moyeu, alors qu'aucun disque de bureau ne s'y parque | **dit** au lot 9 (`DriveGeometry.parkCylinder`, README) ; en attente sur le fond, le modèle ne sait pas où le dernier accès l'a laissé |
+| 25, 26, 27 | **l'écoute** : Gabriel n'a rien entendu des lots 6 et 7, ni de ce qui a suivi | en attente — c'est la seule validation qui manque à tout le lot 6, et le troisième journal d'affilée à la porter |
+
+*Trouvés par le lot 8 en faisant le reste, et qui ne sont pas des demandes des
+revues* :
 
 - **les requêtes des défragmenteurs** — 4 Mo pour XP et JkDefrag — ne sont pas
   découpées à 256 secteurs comme celles de l'installeur ; le découpage
   appartient à l'interface du disque, où il vaudrait pour tous ;
 - **les constantes de `NTFSAllocator`** sont dites et mesurées, pas sourcées,
   et `famille-2003` s'y montre chaotique : trois cents clusters de `$Bitmap`
-  l'ont fait passer de 10,5 à 7,6 %.
+  l'ont fait passer de 10,5 à 7,6 %. Depuis le lot 9, la table se régénère par
+  un test.
+
+*Des constantes que seule la cible justifie*, déclarées au lot 9 dans leur code
+et dans le README : la commutation de tête (six dixièmes du pas de piste), la
+lecture sans latence, le coût de commande hors de 1999, le paquet d'écriture de
+64 Ko de NTFS, le bloc de huit clusters de la MFT, une validation de journal sur
+huit, les quatre bornes de recherche de `NTFSAllocator`, les bandes et le
+battement du roulement, le délai de coupure et la redescente du plateau (le
+Fireball donne dix secondes d'arrêt, le modèle 3,5), le préréglage « Casque »,
+seconde licence de mixage. Aucune n'a été tournée ; chacune dit ce qu'elle est.
 
 Le lot 8 a aussi trouvé **une erreur de fait** dans le catalogue — le 7200.10
 portait les seeks et le débit des 750 Go —, corrigée sur son manuel, et ajouté
 **une hypothèse** : le seek d'écriture du Conner de 1993, que rien ne publie,
-est pris au Fireball. Il déplace les démarrages NTFS de +3,3 % (2003) et +4,1 %
-(2007) par la seule numérotation MFT, sans recalage : c'est la question des
-cibles de 2003 et 2007, déjà ouverte.
+est pris au Fireball. Il déplaçait les démarrages NTFS de +3,3 % (2003) et
++4,1 % (2007) par la numérotation MFT : la dérive que le lot 9 a recalée. Un
+littéral en dépendait sans le dire — l'horloge des points de contrôle, calculée
+sur l'ancienne fiche ; elle est tirée du catalogue depuis le lot 9.
 
 **Ce que les revues n'ont pas relu** : le rendu, la carte et l'interface n'ont
 eu aucun relecteur ; la couche audio ne l'a été que du côté de la mécanique.
@@ -487,6 +574,9 @@ eu aucun relecteur ; la couche audio ne l'a été que du côté de la mécanique
 **Le défaut que les revues signalaient vaut pour elles.** Leurs chiffres
 dataient du commit qu'elles relisaient, et presque tous ont changé d'ordre de
 grandeur en sept lots — le README a été régénéré d'un seul jeu de mesures à
-chaque chantier, et cinq chantiers sur sept y ont trouvé des chiffres de prose
-déjà périmés avant d'y toucher. Une relecture dit où regarder ; seul un chiffre
-régénéré par l'outil qui le produit reste vrai.
+chaque chantier, et cinq chantiers sur huit y ont trouvé des chiffres de prose
+déjà périmés avant d'y toucher. L'audit en a compté dix-sept ; l'outil, une fois
+chargé de la prose, en a trouvé davantage. Une relecture dit où regarder ; seul
+un chiffre régénéré par l'outil qui le produit reste vrai — et depuis le lot 9,
+c'est le cas de la prose du README comme de ses tables
+(`readme-tables.py --check`).

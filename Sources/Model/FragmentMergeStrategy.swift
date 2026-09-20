@@ -5,12 +5,13 @@ import DiskCore
 /// déplacer que ce qui coûte peu et rapporte beaucoup.
 ///
 /// Elle part de la forme des huit volumes NTFS de la galerie. Ce n'est plus la
-/// place qui manque — 2 à 33 Go libres — mais la taille : tasser le volume à la
-/// façon de `FrontierCompactionStrategy` y déplace tout son contenu, jusqu'à
-/// 335 Go et dix heures de passe. Et la fragmentation y est très inégale :
+/// place qui manque mais la taille : tasser le volume à la façon de
+/// `FrontierCompactionStrategy` y déplace tout son contenu, des centaines de
+/// gigaoctets et des heures de passe (le README en donne les chiffres). Et la
+/// fragmentation y est très inégale :
 ///
-/// - sur `famille-2007`, 268 fichiers cassés pèsent 239 Go en 163 000
-///   morceaux, mais les morceaux de moins de 4 Mo n'en pèsent que 11 Go ;
+/// - quelques milliers de fichiers cassés portent des dizaines de milliers de
+///   morceaux, dont les petits ne pèsent presque rien dans le volume ;
 /// - chacun de ces petits morceaux coûte pourtant une lecture, donc un demi-
 ///   tour de plateau au moins. C'est leur nombre, et non leur poids, qui fait
 ///   la durée d'une passe.

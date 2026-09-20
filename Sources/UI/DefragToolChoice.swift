@@ -139,19 +139,19 @@ struct DefragTool: Identifiable {
             jk("jkDefragSortSize", "Trier par taille",
                "Repose chaque fichier à son rang de taille, en délogeant ce qui gêne.",
                "Long : ce qu'on évacue redescend quand vient son tour.",
-               fat: "de 7 à 21 min", ntfs: "de 4 min à 1 h 20"),
+               fat: "de 7 à 21 min", ntfs: "de 4 min à 1 h 15"),
             jk("jkDefragSortAccess", "Trier par dernier accès",
                "Repose chaque fichier selon sa dernière lecture, en délogeant ce qui gêne.",
                "Long : ce qu'on évacue redescend quand vient son tour.",
-               fat: "de 10 à 30 min", ntfs: "de 3 min à 3 h 10"),
+               fat: "de 10 à 30 min", ntfs: "de 3 min à 3 h 50"),
             jk("jkDefragSortChange", "Trier par modification",
                "Repose chaque fichier selon sa dernière écriture, en délogeant ce qui gêne.",
                "Long : ce qu'on évacue redescend quand vient son tour.",
-               fat: "de 10 à 35 min", ntfs: "de 3 min à 4 h"),
+               fat: "de 10 à 35 min", ntfs: "de 3 min à 4 h 05"),
             jk("jkDefragSortCreation", "Trier par création",
                "Repose chaque fichier selon sa date de création, en délogeant ce qui gêne.",
                "Long : ce qu'on évacue redescend quand vient son tour.",
-               fat: "de 10 à 35 min", ntfs: "de 3 min à 4 h 05"),
+               fat: "de 10 à 35 min", ntfs: "de 3 min à 4 h 10"),
         ]
     }
 }

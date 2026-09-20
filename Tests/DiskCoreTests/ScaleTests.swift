@@ -154,7 +154,8 @@ struct GenerationBudgetTests {
         let profile = NTFSProfile(clusterKB: 4)
         let clusterCount = UInt32(UInt64(80) * 1_024 * 1_024 * 1_024 / UInt64(profile.clusterBytes))
 
-        var simulator = Simulator(allocator: NTFSAllocator(profile: profile, clusterCount: clusterCount))
+        var simulator = Simulator(allocator: NTFSAllocator(profile: profile, clusterCount: clusterCount),
+                                  concurrent: false)
         let start = Date()
         let outcome = try simulator.run(timeline)
         let elapsed = Date().timeIntervalSince(start)

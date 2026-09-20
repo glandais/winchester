@@ -5725,10 +5725,20 @@ démarrage NTFS de plus de 0,1 s. Avec elle, chaque ouverture va chercher un
 enregistrement épars : 503 → 681 seeks sur `dev-2003`, +0,4 à +1,7 s par
 démarrage. C'est le sautillement que la revue annonçait, et il coûte.
 
+> *Précisé au chantier 29*, qui a rejoué `nomft` : l'attribution tient par
+> époque (sans la numérotation, 2003 et 2007 sont à −0,7 et −0,1 s du lot 7),
+> pas au profil près — `famille-2003` bouge de −0,5 s, `dev-2007` de +0,3 s.
+
 **`ThinkModel.boot` n'est pas recalé**, comme demandé : la dérive rejoint des
-cibles de 2003 et 2007 que le lot 7 disait suspectes. Si on les garde, un
+cibles de 2003 et 2007 que le lot 7 disait suspectes. ~~Si on les garde, un
 recalage monterait encore le coût au mégaoctet de XP et de Vista, ce que rien
-ne justifie ; c'est aux cibles, pas aux constantes, qu'il faut toucher.
+ne justifie ; c'est aux cibles, pas aux constantes, qu'il faut toucher.~~
+
+> *Corrigé au chantier 29.* Le signe était faux : les sommes de 2003 et 2007
+> sont **au-dessus** de leur cible, et un recalage fait **descendre** le coût au
+> mégaoctet — `fit-think.py` donne 0,192 et 0,148, les valeurs d'avant le lot 7.
+> La hausse du lot 7 compensait les seeks de MFT que ce lot-ci a rendus au
+> disque. Le chantier 29 a recalé à 0,19 et 0,15.
 
 **`InstallEra.think` non plus.** Ses constantes n'ont jamais été calées sur
 rien — les installations n'ont pas de cible — et le lot les déplace de −1,2 à
@@ -5953,3 +5963,370 @@ fichiers d'échange, et les 990 de `gamer-1993`, plein à 100 %.
 - **`Layout.ini` est parfait ici** : il vient du démarrage planifié, exactement
   celui qu'on mesure ensuite. Le vrai retient les six derniers démarrages, et
   ne connaît pas l'application du jour.
+
+---
+
+## Chantier 29 — le lot 9 : l'audit du solde
+
+**Fait** · branche `experts`
+
+### Le problème
+
+`AUDIT-EXPERTS.md` a relu de l'extérieur les huit lots des chantiers 20 à 27,
+et son verdict tient en une phrase : **le solde est honnête sur ce qu'il compte,
+et faux sur ce qu'il croit avoir compté.** Les chiffres des journaux se
+reproduisent au dixième de seconde, les tables du README à la ligne ; mais trois
+choses que le solde affirmait ne tenaient pas, et ce sont les trois conditions
+du verdict :
+
+| | où | ce que le solde disait | ce que l'audit a mesuré |
+|---|---|---|---|
+| T3 | `LEDGER-EXPERTS.md` | « Ce qu'aucun lot n'a pris : plus rien » | sept demandes de la revue système de fichiers ni faites ni écartées, huit points laissés ouverts par un chantier et jamais remontés |
+| T1 | solde, chantier 27, README, `ThinkModel` | un recalage « monterait encore » le coût au mégaoctet de XP et de Vista | `fit-think.py` le fait **descendre** : 0,20 → 0,192, 0,16 → 0,148, les valeurs d'avant le lot 7 |
+| T2 | README | la prose suit les tables | dix-sept chiffres démentis par la table voisine |
+
+Et douze trouvailles de moindre gravité : quatre tests qui ne contraignent pas ce
+qu'on leur prête (T4, T5, T8, T13), cinq constantes non sourcées ou mal sourcées
+(T6, T7, T10, T11, T12), la règle des docstrings appliquée à moitié (T9), du
+journal dans le code (T14), des détails (T15). Le lot ne touche presque pas au
+modèle : son livrable est que le code, les journaux et le README disent la même
+chose, et que les tests contraignent ce qu'on leur prête.
+
+### Les décisions — que le README ne puisse plus mentir
+
+**La prose sort de `readme-tables.py`**, comme les tables. Une table y est
+reconnue à sa ligne d'en-tête ; une phrase y est écrite telle qu'elle est dans
+le README, chaque chiffre tiré d'un bilan étant un champ `{nom}`. Le modèle
+retrouve la phrase — un retour à la ligne du README vaut une espace — et seuls
+les champs sont comparés (`--check`) ou réécrits (`--write`) : le texte autour
+reste celui qu'on a écrit. Trois raffinements, chacun appelé par un cas réel :
+
+- **les binaires jetables** : quelques phrases comparent la galerie à un modèle
+  privé d'un mécanisme — sans lecture anticipée, sans préchargeur, sans
+  `SMARTDRV`, la commutation de tête égale au pas de piste, les points de
+  contrôle à une seconde, à trente ou en fin de passe. Leurs bilans sont nommés
+  en argument (`nora=fnora …`) ; sans eux, la phrase est dite **non vérifiée**,
+  pas fausse ;
+- **les coûts de génération** dépendent de la machine et de sa charge : ils se
+  vérifient à 10 % près et ne se réécrivent qu'au-delà ;
+- **la table du rangement intelligent** et sa prose, qui viennent de `smart.sh`
+  et `passes.py` et non de `run.sh full`, n'y entrent que si leurs bilans sont
+  là.
+
+**Validé comme les chantiers 23 à 27 : sur les bilans de `base`** (le commit du
+lot 8 plus le chantier 28, 340 bilans identiques à ceux de l'audit et du lot 8),
+contre le README de `base`. Les **63 lignes de table** — les quatre journées
+comprises, dont la colonne « activités » est reprise du README — sortent
+identiques. Des 57 phrases, **28 portaient au moins un champ faux, 55 champs en
+tout** : les dix-sept de l'audit, et d'autres qu'il n'avait pas vus —
+
+| README | écrit | mesuré à `base` |
+|---|---|---|
+| salves du cache, XP sur `dev-2007` | douze écritures par vidage | 4,9 |
+| sans lecture anticipée, les démarrages dureraient | 2 à 7 s de plus | 1,7 à 11,2 |
+| `SMARTDRV` coûte par démarrage | 1,1 à 1,7 s | 1,2 à 1,8 |
+| pages de FAT32 lues au démarrage | 220 à 350 | 220 à 355 |
+| Windows 95 sur `gamer-1996` | « n'évacue que trois occupants » | quatre |
+| JkDefrag contre UltraDefrag sur NTFS | mieux sur deux volumes, moins bien sur trois | l'inverse : trois et deux |
+| JkDefrag sur `gamer-2003` | 3,9 Go | 4,0 |
+| JkDefrag sur les FAT de 1999 | 1 100 à 1 850 morceaux, 790 à 1 110 trous | 1 108 à 1 824, 789 à 1 101 |
+| XP avec un seul point de contrôle, `dev-2007` | 66 fichiers en morceaux | 769 (binaire `cpend`) |
+| sans préchargeur, `famille-2007` | 890 seeks, 44 114 cylindres, 43,6 s | 1 448, 15 240, 46,2 (binaire `nopf`) |
+
+et une convention : le total de la frontière était « 4 h 13 » dans un
+paragraphe et « 4 h 12 » dans un autre, les totaux du recollage arrondis à la
+minute d'avant. Tous les totaux s'arrondissent désormais à la minute la plus
+proche, comme le script le disait déjà pour l'un d'eux.
+
+**Réécrire la prose, ensuite**, là où elle disait ce que le modèle n'est plus,
+ou pourquoi il l'est devenu : les « jusqu'au chantier 25 », les renversements
+datés des chantiers 26 et 27, la conclusion sur les cibles (plus bas), la
+lecture sans latence (T7), le tampon qui est une file (T15), la commutation de
+tête (T6), les estimations (T11). Les chiffres y ont été posés par
+`readme-tables.py --write`, d'un seul jeu de mesures.
+
+### Les décisions — `ThinkModel`, mesuré, puis décidé par Gabriel
+
+`fit-think.py` sur `base` redonne l'ajustement de l'audit : 0,192 et 0,148, aux
+résidus de ±1,3 à ±1,9 s. Deux issues ont été préparées et chiffrées, sur un
+binaire jetable (`think19`) :
+
+| | 2003 | 2007 | vingt démarrages |
+|---|---:|---:|---:|
+| garder 0,20 / 0,16 | +3,3 % | +4,1 % | −4,1 à +8,4 % |
+| revenir à 0,19 / 0,15 | +0,6 % | +1,0 % | −4,1 à +5,7 % |
+
+(écart de la somme des quatre démarrages de chaque époque à sa cible ; 1993 à
+1999 ne bougent pas.) **Gabriel a choisi 0,19 / 0,15.** Ce qu'on en retient : le
+lot 7 avait recalé pour compenser un manque — les seeks de MFT épars — que le
+lot 8 a rendu au disque, et les deux lots se compensaient. Le niveau n'en est
+pas plus justifié ; le docstring, le README et le solde le disent sans compter
+les calages, et renvoient ici pour leur histoire.
+
+Le **signe du chantier 27** est corrigé dans son texte, barré, avec une note qui
+renvoie ici.
+
+### Les décisions — armer les tests
+
+**T4, l'invariant du tour perdu, avec le disque qu'on écoute.**
+`TrackSkewTests` ne l'énonçait que sans tampon, en `.direct`, alors que tous les
+scénarios passent `.era(year:)`. Le même test avec `.era(year: 2001)` : *N*
+requêtes contiguës coûtent **exactement** ce que coûte une requête de *N* fois la
+taille — 10⁻¹⁶ s d'écart pour 8 à 128 requêtes —, commandes comprises, puisque
+la tête lit d'avance pendant que l'hôte envoie la suivante. Un test compagnon,
+le même disque sans lecture anticipée, mesure ce qu'il en coûterait : 1,4 à
+2,2 ms par requête (0,17 à 0,26 tour, la lecture sans latence en rattrapant une
+part), quand la commande en coûte 0,2. C'est lui qui prouve que le premier
+contraint.
+
+**T5, la borne FAT32 / NTFS remise à ×2**, fixe. Le docstring dit pourquoi elle
+ne suivra plus la mesure. Elle **échoue sur le code du lot 7** (`a2af0e6` :
+16,9 % contre 13,0 %, ×1,3), que la borne de ×1,25 laissait passer, et passe à
+`HEAD` (18,8 % contre 7,6 %, ×2,5). Au passage : les fourchettes de
+non-régression de `secretaire-1999` (3–10 %) et de `famille-2003` (4–16 %,
+large de son chaos) deviennent bilatérales ; le problème connu de
+`secretaire-1999` vise sa cible, 15 %, et non 10 ; « deux d'entre elles »
+devient « trois ».
+
+**T8, l'audit d'allocation sur la galerie**, en release
+(`GalleryAllocationAuditTests`, derrière `DEFRAG_GALLERY_AUDIT`) : les vingt
+volumes, vingt-quatre plans chacun — les quatorze stratégies de
+`DefragPlanner.all`, `Layout.ini` fourni au rangement intelligent, et en blocs
+pleins les dix qui en ont l'option. Pour s'assurer qu'il contraint, la faute F1
+a été réintroduite dans un worktree jetable : il casse sur `dev-1996`
+(1 040 écritures sur une donnée vivante) et `gamer-1996`.
+
+**Et sur le code du lot, il a cassé aussi.** Windows 95 écrivait sur une donnée
+vivante sur huit volumes sur vingt :
+
+| volume | écritures fautives | clusters |
+|---|---:|---:|
+| `poweruser-1993` | 23 | 348 |
+| `famille-1996` | 8 | 32 |
+| `secretaire-1999` | 378 | 15 182 |
+| `dev-2003` | 1 | 6 |
+| `secretaire-2003` | 340 | 21 415 |
+| `dev-2007` | 7 | 89 |
+| `famille-2007` | 1 816 | 111 195 |
+| `secretaire-2007` | 6 | 78 |
+
+Un diagnostic jetable l'a qualifiée : **tous** les clusters écrasés étaient
+relus ensuite par le même déplacement. C'est le second recouvrement que le
+chantier 20 avait trouvé sur un volume construit à la main et laissé ouvert, en
+le croyant absent de la galerie — il ne l'avait cherché que sur le volume
+d'essai. `DefragOperations.move` copie tronçon par tronçon dans l'ordre du
+fichier ; quand la place visée recouvre un morceau du même fichier situé plus
+loin dans le fichier mais plus tôt sur le disque, le premier tronçon l'écrase
+avant qu'on l'ait lu. Windows 95 vise une place contiguë à la frontière, que le
+fichier occupe souvent déjà en partie : c'est lui qui la déclenche. Avec
+l'accord de Gabriel, **la correction est dans `move`** : les tronçons sont
+copiés dans l'ordre d'un `memmove` (`DefragOperations.safeOrder`) — l'ordre du
+fichier chaque fois qu'il est sûr, sinon un tronçon passe après ceux dont il
+recouvre la source ; un cycle, deux morceaux qui s'échangent, est lu entier
+avant d'être écrit. Un test minimal (`moveNeverOverwritesUnreadSource` : un
+glissement de deux clusters, un second morceau au début de la place, un
+échange) échoue sur ses trois cas sans la correction et passe avec.
+`MoveTests`, dont l'oracle comparait les mutations dans l'ordre du fichier, suit
+désormais le même ordre sûr : ce qu'il vérifie, les clusters libérés, n'a pas
+changé.
+
+**T13, `concurrent` sans défaut.** Des vingt constructions de `Simulator` dans
+les tests, trois demandent l'entrelacement — les trois tests du tourniquet — et
+dix-sept le chemin de la production. Aucune ne dépendait du défaut : toutes
+passent.
+
+### Les décisions — sourcer ou déclarer
+
+- **T6, la commutation de tête** : déclarée, pas dérivée. La table 4-3 du
+  Fireball donne 3,0 ms pour la tête comme pour le cylindre, et la table 5-3 le
+  confirme (décalages de 21 et 28 intervalles servo, calés sur 3 et 4 ms). Un
+  seul manuel publie les deux ; en faire la règle des huit fiches serait tourner
+  une constante sur un point. Le binaire `fhs10` mesure ce que changerait
+  l'égalité : **0 à 0,8 s** de plus par démarrage.
+- **T7, la lecture sans latence** : le « Read-on-arrival » du Fireball qualifie
+  un seek — 12,0 ms en lecture contre 14,0 en écriture, la lecture commençant
+  avant la fin de l'asservissement — et le manuel le désactive pour tenir ses
+  taux d'erreur. Retiré comme source ; le mécanisme est une hypothèse pour
+  toutes les fiches sauf le Conner.
+- **T10, l'horloge des points de contrôle**, tirée du catalogue : seek moyen et
+  débit soutenu des fiches de 2003 à 2006, ramené au milieu du plateau par
+  `DriveCatalog.innerRatio` (rendu public). **13,9 ms et 49,4 Mo/s**, au lieu des
+  12,7 ms et 50 Mo/s calculés sur l'ancienne fiche du 7200.10. La cadence de cinq
+  secondes a été remesurée à une et à trente (`cp1`, `cp30`) : XP et JkDefrag
+  laissent au plus 17 fichiers cassés de plus ou de moins sur les huit NTFS ;
+  un seul point de contrôle, en fin de passe, en laisse 769 à XP sur `dev-2007`
+  (le README disait 66, mesuré avant le lot 8).
+- **T11, les constantes justifiées par la cible seule**, déclarées dans leur
+  code : le paquet d'écriture de 64 Ko, le bloc de huit clusters de la MFT, les
+  seize fenêtres du dernier recours, la redescente de 3,5 s face aux dix
+  secondes du Fireball, les bandes et le battement du roulement, le coût de
+  commande prêté au Fireball de 1996. Le README en fait une ligne de « Ce qui ne
+  l'est pas », le solde les liste. Le niveau des seeks, que l'audit dit
+  sourçable, ne l'est pas ici : le sourcer changerait le son.
+- **T12, les bornes de `NTFSAllocator`**, injectables (`SearchBounds`, valeurs
+  de la galerie inchangées) : `CalibrationTests.ntfsSearchBoundsWeighOnFragmentation`
+  régénère la table de l'en-tête, et **ses vingt-huit valeurs sortent
+  identiques** à celles des binaires jetables du chantier 27. L'en-tête dit
+  qu'aucune ne vient d'une source, nomme la quatrième, et a perdu son journal.
+
+### Le reste
+
+- **T9** : les docstrings des huit fichiers de l'audit — les faits de galerie en
+  sortent ou renvoient au README ; un chiffre de réglage reste daté
+  (`dataBandInches`, contre l'ancienne fiche du 7200.10).
+- **T14** : le journal sorti du code dans quatorze fichiers, et du README ; les
+  renvois au journal restent.
+- **T15** : le tampon dit une file ; `SpindleVoice` tire ses bandes une fois par
+  disque et réécrit ses tableaux en place (deux WAV — un démarrage à froid,
+  une journée — identiques au bit près avant et après) ; `snapshot.sh`
+  construit dans le dossier de l'étape ; `compare.py --identical` sort en erreur
+  sur une étape vide, un bilan qui diffère ou qui manque, et ignore les lignes
+  vides (le chantier 28 en avait ajouté au milieu des bilans) ; `run.sh` signale
+  un bilan tronqué ; `SmartDrive.read` rend une lecture vide sans planter.
+- **Deux demandes de la revue système de fichiers soldées par écrit** : le
+  commentaire de `fromVolumeStart` (§ 5.6), et « compression, fichiers creux,
+  flux : à dire » (§ 4.4), dit dans le README avec `$UsnJrnl`, `$Secure`,
+  `$ATTRIBUTE_LIST` et WinSxS. `yieldMFTZone` (§ 6.6) est écartée : relue, la
+  zone cède la moitié de ce qui lui reste, pas tout.
+
+### Ce que chaque étape change
+
+Binaires sous `MEASURE_DIR=.build/measure-lot9` : `base` (le commit d'avant, dont
+les 340 bilans sont identiques à ceux de l'audit et du lot 8), `neutral` (tout
+le lot sauf ses trois changements de modèle), `plan` (+ l'horloge des points de
+contrôle), `move` (+ la faute corrigée), `final` (+ `ThinkModel`, le code du
+commit). Jetables : `think19`, `hs10`, `cp1`, `cp30`, `cpend`, `nora`, `nopf`,
+`nosd`, `nomft` et leurs reconstructions sur le code final (`fnora`, `fnopf`,
+`fnosd`, `fhs10`), `lot7` (reconstruit depuis `a2af0e6`).
+
+| étape | ce qu'elle ajoute | bilans changés | ce qui bouge |
+|---|---|---:|---|
+| `neutral` | tout le lot sauf ses trois changements de modèle | 0 sur 340 | rien : les bornes injectables, `concurrent`, `SmartDrive`, les docstrings ne changent aucun bilan |
+| `plan` | l'horloge des points de contrôle, 13,9 ms et 49,4 Mo/s | 74 | les passes NTFS des outils qui la suivent. XP : +0,2 % en somme, un ou deux fichiers de moins laissés sur trois volumes. JkDefrag, mode 2 : −0,1 %, de 0 à 9 fichiers. Ses tris et `MoveUp` : +4,6 % en somme, de −9 à +31 % par passe — un tri évacue une place qui ne se libère qu'au point de contrôle suivant, et l'horloge décide lequel. Windows 95 sur NTFS : +0,1 % |
+| `move` | les tronçons dans l'ordre sûr | 8 | les huit passes de Windows 95 où la faute tombait, et rien d'autre : mêmes requêtes, mêmes morceaux, mêmes trous ; de 0 à +0,05 % de durée, quelques centaines de seeks de plus au pire, les lectures reprises dans l'ordre |
+| `final` | `ThinkModel` à 0,19 / 0,15 | 17 | les huit démarrages NTFS (2003 : 187,7 → 182,7 s pour 181,7 visés ; 2007 : 163,4 → 158,6 s pour 157,0), les installations de 2003 et 2007 par leurs redémarrages (−0,6 %), la journée de `famille-2003` (98,2 → 96,5 s) |
+
+`final` redonne les vingt démarrages de `think19` à l'identique : le recalage
+n'est que les deux littéraux.
+
+### Ce que l'audit n'avait pas pu vérifier
+
+- **L'ajustement du chantier 26** (0,199 / 0,157) : refait sur ses propres
+  bilans (`measure-lot7/out-soft`, constantes d'avant son recalage), à
+  l'identique, résidus compris (±0,2 / 1,4 / 2,8 / 1,8 / 1,3 s). Le binaire du
+  lot 7 reconstruit depuis `a2af0e6` par `snapshot.sh` diffère du `bin-final`
+  d'alors octet à octet — il a été construit dans un autre worktree, et le
+  chemin s'inscrit dans l'exécutable — mais redonne ses vingt démarrages à
+  l'identique.
+- **`nomft`**, reconstruit depuis `HEAD` : ses vingt démarrages sont ceux du
+  binaire du chantier 27, la coupure est donc bien celle qu'il décrit.
+  L'attribution de la dérive tient **par époque** (sans la numérotation, 2003 et
+  2007 sont à −0,7 et −0,1 s du lot 7), pas au profil près comme il l'écrivait :
+  `famille-2003` bouge de −0,5 s, `dev-2007` de +0,3. Le chantier 27 porte une
+  note.
+- **`knobs`** : la table des constantes NTFS, régénérée par un test (plus haut),
+  identique.
+- **`nora`**, reconstruit : sans lecture anticipée, les démarrages durent de
+  11,6 à 24,9 s de plus par époque (le chantier 26 écrivait 11,5 à 24,3 sur le
+  code du lot 7), et de 1,7 à 11,4 s par démarrage — le README disait 2 à 7.
+- **« sans préchargeur » et « point de contrôle unique »** : remesurés
+  (`fnopf`, `cpend`), tous deux faux dans le README et corrigés.
+- **L'invariant de T4 avec le cache** : écrit.
+- **Les sources hors du dossier** (TULARC, le brevet du bus ISA, `HELP
+  SMARTDRV`, `mkntfs`, `JkDefragLib.cpp`, `fastfat`, *Windows Internals*) : pas
+  relues ; elles le restent par écrit.
+- **`Sources/Audio`, `Haptics`, `UI`** ne sont toujours dans aucune cible de
+  test ; le seul changement du lot qui y touche, `SpindleVoice`, est vérifié par
+  les WAV.
+
+### Ce qui valide
+
+- **`swift test` : 424 tests passent** (413 avant) : l'invariant du tour perdu
+  avec le tampon d'époque et son compagnon (huit cas), le déplacement qui ne
+  recouvre pas ce qu'il n'a pas lu (trois cas), la lecture vide de `SMARTDRV`, et
+  les tests de `Simulator` rendus explicites. Chacun des tests armés a été vu
+  **échouer** là où il devait : T5 sur le code du lot 7, T8 avec la faute F1
+  réintroduite et, sur le code du lot, avec la faute que personne n'avait vue,
+  le test de `move` sans sa correction, T4 par son compagnon.
+- **`DISKCORE_CALIBRATION=1 swift test -c release --filter Calibration`** : les
+  trois problèmes connus, les mêmes — `dev-1996` 8,1 %, `secretaire-1999`
+  5,5 %, `famille-2003` 7,6 % —, et la table de `NTFSAllocator` régénérée.
+- **`DEFRAG_GALLERY_AUDIT=1 swift test -c release --filter GalleryAllocationAudit`** :
+  les vingt volumes, 480 plans, aucune écriture sur une donnée vivante, aucun
+  cluster référencé deux fois ; seize minutes, dont neuf pour `famille-2007`.
+- **`compare.py --identical`**, étape par étape : `base` = l'audit = le lot 8
+  (340 sur 340), `neutral` = `base` (340 sur 340), puis 74, 8 et 17 bilans
+  changés, chacun là où l'étape devait agir et nulle part ailleurs (tableau
+  plus haut). Le binaire reconstruit depuis le code du commit diffère de
+  `bin-final` octet à octet — deux commentaires retouchés après la mesure ont
+  décalé des lignes — et redonne ses 340 bilans à l'identique.
+- **`readme-tables.py final nora=fnora nopf=fnopf nosd=fnosd hs10=fhs10 cp1=cp1
+  cp30=cp30 cpend=cpend --check`** : 83 lignes de table, 70 phrases, **aucun
+  écart, aucune non vérifiée**.
+- **Le son** : un démarrage à froid (`boot:gamer-1993`) et une journée
+  (`day:dev-1996:20`) rendus par `base` et `final` donnent des WAV identiques au
+  bit près — la rampe et la redescente passent par `SpindleVoice`.
+- **L'app compile** (Debug, iPhone 17 Pro Max, iOS 26.5, après `xcodegen
+  generate`) ; elle n'a pas été lancée.
+
+### Le README
+
+Régénéré d'un seul jeu de mesures, `final`, par `readme-tables.py --write` —
+les tables, la prose, et la table du rangement intelligent, refaite par
+`smart.sh` et `passes.py` sur `final` : ses douze lignes FAT n'ont pas bougé,
+ses huit lignes NTFS suivent `ThinkModel`. La table des trois allocateurs
+(`AllocatorComparison`) est inchangée, rien de la génération n'ayant bougé. La
+prose reprise, en plus des chiffres :
+
+- **le recalage** et ce qu'il dit, sans l'histoire des calages ;
+- **la lecture sans latence**, une hypothèse ; **le tampon**, une file ; **la
+  commutation de tête**, un ordre de grandeur, avec ce que coûterait de
+  l'égaler ; le **paquet de 64 Ko**, une estimation ; les **deux licences** de
+  mixage du plateau ; la seconde avant la coupure et la redescente ;
+- **l'horloge des points de contrôle**, et la cadence remesurée ;
+- **les renversements datés** des chantiers 26 et 27 (la frontière contre 95, le
+  recollage contre XP) remplacés par ce qui les explique ;
+- dans « Ce qui ne l'est pas » : les constantes non sourcées, et ce que NTFS
+  n'a pas (compression, fichiers creux, flux, `$UsnJrnl`, `$Secure`,
+  `$ATTRIBUTE_LIST`, liens de WinSxS) ;
+- « Mesurer un changement » : `--check` et `--write`, les binaires jetables
+  nommés en argument, `compare.py` qui sort en erreur.
+
+Hors du README, les **fourchettes de l'écran de choix d'outil** ont été
+confrontées aux bilans de `final` : quatre ne tenaient plus, toutes des tris de
+JkDefrag sur NTFS, que l'horloge des points de contrôle a déplacés (par dernier
+accès : jusqu'à 3 h 49 au lieu de 3 h 09). Recopiées, arrondies aux cinq
+minutes comme les autres. `UX_REVIEW.md` relève d'autres écarts de cet écran ;
+c'est son chantier.
+
+### Laissé ouvert
+
+- **Rien n'a encore été écouté.** Gabriel n'a entendu ni le lot 6, ni le lot 7,
+  ni ce qui a suivi ; c'est la validation qui manque à tout le lot 6, et le
+  troisième journal d'affilée à le dire. Ce lot ne change rien au son, hors les
+  passes de Windows 95 des huit volumes corrigés, qui ne lisent plus ce qu'elles
+  avaient écrasé.
+- **Le niveau de `ThinkModel`** pour 2003 et 2007, recalé mais toujours
+  injustifié : seules des mesures d'époque le trancheraient.
+- **La commutation de tête**, un ordre de grandeur que le seul manuel qui la
+  publie contredit ; **le niveau des seeks**, sourçable sur les manuels du
+  dossier, pour un chantier d'écoute.
+- **Les demandes de la revue système de fichiers** en attente (le solde en
+  tient la table) : la résidence NTFS — 0 résident sur six des huit NTFS —, la
+  remise à zéro du hint de MS-DOS chaque journée, `$UsnJrnl` et `$Secure`,
+  `$ATTRIBUTE_LIST` et WinSxS, la numérotation MFT de `MachineWriter` et
+  `InstallSession`.
+- **Ce que les chantiers avaient laissé** et qui reste : `DEFRAG.EXE` par
+  tronçons, la racine FAT16 à 512 entrées, le planificateur quadratique de la
+  frontière, `MoveItem4` et l'entrée `..`, le piste-à-piste du Conner, la
+  position de départ du bras.
+- **Des chiffres de prose que l'outil ne vérifie pas**, parce qu'ils viennent de
+  compteurs internes ou de binaires qui ne sont plus : les vingt et un échecs de
+  répertoires de JkDefrag et les 730 répertoires abandonnés sur `famille-1999`,
+  les validations par lot de la frontière, ce que la recalibration thermique
+  ajoute aux passes, les 0,4 s de noms uniques, le coût de `famille-2003` avant
+  l'écriture par paquets. Ils sont datés, pas démentis ; ils ne sont pas
+  garantis.
+- **Les fourchettes de l'écran de choix d'outil** sont recopiées à la main des
+  bilans : `readme-tables.py` ne les vérifie pas.
+- `UX_REVIEW.md`, hors du périmètre de ce lot, attend son propre chantier.

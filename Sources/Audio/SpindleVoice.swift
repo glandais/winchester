@@ -43,6 +43,9 @@ final class SpindleVoice {
 
     private var noiseL = NoiseSource(seed: 0x9E37_79B9)
     private var noiseR = NoiseSource(seed: 0x85EB_CA6B)
+    /// Les bandes du disque courant, tirées une fois par caractère : le calcul
+    /// alloue, et il ne doit pas le faire à chaque bloc d'une rampe.
+    private var bands: [SpindleCharacter.Band] = []
     private var bankL: [Biquad] = []
     private var bankR: [Biquad] = []
     private var bandGain: [Double] = []
@@ -120,23 +123,29 @@ final class SpindleVoice {
     /// la forme du spectre.
     private func updateCoefficients(for speed: Double) {
         let scale = 0.35 + 0.65 * speed
-        let bands = character.bands
         let deviation = Self.referenceDeviation * character.gain
-        bankL = bands.map {
-            Biquad.bandpass(frequency: $0.frequency * scale, q: $0.q, sampleRate: sampleRate)
-        }
-        bankR = bands.map {
-            Biquad.bandpass(frequency: $0.frequency * scale * 1.012, q: $0.q, sampleRate: sampleRate)
+        // Les tableaux ne sont refaits que quand le disque change. Pendant une
+        // rampe, qui recalcule les coefficients à chaque bloc sur le fil audio,
+        // ils sont réécrits en place : aucune allocation.
+        if coefficientVersion != characterVersion || bands.isEmpty {
+            bands = character.bands
+            bankL = Array(repeating: Biquad(), count: bands.count)
+            bankR = bankL
+            bandGain = Array(repeating: 0, count: bands.count)
+            bandModulated = bands.map(\.modulated)
         }
         // Un roulement ne glisse pas : ses bandes sont des résonances de la
         // structure, fixes. Seules celles du souffle suivent la vitesse, mais
         // on les calcule toutes à la même échelle pendant la rampe — c'est une
         // demi-seconde, et l'oreille n'y entend qu'une montée.
-        bandGain = bands.map {
-            let variance = Self.bandVariance(frequency: $0.frequency, q: $0.q, sampleRate: sampleRate)
-            return deviation * ($0.power / variance).squareRoot()
+        for index in bands.indices {
+            let band = bands[index]
+            bankL[index] = Biquad.bandpass(frequency: band.frequency * scale, q: band.q, sampleRate: sampleRate)
+            bankR[index] = Biquad.bandpass(frequency: band.frequency * scale * 1.012, q: band.q,
+                                           sampleRate: sampleRate)
+            let variance = Self.bandVariance(frequency: band.frequency, q: band.q, sampleRate: sampleRate)
+            bandGain[index] = deviation * (band.power / variance).squareRoot()
         }
-        bandModulated = bands.map(\.modulated)
         tonalGain = character.gain
         // La raie de commutation, un vingtième du bruit en amplitude : on la
         // devine sous le souffle, on ne l'entend pas siffler.

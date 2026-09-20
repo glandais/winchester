@@ -70,9 +70,8 @@ struct TraceStats {
     var busySeconds = 0.0
     /// Où passe le temps d'une passe : bras en mouvement (commutations de tête
     /// comprises), attente du secteur, pas de piste pendant un transfert,
-    /// calcul de la machine entre deux lectures, disque au repos, et — depuis le
-    /// tampon du chantier 26 — ce qu'une commande servie par lui a fait attendre
-    /// l'hôte. Sans tampon, ils recomposent l'horloge avec `busySeconds`. Avec
+    /// calcul de la machine entre deux lectures, disque au repos, et ce qu'une
+    /// commande servie par le tampon a fait attendre l'hôte. Sans tampon, ils recomposent l'horloge avec `busySeconds`. Avec
     /// lui, plus exactement : les vidages et la lecture anticipée font bouger
     /// le bras pendant que l'hôte calcule, et leurs seeks sont comptés sans que
     /// personne les ait attendus.
@@ -131,7 +130,7 @@ struct IdleBehavior {
     /// les têtes au repos est une pratique des disques à rampe, les portables
     /// des années 2000. Un disque de bureau laisse le bras où il est et ne se
     /// retire qu'à la coupure. Le mécanisme reste pour ces disques-là ; aucun
-    /// scénario ne s'en sert plus depuis le chantier 25.
+    /// scénario ne s'en sert.
     ///
     /// C'est bien un délai et non un instant : une passe en boucle fermée ne
     /// connaît pas sa propre durée avant d'être simulée.
@@ -387,7 +386,8 @@ struct DiskMechanics {
     private var headLBA = 0
     /// La lecture anticipée en cours, s'il y en a une.
     private var stream: ReadStream?
-    /// Ce que le tampon tient de propre, du moins au plus récemment servi.
+    /// Ce que le tampon tient de propre, de la plus ancienne entrée à la plus
+    /// récente : une **file**, qu'un succès ne réordonne pas (`DriveBuffer`).
     private var segments: [BufferedRange] = []
     /// Les écritures acquittées pas encore posées, triées par secteur.
     private var pending: [PendingWrite] = []

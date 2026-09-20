@@ -172,6 +172,7 @@ public enum DiskGenerator {
     public static func generate(_ spec: ProfileSpec,
                                 manifests: [AppManifest] = AppLibrary.all,
                                 logger: GenerationLogger = SilentLogger(),
+                                ntfsSearch: NTFSAllocator.SearchBounds = .standard,
                                 onProgress: ((GenerationProgress) -> Void)? = nil) throws -> GeneratedDisk {
         let compiled = ScenarioCompiler.compile(spec, manifests: manifests)
         logger.log("\(spec.id) : \(compiled.timeline.count) événements sur \(spec.timeline.dayCount) jours")
@@ -189,7 +190,7 @@ public enum DiskGenerator {
                         dayCount: outcome.dayCount)
 
         case .ntfs:
-            var simulator = Simulator(allocator: ntfsAllocator(for: spec),
+            var simulator = Simulator(allocator: ntfsAllocator(for: spec, search: ntfsSearch),
                                       catalog: compiled.catalog,
                                       logger: logger,
                                       concurrent: runsProgramsConcurrently(spec),
@@ -317,10 +318,12 @@ public enum DiskGenerator {
                             scan: scan)
     }
 
-    static func ntfsAllocator(for spec: ProfileSpec) -> NTFSAllocator {
+    static func ntfsAllocator(for spec: ProfileSpec,
+                              search: NTFSAllocator.SearchBounds = .standard) -> NTFSAllocator {
         NTFSAllocator(profile: ntfsProfile(for: spec),
                       clusterCount: spec.clusterCount,
-                      mirrorPlacement: mirrorPlacement(for: spec))
+                      mirrorPlacement: mirrorPlacement(for: spec),
+                      search: search)
     }
 
     public static func ntfsProfile(for spec: ProfileSpec) -> NTFSProfile {

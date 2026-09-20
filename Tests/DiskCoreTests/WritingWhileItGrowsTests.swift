@@ -80,7 +80,7 @@ struct WritingWhileItGrowsTests {
         var timeline = EventTimeline()
         timeline.append(Self.streamed(0, "A.DAT", bytes: 20 * 2_048), on: 1, by: .browser)
         timeline.append(Self.streamed(1, "B.DAT", bytes: 20 * 2_048), on: 1, by: .download)
-        var simulator = Simulator(allocator: Self.vfat())
+        var simulator = Simulator(allocator: Self.vfat(), concurrent: true)
         let outcome = try simulator.run(timeline)
         let a = try #require(outcome.catalog[0])
         let b = try #require(outcome.catalog[1])
@@ -110,7 +110,7 @@ struct WritingWhileItGrowsTests {
         var timeline = EventTimeline()
         timeline.append(Self.streamed(0, "A.DAT", bytes: 20 * 2_048), on: 1, by: .browser)
         timeline.append(Self.streamed(1, "B.DAT", bytes: 20 * 2_048), on: 1, by: .browser)
-        var simulator = Simulator(allocator: Self.vfat())
+        var simulator = Simulator(allocator: Self.vfat(), concurrent: true)
         let outcome = try simulator.run(timeline)
         #expect(outcome.catalog[0]?.extents.count == 1)
         #expect(outcome.catalog[1]?.extents.count == 1)
@@ -127,7 +127,7 @@ struct WritingWhileItGrowsTests {
         timeline.append(Self.streamed(0, "A.DAT", bytes: 20 * 2_048), on: 1, by: .browser)
         timeline.append(.create(FileSpec(id: 1, name: "B.SAV", directory: 0, category: .document,
                                          bytes: 20 * 2_048)), on: 1, by: .game)
-        var simulator = Simulator(allocator: Self.vfat())
+        var simulator = Simulator(allocator: Self.vfat(), concurrent: true)
         let outcome = try simulator.run(timeline)
         #expect(outcome.catalog[1]?.extents == [Extent(start: 1, length: 20)])
         #expect(outcome.catalog[0]?.extents == [Extent(start: 0, length: 1), Extent(start: 21, length: 19)])
@@ -207,7 +207,7 @@ struct WritingWhileItGrowsTests {
         }
         for index in 0..<100 { timeline.append(.delete(id: UInt32(index)), on: 1) }
         let format = DirectoryFormat(kind: .fat(longNames: true, fixedRoot: true), clusterBytes: 2_048)
-        var simulator = Simulator(allocator: Self.vfat(), catalog: catalog, directories: format)
+        var simulator = Simulator(allocator: Self.vfat(), catalog: catalog, concurrent: false, directories: format)
         let outcome = try simulator.run(timeline)
 
         let directory = outcome.catalog.directories[Int(folder)]
@@ -239,7 +239,7 @@ struct WritingWhileItGrowsTests {
         }
         let format = DirectoryFormat(kind: .ntfs, clusterBytes: 4_096, residentBytes: 700)
         var simulator = Simulator(allocator: NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: 20_000),
-                                  catalog: catalog, directories: format)
+                                  catalog: catalog, concurrent: false, directories: format)
         let outcome = try simulator.run(timeline)
         #expect(outcome.catalog.directories[Int(small)].exists)
         #expect(outcome.catalog.directories[Int(small)].extents.isEmpty)

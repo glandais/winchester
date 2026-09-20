@@ -3,7 +3,7 @@
 #
 #   ./Tools/Measure/run.sh <étape> boots   # les vingt démarrages, ~3 s
 #   ./Tools/Measure/run.sh <étape> disks   # les vingt volumes, un à la fois, ~30 s
-#   ./Tools/Measure/run.sh <étape> full    # tout le README : ~2 min 30
+#   ./Tools/Measure/run.sh <étape> full    # tout le README : 5 à 7 min
 #
 # `disks` décrit les vingt volumes générés (`SCENARIO=disk:`) : l'histogramme
 # des extents par fichier, les répertoires, le coût de génération — ce que lit
@@ -57,3 +57,7 @@ fi
     env ${full:+FULL_BLOCKS=1} ${tool:+STRATEGY=$tool} SCENARIO=$scenario PLAN_ONLY=1 \
         ./rendertrace > "'"$OUT"'/$name.txt" 2>&1')
 ls "$OUT" | wc -l | xargs echo "bilans :"
+# Un bilan sans durée ni empreinte est un rendu interrompu : le compte y est,
+# le chiffre non.
+TRUNCATED="$(cd "$OUT" && grep -L -e '^durée' -e '^empreinte' -- *.txt || true)"
+[ -z "$TRUNCATED" ] || { echo "bilans tronqués :" >&2; echo "$TRUNCATED" >&2; exit 1; }

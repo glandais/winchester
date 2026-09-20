@@ -66,12 +66,10 @@ struct InstallEra: Sendable {
     /// 64 Ko. Vista garde ici le plafond de l'ATA : les disques de 2007 sont en
     /// LBA48, qui le lève, mais rien ne dit ce que faisait son pilote.
     ///
-    /// Le modèle faisait jusqu'au lot 8 des requêtes de 512 Ko à 1 Mo, au
-    /// motif qu'écrire un DVD par morceaux de 64 Ko, c'était attendre un
-    /// demi-tour de plateau à chaque morceau. Ce n'est plus vrai depuis que le
-    /// disque a son cache d'écriture (lot 7) : il acquitte le morceau et pose
-    /// la suite sans attendre le tour. Ce que coûte le plafond est mesuré au
-    /// chantier 27.
+    /// Écrire un DVD par morceaux de 64 Ko ne fait pas attendre un demi-tour de
+    /// plateau à chaque morceau : le disque a son cache d'écriture, il acquitte
+    /// le morceau et pose la suite sans attendre le tour. Ce que coûte le
+    /// plafond est mesuré dans `LEDGER.md` (chantier 27).
     let writeRequestSectors: Int
 
     /// Ce que le système lit ou écrit au moins d'un fichier, en octets : les

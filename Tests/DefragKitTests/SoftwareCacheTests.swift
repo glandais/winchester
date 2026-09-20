@@ -62,6 +62,16 @@ struct SoftwareCacheTests {
     /// Sur FAT32, les pages de table lues au début du démarrage sont chassées
     /// par les données qui suivent, et relues quand une chaîne y repasse : le
     /// va-et-vient d'un Windows 98 qui lit cent mégaoctets.
+    /// Une lecture de zéro secteur ne va pas au disque. Aucun appelant n'en
+    /// fait ; sans la garde, elle faisait planter `SMARTDRV` sur une plage à
+    /// l'envers.
+    @Test("SMARTDRV ne demande rien pour une lecture vide")
+    func smartDriveIgnoresAnEmptyRead() {
+        var cache = SmartDrive(loadedFromAct: 0, windowsFromAct: 5)
+        #expect(cache.read(lba: 1_000, sectors: 0, act: 1).isEmpty)
+        #expect(cache.hits == 0 && cache.misses == 0)
+    }
+
     @Test("VCACHE rend à la table FAT32 ses retours périodiques")
     func vcacheBringsTheTableBack() throws {
         let disk = try DiskGenerator.generate(try ScenarioLibrary.load("secretaire-1999"))

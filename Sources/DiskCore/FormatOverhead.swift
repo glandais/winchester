@@ -6,10 +6,9 @@ import Foundation
 /// Deux modules ont besoin de la réponse, et doivent avoir **la même** : le
 /// générateur, qui compte les clusters que l'allocateur peut servir
 /// (`ProfileSpec.clusterCount`), et le simulateur, qui pose la partition autour
-/// (`PartitionGeometry`). Jusqu'au lot 8, le premier divisait la taille du
-/// disque par celle d'un cluster sans rien déduire : sur `gamer-1999`, les deux
-/// tables FAT32 font 17 Mo, et le volume généré dépassait d'autant le disque
-/// qui le portait.
+/// (`PartitionGeometry`). Diviser la taille du disque par celle d'un cluster
+/// sans rien déduire fait déborder le volume de ses tables — de plusieurs
+/// mégaoctets sur un FAT32 de la galerie.
 ///
 /// - **FAT** : les secteurs réservés — un sur FAT16, trente-deux sur FAT32 —,
 ///   les **deux** copies de la table, puis la racine de taille fixe d'un FAT16,

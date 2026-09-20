@@ -142,6 +142,9 @@ struct SmartDrive {
     /// Ce qu'une lecture demande vraiment au disque : les éléments qu'il n'a
     /// pas, plus sa lecture anticipée, en plages contiguës.
     mutating func read(lba: Int, sectors: Int, act: Int) -> [(lba: Int, sectors: Int)] {
+        // Une lecture vide ne demande rien au disque — et `first...last`
+        // serait une plage à l'envers.
+        guard sectors > 0 else { return [] }
         if act >= windowsFromAct && !underWindows {
             // Windows démarre : le cache rétrécit à sa taille Windows, en
             // gardant ce qu'il servait le plus récemment.

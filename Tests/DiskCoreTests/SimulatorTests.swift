@@ -55,7 +55,7 @@ struct SimulatorTests {
                                              bytes: 200_000)),
                             on: 0)
         }
-        var simulator = Simulator(allocator: Self.fat16Volume())
+        var simulator = Simulator(allocator: Self.fat16Volume(), concurrent: false)
         let outcome = try simulator.run(timeline)
 
         #expect(outcome.metrics.fileCount == 200)
@@ -75,7 +75,7 @@ struct SimulatorTests {
                         on: 0)
         for day in 1...50 { timeline.append(.rewrite(id: 0), on: UInt32(day)) }
 
-        var simulator = Simulator(allocator: Self.fat16Volume())
+        var simulator = Simulator(allocator: Self.fat16Volume(), concurrent: false)
         let outcome = try simulator.run(timeline)
         let file = try #require(outcome.catalog[0])
 
@@ -107,7 +107,7 @@ struct SimulatorTests {
         }
         timeline.sortByDay()
 
-        var simulator = Simulator(allocator: Self.fat16Volume(megabytes: 64))
+        var simulator = Simulator(allocator: Self.fat16Volume(megabytes: 64), concurrent: false)
         let outcome = try simulator.run(timeline)
         let document = try #require(outcome.catalog[1])
 
@@ -146,7 +146,7 @@ struct SimulatorTests {
         }
         timeline.sortByDay()
 
-        var simulator = Simulator(allocator: Self.fat16Volume(megabytes: 64))
+        var simulator = Simulator(allocator: Self.fat16Volume(megabytes: 64), concurrent: false)
         let outcome = try simulator.run(timeline)
         let journal = try #require(outcome.catalog[0])
 
@@ -182,7 +182,7 @@ struct SimulatorTests {
         timeline = writer.timeline
         timeline.sortByDay()
 
-        var simulator = Simulator(allocator: Self.fat16Volume(megabytes: 32))
+        var simulator = Simulator(allocator: Self.fat16Volume(megabytes: 32), concurrent: false)
         let outcome = try simulator.run(timeline)
 
         // Il ne reste que les fichiers durables.
@@ -205,7 +205,7 @@ struct SimulatorTests {
 
         let allocator = Self.fat16Volume(megabytes: 64)
         let clusterBytes = UInt64(allocator.profile.clusterBytes)
-        var simulator = Simulator(allocator: allocator)
+        var simulator = Simulator(allocator: allocator, concurrent: false)
         let outcome = try simulator.run(writer.timeline)
         let swap = try #require(outcome.catalog[0])
 
@@ -252,7 +252,7 @@ struct SimulatorTests {
         }
         timeline.sortByDay()
 
-        var simulator = Simulator(allocator: Self.fat16Volume(megabytes: 64))
+        var simulator = Simulator(allocator: Self.fat16Volume(megabytes: 64), concurrent: false)
         let before = try simulator.run(timeline)
         let swapBefore = try #require(before.catalog[0])
         // Le scan depuis le début ne laisse pas de trous derrière lui : ce qui
@@ -306,7 +306,7 @@ struct SimulatorTests {
             }
             var timeline = writer.timeline
             timeline.sortByDay()
-            var simulator = Simulator(allocator: Self.ntfsVolume())
+            var simulator = Simulator(allocator: Self.ntfsVolume(), concurrent: false)
             return try simulator.run(timeline)
         }
 
@@ -351,7 +351,7 @@ struct SimulatorTests {
         }
 
         var reports: [GenerationProgress] = []
-        var simulator = Simulator(allocator: Self.ntfsVolume())
+        var simulator = Simulator(allocator: Self.ntfsVolume(), concurrent: false)
         _ = try simulator.run(timeline) { reports.append($0) }
 
         #expect(reports.count > 1)
@@ -378,7 +378,7 @@ struct SimulatorTests {
         let frozen = timeline
 
         let task = Task.detached { () -> Bool in
-            var simulator = Simulator(allocator: Self.ntfsVolume(megabytes: 4_096))
+            var simulator = Simulator(allocator: Self.ntfsVolume(megabytes: 4_096), concurrent: false)
             do {
                 _ = try simulator.run(frozen)
                 return false
@@ -417,7 +417,7 @@ struct SimulatorTests {
         timeline.append(.defragment, on: 1)
 
         let recorder = Recorder()
-        var simulator = Simulator(allocator: Self.fat16Volume(), logger: recorder)
+        var simulator = Simulator(allocator: Self.fat16Volume(), logger: recorder, concurrent: false)
         _ = try simulator.run(timeline)
 
         #expect(recorder.all.count == 2)
@@ -451,9 +451,10 @@ struct AllocatorCompositionTests {
         let profile = NTFSProfile(clusterKB: 4)
         let clusterCount: UInt32 = 65_536
 
-        var plain = Simulator(allocator: NTFSAllocator(profile: profile, clusterCount: clusterCount))
+        var plain = Simulator(allocator: NTFSAllocator(profile: profile, clusterCount: clusterCount),
+                              concurrent: false)
         var wrapped = Simulator(allocator: ProfilingAllocator(
-            NTFSAllocator(profile: profile, clusterCount: clusterCount)))
+            NTFSAllocator(profile: profile, clusterCount: clusterCount)), concurrent: false)
 
         let a = try plain.run(timeline)
         let b = try wrapped.run(timeline)

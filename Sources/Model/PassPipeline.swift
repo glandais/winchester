@@ -202,7 +202,7 @@ struct PassSetup {
     var spinUpDuration: Double
     var idle: IdleBehavior = .none
     /// Le tampon du disque, son bus, ce que coûte une commande. `.direct` : la
-    /// mécanique seule, comme avant le chantier 26.
+    /// mécanique seule, sans tampon ni coût de commande.
     var drive: DriveInterface = .direct
     /// Ce que dure la passe après sa dernière requête. `nil` : la durée est
     /// celle de la trace — la dernière requête, ou le parcage s'il vient après.

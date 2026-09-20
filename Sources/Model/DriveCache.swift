@@ -10,8 +10,8 @@ import DiskCore
 /// lent que le disque — et en 1993 c'est lui qui commande.
 struct DriveInterface: Sendable, Equatable {
 
-    /// Le tampon, s'il y en a un à simuler. `nil` : le disque d'avant le
-    /// chantier 26, qui ne sert que de la mécanique.
+    /// Le tampon, s'il y en a un à simuler. `nil` : un disque qui ne sert que
+    /// de la mécanique.
     var buffer: DriveBuffer?
     /// Débit du bus entre le tampon et la mémoire, en octets par seconde.
     var readBytesPerSecond: Double

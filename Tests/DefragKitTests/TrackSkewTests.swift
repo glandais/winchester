@@ -32,9 +32,10 @@ struct TrackSkewTests {
     }
 
     private static func elapsed(_ geometry: DriveGeometry, _ seek: SeekModel,
+                                drive: DriveInterface = .direct,
                                 requests: [BlockRequest]) -> Double {
         var mechanics = DiskMechanics(geometry: geometry, seekModel: seek,
-                                      spinUpAt: 0, spinUpDuration: 0)
+                                      spinUpAt: 0, spinUpDuration: 0, drive: drive)
         var events: [DiskEvent] = []
         var first = 0.0
         var last = 0.0
@@ -71,6 +72,61 @@ struct TrackSkewTests {
         let single = Self.elapsed(geometry, seek, requests: whole)
         #expect(abs(cut - single) < 1e-9,
                 "\(chunks) requêtes de 64 Ko : \(cut) s contre \(single) s d'un bloc")
+    }
+
+    /// La même propriété, sur le disque qu'on écoute.
+    ///
+    /// Le test précédent la vérifie sans tampon, sur une mécanique qui ne coûte
+    /// rien entre deux commandes. Aucun scénario ne sert plus ce disque-là : tous
+    /// passent `.era(year:)`, et chaque commande y coûte 0,2 ms. Ce coût fait
+    /// manquer à la requête suivante le secteur qui passe ; c'est la **lecture
+    /// anticipée** qui le rend — la tête a continué de lire pendant que l'hôte
+    /// envoyait la commande, et la requête est servie par le tampon à mesure que
+    /// les secteurs arrivent. Découper une lecture contiguë ne coûte alors
+    /// **rien**, commandes comprises : elles se paient pendant que la tête lit.
+    @Test("Avec le tampon d'époque, découper une lecture contiguë ne coûte rien",
+          arguments: [8, 16, 64, 128])
+    func splittingIsFreeWithTheEraDrive(chunks: Int) {
+        let (geometry, seek) = Self.barracuda()
+        let drive = DriveInterface.era(year: 2001)
+        #expect(drive.readAhead && drive.commandOverhead > 0)
+        let (cut, single) = Self.splitAndWhole(geometry, seek, drive: drive, chunks: chunks)
+        #expect(abs(cut - single) < 1e-9,
+                "\(chunks) requêtes de 64 Ko : \(cut) s contre \(single) s d'un bloc")
+    }
+
+    /// Et sans la lecture anticipée, le même disque paie davantage que ses
+    /// commandes : le secteur manqué, attendu une fraction de tour — de 1,4 à
+    /// 2,2 ms par requête, quand la commande en coûte 0,2, la lecture sans
+    /// latence en rattrapant une part. C'est ce qui donne son sens au test
+    /// précédent : il échouerait si la lecture anticipée cessait de couvrir la
+    /// commande.
+    @Test("Sans lecture anticipée, chaque requête contiguë attend son secteur",
+          arguments: [8, 16, 64, 128])
+    func withoutReadAheadEachRequestWaits(chunks: Int) {
+        let (geometry, seek) = Self.barracuda()
+        let drive = DriveInterface.era(year: 2001).with(readAhead: false)
+        let (cut, single) = Self.splitAndWhole(geometry, seek, drive: drive, chunks: chunks)
+        let perRequest = (cut - single) / Double(chunks - 1)
+        #expect(perRequest > 5 * drive.commandOverhead,
+                "\(chunks) requêtes : \(perRequest * 1_000) ms de plus par requête")
+    }
+
+    /// *N* requêtes de 64 Ko contiguës, et la requête unique de même taille,
+    /// sur un disque neuf de chaque côté.
+    private static func splitAndWhole(_ geometry: DriveGeometry, _ seek: SeekModel,
+                                      drive: DriveInterface, chunks: Int) -> (Double, Double) {
+        let start = geometry.lba(ofFraction: 0.1)
+        let sectorsPerChunk = 128
+        let split = (0..<chunks).map { index in
+            BlockRequest(issueTime: 0, lba: start + index * sectorsPerChunk,
+                         sectorCount: sectorsPerChunk, isWrite: false, phaseIndex: 0)
+        }
+        let whole = [BlockRequest(issueTime: 0, lba: start,
+                                  sectorCount: chunks * sectorsPerChunk,
+                                  isWrite: false, phaseIndex: 0)]
+        return (elapsed(geometry, seek, drive: drive, requests: split),
+                elapsed(geometry, seek, drive: drive, requests: whole))
     }
 
     /// Et le débit obtenu est celui de la piste, pas un tiers de celle-ci.

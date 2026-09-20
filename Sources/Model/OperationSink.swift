@@ -11,10 +11,10 @@ struct MoveCount: Sendable, Equatable {
 ///
 /// Une passe de défragmentation se comptait en tableaux : toutes les
 /// opérations, toutes les mutations de la carte, puis toutes les requêtes et
-/// toute la chronologie qui en sortaient. Sur le FAT32 de 6,4 Go de `dev-1999`
-/// cela faisait 1,1 million d'opérations et 780 Mo de pic, pour une passe
-/// qu'on écoutait pendant cinq heures et dont on n'entend jamais que la
-/// seconde en cours.
+/// toute la chronologie qui en sortaient — sur le FAT32 de 6,4 Go de
+/// `dev-1999`, 1,1 million d'opérations et 780 Mo de pic, mesurés avant que
+/// le récepteur ne passe en flux —, pour une passe d'une heure dont on
+/// n'entend jamais que la seconde en cours.
 ///
 /// Le récepteur décide de ce qu'il garde :
 ///
@@ -72,12 +72,27 @@ final class OperationSink {
     /// placer ces points de contrôle.
     private(set) var plannedSeconds: Double = 0
 
-    /// Seek moyen de 8,5 ms et demi-tour de plateau de 4,17 ms à 7 200 tr/min :
-    /// les Barracuda 7200.7 et 7200.10 de `DriveCatalog`.
-    static let plannedPositioning = 0.0127
-    /// Entre les 58 et 78 Mo/s que ces disques soutiennent en périphérie et les
-    /// deux tiers qu'ils gardent au moyeu.
-    static let plannedBytesPerSecond = 50_000_000.0
+    /// Les fiches dont cette horloge est tirée : les disques du catalogue de
+    /// 2003 à 2006, ceux des volumes NTFS de la galerie — le Barracuda 7200.7
+    /// et le 7200.10.
+    private static let plannedDrives = DriveCatalog.all.filter { $0.isAnchor && (2003...2006).contains($0.year) }
+
+    /// Un positionnement : le seek moyen des fiches et un demi-tour de plateau.
+    /// Tiré du catalogue plutôt que recopié, pour qu'une fiche corrigée le
+    /// corrige aussi — le 7200.10 a perdu ses 8,5 ms au profit des 11,0 de son
+    /// manuel, et un littéral était resté sur l'ancienne valeur.
+    static let plannedPositioning = mean(plannedDrives.map { $0.averageSeekMs / 1_000 + 30.0 / Double($0.rpm) })
+
+    /// Un débit : celui que les fiches soutiennent en périphérie, rapporté au
+    /// milieu du plateau — la moyenne du bord et du moyeu, où la piste n'a plus
+    /// que `innerRatio` de ses secteurs.
+    static let plannedBytesPerSecond = mean(plannedDrives.map {
+        ($0.sustainedOuterMBs ?? 0) * (1 + DriveCatalog.innerRatio(year: $0.year)) / 2
+    }) * 1_000_000
+
+    private static func mean(_ values: [Double]) -> Double {
+        values.reduce(0, +) / Double(values.count)
+    }
 
     /// Rang de la validation qui commence, et compte d'une de plus.
     func nextValidation() -> Int {

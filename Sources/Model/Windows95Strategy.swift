@@ -281,16 +281,15 @@ struct Windows95Strategy: DefragStrategy {
     /// au-dessus de la zone en cours d'empaquetage, et sans toucher à la
     /// destination en préparation.
     ///
-    /// Le fond est la zone de manœuvre de l'outil, et c'est ce que ce
-    /// docstring et le résumé de la passe ont toujours dit. Posé juste
-    /// au-dessus de la destination, dans le premier trou venu, l'occupant était
-    /// rattrapé par la frontière quelques fichiers plus loin et réévacué, et
-    /// encore : au chantier 24, avant la correction, la passe déplaçait
-    /// jusqu'à 15,9 fois le contenu du volume (`secretaire-1999`, 4 h 33),
-    /// quand une défragmentation complète d'un 8 Go sous Windows 98 prenait une
-    /// à trois heures. Après, 1,8 fois au plus sur les douze volumes FAT. Le
-    /// va-et-vient reste — la destination d'un fichier est presque toujours
-    /// prise —, mais un fichier évacué ne l'est plus qu'une fois, en général.
+    /// Le fond est la zone de manœuvre de l'outil, et c'est ce que le résumé
+    /// de la passe a toujours dit. Posé juste au-dessus de la destination, dans
+    /// le premier trou venu, l'occupant serait rattrapé par la frontière
+    /// quelques fichiers plus loin et réévacué, et encore — la passe déplaçait
+    /// alors jusqu'à seize fois le contenu du volume, quand une
+    /// défragmentation complète d'un 8 Go sous Windows 98 prenait une à trois
+    /// heures (`LEDGER.md`, chantier 24). Le va-et-vient reste — la
+    /// destination d'un fichier est presque toujours prise —, mais un fichier
+    /// évacué ne l'est plus qu'une fois, en général.
     ///
     /// Le prix est sur les volumes pleins : quand la frontière arrive au fond,
     /// elle y trouve les fichiers qu'on y a mis à l'abri, et plus de place
