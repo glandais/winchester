@@ -264,8 +264,9 @@ API de cette liste entre dans le code (dates de fichier, temps écoulé depuis l
 démarrage, espace disque libre).
 
 Le build 2 (1.0.0) est le premier build TestFlight, envoyé le 21 septembre
-2026. Le build 1 a été refusé à l'envoi (erreur 90474) : le multitâche de l'iPad
-exige les quatre orientations, d'où les deux clés
+2026 ; le build 3, du même jour, l'a remplacé sur la version (vibrations tues
+sur l'iPad, tuiles alignées). Le build 1 a été refusé à l'envoi (erreur
+90474) : le multitâche de l'iPad exige les quatre orientations, d'où les deux clés
 `UISupportedInterfaceOrientations_iPhone` et `_iPad` de `project.yml`. Un envoi
 refusé consomme quand même son numéro : `asc builds next-build-number --app
 6814382619 --platform IOS` donne le suivant. Le groupe TestFlight **Internal**
@@ -288,7 +289,7 @@ asc builds upload --app 6814382619 --ipa build/export/Winchester.ipa --wait
 
 Posé sur le store le 21 septembre 2026 : métadonnées en `en-US` et `fr-FR`
 (deux `apply`, voir plus bas), version renommée `1.0` → `1.0.0` avec le
-copyright « 2026 Gabriel Landais », build 2 rattaché, détails de revue (contact
+copyright « 2026 Gabriel Landais », build 3 rattaché, détails de revue (contact
 et `review-notes.md`), classification 4+ (tout à `NONE`), catégories
 Divertissement puis Musique, pas de contenu tiers, gratuit, 174 territoires
 (la Chine continentale exclue : elle exige un dépôt ICP), App Privacy publiée
@@ -344,7 +345,7 @@ dont les clés sont la phrase anglaise elle-même.
 
 Les vingt-quatre captures sont envoyées depuis le 21 septembre 2026 (six
 écrans × deux langues × `IPHONE_65` et `IPAD_PRO_3GEN_129`), et `asc validate`
-ne remonte plus aucune erreur : la version 1.0.0, build 2, est prête à être
+ne remonte plus aucune erreur : la version 1.0.0, build 3, est prête à être
 soumise. L'envoi prend parfois une erreur 500 d'App Store Connect sur un
 fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
 ne renvoie que ce qui manque.
