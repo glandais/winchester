@@ -1,6 +1,21 @@
+# Xcode
 .build/
 DerivedData/
-*.wav
+build/
+*.xcuserdata
+xcuserdata/
+
+# Généré par XcodeGen depuis project.yml — `./scripts/xcb.sh gen` le recrée
 *.xcodeproj/
+
+# Rendus hors-ligne de RenderTrace
+*.wav
+
+# macOS
 .DS_Store
+
+# Outils
 __pycache__/
+.claude/settings.local.json
+# État local de `asc` (artefacts, plans de métadonnées, rapports d'échec)
+.asc

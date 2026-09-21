@@ -1386,9 +1386,14 @@ Le découpage qui rend cela tenable :
 ## Lancer
 
 ```sh
-xcodegen generate
-open Winchester.xcodeproj
+./scripts/xcb.sh build      # construit le schéma Winchester (Debug)
+./scripts/xcb.sh run        # construit, installe et lance sur le simulateur
+./scripts/xcb.sh gen        # (re)génère le .xcodeproj, puis `open Winchester.xcodeproj`
 ```
+
+`scripts/xcb.sh` est la seule façon de lancer `xcodebuild` sur un simulateur
+ici : il épingle la destination à l'appareil unique de `scripts/sim-config.sh`
+et le `-derivedDataPath` au dépôt. Voir `CLAUDE.md`.
 
 Le noyau se construit et se teste sans passer par Xcode :
 
@@ -1405,13 +1410,8 @@ tester sans avoir à rendre publique la moitié de la couche. Ce qui reste hors
 tests — construction des scénarios, modèles d'interface — se vérifie par le
 rendu hors-ligne ci-dessous, qui compile et fait tourner la chaîne entière.
 
-Ou directement :
-
-```sh
-xcodebuild -project Winchester.xcodeproj -scheme Winchester \
-    -destination "platform=iOS Simulator,id=<UDID>" \
-    -derivedDataPath .build/DerivedData build
-```
+Pour un argument que `xcb.sh` ne connaît pas, `./scripts/xcb.sh -- <args…>`
+passe la main à `xcodebuild`, destination toujours épinglée.
 
 Le schéma construit en **Debug** : le produit est dans
 `.build/DerivedData/Build/Products/Debug-iphonesimulator/`. Un
