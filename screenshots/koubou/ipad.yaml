@@ -72,7 +72,7 @@ screenshots:
     template: "templates/offset.html"
     variables:
       headline: "Disks with a life already lived"
-      subtitle: "Twenty period disks, 1993 to 2007, filled day after day."
+      subtitle: "Twenty-four period disks, 1993 to 2012, filled day after day."
     assets:
       app_screenshot: "../flat/ipad/05-disk.png"
 

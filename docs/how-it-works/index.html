@@ -120,7 +120,7 @@
           <p>
             A capacity alone does not describe a disk: the same gigabyte is a
             whole drive in 1996 and a corner of a platter, read five times
-            faster, in 2003. So the model interpolates in time between seven
+            faster, in 2003. So the model interpolates in time between eight
             drives that were really sold, whose datasheets it carries — the
             number of tracks per surface, which sets the arm’s stroke and so
             the whole acoustics of a seek, and the capacity of a surface, which
@@ -128,7 +128,7 @@
           </p>
           <div class="scroll-x">
             <table class="spec">
-              <caption>The seven reference drives</caption>
+              <caption>The eight reference drives</caption>
               <thead>
                 <tr><th scope="col">Drive</th><th scope="col">Year</th><th scope="col">Buffer</th><th scope="col">Bearing</th></tr>
               </thead>
@@ -140,14 +140,24 @@
                 <tr><th scope="row">Seagate Barracuda 7200.7</th><td class="num">2003</td><td class="num">2 MB</td><td>fluid</td></tr>
                 <tr><th scope="row">Seagate Barracuda 7200.10</th><td class="num">2006</td><td class="num">16 MB</td><td>fluid</td></tr>
                 <tr><th scope="row">Seagate Barracuda 7200.11</th><td class="num">2008</td><td class="num">32 MB</td><td>fluid</td></tr>
+                <tr><th scope="row">Seagate Barracuda 7200.14</th><td class="num">2012</td><td class="num">64 MB</td><td>fluid</td></tr>
               </tbody>
             </table>
           </div>
+          <p>
+            A 10,000 rpm drive is not a 7,200 rpm one spun faster. The
+            VelociRaptor put 2.5-inch platters in a 3.5-inch heatsink, so that
+            the air at the edge moves no faster than on a desktop drive. From
+            2008 on, a 10,000 rpm disk takes its mechanics — smaller platters,
+            fewer tracks per surface, its track-to-track seek, its ramp — at the
+            density of its year, and in 2012 lands exactly on the datasheets of
+            the WD1000DHTZ and WD5000HHTZ.
+          </p>
           <ul>
             <li><b>The seek</b> follows the two-regime law of Ruemmler and Wilkes (IEEE Computer, 1994) — a square root of the distance for short seeks, a straight line beyond — split into speed-up, coast, slow-down and settle. A seek before a write settles longer, as the datasheets publish.</li>
             <li><b>Rotation and transfer</b> are simulated sector by sector, with track steps and head switches at the end of a cylinder.</li>
             <li><b>The buffer</b> reads ahead after a read, and the write cache acknowledges a write at once and lays it down later, in elevator order — so the disk works while the computer computes, as a real one did.</li>
-            <li><b>Power-on</b> is in three stages: the motor spins up, the heads unstick from the platter, and the drive seeks its track 0. At power-off the platter spins down and the heads land.</li>
+            <li><b>Power-on</b> is in three stages: the motor spins up, the heads unstick from the platter, and the drive seeks its track 0. At power-off the platter spins down and the heads land. Drives of 2012 park their heads on a ramp instead: they never touch the platter, so they neither unstick nor land.</li>
             <li><b>Drives from before 1997 recalibrate</b> two minutes after they are ready, then every four minutes: a second of crackle, the signature sound of that generation.</li>
           </ul>
         </div>

@@ -178,18 +178,18 @@
         }
       }
     },
-    "Twenty period disks, 1993 to 2007, filled day after day.": {
+    "Twenty-four period disks, 1993 to 2012, filled day after day.": {
       "localizations": {
         "en-US": {
           "stringUnit": {
             "state": "translated",
-            "value": "Twenty period disks, 1993 to 2007, filled day after day."
+            "value": "Twenty-four period disks, 1993 to 2012, filled day after day."
           }
         },
         "fr-FR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vingt disques d'époque, de 1993 à 2007, remplis jour après jour."
+            "value": "Vingt-quatre disques d'époque, de 1993 à 2012, remplis jour après jour."
           }
         }
       }
