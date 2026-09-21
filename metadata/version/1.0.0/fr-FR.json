@@ -3,6 +3,5 @@
   "keywords": "defrag,retro,vintage,seek,fat32,hdd,plateau,cluster,dos,asmr,ambiance,bruit,mecanique",
   "marketingUrl": "https://glandais.github.io/Winchester/",
   "promotionalText": "Chaque seek est calculé, pas échantillonné : le bras parcourt vraiment les cylindres, et la carte s'allume à l'instant où l'écriture s'entend.",
-  "supportUrl": "https://glandais.github.io/Winchester/support/",
-  "whatsNew": "Première version."
+  "supportUrl": "https://glandais.github.io/Winchester/support/"
 }

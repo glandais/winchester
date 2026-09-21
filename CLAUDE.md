@@ -281,9 +281,32 @@ xcodebuild -exportArchive -archivePath build/Winchester.xcarchive \
 asc builds upload --app 6814382619 --ipa build/export/Winchester.ipa --wait
 ```
 
+Posé sur le store le 21 septembre 2026 : métadonnées en `en-US` et `fr-FR`
+(deux `apply`, voir plus bas), version renommée `1.0` → `1.0.0` avec le
+copyright « 2026 Gabriel Landais », build 2 rattaché, détails de revue (contact
+et `review-notes.md`), classification 4+ (tout à `NONE`), catégories
+Divertissement puis Musique, pas de contenu tiers, gratuit, 174 territoires
+(la Chine continentale exclue : elle exige un dépôt ICP), App Privacy publiée
+en « Données non collectées ». Distribution **Mac (puce Apple) gardée, Apple
+Vision Pro décochée** — Apple coche les deux d'office, ce choix se vérifie dans
+Tarifs et disponibilité.
+
+Pièges rencontrés :
+
+- `whatsNew` n'existe pas sur une première version : il n'est pas dans
+  `metadata/version/1.0.0/`, et n'y entre qu'à la version suivante.
+- Ajouter une langue demande **deux** `apply` : créer la localisation
+  `app-info` fait créer par App Store Connect celle de la version, et la moitié
+  version du même plan revient en erreur (« already been used »). Refaire le
+  plan et appliquer une seconde fois.
+- `asc validate` ne regarde ni le prix ni la distribution Mac/Vision Pro : les
+  vérifier dans le navigateur.
+- `asc web privacy` passe par une session web qui expire et demande un code
+  2FA ; la déclaration s'est faite dans le navigateur.
+
 Ce qui manque encore avant une première soumission :
 
 - le site que citent les trois adresses de `metadata/` — elles pointent vers
   `https://glandais.github.io/Winchester/`, qui n'existe pas ;
-- les captures d'écran (iPhone et iPad), la classification d'âge, les
-  catégories, la grille tarifaire et la disponibilité.
+- les captures d'écran (iPhone et iPad), seule erreur que `asc validate`
+  remonte encore.
