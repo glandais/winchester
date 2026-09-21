@@ -37,10 +37,12 @@ extension ProfileSpec {
     var year: Int { timeline.start.year }
 
     /// « IDE 850 Mo · 5 400 tr/min » : le disque n'a pas de marque, le modèle le
-    /// déduit de sa capacité, de son régime et de son année. Un disque nommé
-    /// porte son nom : « VelociRaptor 1 To · 10 000 tr/min ».
+    /// déduit de sa capacité, de son régime et de son année — et le câble de
+    /// l'année, « SATA » en 2012. Un disque nommé porte son nom :
+    /// « VelociRaptor 500 Go · 10 000 tr/min ».
     var hardwareLine: String {
-        "\(disk.reference?.shortName ?? "IDE") \(capacityLabel) · \(rpmLabel)"
+        let name = disk.reference?.shortName ?? DriveInterface.era(year: year).busName
+        return "\(name) \(capacityLabel) · \(rpmLabel)"
     }
 
     /// Capacité commerciale, en gigaoctets de mille mégaoctets : « 1,08 Go »,
@@ -57,10 +59,11 @@ extension ProfileSpec {
             return String(localized: "disk.capacity.terabytes", defaultValue: "\(value) TB")
         }
         // Deux décimales au plus, et les zéros de fin retirés : « 1,08 Go »,
-        // « 6,4 Go », « 40 Go », comme sur l'étiquette. Le séparateur décimal
-        // est celui de la langue, pas une virgule collée après coup.
+        // « 6,4 Go », « 40 Go », comme sur l'étiquette — et plus aucune au-delà
+        // de cent : l'étiquette du VelociRaptor dit « 500 Go », pas « 500,11 ».
+        // Le séparateur décimal est celui de la langue.
         let value = (bytes / 1e9)
-            .formatted(.number.precision(.fractionLength(0...2)))
+            .formatted(.number.precision(.fractionLength(0...(bytes >= 1e11 ? 0 : 2))))
         return String(localized: "disk.capacity.gigabytes", defaultValue: "\(value) GB")
     }
 

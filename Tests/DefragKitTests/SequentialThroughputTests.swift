@@ -29,8 +29,8 @@ struct SequentialThroughputTests {
         return Double(sectors * DriveGeometry.bytesPerSector) / elapsed / 1_000_000
     }
 
-    /// Le débit soutenu des trois manuels qui le publient, à 10 % : 7200.7,
-    /// 7200.10 et 7200.11.
+    /// Le débit soutenu des quatre manuels qui le publient, à 10 % : 7200.7,
+    /// 7200.10, 7200.11 et 7200.14.
     ///
     /// La tolérance était de 20 %, et elle absorbait un écart toujours du même
     /// côté (+5, +2 et +14 %) : la comparaison portait sur le débit brut de la
@@ -48,7 +48,7 @@ struct SequentialThroughputTests {
                     "\(reference.model) : \(measured) Mo/s contre \(published) annoncés")
             checked += 1
         }
-        #expect(checked == 3)
+        #expect(checked == 4)
     }
 
     /// Un seek suivi d'une écriture dure plus que le même suivi d'une lecture,

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Les scénarios livrés avec l'application : cinq époques, quatre profils
+/// Les scénarios livrés avec l'application : six époques, quatre profils
 /// chacune.
 ///
 /// Ce sont des fichiers JSON, pas du code. On peut en ajouter un sans
@@ -29,6 +29,7 @@ public enum ScenarioLibrary {
         "dev-1999", "famille-1999", "gamer-1999", "secretaire-1999",
         "dev-2003", "famille-2003", "gamer-2003", "secretaire-2003",
         "dev-2007", "famille-2007", "gamer-2007", "secretaire-2007",
+        "dev-2012", "famille-2012", "gamer-2012", "secretaire-2012",
     ]
 
     /// Emplacement d'un scénario dans le bundle. Selon la façon dont les

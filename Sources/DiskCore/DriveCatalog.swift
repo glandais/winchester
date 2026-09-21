@@ -249,9 +249,9 @@ public struct DriveBuffer: Sendable, Equatable {
     public var isSerial: Bool { interfaceMBs > 133 }
 }
 
-/// Les disques sur lesquels le modèle est calibré, de 1993 à 2008.
+/// Les disques sur lesquels le modèle est calibré, de 1993 à 2012.
 ///
-/// Quinze ans qui couvrent toute la période des scénarios embarqués, avec un
+/// Vingt ans qui couvrent toute la période des scénarios embarqués, avec un
 /// point tous les deux ou trois ans — c'est la résolution qu'il faut, la
 /// densité doublant environ chaque année sur la fin des années 90.
 public enum DriveCatalog {
@@ -452,6 +452,34 @@ public enum DriveCatalog {
                 readTrackToTrackMs: 1.0, writeTrackToTrackMs: 1.2,
                 source: "Manuel Seagate Barracuda 7200.11, §2.5 — « Track-to-track <1.0 / "
                       + "<1.2 » (1 To), « Average <8.5 / <9.5 » (lecture / écriture)")),
+
+        // Le disque de bureau de 2012 : un plateau de 1 To, deux têtes. Le
+        // premier du catalogue à garer ses têtes sur une rampe — son manuel
+        // compte des « Load/Unload cycles », là où celui du 7200.10 comptait
+        // des « Contact start-stop cycles ».
+        DriveReference(
+            model: "Seagate Barracuda 7200.14 ST1000DM003",
+            shortName: "Barracuda 7200.14",
+            year: 2012, capacityBytes: 1_000_204_886_016, heads: 2,
+            tracksPerFace: 387_200, rpm: 7_200,
+            averageSeekMs: 8.5, trackToTrackMs: 1.0,
+            sustainedOuterMBs: 210,
+            rampLoad: true,
+            source: "Manuel Seagate Barracuda 7200.14 (100686584, rév. G, octobre 2012), "
+                  + "table 1 — 352 ktracks/in, 1 807 kFCI, 1 plateau et 2 têtes pour le "
+                  + "ST1000DM003, 210 Mo/s soutenus au bord, 300 000 cycles de chargement",
+            buffer: DriveBuffer(
+                bufferKB: 65_536, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 600, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Manuel Seagate Barracuda 7200.14 (100686584, rév. G), table 1 — "
+                      + "« Cache buffer 64MB », « I/O data-transfer rate (max) 600MB/s » "
+                      + "(SATA 6 Gb/s). Le manuel ne dit rien de l'état du cache à la mise "
+                      + "sous tension : celui des manuels Seagate précédents"),
+            writeSeek: WriteSeek(
+                readAverageMs: 8.5, writeAverageMs: 9.5,
+                readTrackToTrackMs: 1.0, writeTrackToTrackMs: 1.2,
+                source: "Manuel Seagate Barracuda 7200.14, §2.6 — « Track-to-track 1.0 / 1.2 », "
+                      + "« Average 8.5 / 9.5 » (lecture / écriture)")),
     ]
 
     /// Les disques qu'on choisit par leur nom, hors de la courbe des époques.
@@ -491,6 +519,30 @@ public enum DriveCatalog {
                 source: "Fiche WD 2879-701284-A05 — « Cache (MB) 64 », SATA 6 Gb/s. La "
                       + "fiche de 2008 annonce la lecture « adaptive » et le cache "
                       + "d'écriture actif ; celle de 2012 n'en dit rien de plus")),
+
+        // Le même, sur deux plateaux et trois têtes (base rml527) : la
+        // capacité qu'on achetait pour un disque système. Même densité par
+        // face, même bras, même tampon ; la fiche de 2012 couvre les trois
+        // capacités d'une colonne chacune.
+        DriveReference(
+            model: "Western Digital VelociRaptor WD5000HHTZ",
+            shortName: "VelociRaptor",
+            year: 2012, capacityBytes: 500_107_862_016, heads: 3,
+            tracksPerFace: 171_600, rpm: 10_000,
+            averageSeekMs: 3.8, trackToTrackMs: 0.7,
+            sustainedOuterMBs: 200,
+            isAnchor: false,
+            platterInches: 2.5,
+            innerRatio: 0.55,
+            rampLoad: true,
+            source: "Fiche WD 2879-701284-A05 (avril 2012) — 976 773 168 secteurs, les "
+                  + "mêmes 10 000 tr/min, 200 Mo/s et 64 Mo que le WD1000DHTZ. Base de "
+                  + "plateaux rml527 — 2 plateaux de 334 Go, 3 têtes. Seeks et débit au "
+                  + "moyeu : ceux du WD1000DHTZ, même mécanique",
+            buffer: DriveBuffer(
+                bufferKB: 65_536, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 600, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Fiche WD 2879-701284-A05 — « Cache (MB) 64 », SATA 6 Gb/s")),
     ]
 
     /// Un disque du catalogue ou de la liste nommée, par son modèle ou son nom
@@ -508,8 +560,14 @@ public enum DriveCatalog {
     /// fixe l'écart de débit entre le début et la fin d'un volume — donc la
     /// différence de texture entre une lecture en tête de disque et la même en
     /// fin de disque.
+    ///
+    /// Le point de 2012 est le seul tiré d'un manuel : le 7200.14 publie un
+    /// débit moyen (156 Mo/s) à côté du débit au bord (210), et sur une bande
+    /// où les secteurs par piste décroissent linéairement, la moyenne vaut
+    /// bord × (1 + rapport) / 2 — d'où 0,486.
     static let innerRatioByYear: [(year: Int, ratio: Double)] = [
         (1993, 0.67), (1996, 0.67), (1999, 0.60), (2001, 0.55), (2003, 0.52), (2008, 0.52),
+        (2012, 0.486),
     ]
 
     /// Les fiches qui ancrent l'interpolation, une par année, dans l'ordre.
@@ -560,6 +618,47 @@ extension DriveCatalog {
                 geometric(a.bytesPerFace, b.bytesPerFace, f),
                 innerRatio(year: year))
     }
+
+    /// La mécanique d'un disque déduit de son régime et de son année : la
+    /// densité de ses faces, et la taille de ses plateaux.
+    ///
+    /// Jusqu'à 7 200 tr/min, c'est la courbe des époques sur des plateaux de
+    /// 3,5 pouces. **À 10 000 tr/min à partir de 2008**, c'est celle du
+    /// VelociRaptor : des plateaux de 2,5 pouces, dont les faces portent, par
+    /// rapport à celles du disque de bureau de la même année, ce que le
+    /// WD1000DHTZ portait par rapport au 7200.14 en 2012 — 44 % des pistes et
+    /// un tiers des octets. Un 10 000 tr/min déduit de 2012 retrouve donc
+    /// exactement la fiche du VelociRaptor ; un de 2009, la même mécanique à la
+    /// densité de 2009. **Une seule fiche** porte cette règle : aucune autre ne
+    /// donne à la fois le débit au bord et au moyeu d'un 10 000 tr/min de
+    /// bureau.
+    ///
+    /// Avant 2008, un 10 000 tr/min est un Raptor, à plateaux de 3,5 pouces :
+    /// il reste sur la courbe, faute d'une fiche qui dise la taille de ses
+    /// plateaux. Il en sort plus bruyant, ce que les Raptor étaient.
+    static func mechanics(rpm: Int, year: Int)
+        -> (density: (tracksPerFace: Double, bytesPerFace: Double, innerRatio: Double),
+            platterInches: Double) {
+        let era = density(year: year)
+        guard let small = smallPlatter(rpm: rpm, year: year) else { return (era, 3.5) }
+        let then = density(year: small.year)
+        return ((era.tracksPerFace * Double(small.tracksPerFace) / then.tracksPerFace,
+                 era.bytesPerFace * small.bytesPerFace / then.bytesPerFace,
+                 small.innerRatio ?? era.innerRatio),
+                small.platterInches)
+    }
+
+    /// La fiche dont un disque déduit prend la mécanique, quand ce n'est pas
+    /// la courbe des 3,5 pouces : le VelociRaptor, pour un 10 000 tr/min
+    /// d'après 2008.
+    public static func smallPlatter(rpm: Int, year: Int) -> DriveReference? {
+        guard rpm >= 10_000, year >= smallPlatterYear else { return nil }
+        return named.first
+    }
+
+    /// L'année des premiers VelociRaptor, les premiers 10 000 tr/min de
+    /// bureau à plateaux de 2,5 pouces (fiche WD 2879-701284-A00, 2008).
+    public static let smallPlatterYear = 2008
 
     /// Le rapport entre les secteurs de la piste interne et ceux de la piste
     /// externe pour un disque de cette année (`innerRatioByYear`, interpolé).

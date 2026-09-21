@@ -47,13 +47,16 @@ import re
 import sys
 
 from bilan import (BOOT_TARGETS, MEASURE, NTFS, PROFILES, ROOT, boot, common, decimal, defrag,
-                   disk, duration, gigabytes, number, rounded, signed, text, word)
+                   disk, duration, gigabytes, number, rounded, signed, text, think_models, word)
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 step = args[0]
 asides = dict(a.split("=", 1) for a in args[1:] if "=" in a)
 d = lambda p, t, full=False: defrag(step, p, t, full)
 FAT = [p for p in PROFILES if p not in NTFS]
+# Les phrases qui comparent à un binaire jetable du chantier 29 portent sur les
+# vingt disques d'alors : 2012 n'existait pas.
+PROFILES20 = [p for p in PROFILES if not p.endswith("2012")]
 
 
 # --- Les tables ---------------------------------------------------------------
@@ -72,7 +75,8 @@ def table(header, separator, available=lambda: True):
 
 
 ORDER = ["gamer-2003", "secretaire-2003", "famille-2003", "dev-2003",
-         "secretaire-2007", "famille-2007", "gamer-2007", "dev-2007"]
+         "secretaire-2007", "famille-2007", "gamer-2007", "dev-2007",
+         "secretaire-2012", "famille-2012", "gamer-2012", "dev-2012"]
 
 
 @table("| scénario NTFS     | plein | requêtes | durée      | déplacés | fragmentés avant → après | morceaux avant → après |",
@@ -109,7 +113,8 @@ def jk_ntfs(_):
 
 MERGE_TOOLS = ["windowsXP", "ultraDefrag", "jkDefrag", "fragmentMerge"]
 MERGE_ORDER = ["dev-2003", "famille-2003", "secretaire-2003", "gamer-2003",
-               "dev-2007", "famille-2007", "gamer-2007", "secretaire-2007"]
+               "dev-2007", "famille-2007", "gamer-2007", "secretaire-2007",
+               "dev-2012", "famille-2012", "gamer-2012", "secretaire-2012"]
 
 
 @table("| scénario | plein | durée, XP / UltraDefrag / JkDefrag / recollage | morceaux restants | trous libres |",
@@ -126,7 +131,7 @@ def merge(_):
        "|---|---|---|---|---|---|---|")
 def boots_table(_):
     for p in ["gamer-1993", "dev-1993", "gamer-1996", "famille-1999",
-              "secretaire-1999", "gamer-2003", "dev-2003", "famille-2007"]:
+              "secretaire-1999", "gamer-2003", "dev-2003", "famille-2007", "gamer-2012"]:
         b = boot(step, p)
         yield (f"| `{p}` | {b['os']} | {number(b['files'])} | {b['read']} Mo | {decimal(b['duration'])} s "
                f"| {round(b['think'] / b['duration'] * 100)} % | {b['witness'].replace('-', '−')} % |")
@@ -135,7 +140,7 @@ def boots_table(_):
 @table("| | source | posé | archives | redémarrages | durée |",
        "|---|---|---|---:|---:|---:|")
 def installs_table(_):
-    for p in ["gamer-1993", "secretaire-1996", "famille-1999", "famille-2003", "gamer-2007"]:
+    for p in ["gamer-1993", "secretaire-1996", "famille-1999", "famille-2003", "gamer-2007", "gamer-2012"]:
         t = text(step, f"install-{p}")
         files, mb = map(int, re.search(r"posé\s+: (\d+) fichiers, (\d+) Mo", t).groups())
         size = f"{mb} Mo" if mb < 1000 else f"{decimal(mb / 1000)} Go"
@@ -261,7 +266,7 @@ x = d("dev-2007", "windowsXP")
 prose("partent **en salves** — {n} écritures par vidage en moyenne pour l'outil de XP sur `dev-2007`",
       n=decimal(x["cachedWrites"] / x["destages"]))
 if "nora" in asides:
-    extra = [boot(asides["nora"], p)["duration"] - boots[p]["duration"] for p in PROFILES]
+    extra = [boot(asides["nora"], p)["duration"] - boots[p]["duration"] for p in PROFILES20]
     fields = dict(lo=decimal(min(extra)), hi=decimal(max(extra)))
 else:
     fields = dict(lo=None, hi=None)
@@ -269,7 +274,7 @@ prose("les vingt démarrages dureraient {lo} à {hi} s de plus", needs=("nora",)
 
 # La commutation de tête, égalée au pas de piste comme le Fireball la publie.
 if "hs10" in asides:
-    extra = [boot(asides["hs10"], p)["duration"] - boots[p]["duration"] for p in PROFILES]
+    extra = [boot(asides["hs10"], p)["duration"] - boots[p]["duration"] for p in PROFILES20]
     fields = dict(hi=decimal(max(extra)))
 else:
     fields = dict(hi=None)
@@ -289,6 +294,9 @@ prose("`dev-1996` donne {a} % de fichiers fragmentés au lieu des 35 à 50 % vis
       a=str(rounded(disks["dev-1996"]["ratio"])), b=str(rounded(disks["secretaire-1999"]["ratio"])),
       c=str(rounded(disks["famille-2003"]["ratio"])))
 prose("se génère en {dev} s en release", dev=Timing(decimal, disks["dev-2007"]["generationMs"] / 1000))
+prose("les plus lourds de 2012, un Windows 7 de 500 Go et un de 1 To, en {dev} et {fam} s",
+      dev=Timing(decimal, disks["dev-2012"]["generationMs"] / 1000),
+      fam=Timing(decimal, disks["famille-2012"]["generationMs"] / 1000))
 prose("Les deux disques des démos, fabriqués au lancement, prennent {a} et {b} ms.",
       a=Timing(str, disks["dev-1993"]["generationMs"]), b=Timing(str, disks["secretaire-1999"]["generationMs"]))
 prose("`famille-2003` en prend {s} s, trois fois et demie",
@@ -297,13 +305,11 @@ prose("`famille-2003` en prend {s} s, trois fois et demie",
 # Démarrer un disque généré.
 shares = [b["think"] / b["duration"] * 100 for b in boots.values()]
 durations = [b["duration"] for b in boots.values()]
-prose("il pèse entre {lo} et {hi} % du total, et les vingt démarrages tiennent entre {dlo} et {dhi} s",
+prose("il pèse entre {lo} et {hi} % du total, et les vingt-quatre démarrages tiennent entre {dlo} et {dhi} s",
       lo=f"{min(shares):.0f}", hi=f"{max(shares):.0f}", dlo=decimal(min(durations)), dhi=decimal(max(durations)))
 # Les constantes de `ThinkModel` pour XP et Vista, lues dans le source, et ce
 # que l'ajustement de `fit-think.py` en dit : les deux doivent se rejoindre.
-think = dict(zip(("1993", "1996", "1999", "2003", "2007"), re.findall(
-    r'(?:case "[^"]+"|default):\s+ThinkModel\(perFile: ([\d.]+), perMegabyte: ([\d.]+)\)',
-    open(os.path.join(ROOT, "Sources", "Model", "BootSession.swift")).read())))
+think = {year: (per_file, per_mb) for year, (_, per_file, per_mb) in think_models(ROOT).items()}
 
 
 def fitted(year):
@@ -349,7 +355,7 @@ prose("coûte plus que ce que le cache rend : de {lo} à {hi} s par démarrage",
 
 # Installer, vivre.
 installs = [common(text(step, f"install-{p}"))["duration"] for p in PROFILES]
-prose("Les vingt installations durent de {lo} à {hi} minutes",
+prose("Les vingt-quatre installations durent de {lo} à {hi} minutes",
       lo=minutes(min(installs)), hi=minutes(max(installs)))
 prose("passe d'un seek moyen de {a} cylindres au jour 20 à {b} au jour 300",
       a=number(common(text(step, "day-dev-1996_20"))["meanSeek"]),
@@ -689,9 +695,11 @@ def check(readme):
 
 def write(readme):
     lines = readme.split("\n")
-    for header, span, rows in reversed(list(tables(readme))):
-        if span not in (None, "absent"):
-            lines[span[0]:span[1]] = rows
+    # Du bas vers le haut du fichier, pas dans l'ordre de déclaration : une
+    # table qui gagne une ligne décale toutes celles d'en dessous.
+    found = [(span, rows) for _, span, rows in tables(readme) if span not in (None, "absent")]
+    for span, rows in sorted(found, key=lambda f: f[0][0], reverse=True):
+        lines[span[0]:span[1]] = rows
     readme = "\n".join(lines)
     for template, needs, fields in PROSE:
         regex, names = pattern(template)

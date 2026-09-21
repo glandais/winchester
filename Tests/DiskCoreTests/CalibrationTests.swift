@@ -5,11 +5,11 @@ import Foundation
 @Suite("Scénarios embarqués")
 struct ScenarioLibraryTests {
 
-    @Test("Les vingt scénarios se décodent")
+    @Test("Les vingt-quatre scénarios se décodent")
     func allDecode() throws {
         let specs = try ScenarioLibrary.loadAll()
-        #expect(specs.count == 20)
-        #expect(Set(specs.map(\.id)).count == 20)
+        #expect(specs.count == 24)
+        #expect(Set(specs.map(\.id)).count == 24)
 
         for spec in specs {
             #expect(!spec.displayName.isEmpty)

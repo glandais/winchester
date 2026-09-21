@@ -69,12 +69,19 @@ extension ThinkModel {
     /// n'est justifié par rien dans la description : c'est la question des
     /// cibles, que seules des mesures d'époque trancheraient. L'histoire des
     /// calages est dans `LEDGER.md` (chantiers 22, 26 et 29).
+    ///
+    /// **Windows 7 n'a pas de cible** : le modèle d'avant la relecture ne
+    /// connaissait pas 2012. Ses deux constantes sont celles de Vista divisées
+    /// par 1,5 — un processeur de 2012 exécute un fil à peu près deux fois plus
+    /// vite qu'un Core 2 de 2007, et Windows 7 en fait un peu plus au
+    /// démarrage. **Une hypothèse**, que rien ne recoupe (chantier 34).
     static func boot(_ os: String) -> ThinkModel {
         switch os {
         case "msdos-6.22+win31": ThinkModel(perFile: 0.045, perMegabyte: 0.65)
         case "win95-osr1":       ThinkModel(perFile: 0.022, perMegabyte: 0.42)
         case "win98se":          ThinkModel(perFile: 0.015, perMegabyte: 0.24)
         case "winxp-sp1":        ThinkModel(perFile: 0.009, perMegabyte: 0.19)
+        case "win7-sp1":         ThinkModel(perFile: 0.006, perMegabyte: 0.10)
         default:                 ThinkModel(perFile: 0.009, perMegabyte: 0.15)  // Vista
         }
     }
@@ -265,7 +272,8 @@ extension BootScript {
         ///
         /// Sous NT, et jusqu'à XP inclus, **toute lecture** réécrit
         /// `LastAccessTime` dans l'enregistrement de MFT du fichier ; Vista
-        /// l'a désactivé par défaut (`NtfsDisableLastAccessUpdate`). VFAT a le
+        /// l'a désactivé par défaut (`NtfsDisableLastAccessUpdate`), et
+        /// Windows 7 l'a gardé désactivé. VFAT a le
         /// même mécanisme depuis Windows 95 — une date de dernier accès dans
         /// l'entrée de répertoire, que MS-DOS n'avait pas. Les deux ne
         /// réécrivent la date que si elle a changé — NTFS ne descend pas sous
@@ -277,7 +285,7 @@ extension BootScript {
         /// à aucun matériel : des centaines d'écritures de métadonnées,
         /// différées et groupées, **ailleurs** que là où l'on vient de lire.
         var stampsAccess: Bool {
-            os != "msdos-6.22+win31" && os != "vista"
+            !["msdos-6.22+win31", "vista", "win7-sp1"].contains(os)
         }
 
         static let all: [Era] = [
@@ -415,6 +423,34 @@ extension BootScript {
                     ("settle", String(localized: "boot.desktop", defaultValue: "Desktop at rest"),
                      String(localized: "boot.settled.vista.detail", defaultValue: "SuperFetch rewritten, page file, stragglers")),
                 ]),
+
+            // 2012 — la même mécanique que Vista, un peu plus de pilotes et de
+            // services. ReadyBoot relit la trace des démarrages précédents dans
+            // l'ordre du disque, comme le préchargeur de XP.
+            Era(os: "win7-sp1",
+                osName: "Windows 7",
+                post: 5.0,
+                kernelFiles: 10, driverFiles: 1_300, serviceFiles: 240,
+                shellFiles: 450, appBytes: 500_000_000,
+                prefetch: .byPosition,
+                labels: [
+                    ("post", String(localized: "boot.post", defaultValue: "BIOS POST"),
+                     String(localized: "boot.post.detail", defaultValue: "Memory count, disk detection — the platter spins up")),
+                    ("mount", String(localized: "boot.mount", defaultValue: "Boot sector"),
+                     String(localized: "boot.mount.ntfs.detail", defaultValue: "MBR, boot sector, volume metadata")),
+                    ("kernel", String(localized: "boot.kernelHAL", defaultValue: "Kernel and HAL"),
+                     String(localized: "boot.kernelHAL.win7.detail", defaultValue: "The boot manager, winload, the kernel")),
+                    ("drivers", String(localized: "boot.drivers", defaultValue: "Loading the drivers"),
+                     String(localized: "boot.drivers.win7.detail", defaultValue: "Drivers read back from the ReadyBoot trace, in disk order")),
+                    ("services", String(localized: "boot.registry", defaultValue: "Registry and services"),
+                     String(localized: "boot.registry.vista.detail", defaultValue: "Hives, event logs — reads and writes mixed")),
+                    ("shell", String(localized: "boot.logon", defaultValue: "Logging on"),
+                     String(localized: "boot.logon.win7.detail", defaultValue: "Desktop, taskbar, fonts — the last of the trace")),
+                    ("app", String(localized: "boot.app", defaultValue: "Launching the application"),
+                     String(localized: "boot.app.detail", defaultValue: "Executable and libraries, where the installer left them")),
+                    ("settle", String(localized: "boot.desktop", defaultValue: "Desktop at rest"),
+                     String(localized: "boot.settled.vista.detail", defaultValue: "SuperFetch rewritten, page file, stragglers")),
+                ]),
         ]
 
         /// L'époque d'un profil, par son système, et à défaut par son année :
@@ -428,7 +464,8 @@ extension BootScript {
             case ..<1998: return all[1]
             case ..<2001: return all[2]
             case ..<2005: return all[3]
-            default:      return all[4]
+            case ..<2010: return all[4]
+            default:      return all[5]
             }
         }
 

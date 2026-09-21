@@ -6658,3 +6658,164 @@ plus vite. Plusieurs raisons s'additionnent, **non séparées** ici :
   l'assistant s'arrête toujours en 2008.
 - **L'écoute par Gabriel** : `DRIVE=VelociRaptor SCENARIO=gamer-2007` contre le
   même profil sans `DRIVE`.
+
+## Chantier 34 — 2012 : Windows 7, le 7200.14, et le 10 000 tr/min pour tous
+
+**Fait** · branche `velociraptor`
+
+### Le problème
+
+Le chantier 33 avait posé le VelociRaptor **à part** : une fiche nommée, choisie
+dans l'assistant par un « Libre / VelociRaptor » qui verrouillait capacité,
+régime et seek. Trois choses manquaient :
+
+| | avant | ce qui manquait |
+|---|---|---|
+| assistant | régimes 3 600 à 7 200, seek de 7 à 25 ms, 488 Go, 1990 à 2008 | construire soi-même un 10 000 tr/min, un disque de 1 To, un disque de 2012 |
+| galerie | cinq époques, la dernière en 2007 | un disque de 2012, et le VelociRaptor dans la machine de son époque |
+| catalogue | la courbe s'arrête au 7200.11 de 2008 | le disque de bureau de 2012 : au-delà, tout était extrapolé (seek de 3,5 ms, piste-à-piste de 1,4) |
+
+Trois tables retombaient en silence sur Vista pour tout système inconnu
+(`ThinkModel.boot`, `Era.matching`, `stampsAccess`, qui aurait réactivé les dates
+d'accès d'XP), et `HostBus.era` restait à l'UDMA/100 après 2001.
+
+### Les sources
+
+Rangées dans `~/code/perso/disknoise.resources/manuels/` :
+
+- **Manuel Seagate Barracuda 7200.14** (100686584, rév. G, octobre 2012,
+  `7200.14-100686584g`) : ST1000DM003, 1 plateau et 2 têtes, 352 ktracks/in,
+  1 807 kFCI, 210 Mo/s au bord et **156 Mo/s en moyenne**, 64 Mo, SATA
+  600 Mo/s, seeks 8,5 / 9,5 ms et 1,0 / 1,2 ms, 2,2 B au repos, « Load/Unload
+  cycles 300,000 ». Le ST500DM002 de la même révision est d'une autre
+  génération (329 Gb/in², 16 Mo) : il n'est pas repris.
+- **Fiche WD 2879-701284-A05** (déjà là) : 976 773 168 secteurs pour le
+  WD5000HHTZ, mêmes régime, débit et tampon que le WD1000DHTZ.
+- **Base de plateaux rml527** : WD5000HHTZ, 2 plateaux de 334 Go, 3 têtes ; les
+  Raptor d'avant 2008 en 3,5 pouces de facteur de forme, sans taille de plateau.
+
+### Les décisions
+
+**Le 7200.14 ancre 2012.** Il entre dans `DriveCatalog.all`, et la courbe ne
+bouge qu'au-delà de 2008 : les disques de 2007 interpolent toujours entre 2006
+et 2008. 387 200 pistes par face (352 ktracks/in sur la bande de 1,10 pouce,
+comme les autres fiches Seagate). Son rapport interne vient de son manuel : sur
+une bande où les secteurs par piste décroissent linéairement, moyenne = bord ×
+(1 + rapport) / 2, soit 0,486 — le seul point de `innerRatioByYear` tiré d'une
+fiche. Le modèle en tire 208,7 → 101,4 Mo/s bruts et **−9,3 %** en lecture
+séquentielle simulée : dans les 10 % du test, et le brut passe 1 % sous les
+210 publiés. La borne « brut > fiche » est élargie à 2 %, en le disant.
+
+**Un 10 000 tr/min déduit prend la mécanique du VelociRaptor à partir de 2008**
+(`DriveCatalog.mechanics`) : des faces qui portent, par rapport au disque de
+bureau de l'année, ce que le WD1000DHTZ portait par rapport au 7200.14 — 44 %
+des pistes et 33 % des octets —, des plateaux de 2,5 pouces, son piste-à-piste
+et sa rampe. En 2012, il retrouve la fiche à 1 % près (test). **Une seule fiche
+porte cette règle** ; avant 2008, un Raptor reste sur la courbe des 3,5 pouces,
+faute de source sur la taille de ses plateaux.
+
+**Toucher à un réglage quitte la fiche.** L'assistant va de 1990 à 2012, de
+20 Mo à 2 To, de 3 600 à 10 000 tr/min, avec un seek jusqu'à 3 ms. « Fiche »
+propose les deux VelociRaptor ; changer la capacité, le régime ou le seek remet
+le disque en déduit (`model` et `trackToTrackMs` effacés). Passer à
+10 000 tr/min pose le seek de la fiche (3,8 ms), en revenir le seek de bureau de
+l'année. Comme la mécanique déduite retombe sur la fiche en 2012, quitter la
+fiche ne change presque rien.
+
+**Le bus suit le disque.** `DriveInterface.era(year:)` prend le bus SATA quand
+la fiche de l'année est SATA ; 2007 garde le 7200.10 PATA (à égale distance de
+2006 et 2008, `nearest` rend le premier). La carte écrit « SATA » ou « IDE »
+d'après ce bus. La rampe d'un disque déduit est celle de la fiche la plus
+proche : rien ne change avant 2012.
+
+**Windows 7** (`win7-sp1`) : une époque de démarrage (ReadyBoot par position,
+dates d'accès éteintes, 1 300 pilotes et 240 services au plus), une installation
+depuis le DVD en deux redémarrages, avec les ruches de Vista un peu plus
+grosses, une journée à 25 Mo/s de carte et 2 Mo/s d'ADSL2+, `pagefile.sys` à
+4 Go et `hiberfil.sys` à 3 Go. **Les constantes de calcul sont celles de Vista
+divisées par 1,5** (`ThinkModel.boot`, `InstallEra`) : une hypothèse sans
+cible, puisque le modèle d'avant la relecture ne connaissait pas 2012.
+`Era.matching` rend Windows 7 à partir de 2010, `InstallEra` et `DayScript`
+aussi ; un système inconnu d'avant reste traité comme avant.
+
+**Le logiciel de 2012** : Windows 7 SP1 64 bits (`\Program Files (x86)`, le
+magasin de pilotes, 128 traces de préchargement), Office 2010 et `\MSOCache`,
+Visual Studio 2010, Battlefield 3 (dix-huit `cas` d'un gigaoctet et 1 200 `sb`),
+Skyrim (douze `bsa`), iTunes 10 ; des photos de 5 Mo, des jeux de cinq à quinze
+gigaoctets, des films entassés de 700 Mo. Ordres de grandeur, comme les autres
+manifestes.
+
+**Les quatre disques.** Joueur et développeur sur un **WD5000HHTZ** — le
+500 Go, la capacité qu'on achetait pour un disque système ; la famille sur un
+1 To déduit, qui est le 7200.14 ; la secrétaire sur un 500 Go déduit de la même
+année. `gamer-2012` installe Battlefield 3 avant Skyrim (octobre puis novembre
+2011) : c'est le jeu gardé qui est lancé au démarrage. Le volume entassé est
+réglé pour finir entre 85 et 93 %, comme en 2007.
+
+| profil | disque | plein | fragmentés | démarrage (disque) | témoin | installation | XP | génération |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `dev-2007` | IDE 250 Go | 86 % | 9,1 % | 46,7 s (34 %) | +2 % | 10 min 52 | 44 min 12 | 1,7 s |
+| `dev-2012` | VelociRaptor 500 Go | 85 % | 1,3 % | 39,4 s (26 %) | +1 % | 11 min 16 | 38 min 35 | 2,1 s |
+| `famille-2007` | IDE 320 Go | 93 % | 21,1 % | 38,8 s (40 %) | +3 % | 12 min 07 | 20 min 52 | 1,5 s |
+| `famille-2012` | SATA 1 To | 91 % | 20,4 % | 30,0 s (45 %) | +6 % | 9 min 53 | 36 min 04 | 2,2 s |
+| `gamer-2007` | IDE 320 Go | 90 % | 12,5 % | 31,5 s (45 %) | +4 % | 18 min 54 | 25 min 55 | 0,4 s |
+| `gamer-2012` | VelociRaptor 500 Go | 92 % | 17,8 % | 44,0 s (26 %) | +2 % | 25 min 12 | 7 min 43 | 0,5 s |
+| `secretaire-2007` | IDE 250 Go | 88 % | 2,3 % | 41,6 s (34 %) | −0 % | 10 min 22 | 19 min 06 | 0,4 s |
+| `secretaire-2012` | SATA 500 Go | 93 % | 2,5 % | 33,8 s (36 %) | −1 % | 8 min 42 | 2 min 35 | 0,5 s |
+
+Ce que le VelociRaptor change, à volume égal (le même profil sur un 500 Go
+déduit à 7 200 tr/min, binaire jetable) :
+
+| profil | démarrage, 7 200 → 10 000 | passe XP | vidages du cache d'écriture |
+|---|---:|---:|---:|
+| `dev-2012` | 41,1 → 39,4 s | 36 min 07 → **38 min 35** | 2 676 → 30 563 |
+| `gamer-2012` | 46,2 → 44,0 s | 8 min 55 → 7 min 43 | 7 906 → 10 519 |
+
+Le démarrage gagne 2 s : le calcul y pèse les trois quarts. Sur `dev-2012`, la
+passe **ralentit**. Ce n'est pas le bras, c'est la politique de vidage :
+`advanceBackground` lance un vidage dès qu'un trou s'ouvre entre deux commandes,
+à condition qu'il **commence** avant la suivante, pas qu'il finisse. Un bras plus
+rapide trouve plus de trous : il pose ses écritures une à une, loin des lectures
+(3,3 par vidage contre 37), et chaque lecture suivante attend le retour. Le
+7 200 tr/min, toujours occupé, les laisse s'accumuler et les pose d'une traite.
+
+### Ce qui valide
+
+- **Les 340 bilans de 1993 à 2007 sont identiques** à ceux de `develop`
+  (`compare.py base e2 --identical`) : ni le 7200.14, ni la règle des
+  10 000 tr/min, ni Windows 7 ne touchent une époque existante.
+- `run.sh full` fait 412 bilans ; `readme-tables.py --check` : 0 écart.
+- `NamedDriveTests` : un 10 000 tr/min de 2012 retrouve la fiche, celui de 2003
+  reste en 3,5 pouces, les quatre disques de 2012 ont SATA 6 Gb/s, 64 Mo et la
+  rampe, un système inconnu de 2012 démarre sous Windows 7.
+- `SequentialThroughputTests` : quatre manuels, dans les 10 %.
+- L'assistant et la galerie, vus sur le simulateur : fiche, sortie de fiche,
+  10 000 tr/min déduit en 2012 (2 × 2,5″, 3 têtes, 209 Mo/s).
+
+Au passage : `readme-tables.py --write` remplaçait les tables dans l'ordre de
+déclaration, et une table qui gagnait une ligne décalait celles d'en dessous. Il
+les remplace désormais du bas vers le haut. Et la ligne « débit bord → moyeu »
+de l'assistant partageait sa clé avec une tuile des Instruments, dont elle ne
+recevait que le premier nombre : clé à part. Le nombre de têtes a pris sa clé à
+pluriel (`wizard.hw.heads`) : « 1 têtes » devient « 1 tête ».
+
+### Laissé ouvert
+
+- **La politique de vidage** du cache d'écriture : attendre un vrai repos avant
+  de vider, ou laisser la pression du cache décider, rendrait au VelociRaptor ce
+  qu'un bras rapide doit donner. Ça touche toutes les époques : à mesurer seul.
+- **Un démarrage peut lancer une application désinstallée** :
+  `launchedApplication` prend la première application installée sans regarder
+  les désinstallations. `gamer-2007` « lance » Crysis, désinstallé en 2009, et
+  en lit 0 Mo. Corriger change un démarrage calé de 2007.
+- **Les constantes de Windows 7** (Vista ÷ 1,5) n'ont ni cible ni mesure.
+- **Le NCQ**, que tout disque SATA de 2012 fait sous AHCI, et le pilote AHCI de
+  Windows 7, dont le découpage des requêtes est inconnu (256 secteurs gardés).
+- **La partition de 100 Mo** « Réservé au système » que Windows 7 crée devant
+  le volume n'est pas modélisée.
+- **Le rangement intelligent** n'a pas été joué sur les disques de 2012 (le
+  README le dit sous sa table).
+- **Le site et les captures** annoncent vingt disques de 1993 à 2007 : ils
+  décrivent la version publiée, et changeront avec celle qui portera 2012.
+- **L'écoute** : `SCENARIO=gamer-2012` contre `gamer-2007`, et un 10 000 tr/min
+  de 2003 contre un de 2012 dans l'assistant.

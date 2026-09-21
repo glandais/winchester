@@ -13,16 +13,14 @@ c'est ce qui empêche de tourner une constante comme un bouton.
 Les valeurs courantes sont lues dans `ThinkModel.boot` : l'étape mesurée doit
 avoir été construite avec ces valeurs-là.
 """
-import os
-import re
 import sys
 
-from bilan import BOOT_TARGETS, PROFILES, ROOT, boot
+from bilan import BOOT_TARGETS, PROFILES, ROOT, boot, think_models
 
 step = sys.argv[1]
-source = open(os.path.join(ROOT, "Sources", "Model", "BootSession.swift")).read()
-table = re.findall(r'(?:case "([^"]+)"|default):\s+ThinkModel\(perFile: ([\d.]+), perMegabyte: ([\d.]+)\)', source)
-eras = dict(zip(("1993", "1996", "1999", "2003", "2007"), table))
+# 2012 n'a pas de cible : rien à ajuster.
+eras = {y: m for y, m in sorted(think_models(ROOT).items())
+        if all(p in BOOT_TARGETS for p in PROFILES if p.endswith(y))}
 
 for year, (os_name, per_file, per_mb) in eras.items():
     per_file, per_mb = float(per_file), float(per_mb)

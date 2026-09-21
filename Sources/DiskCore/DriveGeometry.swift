@@ -267,15 +267,19 @@ extension DriveGeometry {
     ///     d'écart n'ont ni la même course, ni le même débit, ni le même bruit.
     ///   - heads: nombre de faces, quand on veut l'imposer. Sinon il est déduit
     ///     de la capacité demandée et de ce que porte une face cette année-là.
+    ///   - rpm: le régime fait tourner le plateau, et à 10 000 tr/min depuis
+    ///     2008 il en change aussi la taille (`DriveCatalog.mechanics`).
     public static func era(model: String,
                            capacityBytes: UInt64,
                            rpm: Int,
                            year: Int,
                            heads forcedHeads: Int? = nil,
                            zbr: Bool = true) -> DriveGeometry {
-        zoned(model: model, capacityBytes: capacityBytes, rpm: rpm,
-              density: DriveCatalog.density(year: year),
-              heads: forcedHeads, zbr: zbr)
+        let mechanics = DriveCatalog.mechanics(rpm: rpm, year: year)
+        return zoned(model: model, capacityBytes: capacityBytes, rpm: rpm,
+                     density: mechanics.density,
+                     heads: forcedHeads, zbr: zbr,
+                     platterInches: mechanics.platterInches)
     }
 
     /// La même construction, pour une densité donnée plutôt que celle d'une

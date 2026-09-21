@@ -1,16 +1,16 @@
 #!/bin/sh
 # Rejoue les bilans d'une étape, en PLAN_ONLY et en parallèle.
 #
-#   ./Tools/Measure/run.sh <étape> boots   # les vingt démarrages, ~3 s
-#   ./Tools/Measure/run.sh <étape> disks   # les vingt volumes, un à la fois, ~30 s
-#   ./Tools/Measure/run.sh <étape> full    # tout le README : 5 à 7 min
+#   ./Tools/Measure/run.sh <étape> boots   # les vingt-quatre démarrages, ~4 s
+#   ./Tools/Measure/run.sh <étape> disks   # les vingt-quatre volumes, un à la fois, ~45 s
+#   ./Tools/Measure/run.sh <étape> full    # tout le README : 7 à 9 min
 #
-# `disks` décrit les vingt volumes générés (`SCENARIO=disk:`) : l'histogramme
-# des extents par fichier, les répertoires, le coût de génération — ce que lit
-# `extents.py`. `full` fait les vingt démarrages, les vingt volumes, les vingt
-# installations, les quatre journées du README, les vingt profils croisés avec
-# les treize outils, et XP et UltraDefrag en blocs pleins sur les huit NTFS :
-# 340 bilans. Chaque bilan est un fichier texte dans $MEASURE_DIR/out-<étape>/.
+# `disks` décrit les vingt-quatre volumes générés (`SCENARIO=disk:`) :
+# l'histogramme des extents par fichier, les répertoires, le coût de génération
+# — ce que lit `extents.py`. `full` fait les vingt-quatre démarrages, volumes et
+# installations, les quatre journées du README, les vingt-quatre profils croisés
+# avec les treize outils, et XP et UltraDefrag en blocs pleins sur les douze
+# NTFS : 412 bilans. Chaque bilan est un fichier texte dans $MEASURE_DIR/out-<étape>/.
 set -e
 cd "$(dirname "$0")/../.."
 STEP="${1:?usage : run.sh <étape> boots|disks|full}"
@@ -25,8 +25,10 @@ PROFILES="dev-1993 gamer-1993 poweruser-1993 secretaire-1993
 dev-1996 famille-1996 gamer-1996 secretaire-1996
 dev-1999 famille-1999 gamer-1999 secretaire-1999
 dev-2003 famille-2003 gamer-2003 secretaire-2003
-dev-2007 famille-2007 gamer-2007 secretaire-2007"
-NTFS="dev-2003 famille-2003 gamer-2003 secretaire-2003 dev-2007 famille-2007 gamer-2007 secretaire-2007"
+dev-2007 famille-2007 gamer-2007 secretaire-2007
+dev-2012 famille-2012 gamer-2012 secretaire-2012"
+NTFS="dev-2003 famille-2003 gamer-2003 secretaire-2003 dev-2007 famille-2007 gamer-2007 secretaire-2007
+dev-2012 famille-2012 gamer-2012 secretaire-2012"
 TOOLS="windows95 windowsXP jkDefrag ultraDefrag jkDefragForcedFill jkDefragMoveUp
 jkDefragSortName jkDefragSortSize jkDefragSortAccess jkDefragSortChange
 jkDefragSortCreation frontierCompaction fragmentMerge"

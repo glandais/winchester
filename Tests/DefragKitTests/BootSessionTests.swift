@@ -194,7 +194,7 @@ struct BootSessionTests {
     @Test("Le préchargeur n'existe qu'à partir de Windows XP")
     func prefetchIsAnEra() {
         for era in BootScript.Era.all {
-            let expected: BootOrder = era.os == "winxp-sp1" || era.os == "vista"
+            let expected: BootOrder = ["winxp-sp1", "vista", "win7-sp1"].contains(era.os)
                 ? .byPosition
                 : .declared
             #expect(era.prefetch == expected, "\(era.os)")
@@ -237,9 +237,10 @@ struct BootSessionTests {
         let reboot = BootPlanner.plan(disk: disk, launchesApplication: false, firstOfTheDay: false)
         #expect(reboot.stampedFiles == 0)
 
-        // Et la table dit la même chose pour les cinq époques : MS-DOS n'avait
-        // pas de date d'accès, VFAT l'a apportée avec Windows 95.
-        #expect(BootScript.Era.all.map(\.stampsAccess) == [false, true, true, true, false])
+        // Et la table dit la même chose pour les six époques : MS-DOS n'avait
+        // pas de date d'accès, VFAT l'a apportée avec Windows 95, et Windows 7
+        // a gardé le réglage de Vista.
+        #expect(BootScript.Era.all.map(\.stampsAccess) == [false, true, true, true, false, false])
     }
 
     /// Une fiche peut nommer un système que la table ne connaît pas : il vaut

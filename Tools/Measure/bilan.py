@@ -9,14 +9,29 @@ import re
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 MEASURE = os.environ.get("MEASURE_DIR", os.path.join(ROOT, ".build", "measure"))
 
-PROFILES = [f"{p}-{y}" for y in ("1993", "1996", "1999", "2003", "2007")
+YEARS = ("1993", "1996", "1999", "2003", "2007", "2012")
+PROFILES = [f"{p}-{y}" for y in YEARS
             for p in ("dev", "famille", "gamer", "secretaire")]
 PROFILES[PROFILES.index("famille-1993")] = "poweruser-1993"
-NTFS = [p for p in PROFILES if p.endswith(("2003", "2007"))]
+NTFS = [p for p in PROFILES if p.split("-")[1] >= "2003"]
+
+# L'époque de chaque système de `ThinkModel.boot`, par son identifiant ; le
+# `default` est Vista.
+THINK_ERA = {"msdos-6.22+win31": "1993", "win95-osr1": "1996", "win98se": "1999",
+             "winxp-sp1": "2003", "": "2007", "win7-sp1": "2012"}
+
+
+def think_models(root):
+    """Les constantes de `ThinkModel.boot`, lues dans le source, par époque."""
+    source = open(os.path.join(root, "Sources", "Model", "BootSession.swift")).read()
+    table = re.findall(r'(?:case "([^"]+)"|default):\s+ThinkModel\(perFile: ([\d.]+), perMegabyte: ([\d.]+)\)',
+                       source)
+    return {THINK_ERA[name]: (name, per_file, per_mb) for name, per_file, per_mb in table}
 
 # Les durées de démarrage que le modèle donnait avant la relecture des experts,
 # et sur lesquelles `ThinkModel.boot` est calé (LEDGER.md, chantiers 20 à 22).
-# Ce ne sont pas des mesures d'époque : ce sont les cibles du calage.
+# Ce ne sont pas des mesures d'époque : ce sont les cibles du calage. 2012 n'en
+# a pas : le modèle d'avant ne connaissait pas Windows 7 (chantier 34).
 BOOT_TARGETS = {
     "dev-1993": 41.8, "gamer-1993": 29.5, "poweruser-1993": 42.7, "secretaire-1993": 36.0,
     "dev-1996": 58.7, "famille-1996": 54.4, "gamer-1996": 44.0, "secretaire-1996": 55.4,

@@ -45,9 +45,16 @@ struct DriveInterface: Sendable, Equatable {
 
     /// Le disque d'une machine de l'année donnée : la fiche du catalogue la
     /// plus proche, le bus de l'époque.
+    ///
+    /// Le bus suit le disque : un disque SATA — celui de 2012 — impose un
+    /// contrôleur SATA.
     static func era(year: Int) -> DriveInterface {
-        DriveInterface(buffer: DriveCatalog.nearest(year: year).buffer, host: .era(year: year))
+        let buffer = DriveCatalog.nearest(year: year).buffer
+        return DriveInterface(buffer: buffer, host: .era(year: year, serial: buffer.isSerial))
     }
+
+    /// « IDE » ou « SATA » : le nom de la nappe ou du câble, pour l'écran.
+    var busName: String { buffer?.isSerial == true ? "SATA" : "IDE" }
 
     /// Secteurs que le cache peut tenir. Zéro sans tampon.
     var cacheSectors: Int {
@@ -87,6 +94,7 @@ struct DriveInterface: Sendable, Equatable {
 /// | 1996 | Pentium, IDE sur PCI, PIO mode 4 | 16,6 Mo/s | ATA-2, cycle de 120 ns ; Windows 95 OSR1 n'a pas de pilote DMA |
 /// | 1999 | Pentium II, PIIX4E, Ultra DMA/33 | 32,6 / 21,9 Mo/s | Microsoft Research, *IDE Ultra/33 Performance: Intel PIIX4E*, 1999 : salves mesurées de l'IDE vers le PCI et en retour |
 /// | 2003, 2007 | Ultra DMA/100 | 100 Mo/s | la norme ATA-5 ; aucune mesure de la période |
+/// | 2012 | contrôleur SATA de la série 6 | 600 Mo/s | la norme SATA 3.0 ; aucune mesure de la période |
 ///
 /// En 1999 le chipset est plus lent en écriture qu'en lecture : c'est mesuré, et
 /// c'est le seul écart de ce genre qu'une source donne.

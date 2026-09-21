@@ -336,17 +336,23 @@ public struct ScenarioCompiler {
         case .ntfs:
             // `pagefile.sys` à taille fixe, et sur Vista `hiberfil.sys` : deux
             // gros blocs qui ne bougent jamais et autour desquels tout se range.
+            // Windows 7 les taille sur la mémoire — autant que la mémoire pour
+            // l'un, les trois quarts pour l'autre —, et une machine de 2012 en
+            // a 4 Go.
+            let gigabyte: ByteCount = 1_024 * 1_024 * 1_024
+            let pagefileCap = epochYear >= 2010 ? 4 * gigabyte : 1_536 * 1_024 * 1_024
+            let hiberfilCap = epochYear >= 2010 ? 3 * gigabyte : 2 * gigabyte
             dayZero.append(nextID)
             writer.write(FileSpec(id: newID(), name: "pagefile.sys",
                                   directory: catalog.rootDirectory,
-                                  category: .swap, bytes: min(size / 40, 1_536 * 1_024 * 1_024)),
+                                  category: .swap, bytes: min(size / 40, pagefileCap)),
                          from: 0, to: 0, touches: 0, rng: &rng)
             if epochYear >= 2007 {
                 dayZero.append(nextID)
                 writer.write(FileSpec(id: newID(), name: "hiberfil.sys",
                                       directory: catalog.rootDirectory,
                                       category: .swap,
-                                      bytes: min(size / 60, 2_048 * 1_024 * 1_024)),
+                                      bytes: min(size / 60, hiberfilCap)),
                              from: 0, to: 0, touches: 0, rng: &rng)
             }
         }
@@ -750,8 +756,9 @@ public struct ScenarioCompiler {
             let directory = catalog.makeDirectory(path: "\(gamePath)\\JEU\(nextID)")
             var files: [UInt32] = []
             // Installé depuis le CD : l'installeur connaît la taille de ce
-            // qu'il copie.
-            for index in 0..<(3 + Int(rng.below(6))) {
+            // qu'il copie. Un jeu de 2012 pèse cinq à quinze gigaoctets, pas un.
+            let packages = epochYear >= 2010 ? 10 + Int(rng.below(20)) : 3 + Int(rng.below(6))
+            for index in 0..<packages {
                 let id = newID()
                 let bytes = SizeModel.gameAsset.sample(&rng)
                 writer.write(FileSpec(id: id, name: "DATA\(index).PAK", directory: directory,
@@ -825,8 +832,14 @@ public struct ScenarioCompiler {
         let bytesPerDay = hoarding.gigabytesPerYear * 1_073_741_824 / 365
         // Une taille typique de « chose qu'on garde » à cette époque-là : une
         // archive de quelques dizaines de mégaoctets en 2003, quelques
-        // mégaoctets en 1993.
-        let median: Double = epochYear <= 1996 ? 2_000_000 : (epochYear <= 2003 ? 40_000_000 : 200_000_000)
+        // mégaoctets en 1993, un film en 2012.
+        let median: Double = switch epochYear {
+        case ...1996: 2_000_000
+        case ...2003: 40_000_000
+        case ...2009: 200_000_000
+        // Un film en haute définition, une image de DVD.
+        default:      700_000_000
+        }
         guard bytesPerDay > 0 else { return }
 
         // Nombre d'objets entassés aujourd'hui, à partir du débit voulu.

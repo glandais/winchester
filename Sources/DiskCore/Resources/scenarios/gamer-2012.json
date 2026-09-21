@@ -1,0 +1,52 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 40,
+      "perDay": 4
+    },
+    "gaming": {
+      "installsPerYear": 6,
+      "savesPerDay": 3.0,
+      "uninstallsPerYear": 5
+    },
+    "hoarding": {
+      "gigabytesPerYear": 160.0,
+      "tidiesUpAt": 0.95
+    },
+    "maintenance": {
+      "filesPerUpdate": 500,
+      "updatesPerYear": 24
+    }
+  },
+  "disk": {
+    "averageSeekMs": 3.8,
+    "model": "Western Digital VelociRaptor WD5000HHTZ",
+    "rpm": 10000,
+    "sizeMB": 476940,
+    "trackToTrackMs": 0.7,
+    "zbr": true
+  },
+  "displayName": "Joueur, 2012",
+  "fileSystem": {
+    "type": "ntfs"
+  },
+  "id": "gamer-2012",
+  "installs": [
+    "win7",
+    "bf3",
+    "skyrim"
+  ],
+  "os": "win7-sp1",
+  "seed": 2012003,
+  "summary": "Battlefield 3 et ses archives d'un gigaoctet, puis Skyrim, sur un VelociRaptor",
+  "timeline": {
+    "end": "2015-04-01",
+    "start": "2012-04-01"
+  },
+  "uninstalls": [
+    {
+      "app": "skyrim",
+      "date": "2014-06-01"
+    }
+  ]
+}

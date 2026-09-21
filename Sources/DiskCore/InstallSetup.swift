@@ -101,7 +101,7 @@ public enum SetupLibrary {
     /// Internet Explorer 5 en posait autant qu'un pilote, et reste une
     /// application qu'on lance.
     public static let systemManifests: Set<String> = [
-        "msdos-6", "win31", "win95", "win98se", "winxp", "vista",
+        "msdos-6", "win31", "win95", "win98se", "winxp", "vista", "win7",
     ]
 
     /// Vitesse du lecteur de CD d'une machine de l'année donnée.
@@ -185,6 +185,25 @@ public enum SetupLibrary {
                     .init(directory: "\\Users\\Utilisateur", name: "NTUSER.DAT", bytes: 1_300_000),
                 ],
                 reboots: 3)
+
+        case "win7":
+            // Comme Vista, l'image du DVD est appliquée directement au volume :
+            // « Copie des fichiers de Windows », puis « Décompression », sans
+            // dossier d'extraction à côté. Deux redémarrages : à la fin de
+            // l'installation des fonctionnalités, puis après la configuration
+            // des services.
+            return SetupStyle(
+                medium: .dvd, speed: 16, extraction: nil,
+                registry: [
+                    .init(directory: "\\Windows\\System32\\config", name: "SYSTEM", bytes: 11_000_000),
+                    .init(directory: "\\Windows\\System32\\config", name: "SOFTWARE", bytes: 40_000_000),
+                    .init(directory: "\\Windows\\System32\\config", name: "COMPONENTS", bytes: 24_000_000),
+                    .init(directory: "\\Windows\\System32\\config", name: "DEFAULT", bytes: 262_144),
+                    .init(directory: "\\Windows\\System32\\config", name: "SAM", bytes: 262_144),
+                    .init(directory: "\\Windows\\System32\\config", name: "SECURITY", bytes: 262_144),
+                    .init(directory: "\\Users\\Utilisateur", name: "NTUSER.DAT", bytes: 1_800_000),
+                ],
+                reboots: 2)
 
         default:
             // Une application d'avant le CD arrive sur disquettes et s'écrit à

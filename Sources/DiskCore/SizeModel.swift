@@ -53,6 +53,8 @@ public enum SizeModel {
     public static let jpeg2003 = Distribution.logNormal(median: 900_000, sigma: 0.5)
     /// Photo d'un reflex de 2007.
     public static let jpeg2007 = Distribution.logNormal(median: 2_600_000, sigma: 0.5)
+    /// Photo d'un compact de 16 mégapixels ou d'un reflex de 18, 2012.
+    public static let jpeg2012 = Distribution.logNormal(median: 5_000_000, sigma: 0.5)
 
     /// Un film en DivX tient sur un CD, ou sur deux.
     public static let divx = Distribution.discrete(values: [700_000_000, 1_400_000_000],
@@ -85,6 +87,6 @@ public enum SizeModel {
     }
 
     public static func photo(forYear year: Int) -> Distribution {
-        year >= 2007 ? jpeg2007 : jpeg2003
+        year >= 2010 ? jpeg2012 : (year >= 2007 ? jpeg2007 : jpeg2003)
     }
 }

@@ -7,7 +7,9 @@ import DiskCore
 /// courbe des époques — 10 000 tr/min, plateaux de 2,5 pouces, 64 Mo de tampon.
 ///
 /// Ce qui est vérifié, c'est que sa fiche le décrit seule, sans que l'année
-/// vienne s'en mêler, et qu'elle ne dérange rien des huit disques de bureau.
+/// vienne s'en mêler, et qu'elle ne dérange rien des neuf disques de bureau ;
+/// puis qu'un 10 000 tr/min déduit d'une année d'après 2008 retrouve sa
+/// mécanique, et que les quatre disques de 2012 de la galerie ont la leur.
 @Suite("Disque nommé : le VelociRaptor")
 struct NamedDriveTests {
 
@@ -51,7 +53,7 @@ struct NamedDriveTests {
     func namedDriveStaysOutOfTheEras() {
         #expect(!DriveCatalog.all.contains { $0.model == Self.raptor.model })
         #expect(!Self.raptor.followsEra)
-        // Une année au-delà du catalogue garde le tampon d'un disque de bureau.
+        // Le disque de bureau de 2012 est un 7 200 tr/min : le 7200.14.
         #expect(DriveCatalog.nearest(year: 2012).rpm == 7_200)
         let desktop = DriveCatalog.all.allSatisfy { $0.followsEra }
         #expect(desktop)
@@ -134,4 +136,66 @@ struct NamedDriveTests {
         #expect(count(contact, .headUnstick) == 1 && count(contact, .headLand) == 1)
         #expect(count(ramp, .headUnstick) == 0 && count(ramp, .headLand) == 0)
     }
+
+    // MARK: - Un 10 000 tr/min déduit de son année
+
+    @Test("Un 10 000 tr/min de 2012 retrouve la fiche du VelociRaptor")
+    func deducedTenThousandIsTheRaptor() {
+        let deduced = DriveGeometry.era(model: "", capacityBytes: Self.raptor.capacityBytes,
+                                        rpm: 10_000, year: 2012)
+        let sheet = Self.raptor.geometry
+        #expect(deduced.platterInches == 2.5)
+        #expect(deduced.heads == sheet.heads)
+        #expect(abs(deduced.cylinders - sheet.cylinders) <= sheet.cylinders / 100)
+        #expect(abs(deduced.outerSustainedMBs - sheet.outerSustainedMBs) / sheet.outerSustainedMBs < 0.01)
+        // Le 500 Go, deux plateaux et trois têtes, par la même règle.
+        let half = DriveCatalog.reference(named: "Western Digital VelociRaptor WD5000HHTZ")!
+        let small = DriveGeometry.era(model: "", capacityBytes: half.capacityBytes, rpm: 10_000, year: 2012)
+        #expect(small.heads == half.heads)
+        #expect(half.geometry.heads == 3)
+    }
+
+    @Test("Avant 2008, un 10 000 tr/min garde ses plateaux de 3,5 pouces")
+    func raptorBefore2008StaysOnTheCurve() {
+        let raptor2003 = DriveGeometry.era(model: "", capacityBytes: 74_000_000_000, rpm: 10_000, year: 2003)
+        let desktop2003 = DriveGeometry.era(model: "", capacityBytes: 74_000_000_000, rpm: 7_200, year: 2003)
+        #expect(raptor2003.platterInches == 3.5)
+        #expect(raptor2003.cylinders == desktop2003.cylinders)
+        #expect(raptor2003.heads == desktop2003.heads)
+        // Et à 7 200 tr/min en 2012, c'est le 7200.14.
+        let desktop2012 = DriveGeometry.era(model: "", capacityBytes: 1_000_204_886_016, rpm: 7_200, year: 2012)
+        #expect(desktop2012.platterInches == 3.5 && desktop2012.heads == 2)
+    }
+
+    // MARK: - Les disques de 2012 de la galerie
+
+    @Test("Les VelociRaptor de la galerie prennent leur fiche, les autres le 7200.14")
+    func galleryOf2012() throws {
+        let specs = try ScenarioLibrary.loadAll().filter { $0.id.hasSuffix("-2012") }
+        #expect(specs.count == 4)
+        for spec in specs {
+            let hardware = GeneratedVolumeBridge.drive(for: spec, atLeast: 1)
+            // SATA 6 Gb/s, 64 Mo de tampon, têtes sur rampe, pour les quatre.
+            #expect(hardware.interface.readBytesPerSecond == 600_000_000, "\(spec.id)")
+            #expect(hardware.interface.buffer?.bufferKB == 65_536, "\(spec.id)")
+            #expect(hardware.rampLoad, "\(spec.id)")
+            // La partition tient dans le disque.
+            #expect(UInt64(hardware.geometry.capacityBytes) >= spec.disk.sizeBytes, "\(spec.id)")
+            let fast = spec.id.hasPrefix("dev") || spec.id.hasPrefix("gamer")
+            #expect(hardware.geometry.rpm == (fast ? 10_000 : 7_200), "\(spec.id)")
+            #expect(hardware.geometry.platterInches == (fast ? 2.5 : 3.5), "\(spec.id)")
+            #expect((spec.disk.reference?.shortName == "VelociRaptor") == fast, "\(spec.id)")
+        }
+    }
+
+    @Test("Une fiche de 2012 sans système connu démarre sous Windows 7")
+    func unknownSystemOf2012IsWindows7() throws {
+        var spec = try #require(try ScenarioLibrary.loadAll().first { $0.id == "famille-2012" })
+        #expect(BootScript.Era.matching(spec).osName == "Windows 7")
+        spec.os = "inconnu"
+        #expect(BootScript.Era.matching(spec).osName == "Windows 7")
+        spec.timeline.start.year = 2008
+        #expect(BootScript.Era.matching(spec).osName == "Windows Vista")
+    }
+
 }

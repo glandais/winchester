@@ -1,0 +1,49 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 50,
+      "perDay": 6
+    },
+    "download": {
+      "perWeek": 3
+    },
+    "hoarding": {
+      "gigabytesPerYear": 140.0,
+      "tidiesUpAt": 0.985
+    },
+    "maintenance": {
+      "filesPerUpdate": 500,
+      "updatesPerYear": 24
+    },
+    "media": {
+      "filesPerWeek": 80
+    },
+    "office": {
+      "newDocumentsPerWeek": 5,
+      "savesPerDocumentPerWeek": 1.2
+    }
+  },
+  "disk": {
+    "averageSeekMs": 8.5,
+    "rpm": 7200,
+    "sizeMB": 1000000,
+    "zbr": true
+  },
+  "displayName": "Famille, 2012",
+  "fileSystem": {
+    "type": "ntfs"
+  },
+  "id": "famille-2012",
+  "installs": [
+    "win7",
+    "office2010",
+    "itunes10"
+  ],
+  "os": "win7-sp1",
+  "seed": 2012004,
+  "summary": "Un téraoctet pour les photos de 16 mégapixels et la vidéo du caméscope",
+  "timeline": {
+    "end": "2015-04-01",
+    "start": "2012-04-01"
+  }
+}

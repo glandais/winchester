@@ -94,15 +94,15 @@ struct AcousticsTests {
         }
     }
 
-    /// La galerie a cinq époques : aucune ne doit sonner comme sa voisine.
-    @Test("Les cinq époques de la galerie ont chacune leur plateau")
+    /// La galerie a six époques : aucune ne doit sonner comme sa voisine.
+    @Test("Les six époques de la galerie ont chacune leur plateau")
     func galleryErasDiffer() throws {
         let specs = try ScenarioLibrary.loadAll().filter { $0.id.hasPrefix("dev-") }
         let characters = specs.map { spec -> SpindleCharacter in
             let drive = GeneratedVolumeBridge.drive(for: spec, atLeast: 1)
             return SpindleCharacter(geometry: drive.geometry, year: spec.timeline.start.year)
         }
-        #expect(characters.count == 5)
+        #expect(characters.count == 6)
         for (a, b) in zip(characters, characters.dropFirst()) {
             #expect(a != b)
             #expect(a.bands != b.bands || abs(a.idleBels - b.idleBels) > 0.1)

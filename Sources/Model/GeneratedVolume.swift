@@ -248,14 +248,19 @@ extension GeneratedVolumeBridge {
         let size = DisplayFormat.megabytes(spec.disk.sizeBytes)
         let rpm = String(localized: "disk.rpm",
                          defaultValue: "\(DisplayFormat.integer(spec.disk.rpm)) rpm")
-        let label = "IDE \(size) · \(rpm)"
         let year = spec.timeline.start.year
+        let interface = DriveInterface.era(year: year)
+        let label = "\(interface.busName) \(size) · \(rpm)"
+        // Un 10 000 tr/min d'après 2008 a la mécanique du VelociRaptor : son
+        // piste-à-piste et sa rampe, quand la fiche du profil n'en dit rien.
+        let small = DriveCatalog.smallPlatter(rpm: spec.disk.rpm, year: year)
         let geometry = DriveGeometry.era(model: label,
                                          capacityBytes: capacity,
                                          rpm: spec.disk.rpm,
                                          year: year,
                                          zbr: spec.disk.zbr)
-        let trackToTrack = spec.disk.trackToTrackMs ?? DriveCatalog.trackToTrackMs(year: year)
+        let trackToTrack = spec.disk.trackToTrackMs
+            ?? small?.trackToTrackMs ?? DriveCatalog.trackToTrackMs(year: year)
         let read = SeekModel.calibrated(averageSeekMs: spec.disk.averageSeekMs,
                                         trackToTrackMs: trackToTrack,
                                         cylinders: geometry.cylinders)
@@ -264,7 +269,8 @@ extension GeneratedVolumeBridge {
             .applied(to: read, averageSeekMs: spec.disk.averageSeekMs,
                      trackToTrackMs: trackToTrack, cylinders: geometry.cylinders) ?? read
         return DriveHardware(geometry: geometry, seek: seek,
-                             interface: .era(year: year), year: year, rampLoad: false)
+                             interface: interface, year: year,
+                             rampLoad: small?.rampLoad ?? DriveCatalog.nearest(year: year).rampLoad)
     }
 }
 

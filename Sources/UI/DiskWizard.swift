@@ -21,6 +21,7 @@ struct SystemOption: Identifiable {
         SystemOption(id: "win98se", name: "Windows 98 SE", year: 1999, manifests: ["win98se"]),
         SystemOption(id: "winxp-sp1", name: "Windows XP", year: 2002, manifests: ["winxp"]),
         SystemOption(id: "vista", name: "Windows Vista", year: 2007, manifests: ["vista"]),
+        SystemOption(id: "win7-sp1", name: "Windows 7", year: 2009, manifests: ["win7"]),
     ]
 
     static var manifestIDs: Set<String> { Set(all.flatMap(\.manifests)) }
@@ -33,6 +34,7 @@ enum SoftwareYears {
         "doom2": 1994, "quake": 1996, "office97": 1997, "ie5": 1999, "winamp": 1997,
         "halflife": 1998, "officexp": 2001, "vsnet": 2002, "ut2003": 2002, "nero": 1997,
         "office2007": 2007, "crysis": 2007, "itunes7": 2006,
+        "office2010": 2010, "vs2010": 2010, "itunes10": 2010, "bf3": 2011, "skyrim": 2011,
     ]
 
     /// Les logiciels proposés, du plus ancien au plus récent ; les systèmes
@@ -332,6 +334,11 @@ struct DiskWizardSheet: View {
 private struct HardwareStep: View {
     @Binding var draft: ProfileSpec
 
+    /// Les régimes qu'on choisit. 10 000 tr/min est celui des Raptor, puis des
+    /// VelociRaptor : depuis 2008 il change aussi la taille des plateaux
+    /// (`DriveCatalog.mechanics`).
+    private static let speeds = [3_600, 4_500, 5_400, 7_200, 10_000]
+
     private var year: Binding<Int> {
         Binding(get: { draft.timeline.start.year }, set: { newYear in
             let shift = newYear - draft.timeline.start.year
@@ -340,53 +347,94 @@ private struct HardwareStep: View {
         })
     }
 
+    /// Toucher à un réglage quitte la fiche : le disque redevient déduit de
+    /// ses réglages et de son année, et son piste-à-piste celui de sa
+    /// mécanique.
+    private func leavingDatasheet(_ change: (inout DiskSpec) -> Void) {
+        var disk = draft.disk
+        disk.model = nil
+        disk.trackToTrackMs = nil
+        change(&disk)
+        draft.disk = disk
+    }
+
+    private var capacity: Binding<Double> {
+        Binding(get: { log10(Double(max(draft.disk.sizeMB, 10))) },
+                set: { value in leavingDatasheet { $0.sizeMB = Self.rounded(pow(10, value)) } })
+    }
+
+    /// Passer à 10 000 tr/min, ou en revenir, change aussi le seek : celui du
+    /// VelociRaptor d'un côté, celui des disques de bureau de l'année de
+    /// l'autre. Le curseur reste libre ensuite.
+    private var speed: Binding<Int> {
+        Binding(get: { draft.disk.rpm }, set: { rpm in
+            let wasFast = draft.disk.rpm >= 10_000
+            leavingDatasheet { disk in
+                disk.rpm = rpm
+                if rpm >= 10_000, !wasFast, let raptor = DriveCatalog.named.first {
+                    disk.averageSeekMs = raptor.averageSeekMs
+                } else if rpm < 10_000, wasFast {
+                    let year = draft.timeline.start.year
+                    disk.averageSeekMs = (DriveCatalog.averageSeekMs(year: year) * 2).rounded() / 2
+                }
+            }
+        })
+    }
+
+    private var seek: Binding<Double> {
+        Binding(get: { draft.disk.averageSeekMs },
+                set: { value in leavingDatasheet { $0.averageSeekMs = value } })
+    }
+
     var body: some View {
         let reference = draft.disk.reference
+        let year = draft.timeline.start.year
         let geometry = reference?.geometry
             ?? DriveGeometry.era(model: "", capacityBytes: draft.disk.sizeBytes,
                                  rpm: max(draft.disk.rpm, 1),
-                                 year: draft.timeline.start.year, zbr: draft.disk.zbr)
+                                 year: year, zbr: draft.disk.zbr)
         let platters = (geometry.heads + 1) / 2
         VStack(alignment: .leading, spacing: 14) {
-            Stepper(value: year, in: 1990...2008) {
-                labeled(String(localized: "wizard.hw.year", defaultValue: "Year bought"), "\(draft.timeline.start.year)")
+            Stepper(value: self.year, in: 1990...2012) {
+                labeled(String(localized: "wizard.hw.year", defaultValue: "Year bought"), "\(year)")
             }
+            datasheet(reference)
             VStack(alignment: .leading, spacing: 6) {
                 labeled(String(localized: "wizard.hw.capacity", defaultValue: "Capacity"), draft.capacityLabel)
-                Slider(value: Binding(
-                    get: { log10(Double(max(draft.disk.sizeMB, 10))) },
-                    set: { draft.disk.sizeMB = Self.rounded(pow(10, $0)) }),
-                       in: log10(20)...log10(500_000))
+                Slider(value: capacity, in: log10(20)...log10(2_000_000))
             }
             VStack(alignment: .leading, spacing: 6) {
                 labeled(String(localized: "wizard.hw.rpm", defaultValue: "Spindle speed"), draft.rpmLabel)
-                Picker(String(localized: "wizard.hw.rpm", defaultValue: "Spindle speed"), selection: $draft.disk.rpm) {
-                    ForEach([3_600, 4_500, 5_400, 7_200], id: \.self) { Text(verbatim: "\($0)").tag($0) }
+                Picker(String(localized: "wizard.hw.rpm", defaultValue: "Spindle speed"), selection: speed) {
+                    ForEach(Self.speeds, id: \.self) { Text(verbatim: "\($0)").tag($0) }
                 }
                 .pickerStyle(.segmented)
             }
             VStack(alignment: .leading, spacing: 6) {
                 labeled(String(localized: "instruments.tile.averageSeek", defaultValue: "Average seek"),
                         Format.decimal(draft.disk.averageSeekMs, digits: 1) + " ms")
-                Slider(value: $draft.disk.averageSeekMs, in: 7...25, step: 0.5)
+                Slider(value: seek, in: 3...25, step: 0.5)
             }
         }
         .panel()
 
         VStack(alignment: .leading, spacing: 8) {
-            Text("wizard.hw.geometry.header")
+            Text(reference == nil ? "wizard.hw.geometry.header" : "wizard.hw.geometry.datasheet.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
+            let heads = String(localized: "wizard.hw.heads", defaultValue: "\(geometry.heads) heads")
             labeled(String(localized: "wizard.hw.platters", defaultValue: "Platters"),
-                    String(localized: "wizard.hw.platters.value",
-                           defaultValue: "\(platters) (\(geometry.heads) heads)"))
+                    geometry.platterInches == 3.5
+                        ? String(localized: "wizard.hw.platters.value",
+                                 defaultValue: "\(platters) (\(heads))")
+                        : String(localized: "wizard.hw.platters.sized",
+                                 defaultValue: "\(platters) × \(Format.decimal(geometry.platterInches, digits: 1))″ (\(heads))"))
             labeled(String(localized: "wizard.hw.cylinders", defaultValue: "Cylinders"), Format.integer(geometry.cylinders))
             labeled(String(localized: "wizard.hw.throughput", defaultValue: "Throughput edge → hub"),
-                    String(localized: "instruments.unit.megabytesPerSecond",
+                    String(localized: "wizard.hw.throughput.value",
                            defaultValue: "\(Format.decimal(geometry.outerSustainedMBs, digits: 1)) → \(Format.decimal(geometry.innerSustainedMBs, digits: 1)) MB/s"))
-            if platters > 4 {
-                Text(verbatim: String(localized: "wizard.hw.platters.note",
-                                      defaultValue: "A capacity ahead of its time adds platters: \(platters) here. The density of one surface is that of the disks sold in \(draft.timeline.start.year)."))
+            if let note = geometryNote(reference: reference, platters: platters) {
+                Text(verbatim: note)
                     .font(.dynamic(size: 11))
                     .foregroundStyle(Theme.read)
                     .fixedSize(horizontal: false, vertical: true)
@@ -394,6 +442,63 @@ private struct HardwareStep: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
+    }
+
+    /// Partir d'une fiche : le disque en recopie tout, et le premier réglage
+    /// touché l'en détache.
+    @ViewBuilder private func datasheet(_ reference: DriveReference?) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("wizard.hw.datasheet")
+                .font(.dynamic(size: 13))
+                .foregroundStyle(Theme.text)
+            Spacer()
+            Menu {
+                Button("wizard.hw.datasheet.none") { leavingDatasheet { _ in } }
+                ForEach(DriveCatalog.named, id: \.model) { drive in
+                    Button {
+                        draft.disk = DiskSpec(reference: drive)
+                    } label: {
+                        Text(verbatim: "\(drive.model) · \(Self.label(capacityBytes: drive.capacityBytes))")
+                    }
+                }
+            } label: {
+                Text(verbatim: reference.map { "\($0.shortName) \(Self.label(capacityBytes: $0.capacityBytes))" }
+                     ?? String(localized: "wizard.hw.datasheet.none", defaultValue: "None"))
+                    .font(.dynamic(size: 13, weight: .medium, design: .monospaced))
+            }
+        }
+    }
+
+    private func geometryNote(reference: DriveReference?, platters: Int) -> String? {
+        let year = draft.timeline.start.year
+        if let reference {
+            return String(localized: "wizard.hw.datasheet.note",
+                          defaultValue: "Everything comes from the datasheet of the \(reference.model) (\(String(reference.year))). A SATA disk brings its SATA controller, at the speed of the machine's year. Moving a setting leaves the datasheet.")
+        }
+        if let raptor = DriveCatalog.smallPlatter(rpm: draft.disk.rpm, year: year) {
+            return String(localized: "wizard.hw.smallPlatter.note",
+                          defaultValue: "At 10,000 rpm from 2008 on, the platters shrink to \(Format.decimal(raptor.platterInches, digits: 1)) inches, as on the \(raptor.shortName): its mechanics, at the density of \(String(year)).")
+        }
+        if draft.disk.rpm >= 10_000 {
+            return String(localized: "wizard.hw.raptor.note",
+                          defaultValue: "Before 2008, a 10,000 rpm Raptor keeps 3.5-inch platters: faster, and louder.")
+        }
+        if platters > 4 {
+            return String(localized: "wizard.hw.platters.note",
+                          defaultValue: "A capacity ahead of its time adds platters: \(platters) here. The density of one surface is that of the disks sold in \(String(year)).")
+        }
+        return nil
+    }
+
+    /// « 500 Go », « 1 To » : la capacité d'une étiquette, en unités de mille.
+    private static func label(capacityBytes: UInt64) -> String {
+        let bytes = Double(capacityBytes)
+        if bytes >= 1e12 {
+            let value = (bytes / 1e12).formatted(.number.precision(.fractionLength(0...1)))
+            return String(localized: "disk.capacity.terabytes", defaultValue: "\(value) TB")
+        }
+        let value = (bytes / 1e9).formatted(.number.precision(.fractionLength(0...(bytes >= 1e11 ? 0 : 2))))
+        return String(localized: "disk.capacity.gigabytes", defaultValue: "\(value) GB")
     }
 
     /// Des capacités comme sur une étiquette : deux chiffres significatifs.

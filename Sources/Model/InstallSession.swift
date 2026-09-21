@@ -105,10 +105,18 @@ struct InstallEra: Sendable {
                               flush: .every(seconds: 1), journaled: spec.fileSystem.type == .ntfs,
                               floppySwap: 6, detection: 8, configuration: 10, restartPrompt: 2,
                               writeRequestSectors: 128)
-        default:
+        case 2006...2009:
             return InstallEra(name: "Windows Vista", think: ThinkModel(perFile: 0.006, perMegabyte: 0.03),
                               flush: .every(seconds: 1), journaled: spec.fileSystem.type == .ntfs,
                               floppySwap: 6, detection: 6, configuration: 12, restartPrompt: 2,
+                              writeRequestSectors: 256)
+        default:
+            // Windows 7 : le calcul de Vista divisé par 1,5, comme au démarrage
+            // (`ThinkModel.boot`) ; le même plafond de requête, faute de savoir
+            // ce que faisait le pilote AHCI.
+            return InstallEra(name: "Windows 7", think: ThinkModel(perFile: 0.004, perMegabyte: 0.02),
+                              flush: .every(seconds: 1), journaled: spec.fileSystem.type == .ntfs,
+                              floppySwap: 6, detection: 4, configuration: 10, restartPrompt: 2,
                               writeRequestSectors: 256)
         }
     }

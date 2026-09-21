@@ -9,9 +9,7 @@ Lit les bilans de smart.sh (`rboot-…`) et de passes.py (`pass-…`).
 import os, re, sys
 ROOT = os.environ.get("MEASURE_DIR", ".build/measure")
 base, step = sys.argv[1], sys.argv[2]
-PROFILES = [f"{w}-{y}" for y in ("1993", "1996", "1999", "2003", "2007")
-            for w in ("dev", "famille", "gamer", "secretaire", "poweruser")
-            if not (w == "poweruser" and y != "1993") and not (w == "famille" and y == "1993")]
+from bilan import PROFILES
 FAT = ["windows95", "jkDefrag", "ultraDefrag", "frontierCompaction"]
 NTFS = ["windowsXP", "jkDefrag", "ultraDefrag", "fragmentMerge"]
 

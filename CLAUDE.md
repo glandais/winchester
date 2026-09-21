@@ -2,7 +2,7 @@
 
 Simulation d'I/O au niveau bloc d'un disque dur à plateaux, convertie en son par
 AVFAudio, dans une application iOS 17+ (SwiftUI, Swift 6). `README.md` est la
-référence du projet : ce qui est modélisé, la chaîne, les vingt disques
+référence du projet : ce qui est modélisé, la chaîne, les vingt-quatre disques
 d'époque, la structure des fichiers. Ce fichier-ci ne couvre que la construction,
 la traduction et la publication.
 
@@ -108,7 +108,7 @@ Trois couches portent du texte, et toutes les trois sont traduites :
   de clusters, noms d'outils, résumés de stratégie, étapes d'un démarrage,
   zones de la carte dites par VoiceOver. Ce sont des `String` rendues par
   `String(localized:)`, pas des clés passées à `Text` ;
-- les **vingt disques d'époque**, dont le nom et le résumé vivent dans les JSON
+- les **vingt-quatre disques d'époque**, dont le nom et le résumé vivent dans les JSON
   de `Sources/DiskCore/Resources/scenarios/`. On ne traduit pas les fichiers —
   ils sont la référence du `README.md` — : `GalleryStrings`
   (`Sources/Model/DisplayFormat.swift`) les relit par identifiant, et

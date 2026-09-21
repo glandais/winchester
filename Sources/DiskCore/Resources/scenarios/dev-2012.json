@@ -1,0 +1,49 @@
+{
+  "activity": {
+    "browse": {
+      "pagesPerSession": 60,
+      "perDay": 8
+    },
+    "build": {
+      "objectFiles": 900,
+      "pchMB": 80,
+      "perDay": 18
+    },
+    "hoarding": {
+      "gigabytesPerYear": 112.0
+    },
+    "maintenance": {
+      "filesPerUpdate": 500,
+      "updatesPerYear": 24
+    }
+  },
+  "defragRuns": [
+    "2013-01-09",
+    "2014-01-08"
+  ],
+  "disk": {
+    "averageSeekMs": 3.8,
+    "model": "Western Digital VelociRaptor WD5000HHTZ",
+    "rpm": 10000,
+    "sizeMB": 476940,
+    "trackToTrackMs": 0.7,
+    "zbr": true
+  },
+  "displayName": "Développeur, 2012",
+  "fileSystem": {
+    "type": "ntfs"
+  },
+  "id": "dev-2012",
+  "installs": [
+    "win7",
+    "vs2010",
+    "office2010"
+  ],
+  "os": "win7-sp1",
+  "seed": 2012001,
+  "summary": "Visual Studio 2010 sur un VelociRaptor à 10 000 tr/min : le seek passe sous les 4 ms",
+  "timeline": {
+    "end": "2015-04-01",
+    "start": "2012-04-01"
+  }
+}

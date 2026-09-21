@@ -22,7 +22,7 @@ python3 - "$FAT_TOOLS" "$NTFS_TOOLS" <<'PY' | (cd "$BIN" && xargs -P 6 -L 1 sh -
     else env STRATEGY=$t SCENARIO=boot:$p PLAN_ONLY=1 ./rendertrace /dev/null > "'"$OUT"'/rboot-$p-$t.txt" 2>&1; fi')
 import sys
 fat, ntfs = sys.argv[1].split(), sys.argv[2].split()
-for year in ("1993", "1996", "1999", "2003", "2007"):
+for year in ("1993", "1996", "1999", "2003", "2007", "2012"):
     for who in ("dev", "famille", "gamer", "secretaire", "poweruser"):
         if who == "poweruser" and year != "1993": continue
         if who == "famille" and year == "1993": continue

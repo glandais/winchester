@@ -873,6 +873,22 @@
         }
       }
     },
+    "boot.drivers.win7.detail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drivers read back from the ReadyBoot trace, in disk order"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les pilotes relus d'après la trace de ReadyBoot, dans l'ordre du disque"
+          }
+        }
+      }
+    },
     "boot.kernel" : {
       "localizations" : {
         "en" : {
@@ -953,6 +969,22 @@
         }
       }
     },
+    "boot.kernelHAL.win7.detail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The boot manager, winload, the kernel"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le gestionnaire de démarrage, winload, le noyau"
+          }
+        }
+      }
+    },
     "boot.kernelHAL.xp.detail" : {
       "localizations" : {
         "en" : {
@@ -997,6 +1029,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bureau, polices, SuperFetch — accès très dispersés"
+          }
+        }
+      }
+    },
+    "boot.logon.win7.detail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desktop, taskbar, fonts — the last of the trace"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bureau, barre des tâches, polices — la fin de la trace"
           }
         }
       }
@@ -2076,6 +2124,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld Mo"
+          }
+        }
+      }
+    },
+    "disk.capacity.terabytes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ TB"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ To"
           }
         }
       }
@@ -3393,6 +3457,38 @@
         }
       }
     },
+    "gallery.dev-2012.name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Developer, 2012"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Développeur, 2012"
+          }
+        }
+      }
+    },
+    "gallery.dev-2012.summary" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visual Studio 2010 on a 10,000 rpm VelociRaptor: seeks drop under 4 ms"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visual Studio 2010 sur un VelociRaptor à 10 000 tr/min : le seek passe sous les 4 ms"
+          }
+        }
+      }
+    },
     "gallery.empty" : {
       "localizations" : {
         "en" : {
@@ -3533,6 +3629,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vidéo de caméscope et iTunes : le disque se remplit par gigaoctets"
+          }
+        }
+      }
+    },
+    "gallery.famille-2012.name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Family, 2012"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Famille, 2012"
+          }
+        }
+      }
+    },
+    "gallery.famille-2012.summary" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A terabyte for 16-megapixel photos and camcorder video"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un téraoctet pour les photos de 16 mégapixels et la vidéo du caméscope"
           }
         }
       }
@@ -3727,6 +3855,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Crysis et ses paquets de 400 Mo, installés et désinstallés"
+          }
+        }
+      }
+    },
+    "gallery.gamer-2012.name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gamer, 2012"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Joueur, 2012"
+          }
+        }
+      }
+    },
+    "gallery.gamer-2012.summary" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Battlefield 3 and its one-gigabyte archives, then Skyrim, on a VelociRaptor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Battlefield 3 et ses archives d'un gigaoctet, puis Skyrim, sur un VelociRaptor"
           }
         }
       }
@@ -3952,6 +4112,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Office 2007 et la défragmentation planifiée qui passe toute seule"
+          }
+        }
+      }
+    },
+    "gallery.secretaire-2012.name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Office work, 2012"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Secrétariat, 2012"
+          }
+        }
+      }
+    },
+    "gallery.secretaire-2012.summary" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Office 2010 on Windows 7, and the scheduled defragmentation twice a year"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Office 2010 sous Windows 7, et la défragmentation planifiée qui repasse deux fois l'an"
           }
         }
       }
@@ -13716,6 +13908,71 @@
         }
       }
     },
+    "wizard.hw.datasheet" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datasheet"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fiche"
+          }
+        }
+      }
+    },
+    "wizard.hw.datasheet.none" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune"
+          }
+        }
+      }
+    },
+    "wizard.hw.datasheet.note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everything comes from the datasheet of the %1$@ (%2$@). A SATA disk brings its SATA controller, at the speed of the machine's year. Moving a setting leaves the datasheet."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout vient de la fiche du %1$@ (%2$@). Un disque SATA amène son contrôleur SATA, au débit de l'année de la machine. Toucher à un réglage quitte la fiche."
+          }
+        }
+      }
+    },
+    "wizard.hw.geometry.datasheet.header" : {
+      "comment" : "En-tête, déjà en capitales",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DATASHEET GEOMETRY"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GÉOMÉTRIE DE LA FICHE"
+          }
+        }
+      }
+    },
     "wizard.hw.geometry.header" : {
       "comment" : "En-tête, déjà en capitales",
       "localizations" : {
@@ -13729,6 +13986,47 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GÉOMÉTRIE DÉDUITE"
+          }
+        }
+      }
+    },
+    "wizard.hw.heads" : {
+      "comment" : "Le nombre de têtes d'un disque, au pluriel de la langue",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld head"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld heads"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tête"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld têtes"
+                }
+              }
+            }
           }
         }
       }
@@ -13754,13 +14052,29 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A capacity ahead of its time adds platters: %1$lld here. The density of one surface is that of the disks sold in %2$lld."
+            "value" : "A capacity ahead of its time adds platters: %1$lld here. The density of one surface is that of the disks sold in %2$@."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Une capacité en avance sur son époque ajoute des plateaux : %1$lld ici. La densité d'une face est celle des disques vendus en %2$lld."
+            "value" : "Une capacité en avance sur son époque ajoute des plateaux : %1$lld ici. La densité d'une face est celle des disques vendus en %2$@."
+          }
+        }
+      }
+    },
+    "wizard.hw.platters.sized" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld × %2$@″ (%3$@)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld × %2$@″ (%3$@)"
           }
         }
       }
@@ -13770,13 +14084,29 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$lld (%2$lld heads)"
+            "value" : "%1$lld (%2$@)"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$lld (%2$lld têtes)"
+            "value" : "%1$lld (%2$@)"
+          }
+        }
+      }
+    },
+    "wizard.hw.raptor.note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before 2008, a 10,000 rpm Raptor keeps 3.5-inch platters: faster, and louder."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avant 2008, un Raptor à 10 000 tr/min garde des plateaux de 3,5 pouces : plus rapide, et plus bruyant."
           }
         }
       }
@@ -13798,6 +14128,22 @@
         }
       }
     },
+    "wizard.hw.smallPlatter.note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At 10,000 rpm from 2008 on, the platters shrink to %1$@ inches, as on the %2$@: its mechanics, at the density of %3$@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "À 10 000 tr/min à partir de 2008, les plateaux passent à %1$@ pouces, comme sur le %2$@ : sa mécanique, à la densité de %3$@."
+          }
+        }
+      }
+    },
     "wizard.hw.throughput" : {
       "localizations" : {
         "en" : {
@@ -13810,6 +14156,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Débit bord → moyeu"
+          }
+        }
+      }
+    },
+    "wizard.hw.throughput.value" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@ MB/s"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ → %2$@ Mo/s"
           }
         }
       }

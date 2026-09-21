@@ -353,6 +353,12 @@
             "fr": "VxD et pilotes WDM dans l'ordre du registre"
           }
         },
+        "boot.drivers.win7.detail": {
+          "translations": {
+            "en": "Drivers read back from the ReadyBoot trace, in disk order",
+            "fr": "Les pilotes relus d'après la trace de ReadyBoot, dans l'ordre du disque"
+          }
+        },
         "boot.kernel": {
           "translations": {
             "en": "Kernel",
@@ -383,6 +389,12 @@
             "fr": "Le gestionnaire de démarrage, le noyau, la couche d'abstraction"
           }
         },
+        "boot.kernelHAL.win7.detail": {
+          "translations": {
+            "en": "The boot manager, winload, the kernel",
+            "fr": "Le gestionnaire de démarrage, winload, le noyau"
+          }
+        },
         "boot.kernelHAL.xp.detail": {
           "translations": {
             "en": "NTLDR, the kernel, the abstraction layer",
@@ -399,6 +411,12 @@
           "translations": {
             "en": "Desktop, fonts, SuperFetch — very scattered accesses",
             "fr": "Bureau, polices, SuperFetch — accès très dispersés"
+          }
+        },
+        "boot.logon.win7.detail": {
+          "translations": {
+            "en": "Desktop, taskbar, fonts — the last of the trace",
+            "fr": "Bureau, barre des tâches, polices — la fin de la trace"
           }
         },
         "boot.logon.win95.detail": {
@@ -808,6 +826,12 @@
           "translations": {
             "en": "%lld MB",
             "fr": "%lld Mo"
+          }
+        },
+        "disk.capacity.terabytes": {
+          "translations": {
+            "en": "%@ TB",
+            "fr": "%@ To"
           }
         },
         "disk.cluster.kilobytes": {
@@ -1313,6 +1337,18 @@
             "fr": "Vista, WinSxS, et des compilations qui ne fragmentent presque plus rien"
           }
         },
+        "gallery.dev-2012.name": {
+          "translations": {
+            "en": "Developer, 2012",
+            "fr": "Développeur, 2012"
+          }
+        },
+        "gallery.dev-2012.summary": {
+          "translations": {
+            "en": "Visual Studio 2010 on a 10,000 rpm VelociRaptor: seeks drop under 4 ms",
+            "fr": "Visual Studio 2010 sur un VelociRaptor à 10 000 tr/min : le seek passe sous les 4 ms"
+          }
+        },
         "gallery.empty": {
           "translations": {
             "en": "No disk matches this filter.",
@@ -1365,6 +1401,18 @@
           "translations": {
             "en": "Camcorder video and iTunes: the disk fills by the gigabyte",
             "fr": "Vidéo de caméscope et iTunes : le disque se remplit par gigaoctets"
+          }
+        },
+        "gallery.famille-2012.name": {
+          "translations": {
+            "en": "Family, 2012",
+            "fr": "Famille, 2012"
+          }
+        },
+        "gallery.famille-2012.summary": {
+          "translations": {
+            "en": "A terabyte for 16-megapixel photos and camcorder video",
+            "fr": "Un téraoctet pour les photos de 16 mégapixels et la vidéo du caméscope"
           }
         },
         "gallery.filter.allPersonas": {
@@ -1439,6 +1487,18 @@
           "translations": {
             "en": "Crysis and its 400 MB packs, installed and uninstalled",
             "fr": "Crysis et ses paquets de 400 Mo, installés et désinstallés"
+          }
+        },
+        "gallery.gamer-2012.name": {
+          "translations": {
+            "en": "Gamer, 2012",
+            "fr": "Joueur, 2012"
+          }
+        },
+        "gallery.gamer-2012.summary": {
+          "translations": {
+            "en": "Battlefield 3 and its one-gigabyte archives, then Skyrim, on a VelociRaptor",
+            "fr": "Battlefield 3 et ses archives d'un gigaoctet, puis Skyrim, sur un VelociRaptor"
           }
         },
         "gallery.playing.badge": {
@@ -1524,6 +1584,18 @@
           "translations": {
             "en": "Office 2007 and the scheduled defragmentation running on its own",
             "fr": "Office 2007 et la défragmentation planifiée qui passe toute seule"
+          }
+        },
+        "gallery.secretaire-2012.name": {
+          "translations": {
+            "en": "Office work, 2012",
+            "fr": "Secrétariat, 2012"
+          }
+        },
+        "gallery.secretaire-2012.summary": {
+          "translations": {
+            "en": "Office 2010 on Windows 7, and the scheduled defragmentation twice a year",
+            "fr": "Office 2010 sous Windows 7, et la défragmentation planifiée qui repasse deux fois l'an"
           }
         },
         "habit.browse": {
@@ -5286,11 +5358,57 @@
             "fr": "Cylindres"
           }
         },
+        "wizard.hw.datasheet": {
+          "translations": {
+            "en": "Datasheet",
+            "fr": "Fiche"
+          }
+        },
+        "wizard.hw.datasheet.none": {
+          "translations": {
+            "en": "None",
+            "fr": "Aucune"
+          }
+        },
+        "wizard.hw.datasheet.note": {
+          "translations": {
+            "en": "Everything comes from the datasheet of the %1$@ (%2$@). A SATA disk brings its SATA controller, at the speed of the machine's year. Moving a setting leaves the datasheet.",
+            "fr": "Tout vient de la fiche du %1$@ (%2$@). Un disque SATA amène son contrôleur SATA, au débit de l'année de la machine. Toucher à un réglage quitte la fiche."
+          }
+        },
+        "wizard.hw.geometry.datasheet.header": {
+          "comment": "En-tête, déjà en capitales",
+          "translations": {
+            "en": "DATASHEET GEOMETRY",
+            "fr": "GÉOMÉTRIE DE LA FICHE"
+          }
+        },
         "wizard.hw.geometry.header": {
           "comment": "En-tête, déjà en capitales",
           "translations": {
             "en": "DEDUCED GEOMETRY",
             "fr": "GÉOMÉTRIE DÉDUITE"
+          }
+        },
+        "wizard.hw.heads": {
+          "comment": "Le nombre de têtes d'un disque, au pluriel de la langue",
+          "translations": {
+            "en": {
+              "variations": {
+                "plural": {
+                  "one": "%lld head",
+                  "other": "%lld heads"
+                }
+              }
+            },
+            "fr": {
+              "variations": {
+                "plural": {
+                  "one": "%lld tête",
+                  "other": "%lld têtes"
+                }
+              }
+            }
           }
         },
         "wizard.hw.platters": {
@@ -5301,14 +5419,26 @@
         },
         "wizard.hw.platters.note": {
           "translations": {
-            "en": "A capacity ahead of its time adds platters: %1$lld here. The density of one surface is that of the disks sold in %2$lld.",
-            "fr": "Une capacité en avance sur son époque ajoute des plateaux : %1$lld ici. La densité d'une face est celle des disques vendus en %2$lld."
+            "en": "A capacity ahead of its time adds platters: %1$lld here. The density of one surface is that of the disks sold in %2$@.",
+            "fr": "Une capacité en avance sur son époque ajoute des plateaux : %1$lld ici. La densité d'une face est celle des disques vendus en %2$@."
+          }
+        },
+        "wizard.hw.platters.sized": {
+          "translations": {
+            "en": "%1$lld × %2$@″ (%3$@)",
+            "fr": "%1$lld × %2$@″ (%3$@)"
           }
         },
         "wizard.hw.platters.value": {
           "translations": {
-            "en": "%1$lld (%2$lld heads)",
-            "fr": "%1$lld (%2$lld têtes)"
+            "en": "%1$lld (%2$@)",
+            "fr": "%1$lld (%2$@)"
+          }
+        },
+        "wizard.hw.raptor.note": {
+          "translations": {
+            "en": "Before 2008, a 10,000 rpm Raptor keeps 3.5-inch platters: faster, and louder.",
+            "fr": "Avant 2008, un Raptor à 10 000 tr/min garde des plateaux de 3,5 pouces : plus rapide, et plus bruyant."
           }
         },
         "wizard.hw.rpm": {
@@ -5318,10 +5448,22 @@
             "fr": "Régime"
           }
         },
+        "wizard.hw.smallPlatter.note": {
+          "translations": {
+            "en": "At 10,000 rpm from 2008 on, the platters shrink to %1$@ inches, as on the %2$@: its mechanics, at the density of %3$@.",
+            "fr": "À 10 000 tr/min à partir de 2008, les plateaux passent à %1$@ pouces, comme sur le %2$@ : sa mécanique, à la densité de %3$@."
+          }
+        },
         "wizard.hw.throughput": {
           "translations": {
             "en": "Throughput edge → hub",
             "fr": "Débit bord → moyeu"
+          }
+        },
+        "wizard.hw.throughput.value": {
+          "translations": {
+            "en": "%1$@ → %2$@ MB/s",
+            "fr": "%1$@ → %2$@ Mo/s"
           }
         },
         "wizard.hw.year": {

@@ -15,7 +15,7 @@ via AVFAudio. Application iOS de démonstration, avec deux démos prêtes à
   210 Mo plein à 69 % : 5 min 56, 1 488 fichiers déplacés, et un volume qui sort
   sans un seul fichier déplaçable en morceaux.
 
-Et une galerie de vingt disques d'époque, générés sur l'appareil, qu'on peut
+Et une galerie de vingt-quatre disques d'époque, générés sur l'appareil, qu'on peut
 **démarrer**, **installer**, **défragmenter** ou **revivre** à voix haute — les
 deux démos n'étant que deux d'entre eux, sous un nom et un outil choisis.
 
@@ -87,9 +87,9 @@ décrire un disque, et c'est tout le problème : le même gigaoctet est un disqu
 entier de 3 835 pistes en 1996 et un coin de plateau lu cinq fois plus vite en
 2003.
 
-Le modèle interpole donc dans le temps entre sept disques **réellement vendus**,
-de 1993 à 2008, dont les fiches sont recopiées dans `DriveCatalog` avec leur
-source — plus une huitième, variante à un plateau de celle de 2001, qui ne sert
+Le modèle interpole donc dans le temps entre huit disques **réellement vendus**,
+de 1993 à 2012, dont les fiches sont recopiées dans `DriveCatalog` avec leur
+source — plus une neuvième, variante à un plateau de celle de 2001, qui ne sert
 pas d'ancrage et portait le scénario de démarrage avant qu'il passe sur un
 disque de la galerie. Ce qu'il interpole, ce ne sont pas des « densités » en général mais les
 deux seules grandeurs que ces fiches publient sans ambiguïté :
@@ -104,40 +104,60 @@ quotient des deux. Une capacité sans rapport avec son époque — un 6,4 Go en
 1996 — n'étire pas la densité linéaire, qui est une propriété du canal de
 lecture : elle ajoute des plateaux, puis de la surface, et le modèle le dit.
 
-Trois contrôles tiennent l'ensemble, tous dans les tests : les huit disques du
+Trois contrôles tiennent l'ensemble, tous dans les tests : les neuf disques du
 catalogue sont retrouvés à partir de leur seule fiche, à 2 % sur la course ; la
 **lecture séquentielle** simulée au bord du plateau retombe à 10 % près sur le
-débit soutenu des trois manuels qui le publient — −6,5 % sur le 7200.7, +3,1 %
-sur le 7200.10, +5,7 % sur le 7200.11 —, alors que le débit n'entre dans aucun
-calcul ; et une fiche n'entre au catalogue qu'après
+débit soutenu des quatre manuels qui le publient — −6,5 % sur le 7200.7, +3,1 %
+sur le 7200.10, +5,7 % sur le 7200.11, −9,3 % sur le 7200.14 —, alors que le
+débit n'entre dans aucun calcul ; et une fiche n'entre au catalogue qu'après
 vérification croisée par ce même débit — c'est ce contrôle qui a fait écarter la
 géométrie « native » d'un Quantum Fireball ST 6.4AT, qui donnerait 6,5 Mo/s là
 où son fabricant en annonce 16.
 
-**Un disque nommé se prend tel quel** (`DriveCatalog.named`, chantier 27). Le
-**WD VelociRaptor WD1000DHTZ** de 2012 n'est pas « le disque de 2012 » : c'est un
-10 000 tr/min à plateaux de 2,5 pouces dans un radiateur de 3,5, et le prolonger
-depuis la courbe des 3,5 pouces en ferait un tout autre disque. Il reste donc
-hors des ancres et hors de `nearest(year:)`, et sa géométrie vient de sa fiche
-seule, pas de son année. Un profil le choisit par `"model"` dans sa section
-`disk` ; l'assistant, par son nom. Son année, 2012, décide alors de sa voix, et
-celle du scénario de tout le reste. Il est posé dans une machine de l'époque du
-scénario, branché sur le contrôleur SATA de celle-ci.
+**Le disque de 2012** est le **Barracuda 7200.14 ST1000DM003** : un plateau de
+1 To, deux têtes, 352 000 pistes par pouce, 64 Mo de tampon en SATA 6 Gb/s, et
+des têtes garées sur une rampe — son manuel compte des « Load/Unload cycles » là
+où celui du 7200.10 comptait des « Contact start-stop cycles ». C'est le seul
+manuel du catalogue à publier un **débit moyen** à côté du débit au bord : 156 et
+210 Mo/s. Sur une bande où les secteurs par piste décroissent linéairement, la
+moyenne vaut bord × (1 + rapport) / 2, d'où un rapport interne de 0,486, le seul
+point de `innerRatioByYear` qui vienne d'une fiche. Le modèle en tire 208,7 →
+101,4 Mo/s bruts, 1 % sous les 210 publiés : deux chiffres arrondis.
 
-| | fiche et mesures | le modèle, de la fiche | le modèle, prolongé depuis 2012 |
+**Un 10 000 tr/min n'est pas un 7 200 qui tourne plus vite.** Le **WD
+VelociRaptor** (`DriveCatalog.named`, chantiers 33 et 34) met des plateaux de 2,5 pouces
+dans un radiateur de 3,5, pour que l'air au bord n'aille pas plus vite que sur un
+7 200 tr/min. Ses deux fiches, le WD1000DHTZ (1 To, trois plateaux, six têtes) et
+le WD5000HHTZ (500 Go, deux plateaux, trois têtes), décrivent le disque entier ;
+un profil les nomme par `"model"` dans sa section `disk`. Un disque **déduit** à
+10 000 tr/min à partir de 2008 prend la même mécanique (`DriveCatalog.mechanics`) :
+des faces qui portent, par rapport à celles du disque de bureau de son année, ce
+que le WD1000DHTZ portait par rapport au 7200.14 — 44 % des pistes et un tiers
+des octets —, ses plateaux de 2,5 pouces, son piste-à-piste et sa rampe. En 2012
+il retrouve exactement la fiche ; en 2009, la même mécanique à la densité de 2009.
+Avant 2008, un 10 000 tr/min est un Raptor et reste sur la courbe des 3,5 pouces,
+faute d'une fiche qui dise la taille de ses plateaux.
+
+| | fiche et mesures | le modèle, de la fiche | un 10 000 tr/min prolongé de la courbe des 3,5 pouces |
 |---|---|---|---|
-| têtes | 6 (3 plateaux de 334 Go) | 6 | 3 |
-| pistes par face | — | 171 600 | 176 576 |
-| débit bord → moyeu | 209,1 → 114,7 Mo/s (Tom's Hardware) | 208,9 → 114,9 Mo/s | 414 → 215 Mo/s |
-| seek moyen / piste-à-piste | ≈ 3,8 ms / 0,7 ms | 3,80 / 0,70 ms, pleine course 6,85 ms | 8,5 / 1,0 ms |
-| tampon | 64 Mo, SATA 6 Gb/s | 64 Mo | 32 Mo (celui du 7200.11) |
-| repos | 30 dBA = 3,0 B | 2,67 B | 3,26 B |
-| parcage | rampe NoTouch | rampe : ni décollage ni atterrissage | contact |
+| têtes | 6 (3 plateaux de 334 Go) | 6 | 2 |
+| pistes par face | — | 171 600 | 387 200 |
+| débit bord → moyeu | 209,1 → 114,7 Mo/s (Tom's Hardware) | 208,9 → 114,9 Mo/s | 290 → 141 Mo/s |
+| seek moyen / piste-à-piste | ≈ 3,8 ms / 0,7 ms | 3,80 / 0,70 ms, pleine course 6,85 ms | celui qu'on lui donne / 1,0 ms |
+| tampon | 64 Mo, SATA 6 Gb/s | 64 Mo | 64 Mo (celui du 7200.14) |
+| repos | 30 dBA = 3,0 B | 2,67 B | 3,5 B sur trois plateaux, au régime seul |
+| parcage | rampe NoTouch | rampe : ni décollage ni atterrissage | rampe (celle du 7200.14) |
 
 Le manuel WD ne publie ni seek ni densité. Le seek moyen vient de l'accès en
 lecture mesuré par Tom's Hardware, 6,78 ms, moins 3,0 ms de latence. Le
 piste-à-piste vient de la fiche de 2008 du WD3000HLFS, la seule VelociRaptor qui
 le donne. Les pistes par face viennent du débit mesuré au bord et de la capacité.
+Le WD5000HHTZ prend la mécanique du WD1000DHTZ, que la fiche de 2012 décrit dans
+la même table.
+
+Un disque nommé garde son année, qui décide de sa voix ; celle du scénario décide
+du reste. Posé dans une machine plus ancienne (`DRIVE=VelociRaptor`), il se
+branche sur le contrôleur SATA de celle-ci.
 
 Ce que remplace ce modèle faisait tout porter à la densité linéaire, avec un seul
 exposant calé sur les deux disques ci-dessus : il donnait 640 cylindres à un
@@ -187,10 +207,14 @@ année :
 | Barracuda 7200.7, 2003 | 2 Mo | oui | oui | UDMA 5 : 100 Mo/s | UDMA/100 |
 | Barracuda 7200.10, 2006 | 16 Mo | oui | oui | UDMA 5 : 100 Mo/s | UDMA/100 |
 | Barracuda 7200.11, 2008 | 32 Mo | oui | oui | SATA : 300 Mo/s | — |
-| VelociRaptor WD1000DHTZ, 2012 ¹ | 64 Mo | oui | oui | SATA : 600 Mo/s | SATA de l'époque du scénario : 150 Mo/s avant 2006, 300 avant 2011, 600 ensuite |
+| Barracuda 7200.14, 2012 | 64 Mo | oui ¹ | oui ¹ | SATA : 600 Mo/s | SATA 6 Gb/s : 600 Mo/s |
+| VelociRaptor WD1000DHTZ et WD5000HHTZ, 2012 ² | 64 Mo | oui | oui | SATA : 600 Mo/s | SATA de l'époque du scénario : 150 Mo/s avant 2006, 300 avant 2011, 600 ensuite |
 
-¹ Disque nommé : il n'est le disque d'aucune année, et ne sert que les profils qui
-le nomment. Un disque SATA impose un contrôleur SATA, quelle que soit la machine.
+¹ Le manuel du 7200.14 ne dit rien de l'état du cache à la mise sous tension : c'est
+celui des manuels Seagate précédents.
+² Disques nommés : ils ne servent que les profils qui les nomment. Un disque SATA
+impose un contrôleur SATA, quelle que soit la machine. Aucun bus de 2012 n'est
+mesuré : ce sont les débits de la norme.
 
 - **la lecture anticipée** : après une lecture, la tête continue de lire, une
   piste d'avance — ce que tient le cache du Fireball. Une requête qui tombe
@@ -294,8 +318,8 @@ le décollement est un claquement unique, plus grave qu'un seek (tout
 l'équipage bouge, sans profil de courant pour l'adoucir), suivi d'un bref
 frottement ; l'atterrissage, quatre contacts de plus en plus faibles et
 rapprochés — un rebond qui s'amortit — puis un frottement qui s'éteint. Un
-disque à rampe (le VelociRaptor) n'a ni l'un ni l'autre : ses têtes ne touchent
-jamais le plateau. Le clic du chargement sur la rampe n'a pas de voix, faute de
+disque à rampe — le 7200.14, le VelociRaptor, tout disque de 2012 — n'a ni l'un
+ni l'autre : ses têtes ne touchent jamais le plateau. Le clic du chargement sur la rampe n'a pas de voix, faute de
 source.
 
 **Plateau** — `SpindleCharacter` et `SpindleVoice`. Du bruit filtré, et trois
@@ -310,7 +334,9 @@ grandeurs pour le former, prises aux manuels :
 | Barracuda 7200.7, 2003 | 7 200 | 1 | fluide | < 2,2 B | 2,15 B |
 | Barracuda 7200.10, 2006 | 7 200 | 2 | fluide | 2,8 B | 2,55 B |
 | Barracuda 7200.11, 2008 | 7 200 | 4 | fluide | 2,9 B | 2,95 B |
+| Barracuda 7200.14, 2012 | 7 200 | 1 | fluide | 2,2 B | 2,15 B |
 | VelociRaptor WD1000DHTZ, 2012 | 10 000, plateaux de 2,5" | 3 | fluide | 30 dBA = 3,0 B | 2,67 B |
+| VelociRaptor WD5000HHTZ, 2012 | 10 000, plateaux de 2,5" | 2 | fluide | — | 2,43 B |
 
 - le **souffle** d'air autour des plateaux est un bruit de sillage : ses trois
   bandes (185, 520, 1 450 Hz à 7 200 tr/min) glissent avec le régime, l'aigu y
@@ -477,7 +503,7 @@ MFT qui cède ne laisse donc pas croire que la MFT est un trou.
 
 L'onglet **Disques** de l'application : les deux démos, prêtes à écouter et
 posées sur deux disques de la galerie qu'elles nomment, puis une galerie de
-volumes vieillis, cinq époques et quatre profils
+volumes vieillis, six époques et quatre profils
 chacune, en cartes qu'on filtre par année et par profil. Un disque se génère
 sur l'appareil quand on ouvre sa fiche, pas avant : la galerie ne connaît sa
 fragmentation qu'une fois qu'il a été fabriqué. Les trois autres onglets sont la
@@ -514,6 +540,13 @@ fabriqué (`ProfileSpec.issues`) : ce qui arrêterait le générateur bloque, ce
 est anachronique avertit. Les disques construits sont gardés dans « Mes
 disques » — leur histoire seulement, en JSON : le volume se refait à l'identique
 depuis la graine.
+
+Le matériel va de 1990 à 2012, de 20 Mo à 2 To, de 3 600 à 10 000 tr/min, et le
+seek descend à 3 ms. Choisir 10 000 tr/min pose le seek du VelociRaptor, et à
+partir de 2008 ses plateaux de 2,5 pouces ; on peut aussi **partir d'une fiche**
+— les deux VelociRaptor —, que le premier réglage touché quitte : le disque
+redevient alors déduit, et à 10 000 tr/min en 2012 il retombe sur la même
+mécanique.
 
 **Son, fond et accessibilité.** Le mixage se règle par préréglages — Casque,
 Haut-parleur, Vibrations seules — et survit à l'app (`SoundMix`). Une passe
@@ -608,6 +641,16 @@ deux à seize morceaux qu'un NTFS plein de trois ans porte (de 0,5 à 5,5 % des
 fichiers fragmentables sur `dev-2007`). `$Bitmap`, enfin, a sa place derrière la
 zone MFT, là où `mkntfs` la pose et où le simulateur va la réécrire.
 
+**2012, la sixième époque.** Windows 7 SP1 en 64 bits — les applications 32 bits
+dans `\Program Files (x86)`, le magasin de pilotes, 128 traces de préchargement
+au plus, `pagefile.sys` et `hiberfil.sys` taillés sur 4 Go de mémoire —, Office
+2010 et sa source gardée dans `\MSOCache`, Visual Studio 2010, Battlefield 3 et
+ses `cas` d'un gigaoctet, Skyrim et ses `bsa`, iTunes 10 ; une carte SD à
+25 Mo/s et l'ADSL2+ à 2 Mo/s. Le joueur et le développeur ont un **VelociRaptor
+WD5000HHTZ** de 500 Go à 10 000 tr/min, la famille un 7200.14 de 1 To, la
+secrétaire un 500 Go de la même année. Un jeu installé pèse cinq à quinze
+gigaoctets au lieu d'un, et ce qu'on entasse est un film de 700 Mo.
+
 **Ce qui se mesure.** Le slack de 1996 est là où on l'attend : sur une
 population de documents Word, des clusters de 32 Ko perdent 31 % du volume
 contre 2 % en FAT32 — un tiers de disque en plus pour le même contenu. Un
@@ -630,9 +673,10 @@ peu sur NTFS. L'entrelacement de plusieurs programmes, essayé, portait
 437 802 morceaux ; il supposait tous les programmes d'une journée actifs
 ensemble et au même débit, et n'est pas retenu.
 
-**Coût.** Le volume le plus lourd — un Vista de 250 Go, trois ans d'historique,
-2,7 millions d'événements — se génère en 1,6 s en release, dont 0,4 s pour les
-noms uniques. Les deux disques des démos, fabriqués au lancement, prennent 50
+**Coût.** Le plus lourd des volumes de 2007 — un Vista de 250 Go, trois ans
+d'historique, 2,7 millions d'événements — se génère en 1,7 s en release, dont
+0,4 s pour les noms uniques ; les plus lourds de 2012, un Windows 7 de 500 Go et
+un de 1 To, en 2,1 et 2,2 s. Les deux disques des démos, fabriqués au lancement, prennent 50
 et 32 ms. L'écriture par paquets coûte surtout sur les NTFS pleins, où chaque
 paquet de 64 Ko cherche son trou : `famille-2003` en prend 2,1 s, trois fois et
 demie ce qu'il coûtait quand chaque fichier naissait d'un seul tenant, et moins
@@ -661,7 +705,7 @@ leur a donnés. Où va la tête est alors un résidu de l'histoire du volume,
 comme la fragmentation en est un.
 
 Rien n'est refusé ici : lire des fichiers ne suppose aucune stratégie de
-rangement, donc **les vingt profils démarrent** — et il n'a même pas fallu, pour
+rangement, donc **les vingt-quatre profils démarrent** — et il n'a même pas fallu, pour
 cela, écrire un chargeur par format. Là où la défragmentation a demandé deux
 outils parce que le format datait l'outil, un démarrage n'en demande aucun : il
 ouvre des fichiers.
@@ -672,7 +716,7 @@ relocalise, initialise, et le disque attend. Ce temps de calcul est le
 **plancher** d'un démarrage — deux constantes par époque, calées sur des cibles
 qui **ne sont pas des mesures d'époque** : les durées que le modèle donnait
 avant la relecture de ses experts — et tout ce qui dépasse ce plancher est du
-disque. Sur les vingt profils il pèse entre 30 et 72 % du total, et les vingt
+disque. Sur les vingt-quatre profils il pèse entre 30 et 72 % du total, et les vingt-quatre
 démarrages tiennent entre 29,0 et 67,9 s.
 
 Ces constantes vivent dans une seule table (`ThinkModel.boot`), et seul le coût
@@ -688,6 +732,14 @@ reste injustifié — un Vista à peine plus rapide qu'un XP sur des processeurs
 trois ou quatre fois plus rapides — et c'est aux cibles de le dire : seules des
 mesures d'époque le trancheraient.
 
+**Windows 7 n'a pas de cible.** Le modèle d'avant la relecture ne connaissait
+pas 2012 : ses deux constantes sont celles de Vista divisées par 1,5 — un
+processeur de 2012 exécute un fil à peu près deux fois plus vite qu'un Core 2 de
+2007, et Windows 7 en fait un peu plus au démarrage. **Une hypothèse**, que rien
+ne recoupe ; `fit-think.py` n'a rien à y ajuster. Pour le reste, Windows 7 est
+un Vista : dates d'accès éteintes, préchargement par position (ReadyBoot), un
+peu plus de pilotes et de services.
+
 | | système | fichiers | lu | durée | dont calcul | témoin |
 |---|---|---|---|---|---|---|
 | `gamer-1993` | MS-DOS 6.22 et Windows 3.1 | 95 | 9 Mo | 29,6 s | 30 % | +1 % |
@@ -698,6 +750,7 @@ mesures d'époque le trancheraient.
 | `gamer-2003` | Windows XP | 912 | 226 Mo | 67,9 s | 72 % | −0 % |
 | `dev-2003` | Windows XP | 386 | 172 Mo | 50,1 s | 69 % | −2 % |
 | `famille-2007` | Windows Vista | 517 | 115 Mo | 38,8 s | 54 % | +3 % |
+| `gamer-2012` | Windows 7 | 600 | 275 Mo | 44,0 s | 68 % | +2 % |
 
 **Le témoin** est la colonne qui compte. C'est le même contenu posé comme au
 premier jour — mêmes fichiers, mêmes tailles, chacun d'un seul tenant, tassé
@@ -716,8 +769,8 @@ demande** et **l'étalement** de ce qu'il faut lire. Windows a fini par en tirer
 la même conclusion : défragmenter n'accélérait pas le démarrage, et c'est un
 rangement à part — `layout.ini` — qui s'en chargeait.
 
-**Sur NTFS, le témoin ne gagne pas toujours.** Sur les huit volumes, l'écart va
-de −2 % (`dev-2003`) à +4 %, et trois volumes démarrent aussi vite ou plus vite
+**Sur NTFS, le témoin ne gagne pas toujours.** Sur les douze volumes, l'écart va
+de −2 % (`dev-2003`) à +6 %, et quatre volumes démarrent aussi vite ou plus vite
 que leur témoin. NTFS choisit le trou qui
 convient plutôt que le premier venu, et sa disposition réelle peut battre un
 rangement naïf qui empile tout dans l'ordre du répertoire. Le témoin garde donc
@@ -793,8 +846,8 @@ décrit par logiciel (`SetupStyle`) :
   posé jusque-là.
 
 Les attentes humaines (détection du matériel, questions, clic sur
-« Redémarrer ») sont raccourcies à quelques secondes. Les vingt installations
-durent de 7 à 19 minutes : sur disquettes, la source fait plus des trois quarts
+« Redémarrer ») sont raccourcies à quelques secondes. Les vingt-quatre installations
+durent de 7 à 25 minutes : sur disquettes, la source fait plus des trois quarts
 de l'attente ; sur CD et DVD, ce sont la décompression et les pauses.
 
 | | source | posé | archives | redémarrages | durée |
@@ -804,6 +857,7 @@ de l'attente ; sur CD et DVD, ce sont la décompression et les pauses.
 | `famille-1999` | CD-ROM 32x | 2 412 fichiers, 574 Mo | 77 | 5 | 8 min 09 |
 | `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 7 min 43 |
 | `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 18 min 54 |
+| `gamer-2012` | DVD 16x | 16 092 fichiers, 29,1 Go | 46 | 2 | 25 min 12 |
 
 ### Revivre un disque généré
 
@@ -861,7 +915,7 @@ piste-à-piste. C'est leur rapport qui distingue une époque d'une autre : entre
 Un 210 Mo à 3 600 tr/min de 1993 ne sonne pas comme un 1 Go à 5 400 tr/min de
 1996, et n'en est pas loin de sonner comme un 40 Go de 2003.
 
-**Les vingt scénarios y ont droit.** Ni la taille ni le format ne limitent plus
+**Les vingt-quatre scénarios y ont droit.** Ni la taille ni le format ne limitent plus
 rien : le planificateur travaille en extents, et un volume de 320 Go ne lui
 coûte pas plus cher qu'un de 180 Mo. Ce qui change avec le format, c'est
 l'**outil** — parce que c'est lui que le format datait.
@@ -913,6 +967,10 @@ passe de XP sur le même volume tient en **203 573 requêtes et 20 min 52**.
 | `famille-2007`    |  93 % |  203 573 |  20 min 52 |     2433 | 2 576 → 143              | 147 376 → 54 360       |
 | `gamer-2007`      |  90 % |  105 391 |  25 min 55 |     1566 | 1 692 → 126              | 59 735 → 17 832        |
 | `dev-2007`        |  86 % |  173 411 |  44 min 12 |     1412 | 1 412 → **0**            | 71 203 → **0**         |
+| `secretaire-2012` |  93 % |   18 132 |   2 min 35 |      500 | 536 → 36                 | 12 627 → 5 776         |
+| `famille-2012`    |  91 % |  269 941 |  36 min 04 |     3493 | 3 764 → 271              | 155 743 → 53 577       |
+| `gamer-2012`      |  92 % |  105 294 |   7 min 43 |     3323 | 3 524 → 201              | 93 082 → 47 332        |
+| `dev-2012`        |  85 % |  199 274 |  38 min 35 |      328 | 329 → 1                  | 69 042 → 2             |
 
 La colonne qui compte est la dernière : cet outil-là ne déloge personne, donc
 il échoue quand aucun trou n'est à la taille, et il le dit dans son rapport.
@@ -963,6 +1021,10 @@ sujet : un fichier ramené de quarante morceaux à deux y reste « fragmenté »
 | `famille-2007`    |                54 360 |       1 087 | 203 573 → 303 289 | 20 min 52 → 31 min 13 |
 | `gamer-2007`      |                17 832 |         356 | 105 391 → 127 075 | 25 min 55 → 37 min 18 |
 | `dev-2007`        |                     0 |          33 | 173 411 → 156 706 | 44 min 12 → 37 min 42 |
+| `secretaire-2012` |                 5 776 |           4 |   18 132 → 32 178 | 2 min 35 → 12 min 36 |
+| `famille-2012`    |                53 577 |       1 329 | 269 941 → 330 996 | 36 min 04 → 37 min 39 |
+| `gamer-2012`      |                47 332 |         520 | 105 294 → 200 553 | 7 min 43 → 23 min 59 |
+| `dev-2012`        |                     2 |           4 | 199 274 → 152 306 | 38 min 35 → 30 min 45 |
 
 Sur `famille-2007`, les 54 360 morceaux que XP laisse derrière lui tombent à
 **1 087** — 98 % de moins — pendant que le nombre de fichiers fragmentés, lui,
@@ -1179,9 +1241,9 @@ remplissage.
 
 #### Recoller peu, sur les gros volumes
 
-Sur les volumes NTFS de 2003 et 2007, la place ne manque plus — 2 à 33 Go
+Sur les volumes NTFS de 2003 à 2012, la place ne manque plus — 2 à 88 Go
 libres — mais la taille : le tassage à la frontière y déplace tout le contenu
-du volume, jusqu'à 389 Go et 4 h 36 de passe. Et la fragmentation y est
+du volume, jusqu'à 1 015 Go et 4 h 23 de passe. Et la fragmentation y est
 faite de miettes : sur `famille-2007`, 2 576 fichiers cassés en 147 376 morceaux.
 Chacun coûte une lecture : c'est leur nombre, pas leur poids, qui fait la durée.
 
@@ -1212,17 +1274,21 @@ bras par morceau. La zone MFT n'est jamais une destination.
 | `famille-2007` | 93 % | 20 min 52 / 31 min 13 / 1 h 02 / **20 min 19** | 54 360 / 1 087 / 805 / **1 321** | 35 478 / 7 271 / 618 / **296** |
 | `gamer-2007` | 90 % | 25 min 55 / 37 min 18 / 1 h 02 / **19 min 07** | 17 832 / 356 / 517 / **1 502** | 13 016 / 7 763 / 882 / **673** |
 | `secretaire-2007` | 88 % | 19 min 06 / 18 min 46 / 39 min 39 / **2 min 35** | 0 / 0 / 0 / **162** | 3 387 / 3 281 / 193 / **1 107** |
+| `dev-2012` | 85 % | 38 min 35 / 30 min 45 / 57 min 40 / **4 min 44** | 2 / 4 / 0 / **932** | 7 642 / 7 600 / 262 / **376** |
+| `famille-2012` | 91 % | 36 min 04 / 37 min 39 / 1 h 12 / **16 min 40** | 53 577 / 1 329 / 1 028 / **2 110** | 38 034 / 10 227 / 845 / **164** |
+| `gamer-2012` | 92 % | 7 min 43 / 23 min 59 / 18 min 17 / **14 min 02** | 47 332 / 520 / 2 070 / **1 574** | 20 439 / 11 384 / 1 515 / **385** |
+| `secretaire-2012` | 93 % | 2 min 35 / 12 min 36 / 2 min 54 / **1 min 55** | 5 776 / 4 / 317 / **136** | 6 658 / 4 329 / 2 767 / **1 743** |
 
-Sur les huit volumes, la passe dure 1 h 29, contre 1 h 58 pour XP, 2 h 18 pour
-UltraDefrag et 4 h 35 pour JkDefrag, et laisse moins de morceaux (8 411) et
-moins de trous (3 451) que chacun d'eux. Sa durée tient à deux choses qui se
+Sur les douze volumes, la passe dure 2 h 06, contre 3 h 23 pour XP, 4 h 03 pour
+UltraDefrag et 7 h 07 pour JkDefrag, et laisse moins de morceaux (13 163) et
+moins de trous (6 119) que chacun d'eux. Sa durée tient à deux choses qui se
 compensent. Le cache d'écriture du disque pose les destinations de XP,
-contiguës, par salves de 2,3 à 14,0 écritures selon le volume, quand celles du
-recollage sont éparses, 1,2 par vidage. Mais les volumes de 2007 portent les
+contiguës, par salves de 2,3 à 17,5 écritures selon le volume, quand celles du
+recollage sont éparses, 1,3 par vidage. Mais les volumes de 2007 et 2012 portent les
 fichiers en quelques morceaux que leur donne un NTFS qui étend un fichier près
 de lui (`NTFSAllocator`), et XP les recopie en entier, quand le recollage ne
 déplace que les morceaux. Les blocs pleins ne comptent presque plus : donnés à
-XP et à UltraDefrag (`FULL_BLOCKS=1`), ils les mènent à 1 h 55 et 2 h 16, sans
+XP et à UltraDefrag (`FULL_BLOCKS=1`), ils les mènent à 3 h 19 et 4 h 00, sans
 changer ce qu'ils laissent — à un fichier près, les points de contrôle ne
 tombant plus aux mêmes déplacements. Ce que la passe
 apporte en propre, c'est la qualité à durée voisine. Elle ne recopie jamais un fichier
@@ -1257,6 +1323,9 @@ de l'espace libre suivent le bloc de démarrage, parce que les fenêtres de la f
 du volume ne leur garderaient pas de place ; une zone MFT que les fichiers
 occupent déjà à plus de moitié n'est plus respectée, parce qu'elle ne réserve
 plus rien.
+
+La table porte sur les vingt disques de 1993 à 2007 : ceux de 2012 n'ont pas
+encore été rangés (`smart.sh` les connaît, la mesure reste à faire).
 
 | scénario | plein | démarrage : livré / meilleur outil / **intelligent** | morceaux restants : meilleur outil / **intelligent** | trous libres : meilleur outil / **intelligent** | passe |
 |---|---:|---:|---:|---:|---:|
@@ -1297,7 +1366,7 @@ frontière seule en laisse 18 et le rangement 24.
 Le prix est la passe. Sur FAT, elle dure 4 h 42 pour les douze volumes, contre
 4 h 13 au tassage à la frontière et 4 h 16 à Windows 95. Sur NTFS, c'est un
 tassage complet : 1,3 To déplacés et 15 h 43 pour les huit volumes, jusqu'à
-3 h 50 sur `famille-2007`, quand le recollage économe s'en tient à 1 h 29.
+3 h 50 sur `famille-2007`, quand le recollage économe s'en tient à 2 h 06.
 
 Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
 démarrage :
@@ -1516,16 +1585,16 @@ par étape, le jeu complet des bilans, les comparaisons — sous
 
 ```sh
 ./Tools/Measure/snapshot.sh base              # avant de toucher au code
-./Tools/Measure/run.sh base full              # 340 bilans, ~5 à 7 min
+./Tools/Measure/run.sh base full              # 412 bilans, ~7 à 9 min
 # … une correction …
 ./Tools/Measure/snapshot.sh m1 && ./Tools/Measure/run.sh m1 boots   # 3 s
-./Tools/Measure/boots.py base m1              # les vingt démarrages et leur cible
+./Tools/Measure/boots.py base m1              # les démarrages et leur cible
 ./Tools/Measure/boots.py --steps base m1 m2   # l'effet de chaque étape
 ./Tools/Measure/compare.py base m1 defrag- --identical   # ce qui n'a pas bougé
 ./Tools/Measure/fit-think.py m1               # quelle constante de ThinkModel
 ./Tools/Measure/readme-tables.py m1 --check   # le README contre les bilans
 ./Tools/Measure/readme-tables.py m1 --write   # tables et prose, réécrites
-./Tools/Measure/run.sh m1 disks               # les vingt volumes, un à la fois
+./Tools/Measure/run.sh m1 disks               # les vingt-quatre volumes, un à la fois
 ./Tools/Measure/extents.py base m1            # morceaux par fichier, répertoires, coût
 ./Tools/Measure/smart.sh m1                   # chaque disque démarré après chaque outil
 ./Tools/Measure/smart.py base m1              # démarrage rangé, morceaux, trous
@@ -1597,10 +1666,11 @@ vidéo déjà présente n'est pas refaite.
 Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swift 6
     DriveGeometry.swift    géométrie zonée, LBA→CHS ; déduction d'un disque
                            quelconque à partir de sa fiche et de son année
-    DriveCatalog.swift     huit disques réellement vendus, 1993 → 2008, avec
+    DriveCatalog.swift     neuf disques réellement vendus, 1993 → 2012, avec
                            leurs sources ; densités interpolées dans le temps ;
                            le tampon de chacun et sa politique par défaut ;
-                           les disques nommés, hors époque (le VelociRaptor)
+                           les VelociRaptor, et la mécanique qu'ils donnent à
+                           un 10 000 tr/min d'après 2008
     SeekModel.swift        loi de durée, découpage en quatre phases, calage
                            sur le seek moyen et le piste-à-piste d'une fiche ;
                            le settle plus long d'une écriture
@@ -1631,7 +1701,7 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     ScenarioLibrary.swift  chargement des scénarios embarqués
     DiskGenerator.swift    point d'entrée : une description, un disque ; ou
                            son premier jour, rejoué pas à pas
-    Resources/scenarios/   vingt scénarios : cinq époques, quatre profils
+    Resources/scenarios/   vingt-quatre scénarios : six époques, quatre profils
 Sources/Model/
     Workload.swift         requête bloc, et datation des phases après coup
     BootSession.swift      démarrage décrit en fichiers : ce que chaque époque

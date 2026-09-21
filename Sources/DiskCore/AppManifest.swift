@@ -337,5 +337,87 @@ public enum AppLibrary {
             .init(directory: "\\Program Files\\iTunes", extension_: "exe", category: .application,
                   fileCount: 4, medianBytes: 9_000_000, sigma: 0.4),
         ], sharedLibraries: commonRuntime),
+
+        // MARK: 2012 — Windows 7
+        //
+        // Un Windows 7 de 2012 est en 64 bits : les applications 32 bits vont
+        // dans `\Program Files (x86)`, le système garde `System32` pour lui.
+
+        AppManifest(id: "win7", displayName: "Windows 7 SP1", groups: [
+            .init(directory: "\\Windows\\System32", extension_: "dll", category: .systemCore,
+                  fileCount: 3_000, medianBytes: 200_000, sigma: 1.6),
+            .init(directory: "\\Windows\\System32\\drivers", extension_: "sys", category: .systemCore,
+                  fileCount: 400, medianBytes: 60_000, sigma: 1.2),
+            .init(directory: "\\Windows\\winsxs", extension_: "dll", category: .systemCore,
+                  fileCount: 9_000, medianBytes: 100_000, sigma: 1.5),
+            // Le magasin de pilotes : chaque pilote livré avec le système,
+            // qu'un périphérique le demande ou non.
+            .init(directory: "\\Windows\\System32\\DriverStore\\FileRepository", extension_: "sys",
+                  category: .systemCore, fileCount: 2_000, medianBytes: 50_000, sigma: 1.4),
+            .init(directory: "\\Windows\\Fonts", extension_: "ttf", category: .archive,
+                  fileCount: 250, medianBytes: 250_000, sigma: 0.9),
+            // Windows 7 garde au plus 128 traces de préchargement.
+            .init(directory: "\\Windows\\Prefetch", extension_: "pf", category: .cache,
+                  fileCount: 128, medianBytes: 40_000, sigma: 0.8,
+                  pattern: .writeTempThenRename),
+        ], sharedLibraries: commonRuntime),
+
+        AppManifest(id: "office2010", displayName: "Office 2010", groups: [
+            .init(directory: "\\Program Files (x86)\\Microsoft Office\\Office14", extension_: "exe",
+                  category: .application, fileCount: 12, medianBytes: 16_000_000, sigma: 0.5),
+            .init(directory: "\\Program Files (x86)\\Microsoft Office\\Office14", extension_: "dll",
+                  category: .application, fileCount: 350, medianBytes: 650_000, sigma: 1.3),
+            // La source d'installation gardée sur le disque, pour réparer ou
+            // ajouter une fonction sans le DVD.
+            .init(directory: "\\MSOCache\\All Users", extension_: "cab", category: .archive,
+                  fileCount: 20, medianBytes: 30_000_000, sigma: 0.8),
+        ], sharedLibraries: commonRuntime),
+
+        AppManifest(id: "vs2010", displayName: "Visual Studio 2010", groups: [
+            .init(directory: "\\Program Files (x86)\\Microsoft Visual Studio 10.0\\Common7\\IDE",
+                  extension_: "dll", category: .application,
+                  fileCount: 900, medianBytes: 500_000, sigma: 1.4),
+            .init(directory: "\\Program Files (x86)\\Microsoft Visual Studio 10.0\\VC\\include",
+                  extension_: "h", category: .source,
+                  fileCount: 1_500, medianBytes: 12_000, sigma: 1.1),
+            .init(directory: "\\Program Files (x86)\\Microsoft Visual Studio 10.0\\VC\\lib",
+                  extension_: "lib", category: .application,
+                  fileCount: 250, medianBytes: 1_500_000, sigma: 1.3),
+            .init(directory: "\\Program Files (x86)\\Microsoft SDKs\\Windows\\v7.0A\\Include",
+                  extension_: "h", category: .source,
+                  fileCount: 1_800, medianBytes: 15_000, sigma: 1.2),
+        ], sharedLibraries: commonRuntime),
+
+        // Les archives de Bethesda : une douzaine de `.bsa`, de quelques
+        // dizaines de mégaoctets à plus d'un gigaoctet pour les textures.
+        AppManifest(id: "skyrim", displayName: "The Elder Scrolls V: Skyrim", groups: [
+            .init(directory: "\\Program Files (x86)\\Steam\\steamapps\\common\\skyrim\\Data",
+                  extension_: "bsa", category: .gameAsset,
+                  fileCount: 12, medianBytes: 250_000_000, sigma: 1.2),
+            .init(directory: "\\Program Files (x86)\\Steam\\steamapps\\common\\skyrim",
+                  extension_: "dll", category: .application,
+                  fileCount: 30, medianBytes: 900_000, sigma: 1.0),
+        ]),
+
+        // Frostbite 2 range ses données dans des `cas_NN.cas` qui plafonnent à
+        // un gigaoctet, et les indexe par milliers de petits fichiers.
+        AppManifest(id: "bf3", displayName: "Battlefield 3", groups: [
+            .init(directory: "\\Program Files (x86)\\Origin Games\\Battlefield 3\\Data",
+                  extension_: "cas", category: .gameAsset,
+                  fileCount: 18, medianBytes: 1_000_000_000, sigma: 0.1),
+            .init(directory: "\\Program Files (x86)\\Origin Games\\Battlefield 3\\Data\\Win32",
+                  extension_: "sb", category: .gameAsset,
+                  fileCount: 1_200, medianBytes: 300_000, sigma: 1.5),
+            .init(directory: "\\Program Files (x86)\\Origin Games\\Battlefield 3",
+                  extension_: "dll", category: .application,
+                  fileCount: 40, medianBytes: 1_200_000, sigma: 1.0),
+        ]),
+
+        AppManifest(id: "itunes10", displayName: "iTunes 10", groups: [
+            .init(directory: "\\Program Files (x86)\\iTunes", extension_: "dll", category: .application,
+                  fileCount: 80, medianBytes: 900_000, sigma: 1.1),
+            .init(directory: "\\Program Files (x86)\\iTunes", extension_: "exe", category: .application,
+                  fileCount: 4, medianBytes: 12_000_000, sigma: 0.4),
+        ], sharedLibraries: commonRuntime),
     ]
 }

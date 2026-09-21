@@ -89,9 +89,14 @@ struct DayScript: Sendable {
         case 2001...2005:
             return DayScript(mediaBytesPerSecond: 2_000_000, networkBytesPerSecond: 128_000,
                              gameLoadBytes: 200_000_000, maximumPause: 8, userPause: 0.8)
-        default:
+        case 2006...2009:
             return DayScript(mediaBytesPerSecond: 10_000_000, networkBytesPerSecond: 1_000_000,
                              gameLoadBytes: 500_000_000, maximumPause: 8, userPause: 0.6)
+        default:
+            // Une carte SD derrière un lecteur USB 2.0, l'ADSL2+ à 16 Mbit/s,
+            // et des niveaux de jeu qui pèsent le gigaoctet.
+            return DayScript(mediaBytesPerSecond: 25_000_000, networkBytesPerSecond: 2_000_000,
+                             gameLoadBytes: 1_200_000_000, maximumPause: 8, userPause: 0.5)
         }
     }
 }
