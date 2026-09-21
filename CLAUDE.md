@@ -258,6 +258,29 @@ Sans lui, Apple renvoie ITMS-91053 à chaque envoi. Le relire dès qu'une autre
 API de cette liste entre dans le code (dates de fichier, temps écoulé depuis le
 démarrage, espace disque libre).
 
+Le build 2 (1.0.0) est le premier build TestFlight, envoyé le 21 septembre
+2026. Le build 1 a été refusé à l'envoi (erreur 90474) : le multitâche de l'iPad
+exige les quatre orientations, d'où les deux clés
+`UISupportedInterfaceOrientations_iPhone` et `_iPad` de `project.yml`. Un envoi
+refusé consomme quand même son numéro : `asc builds next-build-number --app
+6814382619 --platform IOS` donne le suivant. Le groupe TestFlight **Internal**
+(`21d0297a-b842-4385-8ffd-54a2127412ff`) est interne et a accès à tous les
+builds : un build traité y arrive tout seul. Les notes « À tester » s'écrivent en
+`en-US` et en `fr-FR`.
+
+Archiver, exporter, envoyer (`generic/platform=iOS` ne démarre aucun simulateur,
+le hook le laisse passer) :
+
+```bash
+swift test
+xcodebuild -project Winchester.xcodeproj -scheme Winchester -configuration Release \
+  -destination 'generic/platform=iOS' -archivePath build/Winchester.xcarchive \
+  -derivedDataPath .build/DerivedData -allowProvisioningUpdates archive
+xcodebuild -exportArchive -archivePath build/Winchester.xcarchive \
+  -exportPath build/export -exportOptionsPlist ExportOptions.plist -allowProvisioningUpdates
+asc builds upload --app 6814382619 --ipa build/export/Winchester.ipa --wait
+```
+
 Ce qui manque encore avant une première soumission :
 
 - le site que citent les trois adresses de `metadata/` — elles pointent vers
