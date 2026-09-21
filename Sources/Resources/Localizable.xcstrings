@@ -6017,6 +6017,23 @@
         }
       }
     },
+    "life.rewind" : {
+      "comment" : "Bouton du défilement qui revient au premier jour, lu par VoiceOver",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to the first day"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revenir au premier jour"
+          }
+        }
+      }
+    },
     "life.scroll.pause" : {
       "localizations" : {
         "en" : {

@@ -196,6 +196,20 @@ struct DiskLifeScreen: View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
                 Button {
+                    life.rewind()
+                } label: {
+                    Image(systemName: "backward.end.fill")
+                        .font(.dynamic(size: 17))
+                        .foregroundStyle(Theme.text)
+                        .frame(width: 54, height: 54)
+                        .background(Circle().fill(Color.white.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("life.rewind")
+                .disabled(life.isAtStart)
+                .opacity(life.isAtStart ? 0.4 : 1)
+
+                Button {
                     life.isRunning ? life.pause() : life.resume()
                 } label: {
                     Image(systemName: life.isRunning ? "pause.fill" : "play.fill")
@@ -295,7 +309,9 @@ final class DiskLifeModel: ObservableObject {
     }
 
     let disk: GeneratedDisk
-    let life: DiskLife
+    /// Remplacée par une vie neuve au retour au premier jour : l'histoire ne
+    /// se rembobine pas, elle se rejoue — elle est déterministe.
+    private(set) var life: DiskLife
     var grid: MapGrid { life.grid }
 
     @Published private(set) var shades: [ClusterShade] = []
@@ -325,6 +341,8 @@ final class DiskLifeModel: ObservableObject {
     var dayCount: UInt32 { life.dayCount }
     var isFinished: Bool { life.isFinished }
     var nextDay: UInt32? { life.nextDay }
+    /// Rien n'a défilé depuis l'installation.
+    var isAtStart: Bool { life.digests.count <= 1 }
     var progress: Double { dayCount > 0 ? Double(day) / Double(dayCount) : 0 }
     var fillCurve: [Double] { life.curves.fill }
     var fragmentedCurve: [Int] { life.curves.fragmented }
@@ -346,6 +364,14 @@ final class DiskLifeModel: ObservableObject {
         isRunning = false
         timer?.invalidate()
         timer = nil
+    }
+
+    /// Revient au lendemain de l'installation, comme à l'ouverture.
+    func rewind() {
+        pause()
+        failure = nil
+        life = DiskLife(spec: disk.spec)
+        absorb(life.advance().last)
     }
 
     /// Fait défiler jusqu'à la prochaine journée qui vaut d'être écoutée.
