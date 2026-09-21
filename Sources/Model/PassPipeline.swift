@@ -264,10 +264,11 @@ final class PassPipeline {
     /// La rotation du plateau : des dates, connues avant toute requête.
     var spindle: SpindleTimeline { chain.mechanics.spindle }
 
-    /// Une requête sans conséquence sur la carte : un démarrage.
+    /// Une requête sans conséquence sur la carte : un démarrage. `cluster`
+    /// l'y allume pendant qu'elle se sert, sans rien y changer.
     @discardableResult
-    func serve(_ request: BlockRequest) -> RequestTiming {
-        let timing = chain.serve(request)
+    func serve(_ request: BlockRequest, cluster: Int? = nil) -> RequestTiming {
+        let timing = chain.serve(request, cluster: cluster)
         if chain.isDue { deliver(chain.flush()) }
         return timing
     }
@@ -341,8 +342,12 @@ private struct Chain {
         batchedRequests >= batchRequests || mechanics.clock - lastDelivery >= batchSeconds
     }
 
-    mutating func serve(_ request: BlockRequest) -> RequestTiming {
+    mutating func serve(_ request: BlockRequest, cluster: Int? = nil) -> RequestTiming {
         let timing = simulate(request)
+        if let cluster {
+            batch.activity.append(ClusterActivity(start: timing.start, end: timing.end,
+                                                  cluster: cluster, isWrite: request.isWrite))
+        }
         batchedRequests += 1
         return timing
     }

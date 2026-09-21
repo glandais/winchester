@@ -52,7 +52,8 @@ struct SimulatorScreen: View {
     /// Un plein écran le recouvre : la carte, ou le mode ambiance.
     private var isCovered: Bool { showsFullScreenMap || showsAmbient }
 
-    /// Une passe de démarrage n'a pas de carte : seul le plateau se montre.
+    /// Une passe sans carte — un volume que le pont refuse — ne montre que le
+    /// plateau.
     private var shownView: View_ { model.mapSource == nil ? .platter : view }
 
     var body: some View {
@@ -85,6 +86,8 @@ struct SimulatorScreen: View {
                             installCounters(install)
                         } else if let day = model.dayPlayback {
                             dayCounters(day)
+                        } else if let boot = model.boot {
+                            bootTiles(boot)
                         }
                     case .platter:
                         platterPanel
@@ -186,7 +189,7 @@ struct SimulatorScreen: View {
                 }
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 2) {
-                    if model.mapSource != nil {
+                    if showsProgress {
                         Text(Format.percent(model.defragProgress ?? 0))
                             .font(.dynamic(size: 24, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.read)
@@ -198,7 +201,7 @@ struct SimulatorScreen: View {
                         .monospacedDigit()
                 }
             }
-            if model.mapSource != nil {
+            if showsProgress {
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.08))
@@ -504,6 +507,10 @@ struct SimulatorScreen: View {
     /// iPad, la même borne en faisait un timbre-poste au milieu d'un panneau
     /// vide : il prend la largeur, jusqu'aux deux tiers de la hauteur visible
     /// pour que le cylindre reste lisible dessous sans défiler.
+    /// Un démarrage a une carte mais pas d'avancement : il ne sait pas
+    /// combien de fichiers il lui reste avant d'avoir fini.
+    private var showsProgress: Bool { model.mapSource != nil && model.boot == nil }
+
     private var platterHeight: CGFloat {
         guard sizeClass == .regular else { return 300 }
         return max(300, visibleHeight * 0.66)

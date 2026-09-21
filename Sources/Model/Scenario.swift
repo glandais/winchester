@@ -174,6 +174,11 @@ struct BootPlayback {
     /// Seeks du témoin, pour les mettre en regard de ceux qu'on écoute.
     let freshSeeks: Int
     let freshAverageSeek: Int
+    /// Le volume tel que le démarrage le trouve, pour la carte. Un démarrage ne
+    /// déplace rien : la carte ne change pas, seules les lectures s'y allument.
+    /// `nil` quand le volume ne se convertit pas en carte.
+    var partition: PartitionGeometry? = nil
+    var initialRuns: [MapRun]? = nil
 
     /// Ce que le disque a ajouté par-dessus le calcul, une fois la passe finie.
     func diskSeconds(duration: Double) -> Double {
@@ -253,6 +258,9 @@ struct Scenario {
         if let defrag { return (defrag.partition, defrag.initialRuns) }
         if let install { return (install.partition, install.initialRuns) }
         if let dayPlayback { return (dayPlayback.partition, dayPlayback.initialRuns) }
+        if let boot, let partition = boot.partition, let runs = boot.initialRuns {
+            return (partition, runs)
+        }
         return nil
     }
 
@@ -390,6 +398,11 @@ enum ScenarioBuilder {
                      defaultValue: "The boot is not described in fractions of the platter but in files: \(plan.filesRead) files of the catalogue are opened and read where the allocator left them. The system counts \(format(seconds: plan.thinkSeconds)) of computing between two reads; everything the pass lasts beyond that comes from the disk. The same contents, never fragmented, would boot in \(format(seconds: freshSeconds)).")
 
         let requests = plan.requests
+        // La carte est celle du volume, comme pour une journée : les fichiers
+        // où l'allocateur les a laissés. Un volume que le pont refuse garde
+        // le plateau seul.
+        let initialRuns = (try? GeneratedVolumeBridge.volume(from: disk))?.categoryRuns()
+        let partition = plan.partition
         return Scenario(
             kind: .windowsBoot,
             label: ScenarioLabel(title: rangedBy != nil
@@ -438,13 +451,20 @@ enum ScenarioBuilder {
                                fileSystem: disk.spec.fileSystem.type,
                                readsByPosition: BootScript.Era.matching(disk.spec).prefetch == .byPosition,
                                freshSeeks: freshTrace.stats.seekCount,
-                               freshAverageSeek: freshTrace.stats.averageSeekDistance),
+                               freshAverageSeek: freshTrace.stats.averageSeekDistance,
+                               partition: plan.partition,
+                               initialRuns: initialRuns),
             install: nil,
             dayPlayback: nil,
             feed: { pipeline, isCancelled in
                 for request in requests {
                     guard !isCancelled() else { break }
-                    pipeline.serve(request)
+                    // Le cluster que la lecture touche, pour l'allumer sur la
+                    // carte ; rien pour les tables, qui n'y figurent pas.
+                    let offset = request.lba - partition.dataStartLBA
+                    let cluster = offset / partition.clusterSectors
+                    pipeline.serve(request, cluster: offset >= 0 && cluster < partition.clusterCount
+                                   ? cluster : nil)
                 }
                 return nil
             }
