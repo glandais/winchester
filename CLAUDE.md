@@ -395,3 +395,8 @@ L'App Store joue la vidéo **sans le son** : le premier plan doit tenir seul, et
 l'affiche se choisit à 2 s, titre posé. Les médias d'une version se figent
 quand elle part en revue : une vidéo pour la 1.0.0 s'envoie avant de soumettre,
 sinon elle attend la version suivante.
+
+Les quatre vidéos sont envoyées depuis le 21 septembre 2026, affiche à 2 s
+(Apple la pose d'office à 5 s, titre déjà parti), et `asc validate` ne remonte
+aucune erreur. Pour les renvoyer : `--replace --confirm` au lieu de
+`--skip-existing`, puis reposer l'affiche.

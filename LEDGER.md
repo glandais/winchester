@@ -6485,11 +6485,11 @@ ce qu'on touche.
 - `previews.sh` vérifie chaque fichier par `ffprobe` : définition, H.264,
   30 i/s constants, 15 à 30 s, une piste AAC stéréo.
 - `i18n.py import` puis `check` : aller-retour exact à l'octet.
+- Envoyées le 21 septembre 2026 sur la 1.0.0 (quatre jeux, traitement
+  `COMPLETE`), affiche reposée à 2 s ; `asc validate` : aucune erreur.
 
 ### Laissé ouvert
 
-- **L'envoi** : rien n'est sur App Store Connect. La 1.0.0 fige ses médias en
-  partant en revue.
 - **L'écoute** : la synchro est mesurée, pas encore écoutée sur un iPhone.
 - `i18n.py export` ne reproduit pas `i18n/translations.json` tel qu'il est sur
   `develop` : les douze traductions françaises de la table `Koubou` y sont des
