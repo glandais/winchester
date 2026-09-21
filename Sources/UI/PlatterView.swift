@@ -40,6 +40,13 @@ struct PlatterView: View {
     private static let armLength = 0.95
     private static let pivotAngle = -0.95
 
+    /// Angle au-delà duquel un segment de traînée se voit comme une corde :
+    /// trois degrés, invisibles même sur le grand plateau de l'iPad.
+    private static let arcStep = 3 * Double.pi / 180
+    /// Borne des segments d'un seul accès, pour qu'un transfert pathologique ne
+    /// coûte pas une image : soixante-quatre fois trois degrés, plus d'un demi-tour.
+    private static let maxTrailSteps = 64
+
     var body: some View {
         Canvas { context, size in
             let side = min(size.width, size.height)
@@ -139,17 +146,24 @@ struct PlatterView: View {
 
             let color = (sample.isWrite ? Theme.write : Theme.read).opacity(opacity)
 
-            guard sample.endCylinder != sample.cylinder else {
+            // Un transfert est un arc : le plateau tourne sous la tête pendant
+            // qu'elle lit, et descend d'une piste tous les `heads × spt`
+            // secteurs s'il change de cylindre — une spirale. Le pas se règle
+            // sur l'angle parcouru autant que sur les cylindres franchis : un
+            // long transfert sur une ou deux pistes, tracé point par cylindre,
+            // devenait une corde au lieu d'un arc.
+            let cylinders = abs(Int(sample.endCylinder - sample.cylinder))
+            let sweep = abs(drift(since: sample.time)
+                            - drift(since: sample.time + Double(sample.duration)))
+            let arcSteps = Int((sweep / Self.arcStep).rounded(.up))
+            let steps = min(max(min(cylinders, 8), arcSteps), Self.maxTrailSteps)
+            guard steps > 0 else {
                 let r = screenRadius(cylinder: Double(sample.cylinder), radius: radius)
                 let a = headAngle(atRadius: r, radius: radius) + drift(since: sample.time)
                 dot(context: context, at: point(center: center, radius: r, angle: a), color: color)
                 continue
             }
 
-            // Un transfert qui change de cylindre est une spirale : la tête
-            // descend d'une piste tous les `heads × spt` secteurs pendant que
-            // le plateau tourne sous elle.
-            let steps = min(abs(Int(sample.endCylinder - sample.cylinder)), 8)
             var path = Path()
             for step in 0...steps {
                 let u = Double(step) / Double(steps)

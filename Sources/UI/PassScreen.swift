@@ -27,6 +27,9 @@ struct SimulatorScreen: View {
     @State private var report: PassRecord?
     @State private var showsSound = false
     @State private var showsAmbient = false
+    /// Hauteur visible de l'écran, qui borne le plateau sur iPad.
+    @State private var visibleHeight: CGFloat = 0
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// Un onglet caché reste en vie : sans cela, il suivrait l'horloge soixante
     /// fois par seconde sans que personne le voie.
@@ -95,6 +98,7 @@ struct SimulatorScreen: View {
                 }
                 .padding(16)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { transport }
         .sheet(item: $report) { record in
@@ -496,11 +500,20 @@ struct SimulatorScreen: View {
 
     // MARK: - Plateau
 
+    /// Sur iPhone, 300 points laissent voir les phases sous le plateau. Sur
+    /// iPad, la même borne en faisait un timbre-poste au milieu d'un panneau
+    /// vide : il prend la largeur, jusqu'aux deux tiers de la hauteur visible
+    /// pour que le cylindre reste lisible dessous sans défiler.
+    private var platterHeight: CGFloat {
+        guard sizeClass == .regular else { return 300 }
+        return max(300, visibleHeight * 0.66)
+    }
+
     private var platterPanel: some View {
         let frame = model.platterFrame(at: time)
         return VStack(spacing: 8) {
             PlatterView(track: model.platter, frame: frame)
-                .frame(maxHeight: 300)
+                .frame(maxHeight: platterHeight)
             HStack(alignment: .firstTextBaseline) {
                 Text("pass.cylinder.header")
                     .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
