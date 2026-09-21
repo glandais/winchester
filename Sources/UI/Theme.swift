@@ -275,4 +275,18 @@ enum TypeScale {
         let scaled = UIFontMetrics(forTextStyle: .body).scaledValue(for: size, compatibleWith: traits)
         return size >= 24 ? min(scaled, size * 1.25) : scaled
     }
+
+    /// Les sélecteurs segmentés (Carte / Plateau, les choix de l'assistant) sont
+    /// des `UISegmentedControl`, qui ne suivent pas Dynamic Type : en grand
+    /// texte, ils restaient seuls à leur taille d'origine. L'apparence ne vaut
+    /// que pour les contrôles créés ensuite — `ContentView` la repose avant de
+    /// refaire ses écrans à chaque changement de taille.
+    @MainActor
+    static func styleSegmentedControls() {
+        let appearance = UISegmentedControl.appearance()
+        appearance.setTitleTextAttributes([.font: UIFont.systemFont(ofSize: scaled(13), weight: .regular)],
+                                          for: .normal)
+        appearance.setTitleTextAttributes([.font: UIFont.systemFont(ofSize: scaled(13), weight: .semibold)],
+                                          for: .selected)
+    }
 }

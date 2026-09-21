@@ -162,7 +162,7 @@ struct SimulatorScreen: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                headerButton("speaker.wave.2", label: String(localized: "settings.sound.title", defaultValue: "Sound and haptics")) { showsSound = true }
+                headerButton("speaker.wave.2", label: SoundSheet.title) { showsSound = true }
                 headerButton("moon.stars", label: String(localized: "pass.ambientMode", defaultValue: "Ambient mode")) { showsAmbient = true }
                 activityLED
             }
@@ -382,7 +382,7 @@ struct SimulatorScreen: View {
         let plan = model.end?.plan
         let before = playback.before
         return VStack(alignment: .leading, spacing: 10) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+            TileGrid(columns: 2) {
                 // « jusqu'ici » ne se dit que tant que la passe court : une
                 // fois le plan rendu, le compteur est définitif.
                 StatTile(label: String(localized: "instruments.stat.moved", defaultValue: "Moved"),
@@ -432,7 +432,7 @@ struct SimulatorScreen: View {
         let finished = model.end != nil
         let arrival = install.installed.metrics
         return VStack(alignment: .leading, spacing: 10) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+            TileGrid(columns: 2) {
                 StatTile(label: String(localized: "instruments.stat.filesLaid", defaultValue: "Files laid down"),
                          value: Format.integer(placed),
                          unit: String(localized: "instruments.stat.outOf",
@@ -467,7 +467,7 @@ struct SimulatorScreen: View {
     private func dayCounters(_ day: DayPlayback) -> some View {
         let detail = model.totals.detail
         return VStack(alignment: .leading, spacing: 10) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+            TileGrid(columns: 2) {
                 StatTile(label: String(localized: "instruments.stat.read", defaultValue: "Read"),
                          value: Format.megabytes(UInt64(detail.readBytes)),
                          unit: String(localized: "pass.unit.soFar", defaultValue: "so far"))
@@ -584,7 +584,7 @@ struct SimulatorScreen: View {
     private func bootTiles(_ boot: BootPlayback) -> some View {
         let detail = model.totals.detail
         let disk = detail.seekSeconds + detail.rotationSeconds + detail.transferSeconds
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+        return TileGrid(columns: 2) {
             StatTile(label: String(localized: "pass.stat.filesToRead", defaultValue: "Files to read"),
                      value: Format.integer(boot.filesRead),
                      unit: boot.residentFiles > 0

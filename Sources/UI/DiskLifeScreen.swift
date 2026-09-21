@@ -112,7 +112,7 @@ struct DiskLifeScreen: View {
     }
 
     private var counters: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+        TileGrid(columns: 2) {
             StatTile(label: String(localized: "instruments.stat.fill", defaultValue: "Fill"), value: Format.percent(life.fill),
                      unit: String(localized: "life.stat.ofVolume", defaultValue: "of the volume"))
             StatTile(label: String(localized: "life.stat.files", defaultValue: "Files"), value: Format.integer(life.fileCount),

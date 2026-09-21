@@ -22,7 +22,8 @@ struct SettingsScreen: View {
             Theme.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    ScreenTitle("settings.title", subtitle: "settings.subtitle")
+                    ScreenTitle("settings.title",
+                                subtitle: DiskHaptics.isHardwareSupported ? "settings.subtitle" : "settings.subtitle.noHaptics")
                     mixer
                     welcome
                     explanations
@@ -48,7 +49,7 @@ struct SettingsScreen: View {
                     .foregroundStyle(Theme.read)
                     .frame(width: 26)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("settings.sound.title")
+                    Text(SoundSheet.title)
                         .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
                     Text(engine.mix.preset?.label ?? String(localized: "settings.sound.custom", defaultValue: "Custom mix"))

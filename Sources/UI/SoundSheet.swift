@@ -7,6 +7,9 @@ import SwiftUI
 /// dessous, comme sur la maquette ; le niveau du grondement et le diagnostic
 /// haptique vont dans les réglages avancés.
 ///
+/// Sur un appareil qui ne vibre pas — un iPad —, tout ce qui touche à
+/// l'haptique disparaît, et la feuille ne s'appelle plus que « Son ».
+///
 /// La feuille n'observe pas le moteur, qui publie son horloge soixante fois par
 /// seconde : elle se redessine quand on touche un réglage, et enregistre le
 /// mixage à chaque fois.
@@ -32,7 +35,7 @@ struct SoundSheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle("settings.sound.title")
+            .navigationTitle(SoundSheet.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -50,7 +53,7 @@ struct SoundSheet: View {
         let current = engine.mix.preset
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                ForEach(SoundMix.Preset.allCases) { preset in
+                ForEach(SoundMix.Preset.allCases.filter { !$0.needsHaptics || engine.supportsHaptics }) { preset in
                     presetButton(preset, selected: current == preset)
                 }
             }
@@ -62,8 +65,7 @@ struct SoundSheet: View {
     }
 
     private func presetButton(_ preset: SoundMix.Preset, selected: Bool) -> some View {
-        let unavailable = preset.needsHaptics && !engine.supportsHaptics
-        return Button {
+        Button {
             apply(preset.mix)
         } label: {
             VStack(spacing: 6) {
@@ -85,10 +87,7 @@ struct SoundSheet: View {
             )
         }
         .buttonStyle(.plain)
-        .disabled(unavailable)
-        .opacity(unavailable ? 0.4 : 1)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityHint(unavailable ? "sound.preset.unavailable" : "")
     }
 
     private func icon(_ preset: SoundMix.Preset) -> String {
@@ -105,16 +104,16 @@ struct SoundSheet: View {
             return String(localized: "sound.preset.headphones.note",
                           defaultValue: "The original mix. On headphones, a short seek and a full stroke do not sound alike.")
         case .speaker:
-            return String(localized: "sound.preset.speaker.note",
-                          defaultValue: "The speaker erases the low end of the rotation: it rises, and the rumble moves into your hand.")
+            return engine.supportsHaptics
+                ? String(localized: "sound.preset.speaker.note",
+                         defaultValue: "The speaker erases the low end of the rotation: it rises, and the rumble moves into your hand.")
+                : String(localized: "sound.preset.speaker.noHaptics.note",
+                         defaultValue: "The speaker erases the low end of the rotation: it is turned up to make up for it.")
         case .hapticsOnly:
             return String(localized: "sound.preset.hapticsOnly.note",
                           defaultValue: "The sound is off; the pass carries on, and the arm is felt in your hand.")
         case nil:
-            return engine.supportsHaptics
-                ? String(localized: "sound.preset.custom.note", defaultValue: "Custom mix.")
-                : String(localized: "sound.preset.custom.noHaptics.note",
-                         defaultValue: "Custom mix. This device does not vibrate: “Haptics only” is unavailable.")
+            return String(localized: "sound.preset.custom.note", defaultValue: "Custom mix.")
         }
     }
 
@@ -131,9 +130,10 @@ struct SoundSheet: View {
         .panel()
     }
 
+    @ViewBuilder
     private var haptics: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if engine.supportsHaptics {
+        if engine.supportsHaptics {
+            VStack(alignment: .leading, spacing: 10) {
                 Toggle(isOn: binding(\.hapticsEnabled)) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("sound.haptics.title")
@@ -152,16 +152,10 @@ struct SoundSheet: View {
                             .foregroundStyle(Theme.text)
                     }
                 }
-            } else {
-                sectionTitle("sound.section.haptics")
-                Text("sound.haptics.unavailable")
-                    .font(.dynamic(size: 12))
-                    .foregroundStyle(Theme.dim)
-                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .panel()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panel()
     }
 
     @ViewBuilder
@@ -195,6 +189,14 @@ struct SoundSheet: View {
         Text(title)
             .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
             .foregroundStyle(Theme.dim)
+    }
+
+    /// « Son et vibrations », ou « Son » sur un appareil qui ne vibre pas. La
+    /// ligne des Réglages et le bouton de la Passe portent le même nom.
+    static var title: String {
+        DiskHaptics.isHardwareSupported
+            ? String(localized: "settings.sound.title", defaultValue: "Sound and haptics")
+            : String(localized: "settings.sound.title.noHaptics", defaultValue: "Sound")
     }
 
     // MARK: - Écriture

@@ -94,7 +94,7 @@ struct InstrumentsScreen: View {
         let averageMs = average > 0 ? model.live.seekModel.duration(distance: average) * 1_000 : 0
         let readShare = window.requestsLastSecond > 0
             ? Double(window.readsLastSecond) / Double(window.requestsLastSecond) : nil
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+        return TileGrid(columns: 2) {
             InstrumentTile(label: "IOPS",
                            value: Format.integer(window.requestsLastSecond),
                            detail: readShare.map {
@@ -254,7 +254,7 @@ struct InstrumentsScreen: View {
     private func cumulative(_ totals: ActivityTotals) -> some View {
         let moves = model.live.moves
         let isDefrag = model.defrag != nil
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+        return TileGrid(columns: 2) {
             StatTile(label: String(localized: "instruments.stat.requests", defaultValue: "Requests"),
                      value: Format.integer(totals.requests), unit: "")
             StatTile(label: String(localized: "instruments.stat.read", defaultValue: "Read"),
@@ -352,7 +352,7 @@ struct InstrumentsScreen: View {
     private func installState(_ install: InstallPlayback) -> some View {
         let arrival = install.installed.metrics
         let done = model.end != nil
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+        return TileGrid(columns: 2) {
             let when = done ? String(localized: "instruments.unit.onArrival", defaultValue: "on arrival")
                             : String(localized: "instruments.unit.atReport", defaultValue: "at the report")
             StatTile(label: String(localized: "instruments.stat.archives", defaultValue: "Archives"),
@@ -370,7 +370,7 @@ struct InstrumentsScreen: View {
     /// Le disque au matin de cette journée-là : c'est lui qu'on entend.
     private func dayState(_ day: DayPlayback) -> some View {
         let metrics = day.disk.metrics
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+        return TileGrid(columns: 2) {
             StatTile(label: String(localized: "instruments.stat.day", defaultValue: "Day"),
                      value: Format.integer(Int(day.day)), unit: day.date)
             StatTile(label: String(localized: "instruments.stat.fill", defaultValue: "Fill"),
@@ -387,7 +387,7 @@ struct InstrumentsScreen: View {
 
     private func bootState(_ boot: BootPlayback) -> some View {
         let duration = model.end?.duration
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+        return TileGrid(columns: 2) {
             StatTile(label: String(localized: "instruments.stat.filesRead", defaultValue: "Files read"),
                      value: Format.integer(boot.filesRead), unit: "")
             StatTile(label: String(localized: "instruments.stat.compute", defaultValue: "Compute"),
@@ -484,7 +484,7 @@ private struct InstrumentTile: View {
             Sparkline(values: series, color: color)
                 .frame(height: 26)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(11)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)

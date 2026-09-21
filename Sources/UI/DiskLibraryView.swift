@@ -271,8 +271,7 @@ struct DiskLibraryView: View {
     /// Les six chiffres qui disent ce qu'est devenu le volume.
     private func metrics(of disk: GeneratedDisk) -> some View {
         let m = disk.metrics
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 3),
-                         spacing: 9) {
+        return TileGrid(columns: 3, spacing: 9) {
             MetricTile(label: String(localized: "metric.files", defaultValue: "Files"), value: Format.integer(m.fileCount))
             // Rapporté aux seuls fichiers fragmentables, quand la Passe et les
             // Instruments le rapportent à tous les éléments : les deux taux
@@ -468,7 +467,7 @@ private struct MetricTile: View {
                     .minimumScaleFactor(0.7)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
         .background(

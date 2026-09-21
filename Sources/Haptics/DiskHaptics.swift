@@ -29,7 +29,12 @@ final class DiskHaptics {
     var spindleEnabled = true
     var spindleIntensity: Float = 0.45
 
-    let isSupported: Bool = CHHapticEngine.capabilitiesForHardware().supportsHaptics
+    /// Un iPad n'a pas de Taptic Engine que l'app puisse piloter, ni le
+    /// simulateur. Lu sans moteur, pour que les écrans taisent ce qui ne
+    /// vibrera jamais plutôt que de l'expliquer.
+    nonisolated static let isHardwareSupported: Bool = CHHapticEngine.capabilitiesForHardware().supportsHaptics
+
+    let isSupported: Bool = DiskHaptics.isHardwareSupported
 
     // Diagnostic. Un motif haptique qui échoue est invisible et inaudible :
     // sans ces compteurs, une erreur de construction de motif se confond avec

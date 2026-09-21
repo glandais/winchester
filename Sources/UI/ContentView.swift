@@ -53,6 +53,9 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // Lit `typeSize`, donc se refait avec lui, avant que `.id(typeSize)`
+        // ne recrée les écrans et leurs sélecteurs segmentés.
+        let _ = TypeScale.styleSegmentedControls()
         TabView(selection: $tab) {
             // Le bandeau est posé par l'écran lui-même, sur la racine de sa pile :
             // autour de la pile, il recouvrait le bas des écrans poussés.
@@ -155,6 +158,50 @@ final class ClockRelay: ObservableObject {
 
 // MARK: - Petits composants
 
+/// Une grille de tuiles dont chaque rang prend la hauteur de sa plus haute.
+///
+/// `LazyVGrid` centre chaque case dans son rang sans l'étirer : une tuile qui
+/// porte un ⓘ ou une ligne de plus dépasse ses voisines, et le rang ne
+/// s'aligne plus. Ici chaque case reçoit la hauteur du rang, que les tuiles
+/// remplissent par un `maxHeight: .infinity`.
+struct TileGrid: Layout {
+    var columns: Int
+    var spacing: CGFloat = 10
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 320
+        let heights = rowHeights(subviews: subviews, columnWidth: columnWidth(width))
+        let total = heights.reduce(0, +) + spacing * CGFloat(max(heights.count - 1, 0))
+        return CGSize(width: width, height: total)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let column = columnWidth(bounds.width)
+        let heights = rowHeights(subviews: subviews, columnWidth: column)
+        var y = bounds.minY
+        for (row, height) in heights.enumerated() {
+            for index in row * columns ..< min((row + 1) * columns, subviews.count) {
+                let x = bounds.minX + CGFloat(index % columns) * (column + spacing)
+                subviews[index].place(at: CGPoint(x: x, y: y), anchor: .topLeading,
+                                      proposal: ProposedViewSize(width: column, height: height))
+            }
+            y += height + spacing
+        }
+    }
+
+    private func columnWidth(_ width: CGFloat) -> CGFloat {
+        max((width - spacing * CGFloat(columns - 1)) / CGFloat(columns), 0)
+    }
+
+    private func rowHeights(subviews: Subviews, columnWidth: CGFloat) -> [CGFloat] {
+        stride(from: 0, to: subviews.count, by: columns).map { start in
+            subviews[start ..< min(start + columns, subviews.count)]
+                .map { $0.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil)).height }
+                .max() ?? 0
+        }
+    }
+}
+
 struct StatTile: View {
     let label: String
     let value: String
@@ -191,7 +238,7 @@ struct StatTile: View {
                     .foregroundStyle(Theme.dim)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)

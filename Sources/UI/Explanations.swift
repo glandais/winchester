@@ -99,7 +99,12 @@ enum Explanation: String, CaseIterable, Identifiable {
     }
 
     /// Les fiches voisines, proposées sous celle qu'on a ouverte.
-    var related: [Explanation] {
+    var related: [Explanation] { neighbours.filter(\.isAvailable) }
+
+    /// « Dans la main » n'a rien à dire sur un appareil qui ne vibre pas.
+    var isAvailable: Bool { self != .haptics || DiskHaptics.isHardwareSupported }
+
+    private var neighbours: [Explanation] {
         switch self {
         case .seekLaw:            return [.edgeReturn, .headSound]
         case .edgeReturn:         return [.seekLaw, .evacuations]
@@ -119,7 +124,7 @@ enum Explanation: String, CaseIterable, Identifiable {
 
     /// Les fiches par thème, dans l'ordre des Réglages.
     static var groups: [(title: String, topics: [Explanation])] {
-        [
+        let all: [(title: String, topics: [Explanation])] = [
             (String(localized: "explanation.group.arm", defaultValue: "The arm and the boot"),
              [.seekLaw, .edgeReturn, .prefetch, .witness, .installation]),
             (String(localized: "explanation.group.volume", defaultValue: "The volume"),
@@ -127,6 +132,7 @@ enum Explanation: String, CaseIterable, Identifiable {
             (String(localized: "explanation.group.sound", defaultValue: "The sound"),
              [.headSound, .rotation, .haptics]),
         ]
+        return all.map { (title: $0.title, topics: $0.topics.filter(\.isAvailable)) }
     }
 }
 

@@ -7092,22 +7092,6 @@
         }
       }
     },
-    "onboarding.haptics.unavailable" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unavailable on this device. The sound does not depend on them."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Indisponibles sur cet appareil. Le son n'en dépend pas."
-          }
-        }
-      }
-    },
     "onboarding.headphones.later" : {
       "localizations" : {
         "en" : {
@@ -7124,18 +7108,34 @@
         }
       }
     },
-    "onboarding.headphones.lead" : {
+    "onboarding.headphones.later.noHaptics" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The iPhone speaker erases the low end of the rotation and the arm's transients. On headphones, a short seek and a full stroke do not sound alike."
+            "value" : "Everything can be set later under “Sound”."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le haut-parleur de l'iPhone efface le grave de la rotation et les transitoires du bras. Au casque, un seek court et une pleine course ne sonnent pas pareil."
+            "value" : "Tout se règle plus tard dans « Son »."
+          }
+        }
+      }
+    },
+    "onboarding.headphones.lead" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A built-in speaker erases the low end of the rotation and the arm's transients. On headphones, a short seek and a full stroke do not sound alike."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un haut-parleur intégré efface le grave de la rotation et les transitoires du bras. Au casque, un seek court et une pleine course ne sonnent pas pareil."
           }
         }
       }
@@ -10741,6 +10741,23 @@
         }
       }
     },
+    "settings.sound.title.noHaptics" : {
+      "comment" : "Ligne qui ouvre la feuille du mixage, sur un appareil qui ne vibre pas",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sound"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son"
+          }
+        }
+      }
+    },
     "settings.subtitle" : {
       "localizations" : {
         "en" : {
@@ -10753,6 +10770,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Son, vibrations, et pourquoi ça sonne comme ça"
+          }
+        }
+      }
+    },
+    "settings.subtitle.noHaptics" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sound, and why it sounds like this"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le son, et pourquoi ça sonne comme ça"
           }
         }
       }
@@ -11058,22 +11091,6 @@
         }
       }
     },
-    "sound.haptics.unavailable" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unavailable on this device: it has no Taptic Engine the app can drive. The sound does not depend on it."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Indisponible sur cet appareil : il n'a pas de Taptic Engine que l'app puisse piloter. Le son n'en dépend pas."
-          }
-        }
-      }
-    },
     "sound.level.head" : {
       "localizations" : {
         "en" : {
@@ -11151,22 +11168,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Intensité des transitoires"
-          }
-        }
-      }
-    },
-    "sound.preset.custom.noHaptics.note" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Custom mix. This device does not vibrate: “Haptics only” is unavailable."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Réglage personnel. Cet appareil ne vibre pas : « Vibrations seules » est indisponible."
           }
         }
       }
@@ -11267,6 +11268,22 @@
         }
       }
     },
+    "sound.preset.speaker.noHaptics.note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The speaker erases the low end of the rotation: it is turned up to make up for it."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le haut-parleur efface le grave de la rotation : elle est remontée pour compenser."
+          }
+        }
+      }
+    },
     "sound.preset.speaker.note" : {
       "localizations" : {
         "en" : {
@@ -11283,23 +11300,6 @@
         }
       }
     },
-    "sound.preset.unavailable" : {
-      "comment" : "Indice d'accessibilité d'un préréglage grisé",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unavailable: this device does not vibrate"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Indisponible : cet appareil ne vibre pas"
-          }
-        }
-      }
-    },
     "sound.reset" : {
       "localizations" : {
         "en" : {
@@ -11312,23 +11312,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Revenir au mixage d'origine"
-          }
-        }
-      }
-    },
-    "sound.section.haptics" : {
-      "comment" : "En-tête de section, déjà en capitales",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "HAPTICS"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "HAPTIQUE"
           }
         }
       }

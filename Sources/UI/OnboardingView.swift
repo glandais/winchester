@@ -121,8 +121,10 @@ struct OnboardingView: View {
             }
             .padding(.vertical, 8)
 
-            VStack(alignment: .leading, spacing: 6) {
-                if engine.supportsHaptics {
+            // Un appareil qui ne vibre pas n'a rien à régler ici : la carte
+            // disparaît plutôt que de dire qu'elle ne sert à rien.
+            if engine.supportsHaptics {
+                VStack(alignment: .leading, spacing: 6) {
                     Toggle(isOn: $hapticsEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("onboarding.haptics.title")
@@ -138,21 +140,20 @@ struct OnboardingView: View {
                         engine.hapticsEnabled = enabled
                         engine.mix.save(to: .standard)
                     }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .panel()
+            }
+
+            Group {
+                if engine.supportsHaptics {
+                    Text("onboarding.headphones.later")
                 } else {
-                    Text("onboarding.haptics.title")
-                        .font(.dynamic(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.text)
-                    Text("onboarding.haptics.unavailable")
-                        .font(.dynamic(size: 12))
-                        .foregroundStyle(Theme.dim)
+                    Text("onboarding.headphones.later.noHaptics")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .panel()
-
-            Text("onboarding.headphones.later")
-                .font(.dynamic(size: 12))
-                .foregroundStyle(Theme.dim)
+            .font(.dynamic(size: 12))
+            .foregroundStyle(Theme.dim)
         }
     }
 
