@@ -75,8 +75,11 @@ struct SettingsScreen: View {
         let zones = String(localized: "settings.geometry.zones",
                            defaultValue: "\(g.zones.count) recording zones",
                            comment: "Nombre de zones d'enregistrement, au pluriel de la langue")
+        let heads = String(localized: "settings.geometry.heads",
+                           defaultValue: "\(g.heads) heads",
+                           comment: "Nombre de têtes du disque, au pluriel de la langue")
         return String(localized: "settings.geometry",
-                      defaultValue: "\(g.model): \(Format.integer(g.cylinders)) cylinders, \(g.heads) heads, \(zones), \(Format.integer(Int(g.rpm))) rpm. Rotational latency and track changes are simulated sector by sector.",
+                      defaultValue: "\(g.model): \(Format.integer(g.cylinders)) cylinders, \(heads), \(zones), \(Format.integer(Int(g.rpm))) rpm. Rotational latency and track changes are simulated sector by sector.",
                       comment: "Géométrie du disque en cours, sur l'écran Réglages")
     }
 

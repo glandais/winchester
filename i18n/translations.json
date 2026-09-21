@@ -4086,8 +4086,29 @@
         "settings.geometry": {
           "comment": "Géométrie du disque en cours, sur l'écran Réglages",
           "translations": {
-            "en": "%1$@: %2$@ cylinders, %3$lld heads, %4$@, %5$@ rpm. Rotational latency and track changes are simulated sector by sector.",
-            "fr": "%1$@ : %2$@ cylindres, %3$lld têtes, %4$@, %5$@ tr/min. La latence de rotation et les changements de piste sont simulés secteur par secteur."
+            "en": "%1$@: %2$@ cylinders, %3$@, %4$@, %5$@ rpm. Rotational latency and track changes are simulated sector by sector.",
+            "fr": "%1$@ : %2$@ cylindres, %3$@, %4$@, %5$@ tr/min. La latence de rotation et les changements de piste sont simulés secteur par secteur."
+          }
+        },
+        "settings.geometry.heads": {
+          "comment": "Nombre de têtes du disque, au pluriel de la langue",
+          "translations": {
+            "en": {
+              "variations": {
+                "plural": {
+                  "one": "%lld head",
+                  "other": "%lld heads"
+                }
+              }
+            },
+            "fr": {
+              "variations": {
+                "plural": {
+                  "one": "%lld tête",
+                  "other": "%lld têtes"
+                }
+              }
+            }
           }
         },
         "settings.geometry.zones": {

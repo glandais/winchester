@@ -10639,13 +10639,54 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@: %2$@ cylinders, %3$lld heads, %4$@, %5$@ rpm. Rotational latency and track changes are simulated sector by sector."
+            "value" : "%1$@: %2$@ cylinders, %3$@, %4$@, %5$@ rpm. Rotational latency and track changes are simulated sector by sector."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ : %2$@ cylindres, %3$lld têtes, %4$@, %5$@ tr/min. La latence de rotation et les changements de piste sont simulés secteur par secteur."
+            "value" : "%1$@ : %2$@ cylindres, %3$@, %4$@, %5$@ tr/min. La latence de rotation et les changements de piste sont simulés secteur par secteur."
+          }
+        }
+      }
+    },
+    "settings.geometry.heads" : {
+      "comment" : "Nombre de têtes du disque, au pluriel de la langue",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld head"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld heads"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tête"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld têtes"
+                }
+              }
+            }
           }
         }
       }
