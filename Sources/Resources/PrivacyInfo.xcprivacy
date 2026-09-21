@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Aucun pistage : l'app n'a aucun accès réseau, aucune mesure d'audience
+	     et aucun SDK tiers, rien ne peut donc être recoupé avec d'autres apps. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- Rien n'est collecté : le disque simulé, son état et les réglages restent
+	     sur l'appareil. Même déclaration que metadata/app-privacy.json. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!-- UserDefaults garde le mixage sonore (`SoundMix.defaultsKey`) et
+			     l'accueil déjà vu (`OnboardingView.seenKey`), lus et écrits par
+			     cette app seule. À revoir si une autre API à raison déclarée
+			     apparaît (dates de fichier, temps écoulé depuis le démarrage,
+			     espace disque libre). -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

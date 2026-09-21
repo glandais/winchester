@@ -246,12 +246,21 @@ L'archivage et l'export passent par `ExportOptions.plist`
 (`app-store-connect`, équipe `7Q49262697`). `.asc/` garde l'état local d'`asc`
 et n'est pas versionné.
 
+L'app vise **iPhone et iPad** (`TARGETED_DEVICE_FAMILY: "1,2"`), si bien que
+la fiche réclame deux jeux de captures : un grand iPhone et un iPad 13 pouces.
+
+L'icône (`Sources/Resources/Assets.xcassets`, une seule image 1024×1024 sans
+canal alpha) et `Sources/Resources/PrivacyInfo.xcprivacy` sont en place. Le
+manifeste déclare ne rien pister et ne rien collecter, comme
+`metadata/app-privacy.json`, et une seule API à raison déclarée :
+`UserDefaults` (`CA92.1`), qui garde le mixage sonore et l'accueil déjà vu.
+Sans lui, Apple renvoie ITMS-91053 à chaque envoi. Le relire dès qu'une autre
+API de cette liste entre dans le code (dates de fichier, temps écoulé depuis le
+démarrage, espace disque libre).
+
 Ce qui manque encore avant une première soumission :
 
 - le site que citent les trois adresses de `metadata/` — elles pointent vers
   `https://glandais.github.io/Winchester/`, qui n'existe pas ;
-- l'icône, les captures d'écran, la classification d'âge, les catégories, la
-  grille tarifaire et la disponibilité ;
-- `PrivacyInfo.xcprivacy` : sans lui Apple renvoie ITMS-91053 à chaque envoi.
-  `metadata/app-privacy.json` déclare déjà qu'aucune donnée n'est collectée, ce
-  qui est vrai — l'app n'a aucun accès réseau et ne demande aucune autorisation.
+- les captures d'écran (iPhone et iPad), la classification d'âge, les
+  catégories, la grille tarifaire et la disponibilité.
