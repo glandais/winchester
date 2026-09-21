@@ -3183,6 +3183,20 @@
             "fr": "Voir le bilan"
           }
         },
+        "pass.speed": {
+          "comment": "Bouton de transport : l'allure de l'écoute, sous sa valeur (×2)",
+          "translations": {
+            "en": "Speed",
+            "fr": "Allure"
+          }
+        },
+        "pass.speed.value": {
+          "comment": "Allure de l'écoute dite par VoiceOver : « 2 fois »",
+          "translations": {
+            "en": "%@ times",
+            "fr": "%@ fois"
+          }
+        },
         "pass.stat.compute.unit": {
           "translations": {
             "en": "the machine",

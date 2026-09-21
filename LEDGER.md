@@ -7605,3 +7605,98 @@ sourcé, « 64 Kio » dans « Ce qui ne l'est pas ».
 - **Le rangement intelligent** (`smart`) mesurait son gain contre un XP qui
   n'évacuait pas ; sa table du README n'a pas été refaite (les douze
   « non vérifiées » de `--check`).
+
+## Chantier 46 — le variateur : écouter une passe à ×0,5, ×1, ×2, ×4 ou ×8
+
+**Fait** · branche `variateur`
+
+### Le problème
+
+Une passe dure ce qu'elle durait : 5 min 56 pour la démo, 44 min 12 pour
+`dev-2007`, 57 min 12 pour `famille-1999`, de 7 à 25 minutes pour une
+installation. Le README affirmait même qu'une passe « n'est jamais accélérée ».
+C'est vrai du modèle, et ça doit le rester ; rien n'obligeait l'écoute à s'y
+tenir.
+
+### Les décisions
+
+**C'est l'horloge qui change d'allure, pas le disque.** Le temps de passe ne
+rejoignait le temps réel qu'en deux endroits de `WinchesterEngine` : `tick()`,
+qui lit l'horloge du player, et `schedule()`, qui y date un tampon. Les deux
+passent désormais par `PlaybackClock` (`Sources/Model/`, pour être testée par
+`swift test`) : `passTime = offset + elapsed × allure`, et l'inverse. Les
+marges du moteur — 0,70 s d'avance de programmation, 50 ms de tolérance — sont
+des durées **réelles** et passent par `passSpan`. Le rendu hors-ligne ne
+compile pas le moteur : il n'en sait rien, par construction.
+
+**Changer d'allure, c'est se ré-ancrer**, ce que faisait déjà une pause suivie
+d'une reprise : le player s'arrête — ce qui efface les transitoires datés à
+l'ancienne allure —, `offset` prend le temps de passe atteint, et ce qui avait
+été confié au player sans être joué lui est reconfié. L'instant se lit sur
+l'horloge du player et non sur `currentTime`, vieux d'un tour de pompe : ce
+retard aurait rejoué les transitoires d'entre-deux.
+
+**Le son garde son timbre.** Les seeks sont des tampons pré-rendus dont seules
+les dates se resserrent ; la rotation est procédurale, réglée par une consigne
+et non par une date, et ne monte pas d'une octave. Ses rampes durent
+`durée / allure`, pour rester d'accord avec le plateau à l'écran.
+`AudioSnippets` (RenderVideo) avait choisi des extraits en fondu pour la même
+question ; ici la carte et le son doivent rester synchrones, ce que des
+extraits ne permettent pas.
+
+**L'avance du producteur est une avance réelle.** Huit secondes de passe n'en
+font plus qu'une à ×8 : `PassSession.setPace` porte l'horizon à `8 × allure`
+(jamais moins de 8), et réveille le producteur.
+
+**Ce qui est réglé pour l'œil reste en temps réel.** Compté en temps de passe,
+tout aurait fondu à ×8 : `LivePass.pace` multiplie la mémoire du plateau et de
+la carte, la rémanence (`MapTrail.window`), le surlignage d'un bloc, la traînée
+et la lueur des faces. Et — trouvé en route — la **rotation affichée** : à ×8 un
+7 200 tr/min aurait fait 57,6° par image, au ras du repliement stroboscopique
+que `rotationSlowdown` est là pour éviter. `turns` est divisé par l'allure. Le
+bandeau d'activité reste en temps de passe : c'est un axe, pas une rémanence.
+
+**Un bouton, pas un menu.** La première version était un `Menu`. Ouvert pendant
+la lecture, il fige l'app : tant qu'un menu est présenté, chaque image relance
+un balayage complet du focus d'UIKit (`_focusEnvironmentDidAppear` →
+`updateFocusIfNeeded`), le fil principal reste à 100 % et ne traite plus un
+toucher. Le focus n'existe que clavier branché — le simulateur, et un iPad avec
+son clavier. Le bouton fait le tour des allures d'un tap (×1 → ×2 → ×4 → ×8 →
+×0,5), et VoiceOver le règle par incrément. Son jumeau invisible, qui garde la
+lecture au centre, est une étiquette inerte.
+
+**Chaque passe repart à ×1** (`load`), et rien n'entre dans `UserDefaults` :
+l'écoute fidèle reste le défaut. Le mode capture ne touche jamais à l'allure.
+
+### Ce qui valide
+
+| | |
+|---|---|
+| rendu hors-ligne, `SCENARIO=defrag` | `md5` identique avant et après (`ac8f6994…`) |
+| `swift test` | 151 + 307 tests ; neufs : `PlaybackClockTests`, l'horizon qui suit l'allure, la rotation affichée |
+| ×8, Release, simulateur | 68 s de passe en 8,6 s réelles (×7,9), 43 % de CPU |
+| ×0,5 | 4 s de passe en 8,5 s (×0,47, à la seconde d'affichage près) |
+| bascules en pleine lecture, pause, reprise, fin de passe et bilan à ×8, relance → ×1 | vus sur le simulateur |
+| chaîne complète optimisée | 357 s de passe rendues en 5,3 s sur le Mac : ×8 y coûte ~12 % d'un cœur |
+
+En **Debug**, ×8 double le CPU (66 % → 128 %) : huit secondes de trains à
+synthétiser par seconde, sans optimisation. Ce n'est pas l'app que reçoit
+l'utilisateur, mais c'est celle qu'on pilote : juger l'allure en Release.
+
+### Laissé ouvert
+
+- **L'écoute.** Le simulateur ne dit rien du son : ×2, ×4 et ×8 sont à entendre
+  sur l'appareil. Au-delà de ×2 les transitoires se chevauchent — le
+  regroupement en trains (`AudioCue`) se fait en temps de passe. Si c'est
+  désagréable, éclaircir les repères trop proches en temps réel, dans le moteur
+  seul.
+- **L'haptique à ×8** : huit fois plus de chocs par seconde, non essayé.
+- **Les gros NTFS à ×8** (`dev-2007`, JkDefrag) : le producteur doit tenir
+  8 s de passe par seconde sur un iPhone ; s'il décroche, la lecture se met en
+  attente comme elle le fait déjà. Non mesuré sur l'appareil.
+- **L'iPad** : le transport n'a pas été vu sur l'iPad, que seul
+  `screenshots.sh` démarre.
+- **Les autres `Menu`** présentés pendant une lecture (la minuterie du mode
+  ambiance) le sont peut-être aussi, clavier branché : essai non concluant.
+- **Le site** (`docs/support/`) ne parle pas de l'allure : il décrit la version
+  publiée, et changera avec le build qui la portera. Les captures aussi.

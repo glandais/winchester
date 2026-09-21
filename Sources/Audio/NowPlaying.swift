@@ -40,7 +40,8 @@ final class NowPlaying {
         }
 
         engine.$isPlaying.removeDuplicates()
-            .combineLatest(model.$scenario.map(\.label.title).removeDuplicates())
+            .combineLatest(model.$scenario.map(\.label.title).removeDuplicates(),
+                           engine.$speed.removeDuplicates())
             .sink { [weak self] _ in
                 // Publié après la mise à jour : `sink` voit la valeur avant
                 // que le moteur ne l'ait rangée.
@@ -60,7 +61,7 @@ final class NowPlaying {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: model.label.title,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: engine.currentTime,
-            MPNowPlayingInfoPropertyPlaybackRate: engine.isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: engine.isPlaying ? engine.speed.rawValue : 0.0,
             MPNowPlayingInfoPropertyIsLiveStream: true,
         ]
         if let tool = model.defrag?.strategy.label ?? model.install?.osName

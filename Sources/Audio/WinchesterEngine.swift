@@ -27,6 +27,8 @@ final class WinchesterEngine: ObservableObject {
     @Published private(set) var isBuffering = false
     /// La passe est allée au bout : il n'y a plus qu'à la relancer.
     @Published private(set) var isFinished = false
+    /// L'allure de l'écoute. Une passe neuve repart toujours à ×1.
+    @Published private(set) var speed: PlaybackSpeed = .normal
 
     /// Ce qui a mis la lecture en pause sans qu'on le demande. Effacé à la
     /// reprise, et quand une autre passe est chargée.
@@ -101,8 +103,9 @@ final class WinchesterEngine: ObservableObject {
     /// reprise, puisque la passe ne les rendra pas une seconde fois.
     private var scheduled: [AudioCue] = []
 
-    /// Temps de passe correspondant à l'instant 0 de l'horloge du player.
-    private var timelineOffset: Double = 0
+    /// Temps de passe correspondant à l'instant 0 de l'horloge du player, et
+    /// allure à laquelle il s'écoule.
+    private var clock = PlaybackClock()
     private var hostStart: Double = 0
     private var generation = 0
 
@@ -113,6 +116,9 @@ final class WinchesterEngine: ObservableObject {
     private var seekCache: [Int: AVAudioPCMBuffer] = [:]
     private var tickCache: [Int: AVAudioPCMBuffer] = [:]
 
+    /// Avance de programmation des transitoires, en secondes **réelles** — comme
+    /// toutes les marges de ce fichier : `clock.passSpan` les porte en temps de
+    /// passe.
     private let lookahead = 0.70
     private var observers: [NSObjectProtocol] = []
 
@@ -229,6 +235,9 @@ final class WinchesterEngine: ObservableObject {
             tickCache.removeAll()
         }
         self.feed = feed
+        speed = .normal
+        clock.speed = 1
+        feed.pace = 1
         isLoaded = true
         isFinished = false
     }
@@ -251,11 +260,7 @@ final class WinchesterEngine: ObservableObject {
             waitForFeed()
             return
         }
-        hostStart = CACurrentMediaTime()
-        player.play()
-        for cue in scheduled where cue.time >= timelineOffset {
-            schedule(cue, elapsed: 0)
-        }
+        startPlayer()
         if hapticsEnabled { haptics.start() }
         isPlaying = true
         startPump()
@@ -267,15 +272,45 @@ final class WinchesterEngine: ObservableObject {
         guard isPlaying else { return }
         let t = currentTime
         // `stop` et non `pause` : l'horloge du player repart ainsi de zéro, et
-        // `timelineOffset` porte seul la correspondance avec la passe.
+        // `clock.offset` porte seul la correspondance avec la passe.
         player.stop()
         haptics.stop()
         pump?.invalidate()
         pump = nil
         isPlaying = false
-        timelineOffset = t
+        clock.offset = t
         currentTime = t
         generation += 1
+    }
+
+    /// Le player part de zéro, et ce qui lui avait été confié sans être joué
+    /// lui est reconfié, daté à l'allure courante.
+    private func startPlayer() {
+        hostStart = CACurrentMediaTime()
+        player.play()
+        for cue in scheduled where cue.time >= clock.offset {
+            schedule(cue, elapsed: 0)
+        }
+    }
+
+    /// Change l'allure de l'écoute. En pleine lecture, c'est un ré-ancrage :
+    /// le player s'arrête — ce qui efface les transitoires datés à l'ancienne
+    /// allure — et repart aussitôt du temps de passe atteint. La rotation vit
+    /// sur son propre nœud et ne s'en aperçoit pas.
+    func setSpeed(_ newSpeed: PlaybackSpeed) {
+        guard newSpeed != speed else { return }
+        // L'horloge du player, pas `currentTime` : celui-ci date du dernier
+        // tour de pompe, et ce retard rejouerait les transitoires d'entre-deux.
+        let t = isPlaying ? clock.passTime(elapsed: playerSeconds()) : currentTime
+        speed = newSpeed
+        clock.speed = newSpeed.rawValue
+        feed?.pace = newSpeed.rawValue
+        guard isPlaying else { return }
+        player.stop()
+        clock.offset = t
+        currentTime = t
+        generation += 1
+        startPlayer()
     }
 
     func toggle() {
@@ -293,7 +328,7 @@ final class WinchesterEngine: ObservableObject {
         haptics.flush()
         isPlaying = false
         currentTime = 0
-        timelineOffset = 0
+        clock.offset = 0
         spinCues = []
         hapticCues = []
         scheduled = []
@@ -348,7 +383,7 @@ final class WinchesterEngine: ObservableObject {
     private func isReady(at time: Double) -> Bool {
         guard let feed else { return false }
         feed.update(now: time)
-        return feed.endTime != nil || feed.cueWatermark >= time + lookahead + 0.3
+        return feed.endTime != nil || feed.cueWatermark >= time + clock.passSpan(real: lookahead + 0.3)
     }
 
     private func waitForFeed() {
@@ -394,7 +429,9 @@ final class WinchesterEngine: ObservableObject {
     private func tick() {
         guard isPlaying, let feed else { return }
         let elapsed = playerSeconds()
-        let now = timelineOffset + elapsed
+        let now = clock.passTime(elapsed: elapsed)
+        // Un vingtième de seconde d'écoute : la tolérance de tout ce qui suit.
+        let slack = clock.passSpan(real: 0.05)
 
         feed.update(now: now)
         if let end = feed.endTime, now >= end {
@@ -407,7 +444,7 @@ final class WinchesterEngine: ObservableObject {
 
         // Le producteur a pris du retard — un planificateur qui calcule
         // longtemps sans rien émettre. Mieux vaut suspendre que jouer un trou.
-        if feed.endTime == nil && feed.cueWatermark < now + 0.05 {
+        if feed.endTime == nil && feed.cueWatermark < now + slack {
             pause()
             waitForFeed()
             return
@@ -415,7 +452,7 @@ final class WinchesterEngine: ObservableObject {
 
         // Transitoires : programmés en avance sur l'horloge du player. La
         // rotation et l'haptique, elles, attendent leur échéance.
-        for cue in feed.takeCues(before: now + lookahead) {
+        for cue in feed.takeCues(before: now + clock.passSpan(real: lookahead)) {
             switch cue.kind {
             case .spinUp(let duration):
                 spinCues.append((cue.time, true, duration))
@@ -428,14 +465,17 @@ final class WinchesterEngine: ObservableObject {
             }
         }
         var played = 0
-        while played < scheduled.count && scheduled[played].time < now - 0.05 { played += 1 }
+        while played < scheduled.count && scheduled[played].time < now - slack { played += 1 }
         if played > 0 { scheduled.removeFirst(played) }
 
         // Rotation : traité à l'échéance, la précision à l'échantillon n'a
         // aucun intérêt sur une rampe de six secondes.
-        while let cue = spinCues.first, cue.time <= now + 0.05 {
-            if cue.up { spindle.spinUp(duration: cue.duration) }
-            else { spindle.spinDown(duration: cue.duration) }
+        // La rampe dure ce qu'elle dure à l'écran, où le plateau suit le temps
+        // de passe : à ×4, quatre fois moins longtemps.
+        while let cue = spinCues.first, cue.time <= now + slack {
+            let duration = cue.duration / clock.speed
+            if cue.up { spindle.spinUp(duration: duration) }
+            else { spindle.spinDown(duration: duration) }
             spinCues.removeFirst()
         }
 
@@ -456,18 +496,18 @@ final class WinchesterEngine: ObservableObject {
     /// l'horloge du moteur haptique.
     private func fireDueHaptics(now: Double) {
         var count = 0
-        while count < hapticCues.count && hapticCues[count].time <= now + 0.008 {
+        while count < hapticCues.count && hapticCues[count].time <= now + clock.passSpan(real: 0.008) {
             let cue = hapticCues[count]
             count += 1
             // Après un à-coup, on saute le retard plutôt que de le rejouer en rafale.
-            guard cue.time >= now - 0.05 else { continue }
+            guard cue.time >= now - clock.passSpan(real: 0.05) else { continue }
             haptics.fire(cue)
         }
         if count > 0 { hapticCues.removeFirst(count) }
     }
 
     private func schedule(_ cue: AudioCue, elapsed: Double) {
-        let playerOffset = cue.time - timelineOffset
+        let playerOffset = clock.playerOffset(of: cue.time)
         // Trop en retard : on laisse tomber plutôt que d'entasser du son décalé.
         guard playerOffset > elapsed - 0.05 else { return }
         let at = AVAudioTime(sampleTime: AVAudioFramePosition(playerOffset * sampleRate),
@@ -610,7 +650,7 @@ extension WinchesterEngine {
             time = next
         }
         feed?.update(now: time)
-        timelineOffset = time
+        clock.offset = time
         currentTime = time
         // La passe tourne déjà depuis longtemps : le plateau est à son régime.
         spindle.snap(to: 1)

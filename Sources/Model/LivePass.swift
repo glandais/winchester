@@ -12,6 +12,8 @@ protocol PassFeed: AnyObject {
     var cueWatermark: Double { get }
     /// Fin de la passe, queue comprise, une fois connue.
     var endTime: Double? { get }
+    /// L'allure de l'écoute : 1 en temps réel, 8 à ×8.
+    var pace: Double { get set }
 }
 
 /// Le cumul de l'activité jusqu'à l'instant écouté.
@@ -59,6 +61,15 @@ final class LivePass: PassFeed {
     let map: ClusterMapPlayer?
 
     private let session: PassSession?
+
+    /// L'allure de l'écoute. Tout ce qui est une durée **à l'écran** — traînée
+    /// du plateau, rémanence de la carte, surlignage d'un bloc — est compté en
+    /// temps de passe et la suit, sans quoi une rémanence d'un tiers de seconde
+    /// ne tiendrait plus que deux images à ×8. Le bandeau d'activité, lui, est
+    /// un axe de temps de passe et n'en dépend pas.
+    var pace = 1.0 {
+        didSet { session?.setPace(pace) }
+    }
 
     private(set) var now = 0.0
 
@@ -228,12 +239,12 @@ final class LivePass: PassFeed {
         // Un échantillon sert tant qu'il est le dernier commencé : c'est de
         // lui que part le bras au prochain seek. On ne retire donc le premier
         // que si le suivant, déjà commencé, est lui-même hors de la traînée.
-        let sampleHorizon = now - Self.sampleMemory
+        let sampleHorizon = now - Self.sampleMemory * pace
         var drop = 0
         while drop + 1 < samples.count && samples[drop + 1].time <= sampleHorizon { drop += 1 }
         if drop > 0 { samples.removeFirst(drop) }
 
-        let activityHorizon = now - Self.activityMemory
+        let activityHorizon = now - Self.activityMemory * pace
         drop = 0
         while drop + 1 < activity.count && activity[drop + 1].start <= activityHorizon { drop += 1 }
         if drop > 0 { activity.removeFirst(drop) }
@@ -299,7 +310,8 @@ final class LivePass: PassFeed {
 
     var platter: PlatterTrack {
         PlatterTrack(geometry: geometry, seekModel: seekModel, samples: samples,
-                     spindle: spindle, parkAt: parkAt, wake: armReady, rampLoad: rampLoad)
+                     spindle: spindle, parkAt: parkAt, wake: armReady,
+                     rampLoad: rampLoad, pace: pace)
     }
 
     /// Cellule en cours d'accès, s'il y en a une à cet instant.
@@ -308,13 +320,15 @@ final class LivePass: PassFeed {
         // Au-delà de la fin de l'opération on garde le surlignage un court
         // instant : à 60 images par seconde, la plupart des transferts durent
         // moins d'une image et clignoteraient.
-        guard now - current.end < 0.12 else { return nil }
+        guard now - current.end < 0.12 * pace else { return nil }
         return (map.cell(ofCluster: current.cluster), current.isWrite)
     }
 
     /// Les accès encore visibles sur la carte.
     func mapTrail() -> [MapTrailPoint] {
         guard let map else { return [] }
-        return MapTrail.points(in: activity, at: now) { map.cell(ofCluster: $0) }
+        return MapTrail.points(in: activity, at: now, window: MapTrail.window * pace) {
+            map.cell(ofCluster: $0)
+        }
     }
 }

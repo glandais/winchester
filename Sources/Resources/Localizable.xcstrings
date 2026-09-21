@@ -8273,6 +8273,40 @@
         }
       }
     },
+    "pass.speed" : {
+      "comment" : "Bouton de transport : l'allure de l'écoute, sous sa valeur (×2)",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speed"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allure"
+          }
+        }
+      }
+    },
+    "pass.speed.value" : {
+      "comment" : "Allure de l'écoute dite par VoiceOver : « 2 fois »",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ times"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ fois"
+          }
+        }
+      }
+    },
     "pass.stat.compute.unit" : {
       "localizations" : {
         "en" : {

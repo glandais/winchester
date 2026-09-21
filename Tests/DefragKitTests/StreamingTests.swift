@@ -440,6 +440,35 @@ struct StreamingTests {
         #expect(session.drain(listenedThrough: 1_000).samples.isEmpty)
     }
 
+    @Test("À ×4, l'horizon reste une avance réelle : quatre fois plus de passe")
+    func sessionHorizonFollowsThePace() async throws {
+        let volume = Self.agedVolume()
+        let session = PassSession(horizon: 5) { outlet in
+            let pipeline = PassPipeline(setup: Self.setup, deliver: outlet.deliver)
+            let sink = OperationSink { operation, mutations, progress, moves in
+                guard !outlet.isCancelled else { return }
+                pipeline.serve(operation, mutations: mutations, progress: progress, moves: moves)
+            }
+            let plan = Windows95Strategy().plan(volume: volume, into: sink)
+            if !outlet.isCancelled { pipeline.finish(plan: plan) }
+        }
+        session.start()
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(session.drain(listenedThrough: 0).clock < 5 + 1)
+
+        // Le changement d'allure réveille le producteur, sans que l'écoute ait avancé.
+        session.setPace(4)
+        try await Task.sleep(for: .milliseconds(600))
+        let fast = session.drain(listenedThrough: 0)
+        #expect(fast.clock > 19 && fast.clock < 20 + 1)
+
+        // Ralentie, l'écoute garde l'avance du temps réel.
+        session.setPace(0.5)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(session.drain(listenedThrough: 0).clock <= fast.clock + 0.1)
+        session.cancel()
+    }
+
     // MARK: - Outils
 
     private static func expectSameCues(_ actual: [AudioCue], _ expected: [AudioCue],

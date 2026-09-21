@@ -53,6 +53,7 @@ MODEL_SOURCES="
     Sources/Model/ClusterMap.swift
     Sources/Model/OperationSink.swift
     Sources/Model/PassPipeline.swift
+    Sources/Model/PlaybackClock.swift
     Sources/Model/PassSession.swift
     Sources/Model/LivePass.swift
     Sources/Model/ClusterPalette.swift

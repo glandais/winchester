@@ -32,6 +32,22 @@ struct PlatterTests {
                             samples: trace.headSamples, spindle: trace.spindle)
     }
 
+    // MARK: - Allure de l'écoute
+
+    /// Rotation et traînée sont réglées pour l'œil. À ×8, huit secondes de
+    /// passe s'écoulent par seconde d'écran : le plateau doit y faire le même
+    /// nombre de tours qu'à ×1 en une seconde, et la traînée durer un tour.
+    @Test("À ×8, le plateau tourne à l'écran comme à ×1")
+    func displayedRotationIgnoresThePace() {
+        var track = Self.track(requests: [])
+        let normal = track.turns(at: 11) - track.turns(at: 10)
+        let window = track.trailWindow
+        track.pace = 8
+        let fast = track.turns(at: 18) - track.turns(at: 10)
+        #expect(abs(fast - normal) < 1e-9)
+        #expect(track.trailWindow == window * 8)
+    }
+
     // MARK: - Position du bras
 
     /// Le simulateur parque le bras au moyeu, et c'est ce qui fait du premier

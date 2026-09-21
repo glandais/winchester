@@ -184,6 +184,12 @@ struct PlatterTrack {
 
     var parkCylinder: Int { geometry.parkCylinder(rampLoad: rampLoad) }
 
+    /// L'allure de l'écoute. Rotation affichée, traînée et lueur des faces sont
+    /// réglées pour l'œil, donc en temps réel : à ×8 le plateau ne tourne pas
+    /// huit fois plus vite à l'écran — il y battrait en arrière, le repliement
+    /// que `rotationSlowdown` évite —, et la traînée dure toujours un tour.
+    var pace = 1.0
+
     /// Durée de la traînée : **un tour apparent**.
     ///
     /// C'est la seule valeur qui la garde lisible quel que soit le disque. Les
@@ -192,12 +198,12 @@ struct PlatterTrack {
     /// apparent fait 0,83 s à 7 200 tr/min et 1,67 s à 3 600.
     var trailWindow: Double {
         let apparentTurnsPerSecond = geometry.rpm / 60 / Self.rotationSlowdown
-        return min(max(1 / apparentTurnsPerSecond, 0.8), 2.0)
+        return min(max(1 / apparentTurnsPerSecond, 0.8), 2.0) * pace
     }
 
     /// Tours apparents accomplis à cet instant.
     func turns(at time: Double) -> Double {
-        spindle.revolutions(at: time) / Self.rotationSlowdown
+        spindle.revolutions(at: time) / Self.rotationSlowdown / pace
     }
 
     /// Rayon normalisé de la piste où se trouvait un accès.
@@ -219,7 +225,9 @@ struct PlatterTrack {
         return low
     }
 
-    func frame(at time: Double, frameDuration: Double = 1.0 / 60) -> PlatterFrame {
+    func frame(at time: Double, frameDuration realFrameDuration: Double = 1.0 / 60) -> PlatterFrame {
+        // Une image d'écran couvre `pace` fois plus de temps de passe.
+        let frameDuration = realFrameDuration * pace
         let current = index(at: time)
         let (cylinder, activity) = position(at: time, index: current)
         let head = current.map { Int(samples[$0].head) } ?? 0
@@ -242,7 +250,8 @@ struct PlatterTrack {
         guard let index else { return lights }
 
         let from = time - frameDuration
-        let horizon = time - Self.faceGlow
+        let glow = Self.faceGlow * pace
+        let horizon = time - glow
         var i = index
         var scanned = 0
         while i >= 0 && scanned < Self.sweepScanLimit {
@@ -253,7 +262,7 @@ struct PlatterTrack {
             if face < lights.count, lights[face] == nil {
                 let intensity = sample.endTime >= from
                     ? 1
-                    : 1 - (from - sample.endTime) / (Self.faceGlow - frameDuration)
+                    : 1 - (from - sample.endTime) / (glow - frameDuration)
                 lights[face] = FaceLight(intensity: min(max(intensity, 0), 1),
                                          isWrite: sample.isWrite)
             }

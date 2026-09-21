@@ -49,6 +49,9 @@ final class PassSession: @unchecked Sendable {
     let horizon: Double
 
     private let condition = NSCondition()
+    /// L'allure de l'écoute, quand elle dépasse ×1 : l'horizon est une avance
+    /// **réelle**, et huit secondes de passe n'en font plus qu'une à ×8.
+    private var pace = 1.0
     private var inbox = PassBatch()
     private var listened = 0.0
     private var finished = false
@@ -96,6 +99,15 @@ final class PassSession: @unchecked Sendable {
         condition.unlock()
     }
 
+    /// L'écoute change d'allure : le producteur garde la même avance réelle.
+    /// Une écoute ralentie ne la réduit pas — elle ne coûte rien à tenir.
+    func setPace(_ newPace: Double) {
+        condition.lock()
+        defer { condition.unlock() }
+        pace = max(1, newPace)
+        condition.broadcast()
+    }
+
     /// Emporte tout ce qui a été produit, et dit jusqu'où l'écoute est arrivée.
     func drain(listenedThrough time: Double) -> PassBatch {
         condition.lock()
@@ -124,7 +136,7 @@ final class PassSession: @unchecked Sendable {
             finished = true
             return
         }
-        while !outlet.isCancelled && batch.clock > listened + horizon {
+        while !outlet.isCancelled && batch.clock > listened + horizon * pace {
             condition.wait()
         }
     }

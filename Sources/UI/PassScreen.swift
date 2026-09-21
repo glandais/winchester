@@ -748,8 +748,11 @@ struct SimulatorScreen: View {
 
     // MARK: - Transport
 
-    /// Arrêter, lire ou mettre en pause, relancer. Rien d'autre : il n'y a
-    /// pas de chronologie où sauter, et revenir au début, c'est relancer.
+    /// Arrêter, lire ou mettre en pause, relancer, et régler l'allure. Il n'y
+    /// a pas de chronologie où sauter, et revenir au début, c'est relancer ;
+    /// une passe de quarante minutes s'écoute en revanche à ×8, sans que le
+    /// modèle en sache rien. Le jumeau invisible de l'allure garde la lecture
+    /// au centre.
     private var transport: some View {
         let playing = engine.isPlaying || engine.isBuffering
         return HStack(spacing: 0) {
@@ -759,6 +762,7 @@ struct SimulatorScreen: View {
                 model.restart()
             }
             .disabled(time == 0 && !playing)
+            speedLabel.hidden().accessibilityHidden(true).padding(.leading, Self.transportGap)
 
             Spacer()
 
@@ -779,6 +783,7 @@ struct SimulatorScreen: View {
 
             Spacer()
 
+            speedButton.padding(.trailing, Self.transportGap)
             transportButton("pass.restart", systemImage: "arrow.counterclockwise", size: 18) {
                 model.restart()
             }
@@ -791,6 +796,59 @@ struct SimulatorScreen: View {
                 .overlay(alignment: .top) { Rectangle().fill(Theme.stroke).frame(height: 1) }
                 .ignoresSafeArea(edges: .horizontal)
         )
+    }
+
+    /// Entre deux boutons voisins : leurs libellés débordent des 44 points de
+    /// l'icône et se toucheraient.
+    private static let transportGap: CGFloat = 16
+
+    /// L'allure de l'écoute, au gabarit d'un bouton de transport : la valeur
+    /// tient la place de l'icône, et un tap passe à l'allure suivante.
+    ///
+    /// Un bouton et non un `Menu` : tant qu'un menu est présenté, chaque image
+    /// d'une passe en lecture relance un balayage complet du focus d'UIKit —
+    /// clavier branché, donc iPad et simulateur — et le fil principal n'en
+    /// sort plus.
+    private var speedButton: some View {
+        Button {
+            engine.setSpeed(engine.speed.next)
+        } label: {
+            speedLabel
+        }
+        .accessibilityLabel("pass.speed")
+        .accessibilityValue(Self.spokenSpeed(engine.speed))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: engine.speed.faster.map(engine.setSpeed)
+            case .decrement: engine.speed.slower.map(engine.setSpeed)
+            @unknown default: break
+            }
+        }
+    }
+
+    private static func spokenSpeed(_ speed: PlaybackSpeed) -> String {
+        String(localized: "pass.speed.value",
+               defaultValue: "\(speedNumber(speed)) times",
+               comment: "Allure de l'écoute dite par VoiceOver : « 2 fois »")
+    }
+
+    private var speedLabel: some View {
+        VStack(spacing: 4) {
+            Text(verbatim: Self.speedLabel(engine.speed))
+                .font(.dynamic(size: 15, weight: .semibold, design: .monospaced))
+                .frame(width: 44, height: 30)
+            Text("pass.speed")
+                .font(.dynamic(size: 10, design: .monospaced))
+                .foregroundStyle(Theme.dim)
+        }
+    }
+
+    private static func speedNumber(_ speed: PlaybackSpeed) -> String {
+        Format.decimal(speed.rawValue, digits: speed.rawValue < 1 ? 1 : 0)
+    }
+
+    private static func speedLabel(_ speed: PlaybackSpeed) -> String {
+        "×" + speedNumber(speed)
     }
 
     private func transportButton(_ title: LocalizedStringKey, systemImage: String, size: CGFloat,

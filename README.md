@@ -57,7 +57,8 @@ AVAudioEngine
 **Rien n'est calculé d'avance.** Le planificateur tourne sur son propre fil et
 émet ses opérations au lieu de les empiler ; chacune traverse aussitôt le
 simulateur, la construction des repères et la datation, et le résultat attend
-l'écoute dans un tampon. Le fil s'endort dès qu'il a huit secondes d'avance.
+l'écoute dans un tampon. Le fil s'endort dès qu'il a huit secondes d'avance —
+huit secondes d'écoute : à ×8, soixante-quatre secondes de passe.
 L'écran, le son et l'haptique ne lisent que l'instant présent : il n'y a plus ni
 durée connue à l'avance ni retour en arrière, et revenir au début, c'est relancer
 la passe. Le calcul est **identique** à celui d'un bloc : même chronologie, mêmes
@@ -1531,11 +1532,22 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
 - **La mémoire d'un gros disque est désormais celle de sa génération**, pas de
   sa passe : `dev-1999` tient à 220 Mo au rendu hors-ligne comme à son
   démarrage, et un NTFS de 2007 reste au-dessus de 700 Mo pour la même raison.
-- **Une passe de défragmentation n'est jamais accélérée** : ce qui la raccourcit,
-  c'est la taille du volume et l'outil. Les 220 Mo de `dev-1993` se tassent en
-  5 min 31 à la frontière et en 24 min 42 sous l'outil de 95 ; un volume de
-  l'époque plus grand ou plus plein y passe jusqu'à plus d'une heure, et la
-  galerie le montre. Le modèle est le même dans les trois cas.
+- **Le modèle n'accélère jamais une passe de défragmentation** : ce qui la
+  raccourcit, c'est la taille du volume et l'outil. Les 220 Mo de `dev-1993` se
+  tassent en 5 min 31 à la frontière et en 24 min 42 sous l'outil de 95 ; un
+  volume de l'époque plus grand ou plus plein y passe jusqu'à plus d'une heure,
+  et la galerie le montre. Le modèle est le même dans les trois cas.
+- **L'écoute, elle, a une allure** : ×0,5, ×1, ×2, ×4 ou ×8, au transport, et
+  chaque passe repart à ×1. C'est l'horloge qui lit la passe qui va plus vite,
+  pas le disque : les transitoires gardent leur timbre et seules leurs dates se
+  resserrent, la rotation — procédurale, réglée par une consigne et non par
+  une date — garde sa hauteur, et le rendu hors-ligne n'en sait rien. À
+  l'écran, ce qui est réglé pour l'œil reste en temps réel : le plateau ne
+  tourne pas plus vite, les rémanences durent autant. **Au-delà de ×2 les
+  transitoires se chevauchent** : le regroupement des seeks en trains se fait
+  en temps de passe, et deux trains distants de 200 ms tombent à 25 ms l'un de
+  l'autre à ×8. C'est un crépitement dense, pas ce que le disque faisait
+  entendre ; ×1 reste l'écoute fidèle.
 - Le défragmenteur modélisé ne fait pas de passe de vérification, ne relit pas
   ce qu'il vient d'écrire et ne reprend pas une passe interrompue. Sur FAT,
   les outils qui passent par l'API de Windows — XP, JkDefrag, UltraDefrag —
@@ -1861,6 +1873,7 @@ Sources/Model/
     ClusterPalette.swift   couleurs des catégories et teinte proportionnelle
     Scenario.swift         description des scénarios : disque, chronologie,
                            source des requêtes
+    PlaybackClock.swift    allure de l'écoute : horloge du player ↔ temps de passe
     SimulationModel.swift  assemblage + interrogation pour l'UI
     GeneratedVolume.swift  passerelle disque généré → volume et matériel
 Sources/Audio/

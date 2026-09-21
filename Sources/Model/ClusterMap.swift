@@ -395,6 +395,7 @@ enum MapTrail {
     /// - Parameter cell: projection d'un cluster sur la grille — elle dépend de
     ///   la grille courante, que la trace ne connaît pas.
     static func points(in activity: [ClusterActivity], at time: Double,
+                       window: Double = MapTrail.window,
                        cell: (Int) -> Int) -> [MapTrailPoint] {
         guard !activity.isEmpty, let last = index(in: activity, at: time) else { return [] }
 
