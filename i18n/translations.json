@@ -5631,6 +5631,16 @@
             }
           }
         },
+        "Turn the sound on": {
+          "comment": "Vidéo de l'App Store (scripts/previews.sh) : l'invitation à monter le son, sur le premier plan, que l'App Store joue muet.",
+          "translations": {
+            "en-US": "Turn the sound on",
+            "fr-FR": {
+              "value": "Montez le son",
+              "state": "translated"
+            }
+          }
+        },
         "Twenty period disks, 1993 to 2007, filled day after day.": {
           "translations": {
             "en-US": "Twenty period disks, 1993 to 2007, filled day after day.",

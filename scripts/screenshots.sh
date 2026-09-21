@@ -28,9 +28,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/sim-config.sh
 
-BUNDLE_ID="io.github.glandais.winchester"
+source scripts/sim-capture.sh
+
 OUT_ROOT="screenshots/flat"
-APP="${DERIVED_DATA}/Build/Products/Screenshots-iphonesimulator/Winchester.app"
 
 # écran de ScreenshotMode -> fichier, dans l'ordre d'envoi (les fichiers partent
 # par ordre alphabétique, d'où la numérotation). La carte plein écran ouvre :
@@ -49,46 +49,8 @@ CARDS=(
 # une seconde après, la fiche du disque et le choix de l'outil attendent que la
 # galerie ait fabriqué le disque.
 SETTLE=4
-# Le disque de la démo se fabrique en une dizaine de secondes en Debug ; au-delà
-# de ce délai, quelque chose s'est mal passé.
-READY_TIMEOUT=120
 
-devices=()
-locales=()
-for arg in "$@"; do
-  case "$arg" in
-    --iphone) devices+=(iphone) ;;
-    --ipad)   devices+=(ipad) ;;
-    -*)       echo "✖ option inconnue : $arg" >&2; exit 2 ;;
-    *)        locales+=("$arg") ;;
-  esac
-done
-[ "${#devices[@]}" -gt 0 ] || devices=(iphone ipad)
-
-# Langue de l'app (knownRegions de project.yml) -> locale App Store Connect, qui
-# nomme les dossiers. Une langue sans correspondance est une erreur : deviner,
-# c'est ranger un marché dans le dossier d'un autre.
-asc_locale_for() {
-  case "$1" in
-    en) echo "en-US" ;;
-    fr) echo "fr-FR" ;;
-    *)
-      echo "✖ « $1 » est dans knownRegions mais n'a pas de locale App Store" >&2
-      echo "  Connect dans asc_locale_for() — en ajouter une." >&2
-      exit 1
-      ;;
-  esac
-}
-
-if [ "${#locales[@]}" -eq 0 ]; then
-  while IFS= read -r lang; do
-    locales+=("$(asc_locale_for "$lang")")
-  done < <(awk '
-    /^  knownRegions:/ { f=1; next }
-    f && /^    - / { sub(/^    - /, ""); print; next }
-    f { exit }
-  ' project.yml)
-fi
+parse_capture_args "$@"
 
 # Rapport largeur/hauteur attendu d'une capture, à 2 % près : c'est ce qui
 # prouve qu'elle vient du bon simulateur, et donc qu'elle ira dans le cadre de
@@ -100,139 +62,25 @@ ratio_for() {
   esac
 }
 
-udid_for() {
-  case "$1" in
-    iphone) sim_udid ;;
-    ipad)   ipad_udid ;;
-  esac
-}
-
-# ---------------------------------------------------------------- simulateurs
-
-# L'iPhone du dépôt était-il démarré en arrivant ? C'est le seul qu'on rallume
-# en partant : l'iPad n'a aucune raison de rester allumé après une capture, même
-# s'il l'était avant — le rallumer ferait deux simulateurs.
-IPHONE_UDID=$(sim_udid)
-IPHONE_WAS_BOOTED=0
-xcrun simctl list devices booted | grep -q "$IPHONE_UDID" && IPHONE_WAS_BOOTED=1
-CURRENT=""
-# La langue du système de l'appareil en cours, à lui rendre (voir plus bas).
-SYSTEM_LANGUAGES_BEFORE=""
-SYSTEM_LOCALE_BEFORE=""
-
-# Met le *système* du simulateur courant en `$1` (une langue) / `$2` (une
-# locale) et redémarre SpringBoard pour qu'il la prenne.
-#
-# La barre d'état est dessinée par le système, que `-AppleLanguages` ne touche
-# pas : l'iPad y écrit la date, et l'écrivait en français sur les captures
-# anglaises tant que le simulateur était en français.
-set_system_locale() {
-  xcrun simctl spawn "$CURRENT" defaults write -g AppleLanguages -array "$1" >/dev/null 2>&1 || true
-  xcrun simctl spawn "$CURRENT" defaults write -g AppleLocale -string "$2" >/dev/null 2>&1 || true
-  xcrun simctl spawn "$CURRENT" launchctl stop com.apple.SpringBoard >/dev/null 2>&1 || true
-  sleep 6
-}
-
-restore_simulators() {
-  if [ -n "$CURRENT" ]; then
-    if [ -n "$SYSTEM_LANGUAGES_BEFORE" ] && [ -n "$SYSTEM_LOCALE_BEFORE" ]; then
-      set_system_locale "$SYSTEM_LANGUAGES_BEFORE" "$SYSTEM_LOCALE_BEFORE"
-    fi
-    xcrun simctl status_bar "$CURRENT" clear >/dev/null 2>&1 || true
-    xcrun simctl terminate "$CURRENT" "$BUNDLE_ID" >/dev/null 2>&1 || true
-    if [ "$CURRENT" != "$IPHONE_UDID" ]; then
-      echo "▸ extinction de l'iPad"
-      xcrun simctl shutdown "$CURRENT" >/dev/null 2>&1 || true
-    fi
-  fi
-  if [ "$IPHONE_WAS_BOOTED" = 1 ] && [ "$CURRENT" != "$IPHONE_UDID" ]; then
-    echo "▸ redémarrage de ${SIM_DEVICE}, démarré avant la capture"
-    xcrun simctl boot "$IPHONE_UDID" >/dev/null 2>&1 || true
-  fi
-}
-trap restore_simulators EXIT
-
-# Démarre `$1` après avoir éteint tout autre simulateur : un seul à la fois.
-use_simulator() {
-  local target="$1" udid
-  for udid in $(xcrun simctl list devices booted -j | python3 -c '
-import json, sys
-for devices in json.load(sys.stdin)["devices"].values():
-    for d in devices:
-        print(d["udid"])
-'); do
-    if [ "$udid" != "$target" ]; then
-      echo "▸ extinction de $udid (un seul simulateur à la fois)"
-      xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
-    fi
-  done
-  CURRENT="$target"
-  sim_boot "$target"
-  SYSTEM_LANGUAGES_BEFORE="$(xcrun simctl spawn "$target" defaults read -g AppleLanguages 2>/dev/null | tr -d ' \n"()' || true)"
-  SYSTEM_LOCALE_BEFORE="$(xcrun simctl spawn "$target" defaults read -g AppleLocale 2>/dev/null || true)"
-}
-
-# ---------------------------------------------------------------- construction
-
-echo "▸ construction (configuration Screenshots)"
-# Une construction pour simulateur vaut pour tous les appareils de la même
-# architecture : l'iPad installe le même produit. La destination ne démarre rien.
-xcodebuild -project Winchester.xcodeproj \
-  -scheme Winchester-Screenshots \
-  -configuration Screenshots \
-  -destination "$(sim_dest "$IPHONE_UDID")" \
-  -derivedDataPath "$DERIVED_DATA" \
-  build >/dev/null
-[ -d "$APP" ] || { echo "✖ produit introuvable : $APP" >&2; exit 1; }
+build_capture_app
 
 # ---------------------------------------------------------------- captures
 
-apple_locale_for() { echo "${1/-/_}"; }
-
 capture() {
-  local udid="$1" screen="$2" lang="$3" apple_locale="$4" file="$5" marker waited=0
-  xcrun simctl terminate "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
-  marker="$(xcrun simctl get_app_container "$udid" "$BUNDLE_ID" data)/tmp/screenshot-ready"
-  rm -f "$marker"
-  xcrun simctl launch "$udid" "$BUNDLE_ID" \
-    -screenshotMode YES \
-    -screenshotScreen "$screen" \
-    -onboardingSeen YES \
-    -AppleLanguages "($lang)" \
-    -AppleLocale "$apple_locale" >/dev/null
-  until [ -f "$marker" ]; do
-    sleep 1
-    waited=$((waited + 1))
-    if [ "$waited" -ge "$READY_TIMEOUT" ]; then
-      echo "✖ $screen : l'app n'a pas signalé qu'elle était prête en ${READY_TIMEOUT} s" >&2
-      exit 1
-    fi
-  done
+  local screen="$1" locale="$2" file="$3"
+  launch_staged "$screen" "$locale"
   sleep "$SETTLE"
-  xcrun simctl io "$udid" screenshot --type=png "$file" >/dev/null 2>&1
+  xcrun simctl io "$CURRENT" screenshot --type=png "$file" >/dev/null 2>&1
 }
 
 for device in "${devices[@]}"; do
   udid=$(udid_for "$device")
   echo "▸ $device : ${udid}"
   use_simulator "$udid"
-
-  # Désinstaller d'abord : un conteneur neuf, sans historique de passes ni
-  # disques construits, pour que la galerie ne dise « rangé il y a 12 h » que
-  # si on le lui fait dire.
-  xcrun simctl uninstall "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
-  xcrun simctl install "$udid" "$APP"
+  install_fresh
 
   for locale in "${locales[@]}"; do
-    lang="${locale%%-*}"
-    set_system_locale "$locale" "$(apple_locale_for "$locale")"
-    # L'heure fixe d'Apple, une batterie pleine, tout le réseau — reposés après
-    # chaque changement de langue, que le redémarrage de SpringBoard efface.
-    # Aucun écran capturé ne dit l'heure qu'il est : rien ne la contredit.
-    xcrun simctl status_bar "$udid" override --time "9:41" \
-      --batteryLevel 100 --batteryState discharging \
-      --cellularMode active --cellularBars 4 --wifiMode active --wifiBars 3
-
+    prepare_locale "$locale"
     dir="$OUT_ROOT/$device/$locale"
     mkdir -p "$dir"
     rm -f "$dir"/*.png
@@ -240,7 +88,7 @@ for device in "${devices[@]}"; do
     for entry in "${CARDS[@]}"; do
       screen="${entry%%:*}"
       name="${entry#*:}"
-      capture "$udid" "$screen" "$lang" "$(apple_locale_for "$locale")" "$dir/$name.png"
+      capture "$screen" "$locale" "$dir/$name.png"
       echo "   · $name"
     done
   done

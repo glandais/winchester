@@ -348,3 +348,50 @@ ne remonte plus aucune erreur : la version 1.0.0, build 2, est prête à être
 soumise. L'envoi prend parfois une erreur 500 d'App Store Connect sur un
 fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
 ne renvoie que ce qui manque.
+
+### App previews
+
+Une vidéo de 29,5 s par appareil et par langue, en tête de la fiche, la seule
+chose du store qui fasse entendre le disque :
+
+```bash
+./scripts/previews.sh                        # iPhone et iPad, en et fr (~25 min)
+./scripts/previews.sh --iphone en-US         # un jeu seul (~5 min)
+```
+
+L'image est filmée dans l'app (`simctl io recordVideo`, par
+`scripts/sim-record.py`), le son vient de `RenderTrace` (`SCENARIO=defrag`),
+aux mêmes secondes de passe : la démo est déterministe, et le simulateur, qui
+ne filme pas le son, partage l'horloge du Mac. Le témoin de `ScreenshotMode`
+porte pour cela l'instant où la lecture part. Les plans sont décrits dans
+`previews/montage.txt` ; Remotion (`previews/remotion/`, Node) les monte avec
+les titres des cartes Koubou, l'invitation « Turn the sound on » (même table
+`Koubou`) et une carte de fin. Apple n'accepte que des images de l'app : les
+vidéos de `Tools/RenderVideo`, redessinées, n'y ont pas leur place.
+
+**Rien n'est versionné** de ce qui sort : `previews/out/<IPHONE_65|IPAD_PRO_3GEN_129>/<locale>/01-defrag.mp4`
+se refait à l'identique, et App Store Connect garde l'exemplaire envoyé
+(`asc video-previews download`). `screenshots.sh` et `previews.sh` partagent
+`scripts/sim-capture.sh` (un simulateur à la fois, langue du système, barre
+d'état) : ne rien lancer d'autre sur le simulateur pendant l'un ou l'autre.
+
+La synchronisation se vérifie en corrélant le mouvement du bras du plan
+`platter` aux attaques du son : entre -20 et +5 ms sur les vidéos finales,
+pour une image de 33 ms. `LATENCY` dans le script porte les 40 ms de retard d'affichage mesurés.
+
+Envoi, quatre fois (`--version-localization` est l'identifiant rendu par
+`asc localizations list --version <VERSION_ID> --locale <locale>`, pas le code
+de langue) :
+
+```bash
+asc video-previews upload --version-localization <ID> \
+  --path previews/out/IPHONE_65/en-US --device-type IPHONE_65 --dry-run
+asc video-previews upload --version-localization <ID> \
+  --path previews/out/IPHONE_65/en-US --device-type IPHONE_65 --skip-existing
+asc video-previews set-poster-frame --id <PREVIEW_ID> --time-code "00:00:02:00"
+```
+
+L'App Store joue la vidéo **sans le son** : le premier plan doit tenir seul, et
+l'affiche se choisit à 2 s, titre posé. Les médias d'une version se figent
+quand elle part en revue : une vidéo pour la 1.0.0 s'envoie avant de soumettre,
+sinon elle attend la version suivante.

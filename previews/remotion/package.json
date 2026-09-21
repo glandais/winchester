@@ -1,0 +1,19 @@
+{
+  "name": "winchester-previews",
+  "private": true,
+  "description": "Montage des vidéos de l'App Store — voir scripts/previews.sh",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.526",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.526"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "typescript": "5.9.3"
+  }
+}

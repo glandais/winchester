@@ -39,6 +39,10 @@ captures identiques dans un jeu) et échoue.
 
 ### Comment ça marche
 
+- Le pilotage du simulateur — arguments, langues, un appareil à la fois, langue du
+  système et barre d'état, lancement d'un écran et attente de son témoin — vit dans
+  `scripts/sim-capture.sh`, que partagent `screenshots.sh` et `previews.sh` (les vidéos
+  de la fiche, voir « App previews » dans `CLAUDE.md`).
 - L'app est construite dans la configuration **`Screenshots`** (`project.yml`), un clone de
   Debug qui définit la condition `SCREENSHOTS`. Tout ce qu'il faut au mode capture —
   `Sources/Screenshots/ScreenshotMode.swift`, `WinchesterEngine.fastForward(to:)` et

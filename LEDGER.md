@@ -6425,3 +6425,73 @@ le README.
 - **Non vérifié sur un appareil** : le rendu dans Safari iOS, le mode clair,
   et le chemin « Réglages → Winchester → Language » que la FAQ indique pour
   changer de langue sans changer celle de l'appareil.
+
+## Chantier 32 — les vidéos de l'App Store
+
+**Fait** · branche `app-previews`
+
+### Le problème
+
+Winchester est une app qu'on écoute, et sa fiche ne montrait que six images
+fixes : ni le son, ni le mouvement qui le porte — la frontière qui avance sur
+la carte, le bras qui balaie le plateau. Une app preview (15 à 30 s, en tête de
+la fiche, jouée d'office dans les résultats de recherche) est le seul endroit du
+store qui puisse faire entendre un seek. Deux contraintes d'Apple fixent le
+reste : **des images de l'app seulement** — les vidéos de `Tools/RenderVideo`,
+redessinées en Core Graphics, sont exclues — et une lecture **muette** jusqu'à
+ce qu'on touche.
+
+### Les décisions
+
+- **L'image dans l'app, le son dans le rendu.** `simctl io recordVideo` ne filme
+  que l'écran, et le mode capture coupe le son exprès. Mais la démo est
+  déterministe : `ScreenshotMode` l'avance à la seconde demandée puis la joue
+  en temps réel, et `RenderTrace` rend le même son du même modèle
+  (`SCENARIO=defrag`). Chaque plan prend son son aux mêmes secondes de passe.
+  Enregistrer le son du Mac aurait demandé un pilote de bouclage, et donné un
+  son moins propre que celui dont il est la copie.
+- **Synchroniser par l'horloge du Mac**, que le simulateur partage.
+  `ScreenshotMode` note l'instant où la lecture part — pas celui de l'appel à
+  `play()`, qui attend parfois que la passe ait pris de l'avance — ;
+  `scripts/sim-record.py` note celui où `recordVideo` annonce sa première image,
+  trois quarts de seconde après son lancement. Reste la latence d'affichage :
+  30 et 55 ms mesurés en corrélant le mouvement du bras aux attaques des seeks,
+  d'où `LATENCY = 0,04`.
+- **Remotion pour l'habillage**, plutôt que Motion Canvas ou Revideo : c'est le
+  seul des trois fait pour monter de la vidéo capturée avec plusieurs pistes de
+  son. Habillage léger — le titre de la carte Koubou de chaque plan, une
+  invitation « Turn the sound on » sur le premier (la vidéo part muette), une
+  carte de fin où le son du dernier plan s'éteint. L'interface reste plein
+  cadre, sans appareil autour : la définition d'App Store Connect (886 × 1920,
+  1200 × 1600) est celle du simulateur, à l'échelle près.
+- **Les textes restent ceux des cartes** : table `Koubou` de
+  `i18n/translations.json`, une clé de plus pour l'invitation.
+- **Trois plans** (`previews/montage.txt`) : la carte plein écran à 150 s, comme
+  la première capture — à 60 s la passe affiche encore 0 % —, le plateau à
+  210 s, la passe à 300 s ; 29,5 s avec les fondus et la carte de fin.
+- **Rien de ce qui sort n'est versionné** : la vidéo se refait à l'identique, et
+  App Store Connect garde l'exemplaire envoyé.
+- `screenshots.sh` et `previews.sh` partagent `scripts/sim-capture.sh` : la
+  règle d'un seul simulateur ne s'écrit qu'une fois.
+
+### Ce qui valide
+
+- Sur les vidéos finales elles-mêmes, la corrélation du mouvement du bras (plan
+  `platter`) avec l'énergie du son culmine à **-10, -20 et +5 ms** (trois
+  rendus d'iPhone), pour une image de 33 ms.
+- Le jeu complet — deux appareils, deux langues — en 25 minutes environ ; l'iPad
+  éteint à la fin, l'iPhone rallumé, un seul simulateur à la fois.
+- `screenshots.sh`, réécrit sur `sim-capture.sh`, rend ses six captures.
+- `previews.sh` vérifie chaque fichier par `ffprobe` : définition, H.264,
+  30 i/s constants, 15 à 30 s, une piste AAC stéréo.
+- `i18n.py import` puis `check` : aller-retour exact à l'octet.
+
+### Laissé ouvert
+
+- **L'envoi** : rien n'est sur App Store Connect. La 1.0.0 fige ses médias en
+  partant en revue.
+- **L'écoute** : la synchro est mesurée, pas encore écoutée sur un iPhone.
+- `i18n.py export` ne reproduit pas `i18n/translations.json` tel qu'il est sur
+  `develop` : les douze traductions françaises de la table `Koubou` y sont des
+  objets `{value, state}`, que l'export écrit en chaînes. L'écart précède ce
+  chantier ; `import` et `check` n'en souffrent pas.

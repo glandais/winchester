@@ -79,12 +79,18 @@ enum ScreenshotMode {
         model.select(.builtin(.defrag))
         await model.engine.fastForward(to: passTime)
         model.engine.play()
+        // `play()` attend parfois que la passe ait pris de l'avance : la
+        // seconde `passTime` ne s'entend qu'une fois la lecture partie.
+        while !model.engine.isPlaying {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        let playbackStart = Date()
         if screen == .disk || screen == .tools {
             while library.state.disk?.spec.id != diskID {
                 try? await Task.sleep(for: .milliseconds(200))
             }
         }
-        signalReady()
+        signalReady(playbackStart: playbackStart)
     }
 
     /// Le fichier que `scripts/screenshots.sh` attend avant de capturer, dans
@@ -92,11 +98,17 @@ enum ScreenshotMode {
     /// lancement, et le temps que cela prend en Debug varie du simple au double
     /// d'une machine à l'autre. Attendre un témoin vaut mieux qu'un délai fixe
     /// qui serait tantôt trop court, tantôt perdu.
+    ///
+    /// Il porte l'écran, puis l'instant où la lecture est partie de `passTime`,
+    /// en secondes Unix : le simulateur partage l'horloge du Mac, et
+    /// `scripts/previews.sh` en déduit où tombe cette seconde de passe dans la
+    /// vidéo qu'il enregistre, pour y poser le son de `RenderTrace`.
     static let readyMarker = FileManager.default.temporaryDirectory
         .appendingPathComponent("screenshot-ready")
 
-    private static func signalReady() {
-        try? Data(screen.rawValue.utf8).write(to: readyMarker)
+    private static func signalReady(playbackStart: Date) {
+        let line = "\(screen.rawValue) \(playbackStart.timeIntervalSince1970)\n"
+        try? Data(line.utf8).write(to: readyMarker, options: .atomic)
     }
 }
 

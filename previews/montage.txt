@@ -1,0 +1,19 @@
+# Les plans de la vidéo de l'App Store, dans l'ordre — lus par scripts/previews.sh.
+#
+#   écran | seconde de passe | durée | titre
+#
+# écran           un `ScreenshotScreen` (Sources/Screenshots/ScreenshotMode.swift)
+# seconde         où en est la démo de défragmentation au premier instant du plan
+#                 (« Développeur, 1993 », Frontier compaction : 356 s en tout)
+# durée           en secondes, fondu compris : deux plans voisins se recouvrent
+#                 le temps d'un fondu (TRANSITION dans le script)
+# titre           une clé du catalogue Koubou (screenshots/koubou/koubou-strings.xcstrings,
+#                 tenu par i18n/translations.json) : la phrase anglaise elle-même
+#
+# App Store Connect veut 15 à 30 s en tout, carte de fin comprise ; le script
+# le vérifie. Le premier plan est celui qu'on voit sans le son, et l'affiche :
+# à 150 s, comme la première capture, la frontière a balayé la moitié du
+# volume ; à 60 s, la passe affiche encore 0 %.
+fullmap | 150 | 9.5 | Hear a hard disk tidy itself
+platter | 210 | 10  | Watch the arm cross the platter
+pass    | 300 | 8.5 | Every seek computed, not sampled

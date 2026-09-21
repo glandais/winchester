@@ -29,3 +29,12 @@ screenshots/flat/
 screenshots/koubou/out/
 screenshots/koubou/*.local.yaml
 screenshots/koubou/*.local.xcstrings
+
+# Vidéos de l'App Store (scripts/previews.sh) — refaites à l'identique à la
+# demande, et App Store Connect garde l'exemplaire envoyé. Sont versionnés le
+# script, previews/montage.txt et le projet Remotion, sans ses dépendances ni les
+# plans qu'on lui passe.
+previews/out/
+previews/remotion/node_modules/
+previews/remotion/public/build/
+previews/remotion/out/
