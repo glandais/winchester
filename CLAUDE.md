@@ -204,6 +204,14 @@ Le cycle d'une clé neuve : écrire le code, `./scripts/xcb.sh strings`,
 
 ## Publier
 
+App Store Connect : app **`6814382619`**, nom `Winchester: Defrag Sounds` en
+anglais et `Winchester : défragmentation` en français (le « Winchester » seul
+est pris ; l'écran d'accueil garde `Winchester` par `CFBundleDisplayName`),
+langue principale `en-US`, aussi `fr-FR`, bundle `io.github.glandais.winchester`
+(la fiche avait d'abord été créée sur celui d'un autre projet : le vérifier par
+`asc apps view --id 6814382619` avant le premier envoi d'un build). Nom et sous-titre tiennent en
+**30 caractères** chacun, mots-clés en 100.
+
 Les métadonnées canoniques vivent sous `./metadata/`, un fichier par portée et
 par locale (`app-info/<locale>.json`, `version/<version>/<locale>.json`), tirées
 de `i18n/translations.json` comme le catalogue : lancer `i18n.py import` avant
@@ -219,11 +227,11 @@ près de 100 caractères, et ne pas nommer le produit d'une autre société
 Ne jamais `apply` sans avoir lu le plan :
 
 ```bash
-asc metadata pull     --app <APP_ID> --version "1.0.0" --dir "./metadata"
+asc metadata pull     --app 6814382619 --version "1.0.0" --dir "./metadata"
 asc metadata validate --dir "./metadata"
-asc metadata plan     --app <APP_ID> --version "1.0.0" --dir "./metadata"
+asc metadata plan     --app 6814382619 --version "1.0.0" --dir "./metadata"
 asc metadata approve  --review-dir ".asc/metadata/review" --all
-asc metadata apply    --app <APP_ID> --version "1.0.0" --dir "./metadata" \
+asc metadata apply    --app 6814382619 --version "1.0.0" --dir "./metadata" \
                       --review-dir ".asc/metadata/review" --confirm
 ```
 
@@ -240,7 +248,6 @@ et n'est pas versionné.
 
 Ce qui manque encore avant une première soumission :
 
-- l'enregistrement de l'app dans App Store Connect (pas d'`APP_ID`) ;
 - le site que citent les trois adresses de `metadata/` — elles pointent vers
   `https://glandais.github.io/Winchester/`, qui n'existe pas ;
 - l'icône, les captures d'écran, la classification d'âge, les catégories, la
