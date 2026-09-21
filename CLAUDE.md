@@ -265,7 +265,9 @@ démarrage, espace disque libre).
 
 Le build 2 (1.0.0) est le premier build TestFlight, envoyé le 21 septembre
 2026 ; le build 3, du même jour, l'a remplacé sur la version (vibrations tues
-sur l'iPad, tuiles alignées). Le build 1 a été refusé à l'envoi (erreur
+sur l'iPad, tuiles alignées). Le build 4, du même jour, porte 2012 (chantiers
+33 et 34) en TestFlight ; la version garde le build 3 tant qu'on ne l'y
+rattache pas. Le build 1 a été refusé à l'envoi (erreur
 90474) : le multitâche de l'iPad exige les quatre orientations, d'où les deux clés
 `UISupportedInterfaceOrientations_iPhone` et `_iPad` de `project.yml`. Un envoi
 refusé consomme quand même son numéro : `asc builds next-build-number --app
