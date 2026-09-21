@@ -11040,6 +11040,38 @@
         }
       }
     },
+    "settings.support.note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tip on Ko-fi · opens in your browser"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un pourboire sur Ko-fi · s'ouvre dans le navigateur"
+          }
+        }
+      }
+    },
+    "settings.support.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support Winchester"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soutenir Winchester"
+          }
+        }
+      }
+    },
     "settings.title" : {
       "localizations" : {
         "en" : {

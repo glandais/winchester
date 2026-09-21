@@ -6819,3 +6819,44 @@ pluriel (`wizard.hw.heads`) : « 1 têtes » devient « 1 tête ».
   décrivent la version publiée, et changeront avec celle qui portera 2012.
 - **L'écoute** : `SCENARIO=gamer-2012` contre `gamer-2007`, et un 10 000 tr/min
   de 2003 contre un de 2012 dans l'assistant.
+
+## Chantier 35 — le lien Ko-fi
+
+### Le problème
+
+L'app est gratuite, sans achat intégré, et ni elle ni le site ne disaient où
+laisser un pourboire : `https://ko-fi.com/gabylandais`.
+
+### Les décisions
+
+- **Dans l'app, une ligne des Réglages**, sous « Revoir l'accueil » :
+  `settings.support.title` (« Support Winchester » / « Soutenir Winchester ») et
+  `settings.support.note`, qui dit d'avance que le navigateur va s'ouvrir. C'est
+  un `Link` : iOS ouvre Safari, l'app ne fait toujours aucune requête. La
+  flèche ↗ remplace le chevron des lignes qui restent dans l'app.
+- **Rien n'est débloqué en échange** : pas d'état « merci », pas de réglage
+  caché. Un pourboire qui ouvrirait quoi que ce soit devrait passer par l'achat
+  intégré (directive 3.1.1).
+- **Sur le site**, « Support on Ko-fi » au pied des quatre pages, et une phrase à
+  la fin de « Details » sur l'accueil.
+- **La page confidentialité le dit** (« The Ko-fi link »), et « The app makes no
+  network request » devient « The app itself… ». La date d'effet était déjà le
+  21 septembre 2026.
+- **Les notes de revue le disent aussi** : un relecteur qui lit « no network
+  access at all » puis trouve un lien sortant doit l'avoir lu d'abord.
+
+### Ce qui valide
+
+- `./scripts/xcb.sh strings`, `i18n.py export` / `import` / `check` : 898 clés,
+  aller-retour exact à l'octet.
+- Sur le simulateur, en français : la ligne tient sur l'iPhone 17 Pro Max, et
+  le tap ouvre Safari sur `ko-fi.com`.
+
+### Laissé ouvert
+
+- **Le risque de revue** : Apple refuse parfois un lien de don vers le
+  développeur hors achat intégré. Si la 1.0.0 revient pour cela, retirer la
+  ligne de l'app (le site peut la garder) ou passer à un pourboire StoreKit.
+- **Les notes de revue ne sont pas poussées** : `asc review details-update`
+  reste à lancer, avec le build qui portera la ligne.
+- Le build 4 ne contient pas la ligne : il faut un build 5.

@@ -12,7 +12,7 @@ Le garder vrai : une personne le lit avec l'app ouverte.
 
 ---
 
-Winchester is an offline simulator of the mechanical hard disks of 1993 to 2012. It computes the motion of the head over a simulated volume and renders the sound that motion would make. Nothing is recorded, sampled or downloaded, and the app never sends anything anywhere: there is no account, no server, no analytics and no network access at all.
+Winchester is an offline simulator of the mechanical hard disks of 1993 to 2012. It computes the motion of the head over a simulated volume and renders the sound that motion would make. Nothing is recorded, sampled or downloaded, and the app never sends anything anywhere: there is no account, no server, no analytics and no network access at all. The one outbound link is "Support Winchester" in the Settings tab, which opens the developer's Ko-fi page in Safari: a voluntary tip that unlocks nothing — the app has no paid content or feature.
 
 WHY THE AUDIO BACKGROUND MODE
 A defragmentation pass on a period volume runs for tens of minutes, sometimes several hours — that duration is the point of the app, not a side effect. The audio has to keep playing with the screen locked, exactly as a music player would, so the app declares the `audio` background mode. It plays only while a pass is running and stops with it.
