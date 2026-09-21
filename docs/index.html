@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Winchester: Defrag Sounds — hear a 1990s hard disk work</title>
+  <meta name="description" content="Winchester simulates a 1990s hard disk — platters, arm and file system — and lets you hear it work. Every seek is computed from where the head was and where the next cluster is, not played from a recording. For iPhone and iPad, free, offline.">
+  <link rel="canonical" href="https://glandais.github.io/Winchester/">
+  <link rel="icon" type="image/png" sizes="180x180" href="assets/appicon-180.png">
+  <link rel="apple-touch-icon" href="assets/appicon-180.png">
+  <meta name="theme-color" content="#0E0F12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F2F1EC" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Winchester: Defrag Sounds">
+  <meta property="og:description" content="A 1990s hard disk, simulated sector by sector, and the sound its mechanics would make. Every seek is computed, not sampled.">
+  <meta property="og:url" content="https://glandais.github.io/Winchester/">
+  <meta property="og:image" content="https://glandais.github.io/Winchester/assets/appicon-512.png">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="masthead">
+    <div class="container masthead__inner">
+      <a class="wordmark" href="index.html"><b>Winchester</b> <span>Defrag Sounds</span></a>
+      <nav class="nav" aria-label="Primary">
+        <a href="index.html" aria-current="page">Overview</a>
+        <a href="how-it-works/index.html">How it works</a>
+        <a href="support/index.html">Support</a>
+        <a href="privacy/index.html">Privacy</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero container">
+      <img class="hero__icon" src="assets/appicon-512.png" width="112" height="112"
+           alt="Winchester app icon: a grid of blue cluster blocks, packed at the top and scattered with red and dark gaps below, like a defragmenter's volume map.">
+      <h1>Every seek is computed, not sampled.</h1>
+      <p>
+        Winchester simulates a 1990s hard disk — its platters, its arm, its
+        file system — and lets you hear it work. Not a recording on a loop:
+        each sound comes from where the head was, where the next cluster is,
+        and how long the platter takes to bring it round.
+      </p>
+      <ul class="facts" aria-label="At a glance">
+        <li>iPhone and iPad</li>
+        <li>iOS 17 or later</li>
+        <li>Free</li>
+        <li>No account, no network</li>
+        <li>English and French</li>
+      </ul>
+      <!-- App Store: the "Download on the App Store" badge goes here once the
+           app is published (app 6814382619), linking to
+           https://apps.apple.com/app/id6814382619 — not before. -->
+    </section>
+
+    <section class="container" aria-label="The cluster map">
+      <figure class="volume">
+        <figcaption class="volume__head">
+          <span class="led"><b>DEFRAGMENTATION</b></span>
+          <span>FAT16 · 1 block = a few dozen clusters</span>
+        </figcaption>
+        <svg class="map" viewBox="0 0 574 142" role="img" aria-labelledby="map-title map-desc">
+          <title id="map-title">A cluster map, as the app draws it</title>
+          <desc id="map-desc">A FAT volume halfway through a defragmentation. The start of the volume is already packed: system files and programs in one piece, in their darker shades. Past that frontier the volume is as use left it — documents, programs and temporary files in fragments, dark grey free gaps between them, and the red block of the swap file, which never moves. The end of the volume is almost empty. A few blocks just behind the frontier are lit turquoise, where the pass is writing; a few further on are amber, where it is reading.</desc>
+          <g shape-rendering="crispEdges"><rect x="0" y="0" width="10" height="10" class="r"/><rect x="12" y="0" width="10" height="10" class="r"/><rect x="24" y="0" width="10" height="10" class="r"/><rect x="36" y="0" width="10" height="10" class="y"/><rect x="48" y="0" width="10" height="10" class="s1"/><rect x="60" y="0" width="10" height="10" class="s1"/><rect x="72" y="0" width="10" height="10" class="s1"/><rect x="84" y="0" width="10" height="10" class="s1"/><rect x="96" y="0" width="10" height="10" class="s1"/><rect x="108" y="0" width="10" height="10" class="s1"/><rect x="120" y="0" width="10" height="10" class="s1"/><rect x="132" y="0" width="10" height="10" class="s1"/><rect x="144" y="0" width="10" height="10" class="s1"/><rect x="156" y="0" width="10" height="10" class="s1"/><rect x="168" y="0" width="10" height="10" class="s1"/><rect x="180" y="0" width="10" height="10" class="s1"/><rect x="192" y="0" width="10" height="10" class="s1"/><rect x="204" y="0" width="10" height="10" class="s1"/><rect x="216" y="0" width="10" height="10" class="s1"/><rect x="228" y="0" width="10" height="10" class="s1"/><rect x="240" y="0" width="10" height="10" class="s1"/><rect x="252" y="0" width="10" height="10" class="s1"/><rect x="264" y="0" width="10" height="10" class="s1"/><rect x="276" y="0" width="10" height="10" class="s1"/><rect x="288" y="0" width="10" height="10" class="s1"/><rect x="300" y="0" width="10" height="10" class="s1"/><rect x="312" y="0" width="10" height="10" class="s1"/><rect x="324" y="0" width="10" height="10" class="s1"/><rect x="336" y="0" width="10" height="10" class="s1"/><rect x="348" y="0" width="10" height="10" class="s1"/><rect x="360" y="0" width="10" height="10" class="s1"/><rect x="372" y="0" width="10" height="10" class="s1"/><rect x="384" y="0" width="10" height="10" class="s1"/><rect x="396" y="0" width="10" height="10" class="s1"/><rect x="408" y="0" width="10" height="10" class="s1"/><rect x="420" y="0" width="10" height="10" class="s1"/><rect x="432" y="0" width="10" height="10" class="s1"/><rect x="444" y="0" width="10" height="10" class="s1"/><rect x="456" y="0" width="10" height="10" class="s1"/><rect x="468" y="0" width="10" height="10" class="s1"/><rect x="480" y="0" width="10" height="10" class="s1"/><rect x="492" y="0" width="10" height="10" class="s1"/><rect x="504" y="0" width="10" height="10" class="s1"/><rect x="516" y="0" width="10" height="10" class="s1"/><rect x="528" y="0" width="10" height="10" class="s1"/><rect x="540" y="0" width="10" height="10" class="s1"/><rect x="552" y="0" width="10" height="10" class="s1"/><rect x="564" y="0" width="10" height="10" class="s1"/><rect x="0" y="12" width="10" height="10" class="s1"/><rect x="12" y="12" width="10" height="10" class="s1"/><rect x="24" y="12" width="10" height="10" class="y"/><rect x="36" y="12" width="10" height="10" class="s1"/><rect x="48" y="12" width="10" height="10" class="s1"/><rect x="60" y="12" width="10" height="10" class="s1"/><rect x="72" y="12" width="10" height="10" class="s1"/><rect x="84" y="12" width="10" height="10" class="s1"/><rect x="96" y="12" width="10" height="10" class="s1"/><rect x="108" y="12" width="10" height="10" class="s1"/><rect x="120" y="12" width="10" height="10" class="s1"/><rect x="132" y="12" width="10" height="10" class="s1"/><rect x="144" y="12" width="10" height="10" class="s1"/><rect x="156" y="12" width="10" height="10" class="s1"/><rect x="168" y="12" width="10" height="10" class="s1"/><rect x="180" y="12" width="10" height="10" class="s1"/><rect x="192" y="12" width="10" height="10" class="s1"/><rect x="204" y="12" width="10" height="10" class="s1"/><rect x="216" y="12" width="10" height="10" class="s1"/><rect x="228" y="12" width="10" height="10" class="s1"/><rect x="240" y="12" width="10" height="10" class="s1"/><rect x="252" y="12" width="10" height="10" class="s1"/><rect x="264" y="12" width="10" height="10" class="s1"/><rect x="276" y="12" width="10" height="10" class="a1"/><rect x="288" y="12" width="10" height="10" class="a1"/><rect x="300" y="12" width="10" height="10" class="a1"/><rect x="312" y="12" width="10" height="10" class="a1"/><rect x="324" y="12" width="10" height="10" class="a1"/><rect x="336" y="12" width="10" height="10" class="a1"/><rect x="348" y="12" width="10" height="10" class="a1"/><rect x="360" y="12" width="10" height="10" class="a1"/><rect x="372" y="12" width="10" height="10" class="a1"/><rect x="384" y="12" width="10" height="10" class="a1"/><rect x="396" y="12" width="10" height="10" class="a1"/><rect x="408" y="12" width="10" height="10" class="a1"/><rect x="420" y="12" width="10" height="10" class="a1"/><rect x="432" y="12" width="10" height="10" class="a1"/><rect x="444" y="12" width="10" height="10" class="a1"/><rect x="456" y="12" width="10" height="10" class="a1"/><rect x="468" y="12" width="10" height="10" class="a1"/><rect x="480" y="12" width="10" height="10" class="a1"/><rect x="492" y="12" width="10" height="10" class="a1"/><rect x="504" y="12" width="10" height="10" class="a1"/><rect x="516" y="12" width="10" height="10" class="a1"/><rect x="528" y="12" width="10" height="10" class="a1"/><rect x="540" y="12" width="10" height="10" class="a1"/><rect x="552" y="12" width="10" height="10" class="a1"/><rect x="564" y="12" width="10" height="10" class="a1"/><rect x="0" y="24" width="10" height="10" class="a1"/><rect x="12" y="24" width="10" height="10" class="a1"/><rect x="24" y="24" width="10" height="10" class="a1"/><rect x="36" y="24" width="10" height="10" class="a1"/><rect x="48" y="24" width="10" height="10" class="a1"/><rect x="60" y="24" width="10" height="10" class="a1"/><rect x="72" y="24" width="10" height="10" class="a1"/><rect x="84" y="24" width="10" height="10" class="a1"/><rect x="96" y="24" width="10" height="10" class="a1"/><rect x="108" y="24" width="10" height="10" class="a1"/><rect x="120" y="24" width="10" height="10" class="a1"/><rect x="132" y="24" width="10" height="10" class="a1"/><rect x="144" y="24" width="10" height="10" class="a1"/><rect x="156" y="24" width="10" height="10" class="y"/><rect x="168" y="24" width="10" height="10" class="a1"/><rect x="180" y="24" width="10" height="10" class="a1"/><rect x="192" y="24" width="10" height="10" class="a1"/><rect x="204" y="24" width="10" height="10" class="a1"/><rect x="216" y="24" width="10" height="10" class="a1"/><rect x="228" y="24" width="10" height="10" class="a1"/><rect x="240" y="24" width="10" height="10" class="a1"/><rect x="252" y="24" width="10" height="10" class="a1"/><rect x="264" y="24" width="10" height="10" class="a1"/><rect x="276" y="24" width="10" height="10" class="a1"/><rect x="288" y="24" width="10" height="10" class="a1"/><rect x="300" y="24" width="10" height="10" class="a1"/><rect x="312" y="24" width="10" height="10" class="a1"/><rect x="324" y="24" width="10" height="10" class="a1"/><rect x="336" y="24" width="10" height="10" class="tw"/><rect x="348" y="24" width="10" height="10" class="tw"/><rect x="360" y="24" width="10" height="10" class="d1"/><rect x="372" y="24" width="10" height="10"/><rect x="384" y="24" width="10" height="10"/><rect x="396" y="24" width="10" height="10"/><rect x="408" y="24" width="10" height="10"/><rect x="420" y="24" width="10" height="10" class="a"/><rect x="432" y="24" width="10" height="10" class="d1"/><rect x="444" y="24" width="10" height="10" class="d"/><rect x="456" y="24" width="10" height="10" class="d"/><rect x="468" y="24" width="10" height="10"/><rect x="480" y="24" width="10" height="10" class="s"/><rect x="492" y="24" width="10" height="10"/><rect x="504" y="24" width="10" height="10" class="c"/><rect x="516" y="24" width="10" height="10" class="d"/><rect x="528" y="24" width="10" height="10" class="s"/><rect x="540" y="24" width="10" height="10" class="c"/><rect x="552" y="24" width="10" height="10"/><rect x="564" y="24" width="10" height="10"/><rect x="0" y="36" width="10" height="10"/><rect x="12" y="36" width="10" height="10" class="z"/><rect x="24" y="36" width="10" height="10" class="d"/><rect x="36" y="36" width="10" height="10" class="a"/><rect x="48" y="36" width="10" height="10" class="d"/><rect x="60" y="36" width="10" height="10" class="d1"/><rect x="72" y="36" width="10" height="10" class="d1"/><rect x="84" y="36" width="10" height="10"/><rect x="96" y="36" width="10" height="10" class="c"/><rect x="108" y="36" width="10" height="10"/><rect x="120" y="36" width="10" height="10" class="d"/><rect x="132" y="36" width="10" height="10"/><rect x="144" y="36" width="10" height="10"/><rect x="156" y="36" width="10" height="10" class="d"/><rect x="168" y="36" width="10" height="10" class="c"/><rect x="180" y="36" width="10" height="10" class="d1"/><rect x="192" y="36" width="10" height="10" class="d"/><rect x="204" y="36" width="10" height="10" class="a"/><rect x="216" y="36" width="10" height="10" class="s"/><rect x="228" y="36" width="10" height="10" class="c"/><rect x="240" y="36" width="10" height="10" class="y"/><rect x="252" y="36" width="10" height="10"/><rect x="264" y="36" width="10" height="10" class="a"/><rect x="276" y="36" width="10" height="10"/><rect x="288" y="36" width="10" height="10" class="a"/><rect x="300" y="36" width="10" height="10" class="a"/><rect x="312" y="36" width="10" height="10" class="d1"/><rect x="324" y="36" width="10" height="10" class="z"/><rect x="336" y="36" width="10" height="10" class="z"/><rect x="348" y="36" width="10" height="10" class="d1"/><rect x="360" y="36" width="10" height="10" class="a"/><rect x="372" y="36" width="10" height="10"/><rect x="384" y="36" width="10" height="10" class="s"/><rect x="396" y="36" width="10" height="10" class="y"/><rect x="408" y="36" width="10" height="10"/><rect x="420" y="36" width="10" height="10" class="z"/><rect x="432" y="36" width="10" height="10" class="d1"/><rect x="444" y="36" width="10" height="10"/><rect x="456" y="36" width="10" height="10" class="d"/><rect x="468" y="36" width="10" height="10" class="d"/><rect x="480" y="36" width="10" height="10" class="d"/><rect x="492" y="36" width="10" height="10" class="tr"/><rect x="504" y="36" width="10" height="10" class="tr"/><rect x="516" y="36" width="10" height="10" class="tr"/><rect x="528" y="36" width="10" height="10" class="d1"/><rect x="540" y="36" width="10" height="10" class="d1"/><rect x="552" y="36" width="10" height="10" class="c"/><rect x="564" y="36" width="10" height="10" class="d"/><rect x="0" y="48" width="10" height="10"/><rect x="12" y="48" width="10" height="10" class="c"/><rect x="24" y="48" width="10" height="10"/><rect x="36" y="48" width="10" height="10" class="d"/><rect x="48" y="48" width="10" height="10" class="a"/><rect x="60" y="48" width="10" height="10" class="s"/><rect x="72" y="48" width="10" height="10"/><rect x="84" y="48" width="10" height="10" class="a"/><rect x="96" y="48" width="10" height="10" class="d1"/><rect x="108" y="48" width="10" height="10" class="d"/><rect x="120" y="48" width="10" height="10" class="c"/><rect x="132" y="48" width="10" height="10" class="d"/><rect x="144" y="48" width="10" height="10" class="s"/><rect x="156" y="48" width="10" height="10" class="c"/><rect x="168" y="48" width="10" height="10" class="d1"/><rect x="180" y="48" width="10" height="10" class="a"/><rect x="192" y="48" width="10" height="10" class="d1"/><rect x="204" y="48" width="10" height="10" class="d1"/><rect x="216" y="48" width="10" height="10" class="z"/><rect x="228" y="48" width="10" height="10" class="s"/><rect x="240" y="48" width="10" height="10" class="s"/><rect x="252" y="48" width="10" height="10"/><rect x="264" y="48" width="10" height="10" class="d1"/><rect x="276" y="48" width="10" height="10"/><rect x="288" y="48" width="10" height="10" class="a"/><rect x="300" y="48" width="10" height="10" class="z"/><rect x="312" y="48" width="10" height="10" class="d1"/><rect x="324" y="48" width="10" height="10" class="s"/><rect x="336" y="48" width="10" height="10" class="d1"/><rect x="348" y="48" width="10" height="10" class="d1"/><rect x="360" y="48" width="10" height="10"/><rect x="372" y="48" width="10" height="10"/><rect x="384" y="48" width="10" height="10" class="s"/><rect x="396" y="48" width="10" height="10"/><rect x="408" y="48" width="10" height="10" class="z"/><rect x="420" y="48" width="10" height="10" class="a"/><rect x="432" y="48" width="10" height="10" class="d"/><rect x="444" y="48" width="10" height="10"/><rect x="456" y="48" width="10" height="10"/><rect x="468" y="48" width="10" height="10"/><rect x="480" y="48" width="10" height="10" class="d1"/><rect x="492" y="48" width="10" height="10" class="d1"/><rect x="504" y="48" width="10" height="10" class="d"/><rect x="516" y="48" width="10" height="10"/><rect x="528" y="48" width="10" height="10" class="s"/><rect x="540" y="48" width="10" height="10" class="d"/><rect x="552" y="48" width="10" height="10" class="y"/><rect x="564" y="48" width="10" height="10" class="a"/><rect x="0" y="60" width="10" height="10" class="c"/><rect x="12" y="60" width="10" height="10"/><rect x="24" y="60" width="10" height="10"/><rect x="36" y="60" width="10" height="10" class="a"/><rect x="48" y="60" width="10" height="10" class="c"/><rect x="60" y="60" width="10" height="10" class="s"/><rect x="72" y="60" width="10" height="10"/><rect x="84" y="60" width="10" height="10" class="s"/><rect x="96" y="60" width="10" height="10" class="a"/><rect x="108" y="60" width="10" height="10" class="d"/><rect x="120" y="60" width="10" height="10"/><rect x="132" y="60" width="10" height="10"/><rect x="144" y="60" width="10" height="10"/><rect x="156" y="60" width="10" height="10" class="d1"/><rect x="168" y="60" width="10" height="10"/><rect x="180" y="60" width="10" height="10" class="a"/><rect x="192" y="60" width="10" height="10" class="a"/><rect x="204" y="60" width="10" height="10" class="d1"/><rect x="216" y="60" width="10" height="10" class="s"/><rect x="228" y="60" width="10" height="10" class="d1"/><rect x="240" y="60" width="10" height="10"/><rect x="252" y="60" width="10" height="10"/><rect x="264" y="60" width="10" height="10" class="d"/><rect x="276" y="60" width="10" height="10" class="d"/><rect x="288" y="60" width="10" height="10" class="c"/><rect x="300" y="60" width="10" height="10" class="a"/><rect x="312" y="60" width="10" height="10" class="d"/><rect x="324" y="60" width="10" height="10" class="d1"/><rect x="336" y="60" width="10" height="10"/><rect x="348" y="60" width="10" height="10" class="z"/><rect x="360" y="60" width="10" height="10" class="c"/><rect x="372" y="60" width="10" height="10"/><rect x="384" y="60" width="10" height="10" class="z"/><rect x="396" y="60" width="10" height="10" class="z"/><rect x="408" y="60" width="10" height="10"/><rect x="420" y="60" width="10" height="10" class="d1"/><rect x="432" y="60" width="10" height="10" class="d1"/><rect x="444" y="60" width="10" height="10" class="s"/><rect x="456" y="60" width="10" height="10" class="s"/><rect x="468" y="60" width="10" height="10" class="a"/><rect x="480" y="60" width="10" height="10" class="d"/><rect x="492" y="60" width="10" height="10" class="d"/><rect x="504" y="60" width="10" height="10" class="s"/><rect x="516" y="60" width="10" height="10"/><rect x="528" y="60" width="10" height="10" class="d"/><rect x="540" y="60" width="10" height="10" class="s"/><rect x="552" y="60" width="10" height="10"/><rect x="564" y="60" width="10" height="10" class="z"/><rect x="0" y="72" width="10" height="10"/><rect x="12" y="72" width="10" height="10" class="d"/><rect x="24" y="72" width="10" height="10" class="d"/><rect x="36" y="72" width="10" height="10" class="c"/><rect x="48" y="72" width="10" height="10" class="d1"/><rect x="60" y="72" width="10" height="10"/><rect x="72" y="72" width="10" height="10"/><rect x="84" y="72" width="10" height="10"/><rect x="96" y="72" width="10" height="10" class="d1"/><rect x="108" y="72" width="10" height="10"/><rect x="120" y="72" width="10" height="10" class="d1"/><rect x="132" y="72" width="10" height="10" class="d1"/><rect x="144" y="72" width="10" height="10" class="w"/><rect x="156" y="72" width="10" height="10" class="w"/><rect x="168" y="72" width="10" height="10" class="w"/><rect x="180" y="72" width="10" height="10" class="w"/><rect x="192" y="72" width="10" height="10" class="w"/><rect x="204" y="72" width="10" height="10" class="w"/><rect x="216" y="72" width="10" height="10" class="w"/><rect x="228" y="72" width="10" height="10" class="w"/><rect x="240" y="72" width="10" height="10" class="w"/><rect x="252" y="72" width="10" height="10" class="w"/><rect x="264" y="72" width="10" height="10" class="w"/><rect x="276" y="72" width="10" height="10" class="w"/><rect x="288" y="72" width="10" height="10" class="w"/><rect x="300" y="72" width="10" height="10" class="w"/><rect x="312" y="72" width="10" height="10" class="a"/><rect x="324" y="72" width="10" height="10" class="d"/><rect x="336" y="72" width="10" height="10" class="z"/><rect x="348" y="72" width="10" height="10" class="d"/><rect x="360" y="72" width="10" height="10" class="z"/><rect x="372" y="72" width="10" height="10"/><rect x="384" y="72" width="10" height="10" class="z"/><rect x="396" y="72" width="10" height="10" class="d"/><rect x="408" y="72" width="10" height="10" class="s"/><rect x="420" y="72" width="10" height="10" class="d1"/><rect x="432" y="72" width="10" height="10" class="c"/><rect x="444" y="72" width="10" height="10" class="d1"/><rect x="456" y="72" width="10" height="10" class="d"/><rect x="468" y="72" width="10" height="10" class="d"/><rect x="480" y="72" width="10" height="10"/><rect x="492" y="72" width="10" height="10"/><rect x="504" y="72" width="10" height="10" class="z"/><rect x="516" y="72" width="10" height="10" class="c"/><rect x="528" y="72" width="10" height="10"/><rect x="540" y="72" width="10" height="10" class="y"/><rect x="552" y="72" width="10" height="10" class="z"/><rect x="564" y="72" width="10" height="10"/><rect x="0" y="84" width="10" height="10" class="z"/><rect x="12" y="84" width="10" height="10" class="a"/><rect x="24" y="84" width="10" height="10"/><rect x="36" y="84" width="10" height="10" class="a"/><rect x="48" y="84" width="10" height="10" class="a"/><rect x="60" y="84" width="10" height="10" class="z"/><rect x="72" y="84" width="10" height="10" class="s"/><rect x="84" y="84" width="10" height="10"/><rect x="96" y="84" width="10" height="10" class="c"/><rect x="108" y="84" width="10" height="10" class="a"/><rect x="120" y="84" width="10" height="10" class="a"/><rect x="132" y="84" width="10" height="10" class="d"/><rect x="144" y="84" width="10" height="10"/><rect x="156" y="84" width="10" height="10"/><rect x="168" y="84" width="10" height="10" class="d"/><rect x="180" y="84" width="10" height="10" class="y"/><rect x="192" y="84" width="10" height="10" class="z"/><rect x="204" y="84" width="10" height="10"/><rect x="216" y="84" width="10" height="10"/><rect x="228" y="84" width="10" height="10"/><rect x="240" y="84" width="10" height="10"/><rect x="252" y="84" width="10" height="10" class="a"/><rect x="264" y="84" width="10" height="10" class="d"/><rect x="276" y="84" width="10" height="10" class="z"/><rect x="288" y="84" width="10" height="10" class="d"/><rect x="300" y="84" width="10" height="10" class="d1"/><rect x="312" y="84" width="10" height="10" class="c"/><rect x="324" y="84" width="10" height="10" class="z"/><rect x="336" y="84" width="10" height="10" class="s"/><rect x="348" y="84" width="10" height="10" class="d"/><rect x="360" y="84" width="10" height="10" class="z"/><rect x="372" y="84" width="10" height="10" class="d"/><rect x="384" y="84" width="10" height="10" class="s"/><rect x="396" y="84" width="10" height="10"/><rect x="408" y="84" width="10" height="10" class="d"/><rect x="420" y="84" width="10" height="10"/><rect x="432" y="84" width="10" height="10" class="c"/><rect x="444" y="84" width="10" height="10" class="d"/><rect x="456" y="84" width="10" height="10" class="c"/><rect x="468" y="84" width="10" height="10"/><rect x="480" y="84" width="10" height="10" class="a"/><rect x="492" y="84" width="10" height="10" class="c"/><rect x="504" y="84" width="10" height="10" class="z"/><rect x="516" y="84" width="10" height="10" class="d"/><rect x="528" y="84" width="10" height="10" class="a"/><rect x="540" y="84" width="10" height="10" class="d"/><rect x="552" y="84" width="10" height="10" class="y"/><rect x="564" y="84" width="10" height="10" class="d1"/><rect x="0" y="96" width="10" height="10"/><rect x="12" y="96" width="10" height="10" class="d1"/><rect x="24" y="96" width="10" height="10" class="z"/><rect x="36" y="96" width="10" height="10" class="d1"/><rect x="48" y="96" width="10" height="10" class="d"/><rect x="60" y="96" width="10" height="10"/><rect x="72" y="96" width="10" height="10"/><rect x="84" y="96" width="10" height="10" class="c"/><rect x="96" y="96" width="10" height="10" class="d"/><rect x="108" y="96" width="10" height="10" class="a"/><rect x="120" y="96" width="10" height="10" class="a"/><rect x="132" y="96" width="10" height="10"/><rect x="144" y="96" width="10" height="10" class="a"/><rect x="156" y="96" width="10" height="10" class="a"/><rect x="168" y="96" width="10" height="10" class="d"/><rect x="180" y="96" width="10" height="10" class="s"/><rect x="192" y="96" width="10" height="10" class="a"/><rect x="204" y="96" width="10" height="10"/><rect x="216" y="96" width="10" height="10" class="s"/><rect x="228" y="96" width="10" height="10" class="s"/><rect x="240" y="96" width="10" height="10" class="d"/><rect x="252" y="96" width="10" height="10"/><rect x="264" y="96" width="10" height="10" class="d"/><rect x="276" y="96" width="10" height="10" class="d"/><rect x="288" y="96" width="10" height="10" class="a"/><rect x="300" y="96" width="10" height="10"/><rect x="312" y="96" width="10" height="10" class="y"/><rect x="324" y="96" width="10" height="10" class="d"/><rect x="336" y="96" width="10" height="10" class="y"/><rect x="348" y="96" width="10" height="10" class="z"/><rect x="360" y="96" width="10" height="10" class="d"/><rect x="372" y="96" width="10" height="10" class="d"/><rect x="384" y="96" width="10" height="10"/><rect x="396" y="96" width="10" height="10"/><rect x="408" y="96" width="10" height="10" class="z"/><rect x="420" y="96" width="10" height="10" class="d"/><rect x="432" y="96" width="10" height="10"/><rect x="444" y="96" width="10" height="10" class="z"/><rect x="456" y="96" width="10" height="10" class="c"/><rect x="468" y="96" width="10" height="10" class="d"/><rect x="480" y="96" width="10" height="10" class="d"/><rect x="492" y="96" width="10" height="10" class="a"/><rect x="504" y="96" width="10" height="10"/><rect x="516" y="96" width="10" height="10"/><rect x="528" y="96" width="10" height="10" class="d"/><rect x="540" y="96" width="10" height="10"/><rect x="552" y="96" width="10" height="10" class="z"/><rect x="564" y="96" width="10" height="10"/><rect x="0" y="108" width="10" height="10"/><rect x="12" y="108" width="10" height="10"/><rect x="24" y="108" width="10" height="10"/><rect x="36" y="108" width="10" height="10"/><rect x="48" y="108" width="10" height="10"/><rect x="60" y="108" width="10" height="10" class="z"/><rect x="72" y="108" width="10" height="10"/><rect x="84" y="108" width="10" height="10"/><rect x="96" y="108" width="10" height="10"/><rect x="108" y="108" width="10" height="10"/><rect x="120" y="108" width="10" height="10"/><rect x="132" y="108" width="10" height="10"/><rect x="144" y="108" width="10" height="10"/><rect x="156" y="108" width="10" height="10"/><rect x="168" y="108" width="10" height="10"/><rect x="180" y="108" width="10" height="10" class="d"/><rect x="192" y="108" width="10" height="10"/><rect x="204" y="108" width="10" height="10"/><rect x="216" y="108" width="10" height="10"/><rect x="228" y="108" width="10" height="10"/><rect x="240" y="108" width="10" height="10"/><rect x="252" y="108" width="10" height="10"/><rect x="264" y="108" width="10" height="10"/><rect x="276" y="108" width="10" height="10"/><rect x="288" y="108" width="10" height="10"/><rect x="300" y="108" width="10" height="10"/><rect x="312" y="108" width="10" height="10"/><rect x="324" y="108" width="10" height="10" class="z"/><rect x="336" y="108" width="10" height="10" class="c"/><rect x="348" y="108" width="10" height="10"/><rect x="360" y="108" width="10" height="10"/><rect x="372" y="108" width="10" height="10" class="z"/><rect x="384" y="108" width="10" height="10"/><rect x="396" y="108" width="10" height="10"/><rect x="408" y="108" width="10" height="10"/><rect x="420" y="108" width="10" height="10" class="z"/><rect x="432" y="108" width="10" height="10"/><rect x="444" y="108" width="10" height="10"/><rect x="456" y="108" width="10" height="10"/><rect x="468" y="108" width="10" height="10"/><rect x="480" y="108" width="10" height="10"/><rect x="492" y="108" width="10" height="10"/><rect x="504" y="108" width="10" height="10"/><rect x="516" y="108" width="10" height="10"/><rect x="528" y="108" width="10" height="10"/><rect x="540" y="108" width="10" height="10"/><rect x="552" y="108" width="10" height="10"/><rect x="564" y="108" width="10" height="10"/><rect x="0" y="120" width="10" height="10"/><rect x="12" y="120" width="10" height="10" class="z"/><rect x="24" y="120" width="10" height="10"/><rect x="36" y="120" width="10" height="10"/><rect x="48" y="120" width="10" height="10"/><rect x="60" y="120" width="10" height="10"/><rect x="72" y="120" width="10" height="10"/><rect x="84" y="120" width="10" height="10" class="d"/><rect x="96" y="120" width="10" height="10"/><rect x="108" y="120" width="10" height="10"/><rect x="120" y="120" width="10" height="10" class="d"/><rect x="132" y="120" width="10" height="10"/><rect x="144" y="120" width="10" height="10"/><rect x="156" y="120" width="10" height="10"/><rect x="168" y="120" width="10" height="10" class="c"/><rect x="180" y="120" width="10" height="10"/><rect x="192" y="120" width="10" height="10"/><rect x="204" y="120" width="10" height="10"/><rect x="216" y="120" width="10" height="10"/><rect x="228" y="120" width="10" height="10"/><rect x="240" y="120" width="10" height="10"/><rect x="252" y="120" width="10" height="10"/><rect x="264" y="120" width="10" height="10"/><rect x="276" y="120" width="10" height="10"/><rect x="288" y="120" width="10" height="10"/><rect x="300" y="120" width="10" height="10"/><rect x="312" y="120" width="10" height="10"/><rect x="324" y="120" width="10" height="10"/><rect x="336" y="120" width="10" height="10"/><rect x="348" y="120" width="10" height="10"/><rect x="360" y="120" width="10" height="10"/><rect x="372" y="120" width="10" height="10"/><rect x="384" y="120" width="10" height="10"/><rect x="396" y="120" width="10" height="10" class="c"/><rect x="408" y="120" width="10" height="10"/><rect x="420" y="120" width="10" height="10"/><rect x="432" y="120" width="10" height="10"/><rect x="444" y="120" width="10" height="10"/><rect x="456" y="120" width="10" height="10"/><rect x="468" y="120" width="10" height="10" class="z"/><rect x="480" y="120" width="10" height="10"/><rect x="492" y="120" width="10" height="10" class="c"/><rect x="504" y="120" width="10" height="10" class="d"/><rect x="516" y="120" width="10" height="10"/><rect x="528" y="120" width="10" height="10" class="c"/><rect x="540" y="120" width="10" height="10"/><rect x="552" y="120" width="10" height="10"/><rect x="564" y="120" width="10" height="10"/><rect x="0" y="132" width="10" height="10" class="z"/><rect x="12" y="132" width="10" height="10" class="d"/><rect x="24" y="132" width="10" height="10"/><rect x="36" y="132" width="10" height="10"/><rect x="48" y="132" width="10" height="10"/><rect x="60" y="132" width="10" height="10"/><rect x="72" y="132" width="10" height="10"/><rect x="84" y="132" width="10" height="10"/><rect x="96" y="132" width="10" height="10"/><rect x="108" y="132" width="10" height="10"/><rect x="120" y="132" width="10" height="10"/><rect x="132" y="132" width="10" height="10"/><rect x="144" y="132" width="10" height="10"/><rect x="156" y="132" width="10" height="10" class="c"/><rect x="168" y="132" width="10" height="10"/><rect x="180" y="132" width="10" height="10"/><rect x="192" y="132" width="10" height="10"/><rect x="204" y="132" width="10" height="10"/><rect x="216" y="132" width="10" height="10"/><rect x="228" y="132" width="10" height="10" class="z"/><rect x="240" y="132" width="10" height="10" class="d"/><rect x="252" y="132" width="10" height="10" class="c"/><rect x="264" y="132" width="10" height="10" class="z"/><rect x="276" y="132" width="10" height="10" class="d"/><rect x="288" y="132" width="10" height="10"/><rect x="300" y="132" width="10" height="10"/><rect x="312" y="132" width="10" height="10"/><rect x="324" y="132" width="10" height="10"/><rect x="336" y="132" width="10" height="10"/><rect x="348" y="132" width="10" height="10"/><rect x="360" y="132" width="10" height="10"/><rect x="372" y="132" width="10" height="10"/><rect x="384" y="132" width="10" height="10"/><rect x="396" y="132" width="10" height="10"/><rect x="408" y="132" width="10" height="10"/><rect x="420" y="132" width="10" height="10"/><rect x="432" y="132" width="10" height="10"/><rect x="444" y="132" width="10" height="10"/><rect x="456" y="132" width="10" height="10"/><rect x="468" y="132" width="10" height="10"/><rect x="480" y="132" width="10" height="10"/><rect x="492" y="132" width="10" height="10"/><rect x="504" y="132" width="10" height="10" class="c"/><rect x="516" y="132" width="10" height="10"/><rect x="528" y="132" width="10" height="10"/><rect x="540" y="132" width="10" height="10"/><rect x="552" y="132" width="10" height="10" class="z"/><rect x="564" y="132" width="10" height="10" class="c"/><rect x="288" y="60" width="10" height="10" class="fr" style="animation-delay:0.0s"/><rect x="300" y="60" width="10" height="10" class="fr" style="animation-delay:0.6s"/><rect x="216" y="48" width="10" height="10" class="fr" style="animation-delay:1.2s"/><rect x="192" y="96" width="10" height="10" class="fr" style="animation-delay:1.8s"/><rect x="204" y="96" width="10" height="10" class="fr" style="animation-delay:2.4s"/><rect x="456" y="108" width="10" height="10" class="fr" style="animation-delay:3.0s"/><rect x="360" y="24" width="10" height="10" class="fw" style="animation-delay:3.6s"/><rect x="372" y="24" width="10" height="10" class="fw" style="animation-delay:4.2s"/><rect x="360" y="0" width="10" height="10" class="fw" style="animation-delay:4.8s"/><rect x="180" y="84" width="10" height="10" class="fw" style="animation-delay:5.4s"/></g>
+        </svg>
+        <ul class="legend" aria-label="Map legend">
+          <li><i class="swatch sw-read" aria-hidden="true"></i> read</li>
+          <li><i class="swatch sw-write" aria-hidden="true"></i> write</li>
+          <li><i class="swatch sw-system" aria-hidden="true"></i> system — darker in one piece, lighter in fragments</li>
+          <li><i class="swatch sw-app" aria-hidden="true"></i> programs</li>
+          <li><i class="swatch sw-doc" aria-hidden="true"></i> documents</li>
+          <li><i class="swatch sw-churn" aria-hidden="true"></i> temporary files</li>
+          <li><i class="swatch sw-archive" aria-hidden="true"></i> archives</li>
+          <li><i class="swatch sw-dir" aria-hidden="true"></i> directories</li>
+          <li><i class="swatch sw-swap" aria-hidden="true"></i> swap file</li>
+          <li><i class="swatch sw-fat" aria-hidden="true"></i> FAT</li>
+          <li><i class="swatch sw-free" aria-hidden="true"></i> free</li>
+        </ul>
+      </figure>
+    </section>
+
+    <section class="sheet container">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">What you hear</h2>
+        <div class="sheet__body">
+          <h2>Three sounds, produced live by the simulated mechanics.</h2>
+          <ol class="steps">
+            <li>
+              <b class="steps__name">The seek</b>
+              <span class="steps__note">The arm jumps from one cylinder to the next. A short seek and a full stroke do not sound alike: every seek speeds up, coasts, slows down and settles, and a short one has no time to coast — so the distance changes the shape of the sound, not only its loudness.</span>
+            </li>
+            <li>
+              <b class="steps__name">The return to the edge</b>
+              <span class="steps__note">A sharp “clack”: on a FAT volume the arm goes back to the start of the partition to rewrite the allocation table, once per file moved.</span>
+            </li>
+            <li>
+              <b class="steps__name">The hum</b>
+              <span class="steps__note">The spindle, continuous, under everything else — the ball bearings of a 1993 drive beating once per turn, the smoother fluid bearing of the 2000s.</span>
+            </li>
+          </ol>
+          <p>
+            Around them, the events of a real drive’s life: the heads
+            unsticking from the platter at power-on, the search for track 0,
+            the thermal recalibration that drives made before 1997 did every
+            few minutes, and the heads landing when the power is cut.
+          </p>
+          <div class="note">
+            <p>
+              Headphones strongly recommended. The iPhone speaker erases the
+              low end of the rotation and most of the arm’s transients. The
+              <span class="ui">Speaker</span> preset raises the rotation to
+              compensate, and <span class="ui">Haptics only</span> turns the
+              sound off and puts the arm in your hand through the iPhone’s Taptic
+              Engine.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The map</h2>
+        <div class="sheet__body">
+          <h2>Watch the volume as it moves.</h2>
+          <p>
+            The <span class="ui">Pass</span> tab shows the cluster map of the
+            disk being worked on — full screen if you want it. A block turns
+            amber when it is read and turquoise when it is written, at the very
+            instant the write is heard: the map runs on the same clock as the
+            sound. The trace fades in a third of a second.
+          </p>
+          <ul>
+            <li><b>Same colour, two shades.</b> Darker means a file stored in one piece; lighter means one in fragments. You see what is tidied and what is still to be put back together.</li>
+            <li><b>Dark grey is free.</b> The gaps between files are what will fragment the next ones.</li>
+            <li><b>The red block never moves.</b> Windows has the swap file open, so the defragmenter tidies around it.</li>
+          </ul>
+          <p>
+            A second view draws the platter itself, with the arm where the
+            simulation puts it. Under <span class="ui">Instruments</span>, the
+            pass is measured as you listen: IOPS, throughput and seeks over the
+            last minute, and where the time goes — moving the arm, waiting for
+            the sector, transferring, computing.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Defragmenters</h2>
+        <div class="sheet__body">
+          <h2>They do not do the same job, and it shows.</h2>
+          <p>
+            The period tools are modelled on the ones that shipped, and three
+            more were written for Winchester from what those do badly. Pick one
+            on the <span class="ui">With which tool?</span> screen; the tool of
+            the disk’s era is preselected.
+          </p>
+          <div class="scroll-x">
+            <table class="spec">
+              <caption>The tools, as the app describes them</caption>
+              <thead>
+                <tr><th scope="col">Tool</th><th scope="col">Origin</th><th scope="col">What it does</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Windows 95/98 Defragmenter</th><td class="origin">1995 · FAT only</td><td>Packs everything to the start of the disk, in tree order, evicting whatever is in the way.</td></tr>
+                <tr><th scope="row">Windows XP Defragmenter</th><td class="origin">2001 · NTFS only</td><td>Only repairs files in pieces, by copying them into a hole that is already free.</td></tr>
+                <tr><th scope="row">JkDefrag 3.36</th><td class="origin">2008</td><td>Tidies the volume by zones and fills the holes, never evicting. Seven other modes under <span class="ui">Advanced options</span>.</td></tr>
+                <tr><th scope="row">UltraDefrag 7.1.1</th><td class="origin">2018 · all formats</td><td>Merges the small splinters without moving the big blocks, and evicts nobody.</td></tr>
+                <tr><th scope="row">Frontier compaction</th><td class="origin">Winchester · FAT only</td><td>Packs the volume in the order it is in; no write ever lands on data that is still referenced.</td></tr>
+                <tr><th scope="row">Thrifty merge</th><td class="origin">Winchester · NTFS only</td><td>Only copies the small pieces, next to their big neighbour or into the nearest hole.</td></tr>
+                <tr><th scope="row">Smart tidying</th><td class="origin">Winchester · all formats</td><td>Lays what the boot reads at the head, in the order it reads it, then packs the rest behind.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            A pass heard to the end leaves a <span class="ui">Report</span>:
+            the map before and after, the numbers before → after, and what the
+            tool had to say. From there, <span class="ui">Try another tool</span>
+            on the same starting volume, compare two passes side by side —
+            without a verdict, since a tool that tidies better and a tool that
+            goes faster are not doing the same job — or boot the tidied disk and
+            hear what the tidying changed.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Period disks</h2>
+        <div class="sheet__body">
+          <h2>Twenty disks with their life already lived.</h2>
+          <p>
+            The <span class="ui">Disks</span> tab opens on two demos ready to
+            play — a Windows 98 boot and a defragmentation — each one
+            <span class="ui">Start</span> away. Below them, a gallery of twenty
+            period disks across five eras, 1993, 1996, 1999, 2003 and 2007: an
+            office worker, a family, a developer, a gamer, and a 1993 tinkerer
+            unpacking BBS archives from floppies. From a 170 MB FAT16 at
+            3,600 rpm to a 320 GB NTFS at 7,200, each is filled the way a
+            person actually filled it — install after install, day after day —
+            through the allocator of its own file system. Nobody set its
+            fragmentation: it is what that history left behind.
+          </p>
+          <p>A disk’s page offers four ways to hear it:</p>
+          <ul>
+            <li><span class="ui">Boot this OS</span> — from MS-DOS 6.22 and Windows 3.1 to Vista, reading the files where that disk keeps them.</li>
+            <li><span class="ui">Install this disk</span> — its first day, replayed from the installation media, every file written where the allocator put it.</li>
+            <li><span class="ui">Relive this disk</span> — its whole history scrolls past at a day, a week or a month per second, and the days worth hearing are named along the way: pick <span class="ui">Listen to day N</span> to hear one in real time.</li>
+            <li><span class="ui">Defragment this disk</span> — with the tool of your choice.</li>
+          </ul>
+          <h3>Build your own</h3>
+          <p>
+            <span class="ui">Build a used disk</span> walks through six steps —
+            the hardware, the format, the system and the software, the period
+            of use, the habits, the seed — and builds it on the device. You
+            write a history, never a fragmentation rate; the result is only
+            known once the disk is made. What you build is kept under
+            <span class="ui">My disks</span>.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Long passes</h2>
+        <div class="sheet__body">
+          <h2>A pass takes as long as it takes.</h2>
+          <p>
+            Nothing is decreed: the disk sets the pace — seek, rotational
+            latency, transfer — so a pass lasts from a few seconds to several
+            hours depending on the disk and the tool. It keeps playing with the
+            screen locked, with play and pause in Control Center, and the pass
+            banner tells you where it is when you come back.
+          </p>
+          <ul>
+            <li><span class="ui">Ambient mode</span> turns the pass into background sound: a near-black screen with the platter’s outline and its arm, the time listened, and a sleep timer that fades the pass out and stops it.</li>
+            <li>A phone call, or headphones pulled out, pauses the pass instead of letting it run on in silence, and it picks up where it stopped.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Details</h2>
+        <div class="sheet__body">
+          <h2>What it needs, and what it asks for.</h2>
+          <ul>
+            <li><b>iPhone and iPad, iOS 17 or later.</b> Free, with no in-app purchase.</li>
+            <li><b>Nothing to sign up for, nothing to grant.</b> No account, no permission request, and no network access at all: everything is computed on the device.</li>
+            <li><b>English and French</b>, following your device’s language.</li>
+            <li><b>Accessible.</b> Text follows your Dynamic Type size, VoiceOver reads the cluster map in four zones, and Reduce Motion stops the platter and the map’s trace.</li>
+          </ul>
+          <p>
+            Curious what is under it? <a href="how-it-works/index.html">How it
+            works</a> follows a block request from the file system to the
+            speaker.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Privacy</h2>
+        <div class="sheet__body">
+          <h2>Nothing leaves the device.</h2>
+          <p>
+            No server, no analytics, no advertising, no third-party SDK. The
+            disks you build, your sound settings and what you have listened to
+            stay on your iPhone or iPad.
+          </p>
+          <p><a href="privacy/index.html">Read the privacy policy</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__inner">
+        <span>Winchester: Defrag Sounds — an app by Gabriel Landais. Requires iOS 17 or later.</span>
+        <nav aria-label="Footer">
+          <a href="index.html">Overview</a>
+          <a href="how-it-works/index.html">How it works</a>
+          <a href="support/index.html">Support</a>
+          <a href="privacy/index.html">Privacy</a>
+          <a href="https://github.com/glandais/winchester">Source</a>
+        </nav>
+      </div>
+      <p>
+        Windows is a trademark of Microsoft Corporation. The tools and drives
+        named here are imitated for listening; Winchester is not affiliated
+        with, or endorsed by, their makers.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

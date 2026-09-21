@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>How it works — Winchester: Defrag Sounds</title>
+  <meta name="description" content="From a disk's history to the sound of its arm: how Winchester generates a volume, plans block requests, simulates the drive's mechanics sector by sector, and turns the result into sound and haptics as you listen.">
+  <link rel="canonical" href="https://glandais.github.io/Winchester/how-it-works/">
+  <link rel="icon" type="image/png" sizes="180x180" href="../assets/appicon-180.png">
+  <link rel="apple-touch-icon" href="../assets/appicon-180.png">
+  <meta name="theme-color" content="#0E0F12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F2F1EC" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="How Winchester works">
+  <meta property="og:description" content="From a disk's history to the sound of its arm: how Winchester generates a volume, plans block requests, simulates the drive's mechanics sector by sector, and turns the result into sound and haptics as you listen.">
+  <meta property="og:url" content="https://glandais.github.io/Winchester/how-it-works/">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="masthead">
+    <div class="container masthead__inner">
+      <a class="wordmark" href="../index.html"><b>Winchester</b> <span>Defrag Sounds</span></a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../index.html">Overview</a>
+        <a href="index.html" aria-current="page">How it works</a>
+        <a href="../support/index.html">Support</a>
+        <a href="../privacy/index.html">Privacy</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="doc-head container">
+      <p class="doc-meta">Mechanism — Winchester: Defrag Sounds</p>
+      <h1>How it works</h1>
+      <p>
+        Winchester has no recordings of a hard disk. It has a model of one —
+        its geometry, its arm, its buffer, its file system — and it listens to
+        what that model does. This page follows a request from the file system
+        down to the speaker.
+      </p>
+      <ul class="toc">
+        <li><a href="#chain">The chain</a></li>
+        <li><a href="#history">A history</a></li>
+        <li><a href="#drive">The drive</a></li>
+        <li><a href="#sound">The sound</a></li>
+        <li><a href="#live">Live</a></li>
+        <li><a href="#limits">Estimates</a></li>
+      </ul>
+      <p class="doc-meta doc-meta--after">
+        The name comes from the IBM 3340 “30/30”, nicknamed Winchester in
+        1973 — the first disk sealed together with its heads, and the direct
+        ancestor of the ones this app plays.
+      </p>
+    </section>
+
+    <section class="sheet container" id="chain">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The chain</h2>
+        <div class="sheet__body">
+          <h2>Five stages, and nothing recorded in between.</h2>
+          <ol class="steps">
+            <li>
+              <b class="steps__name">A volume, generated from a history</b>
+              <span class="steps__note">Years of use replayed through the allocator of the disk’s file system: which files exist, and exactly which clusters each one holds.</span>
+            </li>
+            <li>
+              <b class="steps__name">A planner</b>
+              <span class="steps__note">A boot, an installation, a day of use or a defragmentation decides which files to read or write, in which order, and how long the computer computes between two requests.</span>
+            </li>
+            <li>
+              <b class="steps__name">Block requests, one at a time</b>
+              <span class="steps__note">A date, a logical block address, a number of sectors, read or write — what an operating system actually sends a disk.</span>
+            </li>
+            <li>
+              <b class="steps__name">The drive’s mechanics</b>
+              <span class="steps__note">Buffer and bus, the block address turned into cylinder, head and sector on a zoned platter, the seek, the rotational latency, the transfer. Out comes a timeline of seeks, head switches, track steps and transfers.</span>
+            </li>
+            <li>
+              <b class="steps__name">Sound, map and haptics</b>
+              <span class="steps__note">That timeline drives the head synthesiser, the spindle voice, the Taptic Engine and the cluster map — all on one clock.</span>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="history">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">A history</h2>
+        <div class="sheet__body">
+          <h2>Fragmentation is not a setting. It is a residue.</h2>
+          <p>
+            Nobody asks for “a disk at 23 % fragmentation”. A disk is written
+            as a story — an installation, builds, downloads, documents saved
+            over and over, updates, and the day someone finally tidies up — and
+            the story is replayed through the allocator of the file system it
+            lives on. The same story on three file systems gives three volumes
+            that have nothing in common:
+          </p>
+          <ul>
+            <li><b>MS-DOS FAT</b> serves the first free cluster from the start of the volume, at every write: holes are plugged at once, and recent files are chopped up.</li>
+            <li><b>VFAT and FAT32</b> resume at the last cluster allocated: writing is clean while the cursor advances, then it wraps round and fragmentation arrives in waves.</li>
+            <li><b>NTFS</b> picks the hole that fits rather than the first one it meets, and reserves a zone for its master file table: files stay in one piece far longer.</li>
+          </ul>
+          <p>
+            Directories exist and grow like files. The swap file is open and
+            never moves. And a defragmentation works on the clusters the
+            allocator actually handed out, not on an approximation of them.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="drive">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The drive</h2>
+        <div class="sheet__body">
+          <h2>Deduced from real datasheets, and from the year.</h2>
+          <p>
+            A capacity alone does not describe a disk: the same gigabyte is a
+            whole drive in 1996 and a corner of a platter, read five times
+            faster, in 2003. So the model interpolates in time between seven
+            drives that were really sold, whose datasheets it carries — the
+            number of tracks per surface, which sets the arm’s stroke and so
+            the whole acoustics of a seek, and the capacity of a surface, which
+            sets the number of platters.
+          </p>
+          <div class="scroll-x">
+            <table class="spec">
+              <caption>The seven reference drives</caption>
+              <thead>
+                <tr><th scope="col">Drive</th><th scope="col">Year</th><th scope="col">Buffer</th><th scope="col">Bearing</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Conner CFA170A</th><td class="num">1993</td><td class="num">64 KB</td><td>ball</td></tr>
+                <tr><th scope="row">Quantum Fireball 1080AT</th><td class="num">1996</td><td class="num">128 KB</td><td>ball</td></tr>
+                <tr><th scope="row">Seagate U8</th><td class="num">1999</td><td class="num">512 KB</td><td>ball</td></tr>
+                <tr><th scope="row">Seagate Barracuda ATA IV</th><td class="num">2001</td><td class="num">2 MB</td><td>fluid</td></tr>
+                <tr><th scope="row">Seagate Barracuda 7200.7</th><td class="num">2003</td><td class="num">2 MB</td><td>fluid</td></tr>
+                <tr><th scope="row">Seagate Barracuda 7200.10</th><td class="num">2006</td><td class="num">16 MB</td><td>fluid</td></tr>
+                <tr><th scope="row">Seagate Barracuda 7200.11</th><td class="num">2008</td><td class="num">32 MB</td><td>fluid</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <ul>
+            <li><b>The seek</b> follows the two-regime law of Ruemmler and Wilkes (IEEE Computer, 1994) — a square root of the distance for short seeks, a straight line beyond — split into speed-up, coast, slow-down and settle. A seek before a write settles longer, as the datasheets publish.</li>
+            <li><b>Rotation and transfer</b> are simulated sector by sector, with track steps and head switches at the end of a cylinder.</li>
+            <li><b>The buffer</b> reads ahead after a read, and the write cache acknowledges a write at once and lays it down later, in elevator order — so the disk works while the computer computes, as a real one did.</li>
+            <li><b>Power-on</b> is in three stages: the motor spins up, the heads unstick from the platter, and the drive seeks its track 0. At power-off the platter spins down and the heads land.</li>
+            <li><b>Drives from before 1997 recalibrate</b> two minutes after they are ready, then every four minutes: a second of crackle, the signature sound of that generation.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="sound">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The sound</h2>
+        <div class="sheet__body">
+          <h2>Resonators that do not change pitch, excited by a moving arm.</h2>
+          <p>
+            <b>The head.</b> A bank of resonators at fixed frequencies — modes
+            near 4.5 kHz (the arm’s sway) and 5.5 kHz, and five more — is excited by a current
+            profile drawn from the four phases of each seek. The structural
+            resonances of an actuator do not transpose with seek speed: only the
+            excitation changes. A short seek has no coasting phase, so the shape
+            of the sound changes with the distance, not only its loudness.
+          </p>
+          <p>
+            <b>Trains.</b> Two seeks close together never fire two separate
+            sounds. They are merged into one continuous render passed once
+            through the resonators — a rule borrowed from MAME’s floppy-drive
+            emulation, where retriggering the step sample sounded “much too
+            loud”. Head switches and track steps less than 30 ms apart are
+            treated the same way, which is why a long sequential read is heard
+            as a pitch rather than a string of ticks.
+          </p>
+          <p>
+            <b>The spindle</b> is filtered noise shaped by three figures taken
+            from the datasheets: spindle speed, number of platters, and bearing.
+            Ball bearings, until 2000, whistle and beat once per revolution;
+            fluid bearings leave the smooth breath of air around the platters.
+          </p>
+          <p>
+            <b>Haptics</b> receive the same cues as the audio. A single seek is
+            played as its four phases; a dense train becomes one continuous
+            event, because at 150 seeks a second a burst of transients is mush
+            to the hand.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="live">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Live</h2>
+        <div class="sheet__body">
+          <h2>Nothing is computed in advance.</h2>
+          <p>
+            The planner runs on its own thread and emits its requests one by
+            one instead of stacking them up; each goes straight through the
+            drive simulation and into a buffer, and the thread sleeps as soon as
+            it is about eight seconds ahead of what you hear. The screen, the
+            sound and the haptics only ever read the present moment. That is why
+            a pass has no known length before it ends, why there is no rewind,
+            and why a map block changes colour exactly when its write is heard.
+          </p>
+          <p>
+            The platter on screen comes out of the same timeline. The one
+            licence is the angle: a platter turning 120 times a second cannot
+            be drawn at 60 frames a second, so it is slowed down a hundredfold —
+            the same factor for every disk, so a 3,600 rpm drive still turns
+            half as fast as a 7,200 rpm one.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="limits">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Estimates</h2>
+        <div class="sheet__body">
+          <h2>What is measured, and what is tuned by ear.</h2>
+          <p>
+            Geometry, seek times, buffers, spindle speeds and bearings come from
+            manufacturers’ manuals. The timbre does not: no manual publishes
+            the spectrum of its drive, so the frequencies of the spindle bands,
+            the depth of the bearing’s beat and the way the head’s modes are
+            dosed with distance are estimates, set by listening. The hum is the
+            weakest link — computed from the spindle speed, for lack of a
+            recording.
+          </p>
+          <p>
+            The project’s <code>README.md</code> goes through the figures with
+            their sources, and says which ones are estimates.
+          </p>
+          <dl class="contact">
+            <dt>Source code</dt>
+            <dd><a href="https://github.com/glandais/winchester">github.com/glandais/winchester</a></dd>
+            <dt>Questions and bug reports</dt>
+            <dd><a href="https://github.com/glandais/winchester/issues">github.com/glandais/winchester/issues</a></dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__inner">
+        <span>Winchester: Defrag Sounds — an app by Gabriel Landais. Requires iOS 17 or later.</span>
+        <nav aria-label="Footer">
+          <a href="../index.html">Overview</a>
+          <a href="index.html">How it works</a>
+          <a href="../support/index.html">Support</a>
+          <a href="../privacy/index.html">Privacy</a>
+          <a href="https://github.com/glandais/winchester">Source</a>
+        </nav>
+      </div>
+      <p>
+        Drive and software names belong to their owners. They are named here
+        because the app imitates them for listening; Winchester is not
+        affiliated with, or endorsed by, their makers.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

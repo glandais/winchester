@@ -6333,3 +6333,95 @@ c'est son chantier.
   Fait : chantier 30, branche `parcours`, trois lots — les unités et les
   libellés, l'état du disque gardé d'un lancement à l'autre, la navigation.
   Six pistes sur sept prises ; le détail est dans `LEDGER-UI.md`.
+
+## Chantier 31 — le site
+
+**Fait** · branche `site`
+
+### Le problème
+
+La fiche du store cite trois adresses — `https://glandais.github.io/Winchester/`,
+`…/support/`, `…/privacy/` — et aucune n'existait. Une revue qui suit le lien
+de confidentialité et tombe sur une 404 refuse l'app. Il fallait un site qui
+dise vrai sur une app qui ne collecte rien, sans le démentir en chargeant une
+police chez Google.
+
+### Les décisions
+
+- **Le modèle est `whereiwas/docs/`**, en ligne et accepté par la revue : même
+  structure (`index.html`, `privacy/`, `support/`, `how-it-works/`,
+  `assets/style.css`, `.nojekyll`), même grille à colonne d'étiquettes, même
+  ton juridique sobre pour la confidentialité, même mécanisme de contact —
+  issues GitHub (`glandais/winchester`) et la même adresse e-mail. Le contenu,
+  lui, est écrit pour Winchester.
+- **Anglais seul, exprès**, comme WhereIWas : la fiche est en deux langues,
+  le site en une ; il le dit dans `CLAUDE.md`.
+- **Aucun JavaScript, aucune ressource externe.** Les polices de WhereIWas
+  (Archivo, IBM Plex Mono) n'ont pas de fichier de licence à côté d'elles : on
+  ne les recopie pas, le site prend la pile système — SF sur les appareils de
+  l'app, arrondie pour les titres comme les `ScreenTitle` de l'app.
+- **L'identité visuelle est celle de l'app** : le fond `#0E0F12` et le panneau
+  de `Theme`, l'ambre `Theme.read` et le turquoise `Theme.write`, et, en tête,
+  une carte de clusters en SVG inline aux couleurs exactes de `ClusterPalette`
+  (teinte sombre d'un seul tenant incluse) — un FAT à moitié rangé, avec son
+  fichier d'échange rouge. Sombre par défaut ; une variante claire suit le
+  réglage du système, la carte restant sombre puisqu'elle est un écran de
+  l'app. Quelques cases s'allument en ambre ou turquoise puis s'éteignent en
+  un tiers de seconde ; rien n'est animé sous « Réduire les animations ».
+- **Liens relatifs à `index.html` explicite** : un lien vers un dossier nu
+  (`../`) marche sur Pages mais pas en `file://`.
+- **Les libellés sont ceux du catalogue** (unités `en`) : `Disks`, `Pass`,
+  `Instruments`, `Settings`, `Start`, `Relive this disk`, `Listen to day N`,
+  `Build a used disk`, `With which tool?`, `Share the report`… Chaque
+  affirmation a été relue contre `Sources/` ou le `README.md` ; ce qui ne s'y
+  trouvait pas n'a pas été écrit.
+- **La confidentialité décrit ce que le code écrit**, et rien d'autre :
+  `disques.json` (les disques construits, leur recette seule) et
+  `passes.json` (les 120 derniers résumés de passe, qui portent l'état d'un
+  disque) dans Application Support, le mixage et l'accueil vu dans
+  `UserDefaults`. Rien ne sort que par l'utilisateur ou le système : le
+  texte du bilan confié à la feuille de partage, le titre de la passe sur
+  l'écran verrouillé, la sauvegarde de l'appareil. Date d'effet : 21
+  septembre 2026.
+- **Pas de lien App Store** tant que l'app n'est pas publiée : un commentaire
+  HTML marque sa place dans l'en-tête de l'index.
+- Une ligne de pied de page dit que les noms de Windows, des outils et des
+  disques appartiennent à leurs propriétaires, et que l'app ne leur est pas
+  affiliée.
+
+Un écart relevé en chemin, laissé tel quel puisque `metadata/` n'est pas de
+ce chantier : la description du store dit du seek « its pitch set by the
+distance travelled », alors que le banc de résonateurs est à fréquences fixes
+et que la distance change la forme et le niveau du son. Le site dit ce que dit
+le README.
+
+### Ce qui valide
+
+- Un serveur local (`python3 -m http.server`, arrêté ensuite), servi à la
+  racine puis sous un sous-chemin `/Winchester/` comme sur Pages : un
+  explorateur de liens suit chaque `href`, `src` et `url()` interne depuis les
+  quatre pages — 11 adresses, **toutes à 200**, aucune ancre absente, balises
+  équilibrées, `lang`, titre, description, viewport et `theme-color` sur
+  chaque page, un `alt` sur chaque image. Tous les liens relatifs existent sur
+  le disque, donc marchent en `file://`.
+- Des captures par Chrome sans interface, à 1280 px et à 390 px (dans des
+  iframes : la fenêtre sans interface ne descend pas sous 500 px) : pas de
+  défilement horizontal hors des tableaux, qui défilent dans leur cadre. Elles
+  ont fait corriger les étiquettes de section, que `.sheet h2` écrasait, et
+  les ancres, qui tombaient sous l'en-tête collant.
+- Les icônes 180 et 512 sortent de `AppIcon-1024.png` par `sips`, sans canal
+  alpha.
+
+### Laissé ouvert
+
+- **Activer GitHub Pages** : source `develop`, dossier `/docs`. Rien n'est en
+  ligne tant que ce n'est pas fait, et rien n'a été poussé.
+- **La casse** : le dépôt s'appelle `winchester`, les trois adresses du store
+  `Winchester`. Pages sert un site de projet sous le nom du dépôt ; que
+  `/Winchester/` y réponde aussi n'est pas vérifié — à contrôler dès
+  l'activation, et sinon renommer le dépôt ou corriger les trois adresses de
+  `metadata/` (et les `canonical` du site).
+- **Le lien App Store** à poser à la publication, à la place du commentaire.
+- **Non vérifié sur un appareil** : le rendu dans Safari iOS, le mode clair,
+  et le chemin « Réglages → Winchester → Language » que la FAQ indique pour
+  changer de langue sans changer celle de l'appareil.

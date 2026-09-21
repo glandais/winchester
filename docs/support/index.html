@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Support — Winchester: Defrag Sounds</title>
+  <meta name="description" content="Getting sound out of Winchester, why a pass can last hours and keeps playing with the screen locked, how the defragmenters differ, building your own disk, languages, and how to report a problem.">
+  <link rel="canonical" href="https://glandais.github.io/Winchester/support/">
+  <link rel="icon" type="image/png" sizes="180x180" href="../assets/appicon-180.png">
+  <link rel="apple-touch-icon" href="../assets/appicon-180.png">
+  <meta name="theme-color" content="#0E0F12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F2F1EC" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Support — Winchester: Defrag Sounds">
+  <meta property="og:description" content="Getting sound out of Winchester, why a pass can last hours and keeps playing with the screen locked, how the defragmenters differ, building your own disk, languages, and how to report a problem.">
+  <meta property="og:url" content="https://glandais.github.io/Winchester/support/">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="masthead">
+    <div class="container masthead__inner">
+      <a class="wordmark" href="../index.html"><b>Winchester</b> <span>Defrag Sounds</span></a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../index.html">Overview</a>
+        <a href="../how-it-works/index.html">How it works</a>
+        <a href="index.html" aria-current="page">Support</a>
+        <a href="../privacy/index.html">Privacy</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="doc-head container">
+      <p class="doc-meta">Support — Winchester: Defrag Sounds — iOS 17 or later</p>
+      <h1>Support</h1>
+      <p>
+        Winchester is made by one person. The fastest route to a fix is the
+        issue tracker; the questions that come up most are answered below.
+      </p>
+      <ul class="toc">
+        <li><a href="#start">Getting started</a></li>
+        <li><a href="#sound">No sound</a></li>
+        <li><a href="#waiting">Waiting</a></li>
+        <li><a href="#long">Long passes</a></li>
+        <li><a href="#tools">The tools</a></li>
+        <li><a href="#build">Your own disk</a></li>
+        <li><a href="#language">Language</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </section>
+
+    <section class="sheet container" id="start">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Getting started</h2>
+        <div class="sheet__body">
+          <h2>Headphones on, then Start.</h2>
+          <ol>
+            <li>Go through the three welcome screens — what you hear, what the map shows, and headphones — and tap <span class="ui">Listen to a disk</span>.</li>
+            <li>On the <span class="ui">Disks</span> tab, tap <span class="ui">Start</span> on one of the two demos at the top. The sound begins within a few seconds.</li>
+            <li>The <span class="ui">Pass</span> tab shows the cluster map and the transport controls. <span class="ui">Instruments</span> measures what the disk is doing; <span class="ui">Settings</span> holds the sound mix.</li>
+          </ol>
+          <p>
+            The welcome screens can be shown again from
+            <span class="ui">Settings</span> → <span class="ui">See the welcome again</span>.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="sound">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">No sound</h2>
+        <div class="sheet__body">
+          <h2>I hear nothing, or almost nothing.</h2>
+          <p>Check these in order:</p>
+          <ol>
+            <li><b>Is a pass playing?</b> Nothing sounds until you tap <span class="ui">Start</span> on a demo or pick one of a disk’s actions. A phone call, or headphones pulled out, pauses the pass on purpose: the <span class="ui">Pass</span> tab then says <span class="ui">Pass interrupted at…</span> with the cause, and <span class="ui">Resume</span> carries on where it stopped.</li>
+            <li><b>The volume.</b> Turn it up with the side buttons while the pass plays. The Ring/Silent switch does not mute Winchester — like a music player, it plays in silent mode — so the switch is not the cause.</li>
+            <li><b>Where the audio goes.</b> If Bluetooth headphones or a speaker are connected, the sound goes there. Control Center shows the current output.</li>
+            <li><b>The mix.</b> In <span class="ui">Settings</span> → <span class="ui">Sound and haptics</span>, <span class="ui">Haptics only</span> turns the sound off by design, and the levels may have been lowered. <span class="ui">Back to the original mix</span> restores them.</li>
+          </ol>
+          <div class="note">
+            <p>
+              On the built-in speaker the sound is thin, and that is expected:
+              the speaker erases the low end of the rotation and most of the
+              arm’s transients. Headphones make the difference between a short
+              seek and a full stroke audible. The <span class="ui">Speaker</span>
+              preset raises the rotation to compensate.
+            </p>
+            <p>
+              Haptics need the iPhone’s Taptic Engine. On a device without one,
+              such as an iPad, they are marked unavailable; the sound does not
+              depend on them.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="waiting">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Waiting</h2>
+        <div class="sheet__body">
+          <h2>Why does something take a few seconds?</h2>
+          <p>
+            Nothing in Winchester is downloaded or pre-recorded, so everything
+            is made on the device the first time it is needed.
+          </p>
+          <ul>
+            <li><b>Opening a period disk.</b> Its volume is generated when you open its page — years of simulated use replayed through the file system’s allocator. The largest ones take a second or two.</li>
+            <li><b>Starting a pass.</b> The simulation runs a few seconds ahead of what you hear, so the sound begins a few seconds after <span class="ui">Start</span>.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="long">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Long passes</h2>
+        <div class="sheet__body">
+          <h2>A pass has been running for an hour. Is that right?</h2>
+          <p>
+            Very likely. The simulated disk sets the pace — each seek,
+            rotational latency and transfer takes the time it would have taken
+            — so a pass lasts from a few seconds to several hours, depending on
+            the disk and the tool. The <span class="ui">With which tool?</span>
+            screen shows the durations measured on the gallery disks; they are
+            an order of magnitude, not a countdown.
+          </p>
+          <ul>
+            <li><b>It keeps playing with the screen locked</b>, and play and pause are in Control Center and on the lock screen. That is why the app runs audio in the background: only while a pass is playing, and it stops with it.</li>
+            <li><b>To fall asleep to it</b>, open <span class="ui">Ambient mode</span> from the <span class="ui">Pass</span> tab and set a <span class="ui">Sleep timer</span>; the pass fades out and stops at the time you chose.</li>
+            <li><b>Starting another pass replaces the current one.</b> There is one engine; the app asks before it replaces a pass in progress.</li>
+            <li><b>Restarting from the beginning</b> means starting the pass again: there is no rewind.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="tools">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The tools</h2>
+        <div class="sheet__body">
+          <h2>What is the difference between the defragmenters?</h2>
+          <p>
+            They do not do the same job. A FAT volume from the 1990s gets the
+            Windows 95/98 Defragmenter by default; an NTFS volume from the 2000s
+            gets the Windows XP one. The others are there to compare on exactly
+            the same volume.
+          </p>
+          <ul>
+            <li><b>Windows 95/98 Defragmenter</b> packs everything to the start of the disk, evicting whatever is in the way. Constant back-and-forth, and a “clack” at the edge of the platter for every file.</li>
+            <li><b>Windows XP Defragmenter</b> only repairs files in pieces, by copying them into a hole that is already free. Short and calm; it gives up when no hole is the right size.</li>
+            <li><b>JkDefrag 3.36</b> tidies by zones and fills the holes without evicting; its seven other modes — sorts by name, size or date, packing to the start or the end — are under <span class="ui">Advanced options</span>.</li>
+            <li><b>UltraDefrag 7.1.1</b> merges the small splinters without moving the big blocks.</li>
+            <li><b>Frontier compaction</b> (FAT), <b>Thrifty merge</b> (NTFS) and <b>Smart tidying</b> (both) were written for Winchester; Smart tidying aims at what is measured after the pass — the boot, the pieces, the holes.</li>
+          </ul>
+          <p>
+            The tools that only work on one format are marked
+            <span class="ui">FAT only</span> or <span class="ui">NTFS only</span>
+            on a volume of the other kind. Once a pass has finished, its
+            <span class="ui">Report</span> lets you try another tool on the same
+            starting volume and compare the two.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="build">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Your own disk</h2>
+        <div class="sheet__body">
+          <h2>How do I build a disk of my own?</h2>
+          <p>
+            On the <span class="ui">Disks</span> tab, tap
+            <span class="ui">Build a used disk</span>. Six steps: the hardware
+            (year bought, capacity, spindle speed — the geometry is deduced),
+            the format, the system and the software installed at the start,
+            the period of use, the habits, and the seed. Then
+            <span class="ui">Build the disk</span>.
+          </p>
+          <p>
+            There is no fragmentation slider, on purpose: you describe what the
+            person did with the disk, and the fragmentation is what that
+            history leaves behind. <span class="ui">Another seed</span> keeps
+            the history and changes the exact order of the writes.
+            <span class="ui">Save to My disks</span> keeps it; a saved disk can
+            be deleted from the <span class="ui">Disks</span> tab.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="language">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Language</h2>
+        <div class="sheet__body">
+          <h2>English or French.</h2>
+          <p>
+            The app is in English and French and follows your device’s
+            language. To use one without changing the other, open the iOS
+            Settings app, find Winchester (under Apps on recent versions of
+            iOS), and choose its Language.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="contact">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Contact</h2>
+        <div class="sheet__body">
+          <h2>Reporting something.</h2>
+          <p>
+            For a bug, include what you expected, what happened, your iOS
+            version and device model, the disk and the tool, and roughly how far
+            into the pass it happened. If the pass finished, the text from
+            <span class="ui">Share the report</span> is worth more than any
+            description.
+          </p>
+          <dl class="contact">
+            <dt>Issue tracker</dt>
+            <dd><a href="https://github.com/glandais/winchester/issues">github.com/glandais/winchester/issues</a></dd>
+            <dt>Email</dt>
+            <dd><a href="mailto:gabriel.landais@gmail.com">gabriel.landais@gmail.com</a></dd>
+            <dt>Source code</dt>
+            <dd><a href="https://github.com/glandais/winchester">github.com/glandais/winchester</a></dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__inner">
+        <span>Winchester: Defrag Sounds — an app by Gabriel Landais. Requires iOS 17 or later.</span>
+        <nav aria-label="Footer">
+          <a href="../index.html">Overview</a>
+          <a href="../how-it-works/index.html">How it works</a>
+          <a href="index.html">Support</a>
+          <a href="../privacy/index.html">Privacy</a>
+          <a href="https://github.com/glandais/winchester">Source</a>
+        </nav>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
