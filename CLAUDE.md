@@ -342,8 +342,9 @@ l'archive. Ne rien lancer d'autre sur le simulateur pendant une capture —
 titres des cartes se traduisent par `i18n/translations.json` (table `Koubou`),
 dont les clés sont la phrase anglaise elle-même.
 
-Ce qui manque encore avant une première soumission :
-
-- l'envoi des captures d'écran, seule erreur que `asc validate` remonte
-  encore : les vingt-quatre cartes sont prêtes sous `screenshots/IPHONE_65/`
-  et `screenshots/IPAD_PRO_3GEN_129/` (voir « Captures » ci-dessus).
+Les vingt-quatre captures sont envoyées depuis le 21 septembre 2026 (six
+écrans × deux langues × `IPHONE_65` et `IPAD_PRO_3GEN_129`), et `asc validate`
+ne remonte plus aucune erreur : la version 1.0.0, build 2, est prête à être
+soumise. L'envoi prend parfois une erreur 500 d'App Store Connect sur un
+fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
+ne renvoie que ce qui manque.
