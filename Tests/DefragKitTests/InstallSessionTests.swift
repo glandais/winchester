@@ -197,8 +197,9 @@ struct InstallSessionTests {
     func phasesNameSteps() throws {
         let planned = try Self.planned("secretaire-1996")
         let labels = planned.plan.phases.map(\.label)
-        #expect(labels.first == "Copie de Windows 95")
-        #expect(labels.contains("Installation de Office 95"))
-        #expect(labels.contains("Redémarrages et configuration"))
+        // Hors de l'app, `String(localized:)` retombe sur la langue source.
+        #expect(labels.first == "Copying Windows 95")
+        #expect(labels.contains("Installing Office 95"))
+        #expect(labels.contains("Restarts and setup"))
     }
 }

@@ -49,26 +49,32 @@ struct DiskStateBadge: View {
 
     /// « Rangé par UltraDefrag · il y a 3 min », ou ce qu'on a fait d'autre.
     private var headline: String {
-        let when = FrenchFormat.sinceNow(digest.finishedAt)
+        let when = Format.sinceNow(digest.finishedAt)
         switch digest.kind {
         case .defrag where digest.isTidying:
-            return "Rangé par \(digest.toolLabel) · \(when)"
+            return String(localized: "disk.badge.tidied",
+                          defaultValue: "Tidied by \(digest.toolLabel) · \(when)",
+                          comment: "Pastille d'une carte de disque : outil, puis depuis quand")
         case .defrag:
             // Une passe qui n'a rien recollé a bien eu lieu : le dire, plutôt
             // que de laisser croire que rien ne s'est passé.
-            return "\(digest.toolLabel) passé sans rien ranger · \(when)"
+            return String(localized: "disk.badge.nothingToTidy",
+                          defaultValue: "\(digest.toolLabel) ran without tidying anything · \(when)")
         case .boot:
-            return "Démarré · \(when)"
+            return String(localized: "disk.badge.booted", defaultValue: "Booted · \(when)")
         case .install:
-            return "\(digest.toolLabel) installé · \(when)"
+            return String(localized: "disk.badge.installed",
+                          defaultValue: "\(digest.toolLabel) installed · \(when)")
         case .day:
-            return "Une journée écoutée · \(when)"
+            return String(localized: "disk.badge.dayHeard", defaultValue: "A day listened to · \(when)")
         }
     }
 
     /// L'avant → après d'une défragmentation, quand il y en a un.
     private var detail: String? {
         guard let before = digest.fragmentedBefore, let after = digest.fragmentedAfter else { return nil }
-        return "\(FrenchFormat.integer(before)) → \(FrenchFormat.integer(after)) fichiers fragmentés"
+        return String(localized: "disk.badge.fragmentedDelta",
+                      defaultValue: "\(Format.integer(before)) → \(Format.integer(after)) fragmented files",
+                      comment: "Avant → après d'une défragmentation, sur la fiche du disque")
     }
 }

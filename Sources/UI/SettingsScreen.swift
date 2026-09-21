@@ -22,7 +22,7 @@ struct SettingsScreen: View {
             Theme.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    ScreenTitle("Réglages", subtitle: "Son, vibrations, et pourquoi ça sonne comme ça")
+                    ScreenTitle("settings.title", subtitle: "settings.subtitle")
                     mixer
                     welcome
                     explanations
@@ -48,10 +48,10 @@ struct SettingsScreen: View {
                     .foregroundStyle(Theme.read)
                     .frame(width: 26)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Son et vibrations")
+                    Text("settings.sound.title")
                         .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
-                    Text(engine.mix.preset?.label ?? "Réglage personnel")
+                    Text(engine.mix.preset?.label ?? String(localized: "settings.sound.custom", defaultValue: "Custom mix"))
                         .font(.dynamic(size: 12))
                         .foregroundStyle(Theme.dim)
                 }
@@ -71,16 +71,19 @@ struct SettingsScreen: View {
     /// l'autre : la ligne la lit plutôt que de la réciter.
     private var geometryNote: String {
         let g = model.geometry
-        return "\(g.model) : \(FrenchFormat.integer(g.cylinders)) cylindres, \(g.heads) têtes, \(g.zones.count) "
-            + "zone\(g.zones.count > 1 ? "s" : "") d'enregistrement, \(FrenchFormat.integer(Int(g.rpm))) tr/min. "
-            + "La latence de rotation et les changements de piste sont simulés secteur par secteur."
+        let zones = String(localized: "settings.geometry.zones",
+                           defaultValue: "\(g.zones.count) recording zones",
+                           comment: "Nombre de zones d'enregistrement, au pluriel de la langue")
+        return String(localized: "settings.geometry",
+                      defaultValue: "\(g.model): \(Format.integer(g.cylinders)) cylinders, \(g.heads) heads, \(zones), \(Format.integer(Int(g.rpm))) rpm. Rotational latency and track changes are simulated sector by sector.",
+                      comment: "Géométrie du disque en cours, sur l'écran Réglages")
     }
 
     /// Les fiches « Pourquoi ça sonne comme ça ? », toutes, par thème. Chacune
     /// est aussi derrière le ⓘ du chiffre qu'elle explique.
     private var explanations: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Pourquoi ça sonne comme ça ?")
+            Text("settings.explanations.title")
                 .font(.dynamic(size: 17, weight: .semibold))
                 .foregroundStyle(Theme.text)
                 .accessibilityAddTraits(.isHeader)
@@ -96,7 +99,7 @@ struct SettingsScreen: View {
                     }
                 }
             }
-            Text("LE DISQUE EN COURS")
+            Text("settings.currentDisk")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
                 .padding(.top, 4)
@@ -123,7 +126,7 @@ struct SettingsScreen: View {
                     .font(.dynamic(size: 17))
                     .foregroundStyle(Theme.write)
                     .frame(width: 26)
-                Text("Revoir l'accueil")
+                Text("settings.replayWelcome")
                     .font(.dynamic(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Spacer()

@@ -53,22 +53,22 @@ struct ContentView: View {
             DisksScreen(model: model, library: library, path: $disksPath,
                         showsMiniPlayer: tab != .pass,
                         returnedFromBackground: returnedFromBackground) { tab = .pass }
-                .tabItem { Label("Disques", systemImage: "internaldrive") }
+                .tabItem { Label("tab.disks", systemImage: "internaldrive") }
                 .tag(AppTab.disks)
 
             SimulatorScreen(model: model, engine: model.engine, isVisible: isActive && tab == .pass,
                             onOpenDisk: openDisk)
-                .tabItem { Label("Passe", systemImage: "waveform") }
+                .tabItem { Label("tab.pass", systemImage: "waveform") }
                 .tag(AppTab.pass)
 
             InstrumentsScreen(model: model, engine: model.engine, isVisible: isActive && tab == .instruments)
                 .passMiniPlayer(model: model, isShown: tab != .pass, returned: returnedFromBackground) { tab = .pass }
-                .tabItem { Label("Instruments", systemImage: "gauge.with.dots.needle.33percent") }
+                .tabItem { Label("tab.instruments", systemImage: "gauge.with.dots.needle.33percent") }
                 .tag(AppTab.instruments)
 
             SettingsScreen(model: model, engine: model.engine)
                 .passMiniPlayer(model: model, isShown: tab != .pass, returned: returnedFromBackground) { tab = .pass }
-                .tabItem { Label("Réglages", systemImage: "slider.horizontal.3") }
+                .tabItem { Label("tab.settings", systemImage: "slider.horizontal.3") }
                 .tag(AppTab.settings)
         }
         // `Font.dynamic` lit la taille de texte au moment du dessin : quand elle

@@ -31,9 +31,12 @@ struct ScreenWordingTests {
         // La capacité de la partition est un peu inférieure à celle du disque
         // — les tables prennent leur place —, mais elle se lit avec le même
         // mégaoctet : plus d'écart de 5 % dû au seul chemin de code.
+        // `DisplayFormat` reprend les seuils et la conversion de `FrenchUnits` ;
+        // seuls le nombre et le nom de l'unité suivent la langue, et hors de
+        // l'app c'est la langue source qui sort.
         #expect(partition.capacityDescription
-                == FrenchUnits.megabytes(UInt64(partition.capacityBytes)))
-        #expect(partition.capacityDescription.hasSuffix("Mo"))
+                == DisplayFormat.megabytes(UInt64(partition.capacityBytes)))
+        #expect(partition.capacityDescription.hasSuffix("MB"))
     }
 
     // MARK: - Les libellés disent ce qu'ils comptent

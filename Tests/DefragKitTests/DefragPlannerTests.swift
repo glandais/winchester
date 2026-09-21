@@ -578,9 +578,10 @@ struct WindowsXPStrategyTests {
         let plan = DefragPlanner.plan(volume: input)
         let text = plan.strategy.summary(of: plan)
 
-        #expect(plan.strategy.label == "Défragmenteur de Windows XP")
+        // Hors de l'app, `String(localized:)` retombe sur la langue source.
+        #expect(plan.strategy.label == "Windows XP Defragmenter")
         #expect(plan.evacuations == 0)
-        #expect(text.contains("n'évacue personne"))
+        #expect(text.contains("evicts nobody"))
         #expect(!text.contains("presque toujours occupée"),
                 "la phrase de 1995 a resurgi sur une passe qui n'évacue rien")
         // Tout est réparé : l'écran n'a pas à parler de ce qui resterait.
@@ -1156,8 +1157,8 @@ struct UltraDefragStrategyTests {
         let text = plan.strategy.summary(of: plan)
 
         #expect(plan.strategy.label == "UltraDefrag")
-        #expect(text.contains("les plus abîmés"))
-        #expect(text.contains("trop gros pour tenir ailleurs"),
+        #expect(text.contains("the worst damaged"))
+        #expect(text.contains("too big to fit elsewhere"),
                 "la phrase doit dire pourquoi un fichier déplacé reste fragmenté")
     }
 

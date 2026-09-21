@@ -170,7 +170,8 @@ struct FragmentMergeStrategyTests {
     @Test("Le recollage économe ne se choisit pas tout seul")
     func itIsNeverThePeriodTool() {
         #expect(DefragPlanner.strategy(for: .ntfs).id == "windowsXP")
-        #expect(DefragPlanner.strategy(named: "fragmentMerge")?.label == "Recollage économe")
+        // Hors de l'app, `String(localized:)` retombe sur la langue source.
+        #expect(DefragPlanner.strategy(named: "fragmentMerge")?.label == "Thrifty merge")
     }
 }
 

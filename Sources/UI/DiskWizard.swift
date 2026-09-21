@@ -66,7 +66,7 @@ extension ProfileSpec {
     /// Le point de départ d'un disque neuf : un poste de bureau de 1996.
     static func blank() -> ProfileSpec {
         ProfileSpec(id: CustomDiskStore.newIdentifier(),
-                    displayName: "Nouveau disque",
+                    displayName: String(localized: "wizard.newDisk", defaultValue: "New disk"),
                     summary: nil,
                     seed: UInt64.random(in: 1...9_999_999),
                     disk: DiskSpec(sizeMB: 1_080, rpm: 5_400, averageSeekMs: 12),
@@ -131,8 +131,14 @@ struct DiskWizardSheet: View {
         dismiss()
     }
 
-    private static let titles = ["Le matériel", "Le format", "Le système et les logiciels",
-                                 "La période d'usage", "Les habitudes", "La graine et le résultat"]
+    private static var titles: [String] {
+        [String(localized: "wizard.step.hardware", defaultValue: "The hardware"),
+         String(localized: "wizard.step.format", defaultValue: "The format"),
+         String(localized: "wizard.step.system", defaultValue: "The system and the software"),
+         String(localized: "wizard.step.period", defaultValue: "The period of use"),
+         String(localized: "wizard.step.habits", defaultValue: "The habits"),
+         String(localized: "wizard.step.seed", defaultValue: "The seed and the result")]
+    }
 
     var body: some View {
         NavigationStack {
@@ -141,7 +147,9 @@ struct DiskWizardSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("ÉTAPE \(step + 1) SUR 6")
+                            Text(verbatim: String(localized: "wizard.stepCount",
+                                                  defaultValue: "STEP \(step + 1) OF 6",
+                                                  comment: "Compteur d'étapes de l'assistant, en capitales"))
                                 .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(Theme.read)
                             Text(Self.titles[step])
@@ -167,23 +175,23 @@ struct DiskWizardSheet: View {
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Fermer") {
+                    Button("common.close") {
                         if losesDraft { confirmsClose = true } else { close() }
                     }
                 }
             }
-            .confirmationDialog("Fermer sans enregistrer ?", isPresented: $confirmsClose,
+            .confirmationDialog("wizard.close.title", isPresented: $confirmsClose,
                                 titleVisibility: .visible) {
-                Button("Enregistrer et fermer") {
+                Button("wizard.close.save") {
                     library.save(draft)
                     saved = true
                     close()
                 }
-                Button("Fermer sans enregistrer", role: .destructive) { close() }
-                Button("Continuer", role: .cancel) {}
+                Button("wizard.close.discard", role: .destructive) { close() }
+                Button("onboarding.continue", role: .cancel) {}
             } message: {
-                Text("« \(draft.displayName) » est fabriqué mais n'est pas dans Mes disques : "
-                     + "sa graine et son histoire seraient perdues.")
+                Text(verbatim: String(localized: "wizard.close.message",
+                                      defaultValue: "“\(draft.displayName)” is built but is not in My disks: its seed and its history would be lost."))
             }
         }
         .tint(Theme.read)
@@ -195,7 +203,7 @@ struct DiskWizardSheet: View {
             Button {
                 step -= 1
             } label: {
-                Text("Retour")
+                Text("wizard.back")
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.16)))
@@ -207,7 +215,7 @@ struct DiskWizardSheet: View {
                 Button {
                     step += 1
                 } label: {
-                    Text(step == 4 ? "La graine →" : "Suivant →")
+                    Text(step == 4 ? "wizard.toSeed" : "wizard.next")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.read))
@@ -228,28 +236,29 @@ struct DiskWizardSheet: View {
     @ViewBuilder
     private var resultStep: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField("Nom du disque", text: $draft.displayName)
+            TextField("wizard.field.name", text: $draft.displayName)
                 .textFieldStyle(.roundedBorder)
-            TextField("Une phrase qui le raconte", text: Binding(
+            TextField("wizard.field.summary", text: Binding(
                 get: { draft.summary ?? "" },
                 set: { draft.summary = $0.isEmpty ? nil : $0 }))
                 .textFieldStyle(.roundedBorder)
             HStack {
-                Text("Graine \(FrenchFormat.integer(Int(draft.seed)))")
+                Text(verbatim: String(localized: "wizard.seed",
+                                      defaultValue: "Seed \(Format.integer(Int(draft.seed)))"))
                     .font(.dynamic(size: 14, design: .monospaced))
                     .foregroundStyle(Theme.text)
                 Spacer()
-                Button("🎲 Autre graine") { draft.seed = UInt64.random(in: 1...9_999_999) }
+                Button("wizard.seed.another") { draft.seed = UInt64.random(in: 1...9_999_999) }
                     .buttonStyle(.bordered)
             }
-            Text("Même histoire, autre disque : la graine change l'ordre exact des écritures.")
+            Text("wizard.seed.note")
                 .font(.dynamic(size: 11))
                 .foregroundStyle(Theme.dim)
             Button {
                 saved = false
                 library.build(draft: draft)
             } label: {
-                Text(isBuilt ? "Refabriquer le disque" : "Fabriquer le disque")
+                Text(isBuilt ? "wizard.rebuild" : "wizard.build")
                     .font(.dynamic(size: 15, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -277,7 +286,7 @@ struct DiskWizardSheet: View {
                     library.save(draft)
                     saved = true
                 } label: {
-                    Label(saved ? "Enregistré dans Mes disques" : "Enregistrer dans Mes disques",
+                    Label(saved ? "wizard.saved" : "wizard.save",
                           systemImage: saved ? "checkmark" : "tray.and.arrow.down")
                         .font(.dynamic(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity)
@@ -296,7 +305,7 @@ struct DiskWizardSheet: View {
     /// parlante, et elle ne coûte qu'une fabrication.
     private var otherFormats: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("REFAIRE AVEC LES MÊMES HABITUDES")
+            Text("wizard.again.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             HStack(spacing: 8) {
@@ -338,40 +347,44 @@ private struct HardwareStep: View {
         let platters = (geometry.heads + 1) / 2
         VStack(alignment: .leading, spacing: 14) {
             Stepper(value: year, in: 1990...2008) {
-                labeled("Année d'achat", "\(draft.timeline.start.year)")
+                labeled(String(localized: "wizard.hw.year", defaultValue: "Year bought"), "\(draft.timeline.start.year)")
             }
             VStack(alignment: .leading, spacing: 6) {
-                labeled("Capacité", draft.capacityLabel)
+                labeled(String(localized: "wizard.hw.capacity", defaultValue: "Capacity"), draft.capacityLabel)
                 Slider(value: Binding(
                     get: { log10(Double(max(draft.disk.sizeMB, 10))) },
                     set: { draft.disk.sizeMB = Self.rounded(pow(10, $0)) }),
                        in: log10(20)...log10(500_000))
             }
             VStack(alignment: .leading, spacing: 6) {
-                labeled("Régime", draft.rpmLabel)
-                Picker("Régime", selection: $draft.disk.rpm) {
-                    ForEach([3_600, 4_500, 5_400, 7_200], id: \.self) { Text("\($0)").tag($0) }
+                labeled(String(localized: "wizard.hw.rpm", defaultValue: "Spindle speed"), draft.rpmLabel)
+                Picker(String(localized: "wizard.hw.rpm", defaultValue: "Spindle speed"), selection: $draft.disk.rpm) {
+                    ForEach([3_600, 4_500, 5_400, 7_200], id: \.self) { Text(verbatim: "\($0)").tag($0) }
                 }
                 .pickerStyle(.segmented)
             }
             VStack(alignment: .leading, spacing: 6) {
-                labeled("Seek moyen", FrenchFormat.decimal(draft.disk.averageSeekMs, digits: 1) + " ms")
+                labeled(String(localized: "instruments.tile.averageSeek", defaultValue: "Average seek"),
+                        Format.decimal(draft.disk.averageSeekMs, digits: 1) + " ms")
                 Slider(value: $draft.disk.averageSeekMs, in: 7...25, step: 0.5)
             }
         }
         .panel()
 
         VStack(alignment: .leading, spacing: 8) {
-            Text("GÉOMÉTRIE DÉDUITE")
+            Text("wizard.hw.geometry.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
-            labeled("Plateaux", "\(platters) (\(geometry.heads) têtes)")
-            labeled("Cylindres", FrenchFormat.integer(geometry.cylinders))
-            labeled("Débit bord → moyeu", "\(FrenchFormat.decimal(geometry.outerSustainedMBs, digits: 1)) → "
-                    + "\(FrenchFormat.decimal(geometry.innerSustainedMBs, digits: 1)) Mo/s")
+            labeled(String(localized: "wizard.hw.platters", defaultValue: "Platters"),
+                    String(localized: "wizard.hw.platters.value",
+                           defaultValue: "\(platters) (\(geometry.heads) heads)"))
+            labeled(String(localized: "wizard.hw.cylinders", defaultValue: "Cylinders"), Format.integer(geometry.cylinders))
+            labeled(String(localized: "wizard.hw.throughput", defaultValue: "Throughput edge → hub"),
+                    String(localized: "instruments.unit.megabytesPerSecond",
+                           defaultValue: "\(Format.decimal(geometry.outerSustainedMBs, digits: 1)) → \(Format.decimal(geometry.innerSustainedMBs, digits: 1)) MB/s"))
             if platters > 4 {
-                Text("Une capacité en avance sur son époque ajoute des plateaux : \(platters) ici. "
-                     + "La densité d'une face est celle des disques vendus en \(draft.timeline.start.year).")
+                Text(verbatim: String(localized: "wizard.hw.platters.note",
+                                      defaultValue: "A capacity ahead of its time adds platters: \(platters) here. The density of one surface is that of the disks sold in \(draft.timeline.start.year)."))
                     .font(.dynamic(size: 11))
                     .foregroundStyle(Theme.read)
                     .fixedSize(horizontal: false, vertical: true)
@@ -394,13 +407,13 @@ private struct FormatStep: View {
     var body: some View {
         let profile = draft.resolvedFileSystem()
         VStack(alignment: .leading, spacing: 14) {
-            Picker("Système de fichiers", selection: Binding(
+            Picker("wizard.fs.picker", selection: Binding(
                 get: { draft.fileSystem.type },
                 set: { draft.fileSystem = FileSystemSpec(type: $0) })) {
-                Text("FAT16").tag(FileSystemKind.fat16)
-                Text("VFAT").tag(FileSystemKind.vfat)
-                Text("FAT32").tag(FileSystemKind.fat32)
-                Text("NTFS").tag(FileSystemKind.ntfs)
+                Text(verbatim: "FAT16").tag(FileSystemKind.fat16)
+                Text(verbatim: "VFAT").tag(FileSystemKind.vfat)
+                Text(verbatim: "FAT32").tag(FileSystemKind.fat32)
+                Text(verbatim: "NTFS").tag(FileSystemKind.ntfs)
             }
             .pickerStyle(.segmented)
             Text(Self.explanation(draft.fileSystem.type))
@@ -408,24 +421,28 @@ private struct FormatStep: View {
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Picker("Taille de cluster", selection: $draft.fileSystem.clusterKB) {
-                Text("Comme FORMAT").tag(UInt32?.none)
+            Picker("wizard.fs.clusterSize", selection: $draft.fileSystem.clusterKB) {
+                Text("wizard.fs.clusterSize.auto").tag(UInt32?.none)
                 ForEach([1, 2, 4, 8, 16, 32, 64] as [UInt32], id: \.self) { kb in
-                    Text("\(kb) Ko").tag(UInt32?.some(kb))
+                    Text(verbatim: String(localized: "disk.cluster.kilobytes",
+                                          defaultValue: "\(kb) KB")).tag(UInt32?.some(kb))
                 }
             }
-            labeled("Clusters de", "\(profile.clusterBytes / 1_024) Ko")
-            labeled("Clusters sur le volume", FrenchFormat.integer(Int(draft.clusterCount)))
+            labeled(String(localized: "wizard.fs.clustersOf", defaultValue: "Clusters of"),
+                    String(localized: "disk.cluster.kilobytes",
+                           defaultValue: "\(profile.clusterBytes / 1_024) KB"))
+            labeled(String(localized: "wizard.fs.clusterCount", defaultValue: "Clusters on the volume"),
+                    Format.integer(Int(draft.clusterCount)))
         }
         .panel()
     }
 
     private static func explanation(_ kind: FileSystemKind) -> String {
         switch kind {
-        case .fat16: return "MS-DOS sert le premier cluster libre depuis le début du volume : les trous se rebouchent aussitôt."
-        case .vfat:  return "Le même format, servi par Windows 95 : le curseur reprend au dernier cluster alloué."
-        case .fat32: return "Des clusters de 4 Ko sur de grands volumes, et le même curseur que VFAT."
-        case .ntfs:  return "Choisit le trou qui convient plutôt que le premier venu, et réserve une zone à sa MFT."
+        case .fat16: return String(localized: "wizard.fs.note.fat16", defaultValue: "MS-DOS serves the first free cluster from the start of the volume: holes are plugged at once.")
+        case .vfat:  return String(localized: "wizard.fs.note.vfat", defaultValue: "The same format, served by Windows 95: the cursor resumes at the last allocated cluster.")
+        case .fat32: return String(localized: "wizard.fs.note.fat32", defaultValue: "4 KB clusters on large volumes, and the same cursor as VFAT.")
+        case .ntfs:  return String(localized: "wizard.fs.note.ntfs", defaultValue: "Picks the hole that fits rather than the first one it meets, and reserves a zone for its MFT.")
         }
     }
 }
@@ -435,12 +452,12 @@ private struct SoftwareStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("SYSTÈME")
+            Text("wizard.system.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
-            Picker("Système", selection: Binding(get: { draft.os }, set: select(system:))) {
+            Picker("wizard.system.picker", selection: Binding(get: { draft.os }, set: select(system:))) {
                 ForEach(SystemOption.all) { option in
-                    Text("\(option.name) · \(String(option.year))").tag(option.id)
+                    Text(verbatim: "\(option.name) · \(String(option.year))").tag(option.id)
                 }
             }
             .pickerStyle(.inline)
@@ -449,7 +466,7 @@ private struct SoftwareStep: View {
         .panel()
 
         VStack(alignment: .leading, spacing: 10) {
-            Text("LOGICIELS INSTALLÉS AU DÉPART")
+            Text("wizard.software.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             ForEach(SoftwareYears.applications, id: \.id) { app in
@@ -458,9 +475,12 @@ private struct SoftwareStep: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(isOn: installed(app.id)) {
                         HStack {
-                            Text(app.displayName).foregroundStyle(Theme.text)
+                            Text(verbatim: app.displayName).foregroundStyle(Theme.text)
                             if let year {
-                                Text(late ? "\(String(year)) · trop récent" : String(year))
+                                Text(verbatim: late
+                                     ? String(localized: "wizard.software.tooRecent",
+                                              defaultValue: "\(String(year)) · too recent")
+                                     : String(year))
                                     .font(.dynamic(size: 11, design: .monospaced))
                                     .foregroundStyle(late ? Theme.read : Theme.dim)
                             }
@@ -497,7 +517,7 @@ private struct SoftwareStep: View {
     private func uninstallRow(_ id: String) -> some View {
         let index = draft.uninstalls?.firstIndex { $0.app == id }
         HStack {
-            Toggle("Désinstallé", isOn: Binding(get: { index != nil }, set: { on in
+            Toggle("wizard.software.uninstalled", isOn: Binding(get: { index != nil }, set: { on in
                 if on {
                     let middle = CivilDate.from(dayNumber: (draft.timeline.start.dayNumber
                                                             + draft.timeline.end.dayNumber) / 2)
@@ -509,7 +529,7 @@ private struct SoftwareStep: View {
             .font(.dynamic(size: 12))
             .foregroundStyle(Theme.dim)
             if let index, let uninstalls = draft.uninstalls {
-                DatePicker("", selection: Binding(
+                DatePicker(String(), selection: Binding(
                     get: { uninstalls[index].date.date },
                     set: { draft.uninstalls?[index].date = CivilDate($0) }),
                            in: draft.timeline.start.date...draft.timeline.end.date,
@@ -527,22 +547,22 @@ private struct PeriodStep: View {
     var body: some View {
         let days = max(draft.timeline.start.days(until: draft.timeline.end), 0)
         VStack(alignment: .leading, spacing: 12) {
-            Text("Combien de temps ce disque a servi, du formatage au jour où on l'écoute.")
+            Text("wizard.period.note")
                 .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
-            DatePicker("Début", selection: date(\.start), displayedComponents: .date)
-            DatePicker("Fin", selection: date(\.end), displayedComponents: .date)
-            labeled("Durée simulée", Self.span(days: days))
+            DatePicker("wizard.period.start", selection: date(\.start), displayedComponents: .date)
+            DatePicker("wizard.period.end", selection: date(\.end), displayedComponents: .date)
+            labeled(String(localized: "wizard.period.span", defaultValue: "Simulated duration"), Self.span(days: days))
         }
         .panel()
 
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("DÉFRAGMENTATIONS PLANIFIÉES")
+                Text("wizard.defrags.header")
                     .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                 Spacer()
-                Button("+ ajouter") {
+                Button("wizard.defrags.add") {
                     let middle = CivilDate.from(dayNumber: (draft.timeline.start.dayNumber
                                                             + draft.timeline.end.dayNumber) / 2)
                     draft.defragRuns = (draft.defragRuns ?? []) + [middle]
@@ -551,7 +571,7 @@ private struct PeriodStep: View {
             }
             ForEach(Array((draft.defragRuns ?? []).enumerated()), id: \.offset) { index, run in
                 HStack {
-                    DatePicker("Une passe", selection: Binding(
+                    DatePicker("wizard.defrags.one", selection: Binding(
                         get: { run.date },
                         set: { draft.defragRuns?[index] = CivilDate($0) }),
                                in: draft.timeline.start.date...draft.timeline.end.date,
@@ -561,10 +581,10 @@ private struct PeriodStep: View {
                     } label: {
                         Image(systemName: "minus.circle")
                     }
-                    .accessibilityLabel("Retirer cette défragmentation")
+                    .accessibilityLabel("wizard.defrags.remove")
                 }
             }
-            Text("Une défragmentation au milieu de l'histoire change tout ce qui s'écrit ensuite.")
+            Text("wizard.defrags.note")
                 .font(.dynamic(size: 11))
                 .foregroundStyle(Theme.dim)
         }
@@ -580,9 +600,14 @@ private struct PeriodStep: View {
         let years = days / 365
         let months = (days % 365) / 30
         switch (years, months) {
-        case (0, _): return "\(months) mois"
-        case (_, 0): return years == 1 ? "1 an" : "\(years) ans"
-        default:     return "\(years) an\(years > 1 ? "s" : "") \(months) mois"
+        case (0, _):
+            return String(localized: "wizard.span.months", defaultValue: "\(months) months",
+                          comment: "Durée simulée, au pluriel de la langue")
+        case (_, 0):
+            return String(localized: "wizard.span.years", defaultValue: "\(years) years")
+        default:
+            return String(localized: "wizard.span.yearsMonths",
+                          defaultValue: "\(String(localized: "wizard.span.years", defaultValue: "\(years) years")) \(String(localized: "wizard.span.months", defaultValue: "\(months) months"))")
         }
     }
 }
@@ -591,47 +616,47 @@ private struct HabitsStep: View {
     @Binding var draft: ProfileSpec
 
     var body: some View {
-        Text("Ce que la personne faisait de son disque. La fragmentation en découlera : elle ne se règle pas.")
+        Text("wizard.habits.note")
             .font(.dynamic(size: 12))
             .foregroundStyle(Theme.dim)
             .fixedSize(horizontal: false, vertical: true)
 
-        habit("Bureautique", \.office, .init(newDocumentsPerWeek: 5, savesPerDocumentPerWeek: 1)) { value in
-            slider("Nouveaux documents / semaine", value.newDocumentsPerWeek, 0...40, step: 1) { draft.activity.office?.newDocumentsPerWeek = $0 }
-            slider("Réenregistrements / document / semaine", value.savesPerDocumentPerWeek, 0...5, step: 0.1) { draft.activity.office?.savesPerDocumentPerWeek = $0 }
+        habit(String(localized: "habit.office", defaultValue: "Office work"), \.office, .init(newDocumentsPerWeek: 5, savesPerDocumentPerWeek: 1)) { value in
+            slider(String(localized: "habit.office.newDocuments", defaultValue: "New documents / week"), value.newDocumentsPerWeek, 0...40, step: 1) { draft.activity.office?.newDocumentsPerWeek = $0 }
+            slider(String(localized: "habit.office.saves", defaultValue: "Re-saves / document / week"), value.savesPerDocumentPerWeek, 0...5, step: 0.1) { draft.activity.office?.savesPerDocumentPerWeek = $0 }
         }
-        habit("Navigation", \.browse, .init(perDay: 1, pagesPerSession: 15)) { value in
-            slider("Sessions / jour", value.perDay, 0...10, step: 0.5) { draft.activity.browse?.perDay = $0 }
-            slider("Pages / session", Double(value.pagesPerSession), 1...100, step: 1) { draft.activity.browse?.pagesPerSession = Int($0) }
+        habit(String(localized: "habit.browse", defaultValue: "Browsing"), \.browse, .init(perDay: 1, pagesPerSession: 15)) { value in
+            slider(String(localized: "habit.browse.sessions", defaultValue: "Sessions / day"), value.perDay, 0...10, step: 0.5) { draft.activity.browse?.perDay = $0 }
+            slider(String(localized: "habit.browse.pages", defaultValue: "Pages / session"), Double(value.pagesPerSession), 1...100, step: 1) { draft.activity.browse?.pagesPerSession = Int($0) }
         }
-        habit("Développement", \.build, .init(perDay: 5, objectFiles: 100, pchMB: 10)) { value in
-            slider("Compilations / jour", value.perDay, 0...20, step: 1) { draft.activity.build?.perDay = $0 }
-            slider("Fichiers objets", Double(value.objectFiles), 1...1_000, step: 10) { draft.activity.build?.objectFiles = Int($0) }
-            slider("Précompilé (Mo)", Double(value.pchMB), 0...50, step: 1) { draft.activity.build?.pchMB = UInt64($0) }
+        habit(String(localized: "habit.build", defaultValue: "Development"), \.build, .init(perDay: 5, objectFiles: 100, pchMB: 10)) { value in
+            slider(String(localized: "habit.build.compiles", defaultValue: "Builds / day"), value.perDay, 0...20, step: 1) { draft.activity.build?.perDay = $0 }
+            slider(String(localized: "habit.build.objectFiles", defaultValue: "Object files"), Double(value.objectFiles), 1...1_000, step: 10) { draft.activity.build?.objectFiles = Int($0) }
+            slider(String(localized: "habit.build.pch", defaultValue: "Precompiled (MB)"), Double(value.pchMB), 0...50, step: 1) { draft.activity.build?.pchMB = UInt64($0) }
         }
-        habit("Médias", \.media, .init(filesPerWeek: 20)) { value in
-            slider("Fichiers / semaine", value.filesPerWeek, 0...200, step: 5) { draft.activity.media?.filesPerWeek = $0 }
+        habit(String(localized: "habit.media", defaultValue: "Media"), \.media, .init(filesPerWeek: 20)) { value in
+            slider(String(localized: "habit.media.files", defaultValue: "Files / week"), value.filesPerWeek, 0...200, step: 5) { draft.activity.media?.filesPerWeek = $0 }
         }
-        habit("Téléchargements", \.download, .init(perWeek: 3)) { value in
-            slider("Téléchargements / semaine", value.perWeek, 0...30, step: 1) { draft.activity.download?.perWeek = $0 }
-            slider("En parties de (Mo, 0 = d'un bloc)", Double(value.partMB ?? 0), 0...100, step: 1) {
+        habit(String(localized: "habit.download", defaultValue: "Downloads"), \.download, .init(perWeek: 3)) { value in
+            slider(String(localized: "habit.download.perWeek", defaultValue: "Downloads / week"), value.perWeek, 0...30, step: 1) { draft.activity.download?.perWeek = $0 }
+            slider(String(localized: "habit.download.parts", defaultValue: "In parts of (MB, 0 = one block)"), Double(value.partMB ?? 0), 0...100, step: 1) {
                 draft.activity.download?.partMB = $0 > 0 ? UInt64($0) : nil
             }
         }
-        habit("Jeux", \.gaming, .init(installsPerYear: 4, uninstallsPerYear: 3, savesPerDay: 2)) { value in
-            slider("Installations / an", value.installsPerYear, 0...30, step: 1) { draft.activity.gaming?.installsPerYear = $0 }
-            slider("Désinstallations / an", value.uninstallsPerYear, 0...30, step: 1) { draft.activity.gaming?.uninstallsPerYear = $0 }
-            slider("Sauvegardes / jour", value.savesPerDay, 0...20, step: 1) { draft.activity.gaming?.savesPerDay = $0 }
+        habit(String(localized: "habit.gaming", defaultValue: "Games"), \.gaming, .init(installsPerYear: 4, uninstallsPerYear: 3, savesPerDay: 2)) { value in
+            slider(String(localized: "habit.gaming.installs", defaultValue: "Installs / year"), value.installsPerYear, 0...30, step: 1) { draft.activity.gaming?.installsPerYear = $0 }
+            slider(String(localized: "habit.gaming.uninstalls", defaultValue: "Uninstalls / year"), value.uninstallsPerYear, 0...30, step: 1) { draft.activity.gaming?.uninstallsPerYear = $0 }
+            slider(String(localized: "habit.gaming.saves", defaultValue: "Saved games / day"), value.savesPerDay, 0...20, step: 1) { draft.activity.gaming?.savesPerDay = $0 }
         }
-        habit("Accumulation", \.hoarding, .init(gigabytesPerYear: 1, tidiesUpAt: 0.9)) { value in
-            slider("Go accumulés / an", value.gigabytesPerYear, 0...100, step: 0.1) { draft.activity.hoarding?.gigabytesPerYear = $0 }
-            slider("Fait le ménage à (% plein, 100 = jamais)", (value.tidiesUpAt ?? 1) * 100, 50...100, step: 1) {
+        habit(String(localized: "habit.hoarding", defaultValue: "Hoarding"), \.hoarding, .init(gigabytesPerYear: 1, tidiesUpAt: 0.9)) { value in
+            slider(String(localized: "habit.hoarding.gigabytes", defaultValue: "GB hoarded / year"), value.gigabytesPerYear, 0...100, step: 0.1) { draft.activity.hoarding?.gigabytesPerYear = $0 }
+            slider(String(localized: "habit.hoarding.tidiesUp", defaultValue: "Clears out at (%% full, 100 = never)"), (value.tidiesUpAt ?? 1) * 100, 50...100, step: 1) {
                 draft.activity.hoarding?.tidiesUpAt = $0 >= 100 ? nil : $0 / 100
             }
         }
-        habit("Mises à jour", \.maintenance, .init(updatesPerYear: 2, filesPerUpdate: 40)) { value in
-            slider("Vagues / an", value.updatesPerYear, 0...24, step: 1) { draft.activity.maintenance?.updatesPerYear = $0 }
-            slider("Fichiers / vague", Double(value.filesPerUpdate), 1...500, step: 5) { draft.activity.maintenance?.filesPerUpdate = Int($0) }
+        habit(String(localized: "habit.maintenance", defaultValue: "Updates"), \.maintenance, .init(updatesPerYear: 2, filesPerUpdate: 40)) { value in
+            slider(String(localized: "habit.maintenance.waves", defaultValue: "Waves / year"), value.updatesPerYear, 0...24, step: 1) { draft.activity.maintenance?.updatesPerYear = $0 }
+            slider(String(localized: "habit.maintenance.files", defaultValue: "Files / wave"), Double(value.filesPerUpdate), 1...500, step: 5) { draft.activity.maintenance?.filesPerUpdate = Int($0) }
         }
     }
 
@@ -658,7 +683,7 @@ private struct HabitsStep: View {
     private func slider(_ label: String, _ value: Double, _ range: ClosedRange<Double>, step: Double,
                         set: @escaping (Double) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            labeled(label, step < 1 ? FrenchFormat.decimal(value, digits: 1) : FrenchFormat.integer(Int(value.rounded())))
+            labeled(label, step < 1 ? Format.decimal(value, digits: 1) : Format.integer(Int(value.rounded())))
             Slider(value: Binding(get: { min(max(value, range.lowerBound), range.upperBound) }, set: set),
                    in: range, step: step)
         }

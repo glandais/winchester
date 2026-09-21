@@ -43,7 +43,8 @@ struct DiskLifeTests {
         #expect(life.landmarks.first?.day == 0)
         let kinds = Set(life.landmarks.compactMap(\.landmark?.label))
         #expect(kinds.contains("Installation"))
-        #expect(kinds.contains { $0.hasPrefix("Disque à") })
+        // Hors de l'app, `String(localized:)` retombe sur la langue source.
+        #expect(kinds.contains { $0.hasPrefix("Disk ") && $0.hasSuffix("full") })
         // Assez pour se repérer, pas au point de remplacer le défilement.
         #expect(life.landmarks.count > 2 && life.landmarks.count < 60)
         // Les grosses journées sont espacées d'au moins un mois.

@@ -59,7 +59,7 @@ import DiskCore
 struct WindowsXPStrategy: DefragStrategy {
 
     let id = "windowsXP"
-    let label = "Défragmenteur de Windows XP"
+    let label = String(localized: "strategy.windowsXP", defaultValue: "Windows XP Defragmenter")
 
     /// Taille d'un bloc de déplacement.
     ///
@@ -145,13 +145,13 @@ struct WindowsXPStrategy: DefragStrategy {
     /// outil-là ne parcourt pas l'arborescence, il lit la liste des fichiers
     /// cassés et la traite.
     let phases: [PhaseDescriptor] = [
-        PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                        detail: "Lecture de la MFT : quels fichiers sont en morceaux, et où sont les trous"),
-        PhaseDescriptor(id: "defrag", label: "Défragmentation des fichiers",
-                        detail: "Chaque fichier cassé relu d'un bout à l'autre, réécrit d'un seul tenant"),
+        PhaseDescriptor(id: "analyse", label: String(localized: "phase.analyse", defaultValue: "Analysing the volume"),
+                        detail: String(localized: "phase.analyse.xp.detail", defaultValue: "Reading the MFT: which files are in pieces, and where the holes are")),
+        PhaseDescriptor(id: "defrag", label: String(localized: "phase.defragFiles", defaultValue: "Defragmenting the files"),
+                        detail: String(localized: "phase.defragFiles.detail", defaultValue: "Every broken file read end to end, written back in one piece")),
         PhaseDescriptor.commit(on: .ntfs),
-        PhaseDescriptor(id: "done", label: "Terminé",
-                        detail: "Le rapport liste ce qui est resté en morceaux, faute de trou assez grand"),
+        PhaseDescriptor(id: "done", label: String(localized: "phase.done", defaultValue: "Finished"),
+                        detail: String(localized: "phase.done.xp.detail", defaultValue: "The report lists what stayed in pieces, for want of a big enough hole")),
     ]
 
     func plan(volume input: DefragVolume, into sink: OperationSink) -> DefragPlan {
@@ -268,14 +268,11 @@ struct WindowsXPStrategy: DefragStrategy {
     /// que parce qu'il est nul.
     func summary(of plan: DefragPlan) -> String {
         let repaired = plan.before.fragmentedFiles - plan.after.fragmentedFiles
-        var text = String(format: "La passe répare %d fichiers sur %d et n'évacue personne : "
-                          + "chacun est recopié dans un trou déjà libre, jamais aux dépens "
-                          + "d'un voisin.",
-                          repaired, plan.before.fragmentedFiles)
+        var text = String(localized: "summary.windowsXP",
+                          defaultValue: "The pass repairs \(repaired) files out of \(plan.before.fragmentedFiles) and evicts nobody: each is copied into a hole that is already free, never at a neighbour's expense.")
         if plan.after.fragmentedFiles > 0 {
-            text += String(format: " %d restent en morceaux, faute d'un trou assez grand — "
-                           + "c'est ce que l'outil listait en fin de passe.",
-                           plan.after.fragmentedFiles)
+            text += " " + String(localized: "summary.windowsXP.remaining",
+                                 defaultValue: "\(plan.after.fragmentedFiles) stay in pieces, for want of a big enough hole — that is what the tool listed at the end of a pass.")
         }
         return text
     }

@@ -143,8 +143,11 @@ struct InstallPhases {
                     copy.append(max(descriptors.count - 1, 0))
                 } else {
                     copy.append(descriptors.count)
-                    descriptors.append(PhaseDescriptor(id: "step-\(index)", label: "Fichier d'échange",
-                                                       detail: "\(size) réservés d'un seul tenant"))
+                    descriptors.append(PhaseDescriptor(
+                        id: "step-\(index)",
+                        label: String(localized: "category.swap", defaultValue: "Page file"),
+                        detail: String(localized: "phase.swap.detail",
+                                       defaultValue: "\(size) reserved in one piece")))
                 }
             case .system, .application:
                 copy.append(descriptors.count)
@@ -154,8 +157,9 @@ struct InstallPhases {
                 }
                 descriptors.append(PhaseDescriptor(
                     id: "step-\(index)",
-                    label: step.kind == .system ? "Copie de \(step.displayName)"
-                                                : "Installation de \(step.displayName)",
+                    label: step.kind == .system
+                        ? String(localized: "phase.copyOf", defaultValue: "Copying \(step.displayName)")
+                        : String(localized: "phase.installOf", defaultValue: "Installing \(step.displayName)"),
                     detail: detail))
             }
 
@@ -164,8 +168,12 @@ struct InstallPhases {
                 let count = step.style.reboots
                 descriptors.append(PhaseDescriptor(
                     id: "reboot-\(index)",
-                    label: step.kind == .system ? "Redémarrages et configuration" : "Redémarrage",
-                    detail: count > 1 ? "\(count) redémarrages" : "Un redémarrage"))
+                    label: step.kind == .system
+                        ? String(localized: "phase.rebootsAndSetup", defaultValue: "Restarts and setup")
+                        : String(localized: "phase.reboot", defaultValue: "Restart"),
+                    detail: String(localized: "phase.reboot.detail",
+                                   defaultValue: "\(count) restarts",
+                                   comment: "Nombre de redémarrages, au pluriel de la langue")))
             } else {
                 reboot.append(nil)
             }

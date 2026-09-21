@@ -46,12 +46,12 @@ struct DiskLifeScreen: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { transport }
-            .navigationTitle("Revivre")
+            .navigationTitle("life.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Fermer") { life.pause(); dismiss() }
+                    Button("common.close") { life.pause(); dismiss() }
                 }
             }
         }
@@ -74,7 +74,9 @@ struct DiskLifeScreen: View {
                     .font(.dynamic(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.read)
                 Spacer()
-                Text("JOUR \(FrenchFormat.integer(Int(life.day))) / \(FrenchFormat.integer(Int(life.dayCount)))")
+                Text(verbatim: String(localized: "life.day",
+                                      defaultValue: "DAY \(Format.integer(Int(life.day))) / \(Format.integer(Int(life.dayCount)))",
+                                      comment: "Compteur du défilement, en capitales"))
                     .font(.dynamic(size: 12, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .monospacedDigit()
@@ -102,7 +104,7 @@ struct DiskLifeScreen: View {
     private var map: some View {
         VStack(alignment: .leading, spacing: 8) {
             ClusterMapView(grid: life.grid, shades: life.shades)
-            Text("Le volume au soir de ce jour-là. Les couleurs sont celles de la passe.")
+            Text("life.map.note")
                 .font(.dynamic(size: 11))
                 .foregroundStyle(Theme.dim)
         }
@@ -111,12 +113,18 @@ struct DiskLifeScreen: View {
 
     private var counters: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
-            StatTile(label: "Remplissage", value: FrenchFormat.percent(life.fill), unit: "du volume")
-            StatTile(label: "Fichiers", value: FrenchFormat.integer(life.fileCount), unit: "au catalogue")
-            StatTile(label: "En morceaux", value: FrenchFormat.integer(life.fragmentedFiles),
-                     unit: "fichiers", why: .fragmentedVsPieces)
-            StatTile(label: "Écrit ce jour", value: FrenchFormat.megabytes(UInt64(life.bytesWritten)),
-                     unit: life.activities.isEmpty ? "rien à faire" : life.activities.joined(separator: ", "))
+            StatTile(label: String(localized: "instruments.stat.fill", defaultValue: "Fill"), value: Format.percent(life.fill),
+                     unit: String(localized: "life.stat.ofVolume", defaultValue: "of the volume"))
+            StatTile(label: String(localized: "life.stat.files", defaultValue: "Files"), value: Format.integer(life.fileCount),
+                     unit: String(localized: "life.stat.inCatalogue", defaultValue: "in the catalogue"))
+            StatTile(label: String(localized: "instruments.stat.inPieces", defaultValue: "In pieces"),
+                     value: Format.integer(life.fragmentedFiles),
+                     unit: String(localized: "instruments.stat.files.unit", defaultValue: "files"), why: .fragmentedVsPieces)
+            StatTile(label: String(localized: "life.stat.writtenToday", defaultValue: "Written that day"),
+                     value: Format.megabytes(UInt64(life.bytesWritten)),
+                     unit: life.activities.isEmpty
+                         ? String(localized: "life.stat.nothingToDo", defaultValue: "nothing to do")
+                         : life.activities.joined(separator: ", "))
         }
     }
 
@@ -126,7 +134,7 @@ struct DiskLifeScreen: View {
     /// courbes, la même histoire : l'un précède l'autre.
     private var curves: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("DEPUIS L'INSTALLATION")
+            Text("life.curves.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             Curve(values: life.fillCurve, colour: Theme.read, maximum: 1)
@@ -135,8 +143,8 @@ struct DiskLifeScreen: View {
                   maximum: max(life.fragmentedCurve.map(Double.init).max() ?? 1, 1))
                 .frame(height: 44)
             HStack {
-                legend(Theme.read, "remplissage")
-                legend(Theme.write, "fichiers en morceaux")
+                legend(Theme.read, "life.curve.fill")
+                legend(Theme.write, "life.curve.fragmented")
                 Spacer()
             }
         }
@@ -144,7 +152,7 @@ struct DiskLifeScreen: View {
         .panel()
     }
 
-    private func legend(_ colour: Color, _ label: String) -> some View {
+    private func legend(_ colour: Color, _ label: LocalizedStringKey) -> some View {
         HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 2).fill(colour).frame(width: 9, height: 3)
             Text(label)
@@ -157,11 +165,11 @@ struct DiskLifeScreen: View {
 
     private var landmarks: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("JOURNÉES À ÉCOUTER")
+            Text("life.days.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             if life.landmarks.isEmpty {
-                Text("Aucune pour l'instant : le disque vient d'être installé.")
+                Text("life.days.empty")
                     .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.dim)
             }
@@ -171,7 +179,7 @@ struct DiskLifeScreen: View {
                         .font(.dynamic(size: 13))
                         .foregroundStyle(Theme.text)
                     Spacer()
-                    Text("\(digest.date) · \(FrenchFormat.percent(digest.fill))")
+                    Text(verbatim: "\(digest.date) · \(Format.percent(digest.fill))")
                         .font(.dynamic(size: 11, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .monospacedDigit()
@@ -196,13 +204,13 @@ struct DiskLifeScreen: View {
                         .frame(width: 54, height: 54)
                         .background(Circle().fill(Theme.read))
                 }
-                .accessibilityLabel(life.isRunning ? "Mettre le défilement en pause" : "Faire défiler")
+                .accessibilityLabel(life.isRunning ? "life.scroll.pause" : "life.scroll.play")
                 .disabled(life.isFinished)
 
                 Button {
                     life.jumpToLandmark()
                 } label: {
-                    Label("Repère suivant", systemImage: "forward.end.fill")
+                    Label("life.nextLandmark", systemImage: "forward.end.fill")
                         .font(.dynamic(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -214,9 +222,9 @@ struct DiskLifeScreen: View {
                 .disabled(life.isFinished)
             }
 
-            Picker("Vitesse", selection: $life.speed) {
+            Picker("life.speed", selection: $life.speed) {
                 ForEach(DiskLifeModel.Speed.allCases, id: \.self) { speed in
-                    Text(speed.label).tag(speed)
+                    Text(verbatim: speed.label).tag(speed)
                 }
             }
             .pickerStyle(.segmented)
@@ -226,7 +234,9 @@ struct DiskLifeScreen: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "waveform")
-                    Text(life.nextDay.map { "Écouter le jour \($0)" } ?? "La vie du disque est finie")
+                    Text(verbatim: life.nextDay.map {
+                        String(localized: "life.listenDay", defaultValue: "Listen to day \($0)")
+                    } ?? String(localized: "life.over", defaultValue: "The disk's life is over"))
                         .font(.dynamic(size: 15, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
@@ -277,9 +287,9 @@ final class DiskLifeModel: ObservableObject {
 
         var label: String {
             switch self {
-            case .day:   return "1 jour/s"
-            case .week:  return "1 semaine/s"
-            case .month: return "1 mois/s"
+            case .day:   return String(localized: "life.speed.day", defaultValue: "1 day/s")
+            case .week:  return String(localized: "life.speed.week", defaultValue: "1 week/s")
+            case .month: return String(localized: "life.speed.month", defaultValue: "1 month/s")
             }
         }
     }

@@ -46,7 +46,7 @@ private struct PassMiniPlayer: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpen)
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Revenir à la passe")
+        .accessibilityHint("miniplayer.hint")
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
     }
@@ -54,11 +54,18 @@ private struct PassMiniPlayer: View {
     /// « EN COURS · RETOUR D'ARRIÈRE-PLAN », ou la raison d'une pause subie.
     private func notice(_ engine: WinchesterEngine) -> String? {
         if let interruption = engine.interruption {
-            return "INTERROMPUE À \(FrenchFormat.duration(interruption.time).uppercased()) · \(interruption.label.uppercased())"
+            return String(localized: "miniplayer.interrupted",
+                          defaultValue: "INTERRUPTED AT \(Format.duration(interruption.time).uppercased()) · \(interruption.label.uppercased())",
+                          comment: "Bandeau de la passe : instant de l'interruption, puis sa raison")
         }
         guard returned else { return nil }
-        let state = engine.isFinished ? "TERMINÉE" : engine.isPlaying || engine.isBuffering ? "EN COURS" : "EN PAUSE"
-        return "\(state) · RETOUR D'ARRIÈRE-PLAN"
+        let state = engine.isFinished
+            ? String(localized: "pass.state.finished", defaultValue: "FINISHED")
+            : engine.isPlaying || engine.isBuffering
+                ? String(localized: "pass.state.running", defaultValue: "RUNNING")
+                : String(localized: "pass.state.paused", defaultValue: "PAUSED")
+        return String(localized: "miniplayer.returned",
+                      defaultValue: "\(state) · BACK FROM THE BACKGROUND")
     }
 
     private func row(_ engine: WinchesterEngine) -> some View {
@@ -85,7 +92,7 @@ private struct PassMiniPlayer: View {
                     .font(.dynamic(size: 17))
                     .frame(width: 36, height: 36)
             }
-            .accessibilityLabel(engine.isPlaying || engine.isBuffering ? "Pause" : "Lecture")
+            .accessibilityLabel(engine.isPlaying || engine.isBuffering ? "transport.pause" : "transport.play")
         }
     }
 
@@ -94,7 +101,7 @@ private struct PassMiniPlayer: View {
     private func detail(_ engine: WinchesterEngine) -> String {
         var parts: [String] = []
         if (returned || engine.interruption != nil), let progress = model.defragProgress {
-            parts.append(FrenchFormat.percent(progress))
+            parts.append(Format.percent(progress))
         }
         parts.append(model.phase?.label ?? "—")
         parts.append(engine.currentTime.clockString)

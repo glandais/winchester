@@ -18,11 +18,11 @@ enum Persona: String, CaseIterable, Identifiable {
     /// Le nom que portent les `displayName` des scénarios.
     var title: String {
         switch self {
-        case .secretaire: return "Secrétariat"
-        case .dev:        return "Développeur"
-        case .famille:    return "Famille"
-        case .gamer:      return "Joueur"
-        case .poweruser:  return "Bidouilleur"
+        case .secretaire: return String(localized: "persona.secretaire", defaultValue: "Office work")
+        case .dev:        return String(localized: "persona.dev", defaultValue: "Developer")
+        case .famille:    return String(localized: "persona.famille", defaultValue: "Family")
+        case .gamer:      return String(localized: "persona.gamer", defaultValue: "Gamer")
+        case .poweruser:  return String(localized: "persona.poweruser", defaultValue: "Tinkerer")
         }
     }
 
@@ -43,15 +43,20 @@ extension ProfileSpec {
     /// Capacité commerciale, en gigaoctets de mille mégaoctets : « 1,08 Go »,
     /// « 6,4 Go », « 40 Go », comme sur l'étiquette.
     var capacityLabel: String {
-        guard disk.sizeMB >= 1_000 else { return "\(disk.sizeMB) Mo" }
-        var digits = String(format: "%.2f", Double(disk.sizeMB) / 1_000)
-        while digits.hasSuffix("0") { digits.removeLast() }
-        if digits.hasSuffix(".") { digits.removeLast() }
-        return digits.replacingOccurrences(of: ".", with: ",") + " Go"
+        guard disk.sizeMB >= 1_000 else {
+            return String(localized: "disk.capacity.megabytes", defaultValue: "\(disk.sizeMB) MB")
+        }
+        // Deux décimales au plus, et les zéros de fin retirés : « 1,08 Go »,
+        // « 6,4 Go », « 40 Go », comme sur l'étiquette. Le séparateur décimal
+        // est celui de la langue, pas une virgule collée après coup.
+        let value = (Double(disk.sizeMB) / 1_000)
+            .formatted(.number.precision(.fractionLength(0...2)))
+        return String(localized: "disk.capacity.gigabytes", defaultValue: "\(value) GB")
     }
 
     var rpmLabel: String {
-        String(format: "%d\u{202F}%03d tr/min", disk.rpm / 1_000, disk.rpm % 1_000)
+        let value = Format.integer(disk.rpm)
+        return String(localized: "disk.rpm", defaultValue: "\(value) rpm")
     }
 
     var fileSystemLabel: String {
@@ -99,7 +104,7 @@ struct DiskGallery: View {
         VStack(alignment: .leading, spacing: 10) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    FilterChip(title: "Toutes", isOn: year == nil) { year = nil }
+                    FilterChip(title: String(localized: "gallery.filter.allYears", defaultValue: "All"), isOn: year == nil) { year = nil }
                     ForEach(years, id: \.self) { y in
                         FilterChip(title: String(y), isOn: year == y) { year = (year == y) ? nil : y }
                     }
@@ -107,7 +112,7 @@ struct DiskGallery: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    FilterChip(title: "Tous", isOn: persona == nil) { persona = nil }
+                    FilterChip(title: String(localized: "gallery.filter.allPersonas", defaultValue: "All"), isOn: persona == nil) { persona = nil }
                     ForEach(Persona.allCases) { p in
                         FilterChip(title: p.title, isOn: persona == p) { persona = (persona == p) ? nil : p }
                     }
@@ -127,7 +132,7 @@ struct DiskGallery: View {
             .padding(.top, 4)
 
             if shown.isEmpty {
-                Text("Aucun disque pour ce filtre.")
+                Text("gallery.empty")
                     .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.dim)
                     .frame(maxWidth: .infinity, minHeight: 80)
@@ -173,13 +178,13 @@ struct DiskCard: View {
                         .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
                     if isPlaying {
-                        Text("EN ÉCOUTE")
+                        Text("gallery.playing.badge")
                             .font(.dynamic(size: 9, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.background)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
                             .background(RoundedRectangle(cornerRadius: 4).fill(Theme.read))
-                            .accessibilityLabel("Disque en cours d'écoute")
+                            .accessibilityLabel("gallery.playing.label")
                     }
                     Spacer()
                     Text(spec.fileSystemLabel)
@@ -189,7 +194,7 @@ struct DiskCard: View {
                         .padding(.vertical, 2)
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.stroke, lineWidth: 1))
                 }
-                Text("\(spec.hardwareLine) · \(spec.osName)")
+                Text(verbatim: "\(spec.hardwareLine) · \(spec.osName)")
                     .font(.dynamic(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
@@ -205,7 +210,8 @@ struct DiskCard: View {
                 if let digest = state?.tidied ?? state?.last {
                     DiskStateBadge(digest: digest)
                 } else if let fragmentedRatio {
-                    Text("déjà généré · \(FrenchFormat.percent(fragmentedRatio)) fragmentés")
+                    Text(verbatim: String(localized: "gallery.alreadyGenerated",
+                                          defaultValue: "already generated · \(Format.percent(fragmentedRatio)) fragmented"))
                         .font(.dynamic(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.read)
                 }
@@ -258,15 +264,15 @@ struct DiskDetailScreen: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         if CustomDiskStore.isCustom(id) {
-                            Button("Modifier l'histoire", systemImage: "pencil") { onEdit(spec) }
+                            Button("disk.action.editHistory", systemImage: "pencil") { onEdit(spec) }
                         }
-                        Button("Dupliquer et modifier", systemImage: "plus.square.on.square") {
+                        Button("disk.action.duplicateAndEdit", systemImage: "plus.square.on.square") {
                             onEdit(library.duplicate(spec))
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("Construire à partir de ce disque")
+                    .accessibilityLabel("disk.action.buildFrom")
                 }
             }
         }
@@ -285,9 +291,11 @@ struct DiskDetailScreen: View {
     private func title(of digest: PassDigest) -> String {
         switch digest.kind {
         case .defrag:  return digest.toolLabel
-        case .install: return "Installation de \(digest.toolLabel)"
-        case .boot:    return "Démarrage"
-        case .day:     return "Journée d'usage, \(digest.toolLabel.lowercased())"
+        case .install: return String(localized: "pass.title.install",
+                                     defaultValue: "Installing \(digest.toolLabel)")
+        case .boot:    return String(localized: "pass.title.boot", defaultValue: "Boot")
+        case .day:     return String(localized: "pass.title.day",
+                                     defaultValue: "A day of use, \(digest.toolLabel.lowercased())")
         }
     }
 
@@ -317,7 +325,7 @@ struct DiskDetailScreen: View {
     /// disent ce qu'elles ont donné sans prétendre le remontrer.
     private var heard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("PASSES ENTENDUES")
+            Text("disk.passes.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             ForEach(history.state(of: id).passes) { digest in
@@ -352,7 +360,7 @@ struct DiskDetailScreen: View {
                     .foregroundStyle(Theme.dim)
             }
             Spacer()
-            Text(FrenchFormat.duration(digest.duration))
+            Text(Format.duration(digest.duration))
                 .font(.dynamic(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             if openable {
@@ -367,8 +375,10 @@ struct DiskDetailScreen: View {
     /// Ce que la passe a donné, et quand : la date est ce qui manquait pour
     /// s'y retrouver entre deux passes du même outil.
     private func subtitle(of digest: PassDigest) -> String {
-        let when = FrenchFormat.sinceNow(digest.finishedAt)
+        let when = Format.sinceNow(digest.finishedAt)
         guard let fragments = digest.fragmentsAfter, let holes = digest.holesAfter else { return when }
-        return "\(FrenchFormat.integer(fragments)) morceaux · \(FrenchFormat.integer(holes)) trous · \(when)"
+        return String(localized: "disk.pass.subtitle",
+                      defaultValue: "\(Format.integer(fragments)) pieces · \(Format.integer(holes)) holes · \(when)",
+                      comment: "Ce qu'une passe a donné, et quand")
     }
 }

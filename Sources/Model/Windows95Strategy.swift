@@ -40,7 +40,7 @@ import DiskCore
 struct Windows95Strategy: DefragStrategy {
 
     let id = "windows95"
-    let label = "Défragmenteur de Windows 95"
+    let label = String(localized: "strategy.windows95", defaultValue: "Windows 95 Defragmenter")
 
     /// Tampon de déplacement. L'outil d'époque travaillait sur quelques
     /// centaines de kilo-octets à la fois : c'est cette taille qui fixe le
@@ -48,20 +48,20 @@ struct Windows95Strategy: DefragStrategy {
     var bufferBytes = 256 * 1024
 
     let phases: [PhaseDescriptor] = [
-        PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                        detail: "Lecture des tables d'allocation et parcours de l'arborescence"),
-        PhaseDescriptor(id: "system", label: "Fichiers système",
-                        detail: "\\WINDOWS — les premiers du parcours, souvent déjà en place"),
-        PhaseDescriptor(id: "apps", label: "Applications",
-                        detail: "\\PROGRA~1 — gros fichiers, évacuations en cascade"),
-        PhaseDescriptor(id: "docs", label: "Documents",
-                        detail: "Fichiers réenregistrés des dizaines de fois, très éclatés"),
-        PhaseDescriptor(id: "churn", label: "Temporaires et cache",
-                        detail: "Des milliers de fragments d'un cluster : le martèlement"),
-        PhaseDescriptor(id: "commit", label: "Écriture des tables d'allocation",
-                        detail: "Réécriture complète des tables et de la racine"),
-        PhaseDescriptor(id: "done", label: "Terminé",
-                        detail: "Le volume ne tourne plus que pour lui-même"),
+        PhaseDescriptor(id: "analyse", label: String(localized: "phase.analyse", defaultValue: "Analysing the volume"),
+                        detail: String(localized: "phase.analyse.fat.detail", defaultValue: "Reading the allocation tables and walking the tree")),
+        PhaseDescriptor(id: "system", label: String(localized: "phase.system", defaultValue: "System files"),
+                        detail: String(localized: "phase.system.detail", defaultValue: "\\WINDOWS — first in the walk, often already in place")),
+        PhaseDescriptor(id: "apps", label: String(localized: "category.application", defaultValue: "Applications"),
+                        detail: String(localized: "phase.apps.detail", defaultValue: "\\PROGRA~1 — big files, cascading evacuations")),
+        PhaseDescriptor(id: "docs", label: String(localized: "category.document", defaultValue: "Documents"),
+                        detail: String(localized: "phase.docs.detail", defaultValue: "Files re-saved dozens of times, badly shattered")),
+        PhaseDescriptor(id: "churn", label: String(localized: "phase.churn", defaultValue: "Temporary files and cache"),
+                        detail: String(localized: "phase.churn.detail", defaultValue: "Thousands of one-cluster fragments: the hammering")),
+        PhaseDescriptor(id: "commit", label: String(localized: "phase.commitFAT", defaultValue: "Writing the allocation tables"),
+                        detail: String(localized: "phase.commitFAT.detail", defaultValue: "Full rewrite of the tables and the root")),
+        PhaseDescriptor(id: "done", label: String(localized: "phase.done", defaultValue: "Finished"),
+                        detail: String(localized: "phase.done.win95.detail", defaultValue: "The volume now spins only for itself")),
     ]
 
     func plan(volume input: DefragVolume, into sink: OperationSink) -> DefragPlan {
@@ -246,10 +246,8 @@ struct Windows95Strategy: DefragStrategy {
     /// Ce qui fait durer une passe de 1995 n'est pas le volume de données, mais
     /// le va-et-vient : la destination d'un fichier est presque toujours prise.
     func summary(of plan: DefragPlan) -> String {
-        String(format: "La passe déplace %d fichiers et en laisse %d en place, mais force "
-               + "%d évacuations : la destination d'un fichier est presque toujours occupée "
-               + "par un autre, qu'il faut d'abord pousser vers la fin du volume.",
-               plan.filesMoved, plan.filesAlreadyInPlace, plan.evacuations)
+        String(localized: "summary.windows95",
+               defaultValue: "The pass moves \(plan.filesMoved) files and leaves \(plan.filesAlreadyInPlace) in place, but forces \(plan.evacuations) evacuations: a file's destination is nearly always taken by another, which has to be pushed towards the end of the volume first.")
     }
 
     // MARK: - Placement

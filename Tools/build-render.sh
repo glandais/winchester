@@ -38,6 +38,7 @@ MODEL_SOURCES="
     Sources/Model/DriveCache.swift
     Sources/Model/SoftwareCache.swift
     Sources/Model/Volume.swift
+    Sources/Model/DisplayFormat.swift
     Sources/Model/DefragJob.swift
     Sources/Model/DefragStrategy.swift
     Sources/Model/Windows95Strategy.swift

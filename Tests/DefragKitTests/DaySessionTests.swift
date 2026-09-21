@@ -47,8 +47,9 @@ struct DaySessionTests {
         // La journée s'ouvre sur un démarrage et se ferme sur l'arrêt.
         #expect(phases.first == 0)
         #expect(played.plan.bootFiles > 0)
-        #expect(played.plan.phases.first?.label == "Démarrage")
-        #expect(played.plan.phases.last?.label == "Arrêt")
+        // Hors de l'app, `String(localized:)` retombe sur la langue source.
+        #expect(played.plan.phases.first?.label == "Boot")
+        #expect(played.plan.phases.last?.label == "Shutdown")
     }
 
     @Test("Une journée lit autant qu'elle écrit, et pas seulement ce que l'histoire dit")

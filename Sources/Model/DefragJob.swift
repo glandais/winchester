@@ -76,12 +76,12 @@ struct PhaseDescriptor: Identifiable {
 /// une fois pour les trois outils qui le disent.
 extension PhaseDescriptor {
 
-    static func commit(on format: VolumeFormat,
-                       label: String = "Écriture des métadonnées") -> PhaseDescriptor {
-        PhaseDescriptor(id: "commit", label: label,
+    static func commit(on format: VolumeFormat, label: String? = nil) -> PhaseDescriptor {
+        PhaseDescriptor(id: "commit",
+                        label: label ?? String(localized: "phase.commitMeta", defaultValue: "Writing the metadata"),
                         detail: format.isFAT
-                            ? "Les deux copies de la table d'allocation et les entrées de répertoire"
-                            : "Les derniers enregistrements de MFT et la bitmap du volume")
+                            ? String(localized: "phase.commit.fat.detail", defaultValue: "Both copies of the allocation table and the directory entries")
+                            : String(localized: "phase.commit.ntfs.detail", defaultValue: "The last MFT records and the volume bitmap"))
     }
 }
 

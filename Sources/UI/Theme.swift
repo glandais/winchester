@@ -78,12 +78,19 @@ extension View {
 
 /// Le titre d'un onglet, comme en tête de chaque écran des maquettes.
 struct ScreenTitle: View {
-    let title: String
-    let subtitle: String
+    let title: LocalizedStringKey
+    /// Déjà un `Text` : le sous-titre est tantôt une clé du catalogue, tantôt
+    /// le nom du disque en cours, qui ne se traduit pas.
+    let subtitle: Text
 
-    init(_ title: String, subtitle: String) {
+    init(_ title: LocalizedStringKey, subtitle: LocalizedStringKey) {
         self.title = title
-        self.subtitle = subtitle
+        self.subtitle = Text(subtitle)
+    }
+
+    init(_ title: LocalizedStringKey, verbatimSubtitle: String) {
+        self.title = title
+        self.subtitle = Text(verbatim: verbatimSubtitle)
     }
 
     var body: some View {
@@ -91,7 +98,7 @@ struct ScreenTitle: View {
             Text(title)
                 .font(.dynamic(size: 28, weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.text)
-            Text(subtitle)
+            subtitle
                 .font(.caption)
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -100,14 +107,20 @@ struct ScreenTitle: View {
     }
 }
 
-/// Les nombres et les dates tels qu'on les écrit en français : espace fine
-/// insécable entre les milliers, virgule décimale, mois en toutes lettres.
-enum FrenchFormat {
+/// Les nombres et les dates tels que les écrit la langue de l'appareil.
+///
+/// C'était `Format`, et tout y était écrit à la main : espace fine
+/// insécable, virgule décimale, « Mo », « il y a 3 min », les mois en toutes
+/// lettres. Le nom disait la vérité tant que l'app n'existait qu'en français.
+/// Les conversions et les seuils, eux, n'ont pas bougé : ce sont ceux du
+/// catalogue (`FrenchUnits`, dans `DiskCore`), qui restent français pour les
+/// tables du `README.md` et les bilans de `Tools/Measure`.
+enum Format {
 
-    static func integer(_ value: Int) -> String { FrenchUnits.integer(value) }
+    static func integer(_ value: Int) -> String { DisplayFormat.integer(value) }
 
     static func decimal(_ value: Double, digits: Int) -> String {
-        FrenchUnits.decimal(value, digits: digits)
+        DisplayFormat.decimal(value, digits: digits)
     }
 
     /// La part d'un bloc de carte : « = 43 clusters » quand elle tombe juste,
@@ -116,68 +129,116 @@ enum FrenchFormat {
     /// la division flottante : 9,97 clusters ne s'écrivent pas « = 10 ».
     static func clustersPerCell(_ value: Double) -> String {
         let rounded = value.rounded()
-        if abs(value - rounded) < 1e-9 { return "= \(integer(Int(rounded))) clusters" }
+        if abs(value - rounded) < 1e-9 {
+            return String(localized: "format.clusters.exact",
+                          defaultValue: "= \(integer(Int(rounded))) clusters")
+        }
         // 9,97 arrondi à une décimale s'écrirait « 10,0 » : la virgule n'y dit
-        // plus rien.
-        let text = decimal(value, digits: value < 10 ? 1 : 0)
-        return "≈ \(text.hasSuffix(",0") ? String(text.dropLast(2)) : text) clusters"
+        // plus rien. La comparaison se fait sur le nombre rendu, séparateur
+        // décimal de la langue compris.
+        var text = decimal(value, digits: value < 10 ? 1 : 0)
+        if let zero = zeroFraction, text.hasSuffix(zero) { text.removeLast(zero.count) }
+        return String(localized: "format.clusters.approx", defaultValue: "≈ \(text) clusters")
+    }
+
+    /// « ,0 » en français, « .0 » en anglais : la décimale nulle qu'on retire.
+    private static var zeroFraction: String? {
+        let one = decimal(1, digits: 1)
+        return one.count > 1 ? String(one.dropFirst()) : nil
     }
 
     /// Un rapport entre 0 et 1, arrondi à l'unité — sauf sous 10 %, où la
     /// décimale dit encore quelque chose.
+    ///
+    /// `FormatStyle.percent` pose l'espace avant le signe là où la langue le
+    /// demande : « 43 % » en français, « 43% » en anglais.
     static func percent(_ ratio: Double) -> String {
         let value = ratio * 100
-        if value > 0 && value < 0.05 { return "<\u{00A0}0,1\u{00A0}%" }
-        let text = value < 10 && value > 0 ? decimal(value, digits: 1) : integer(Int(value.rounded()))
-        return text + "\u{00A0}%"
+        if value > 0 && value < 0.05 {
+            return String(localized: "format.percent.tiny",
+                          defaultValue: "<\u{00A0}\((0.001).formatted(.percent.precision(.fractionLength(1))))",
+                          comment: "Un pourcentage trop petit pour s'écrire")
+        }
+        let digits = value < 10 && value > 0 ? 1 : 0
+        return ratio.formatted(.percent.precision(.fractionLength(digits)).rounded(rule: .toNearestOrEven))
+    }
+
+    /// Un écart en pourcentage, signé : « +9,3 % », « −1,2 % ». Le témoin du
+    /// démarrage s'en sert pour dire de combien le placement réel coûte.
+    static func signedPercent(_ value: Double) -> String {
+        (value / 100).formatted(.percent.precision(.fractionLength(1)).sign(strategy: .always()))
     }
 
     /// Une taille en Mo, en Go au-delà d'un gigaoctet, avec une décimale sous
     /// dix mégaoctets ; en Ko sous un mégaoctet si on le demande.
-    ///
-    /// La conversion est celle de `FrenchUnits`, et il n'y en a pas d'autre :
-    /// voir ce qu'une seconde a coûté (`UX_REVIEW.md` §3).
     static func megabytes(_ bytes: UInt64, smallInKilobytes: Bool = false) -> String {
-        FrenchUnits.megabytes(bytes, smallInKilobytes: smallInKilobytes)
+        DisplayFormat.megabytes(bytes, smallInKilobytes: smallInKilobytes)
     }
 
-    /// Depuis quand, en français courant : « à l'instant », « il y a 3 min »,
+    /// Depuis quand, en langage courant : « à l'instant », « il y a 3 min »,
     /// « hier », puis la date en toutes lettres au-delà d'une semaine.
     ///
-    /// Écrit à la main comme le reste de ce fichier : `RelativeDateTimeFormatter`
-    /// dirait « il y a 3 minutes » là où une carte n'a la place que de « 3 min »,
-    /// et suivrait la locale de l'appareil alors que toute l'application est en
-    /// français.
+    /// Écrit à la main plutôt que confié à `RelativeDateTimeFormatter` : celui-ci
+    /// dirait « il y a 3 minutes » là où une carte n'a la place que de
+    /// « 3 min ». Les unités abrégées viennent donc du catalogue.
     static func sinceNow(_ date: Date, now: Date = Date()) -> String {
         let minutes = Int(now.timeIntervalSince(date) / 60)
-        if minutes < 1 { return "à l'instant" }
-        if minutes < 60 { return "il y a \(minutes)\u{00A0}min" }
+        if minutes < 1 { return String(localized: "since.justNow", defaultValue: "just now") }
+        if minutes < 60 {
+            return String(localized: "since.minutes", defaultValue: "\(minutes)\u{00A0}min ago",
+                          comment: "Depuis quand, en minutes abrégées")
+        }
         let hours = minutes / 60
-        if hours < 24 { return "il y a \(hours)\u{00A0}h" }
+        if hours < 24 {
+            return String(localized: "since.hours", defaultValue: "\(hours)\u{00A0}h ago")
+        }
         let days = hours / 24
-        if days == 1 { return "hier" }
-        if days < 7 { return "il y a \(days)\u{00A0}jours" }
+        if days == 1 { return String(localized: "since.yesterday", defaultValue: "yesterday") }
+        if days < 7 {
+            return String(localized: "since.days", defaultValue: "\(days) days ago",
+                          comment: "Depuis quand, en jours, au pluriel de la langue")
+        }
         let civil = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: date)
-        guard let year = civil.year, let month = civil.month, let day = civil.day else { return "plus tôt" }
-        return "le " + Self.date(CivilDate(year: year, month: month, day: day))
+        guard let year = civil.year, let month = civil.month, let day = civil.day else {
+            return String(localized: "since.earlier", defaultValue: "earlier")
+        }
+        return String(localized: "since.onDate",
+                      defaultValue: "on \(Self.date(CivilDate(year: year, month: month, day: day)))")
     }
 
     /// Un temps écouté : « 42 s », « 12 min 41 », « 1 h 07 ».
     static func duration(_ seconds: Double) -> String {
         let total = max(Int(seconds.rounded()), 0)
         let h = total / 3_600, m = (total % 3_600) / 60, s = total % 60
-        if h > 0 { return "\(h)\u{00A0}h\u{00A0}" + String(format: "%02d", m) }
-        if m > 0 { return "\(m)\u{00A0}min\u{00A0}" + String(format: "%02d", s) }
-        return "\(s)\u{00A0}s"
+        if h > 0 {
+            let minutes = String(format: "%02d", m)
+            return String(localized: "duration.hours",
+                          defaultValue: "\(h)\u{00A0}h\u{00A0}\(minutes)",
+                          comment: "Une durée : heures et minutes, les minutes sur deux chiffres")
+        }
+        if m > 0 {
+            let seconds = String(format: "%02d", s)
+            return String(localized: "duration.minutes",
+                          defaultValue: "\(m)\u{00A0}min\u{00A0}\(seconds)")
+        }
+        return String(localized: "duration.seconds", defaultValue: "\(s)\u{00A0}s")
     }
 
-    private static let months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
-                                 "août", "septembre", "octobre", "novembre", "décembre"]
-
-    /// « 14 mars 1997 »
+    /// « 14 mars 1997 » — le mois en toutes lettres, dans l'ordre de la langue.
+    ///
+    /// Les dates du projet sont civiles et grégoriennes, sans heure ni fuseau :
+    /// on les monte à midi UTC pour qu'aucun décalage ne les fasse changer de
+    /// jour à l'affichage.
     static func date(_ date: CivilDate) -> String {
-        let month = (1...12).contains(date.month) ? months[date.month - 1] : "\(date.month)"
-        return "\(date.day == 1 ? "1er" : String(date.day)) \(month) \(date.year)"
+        var components = DateComponents()
+        components.year = date.year
+        components.month = date.month
+        components.day = date.day
+        components.hour = 12
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        guard let day = calendar.date(from: components) else { return "\(date.year)" }
+        return day.formatted(.dateTime.day().month(.wide).year().locale(.autoupdatingCurrent))
     }
 }
 

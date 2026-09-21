@@ -21,11 +21,11 @@ extension JKDefragStrategy.SortField {
     /// Pour l'écran : « tri par nom ».
     var phrase: String {
         switch self {
-        case .name:       return "par nom"
-        case .size:       return "par taille"
-        case .lastAccess: return "par dernier accès"
-        case .lastChange: return "par dernière modification"
-        case .creation:   return "par création"
+        case .name:       return String(localized: "sortField.name", defaultValue: "by name")
+        case .size:       return String(localized: "sortField.size", defaultValue: "by size")
+        case .lastAccess: return String(localized: "sortField.lastAccess", defaultValue: "by last access")
+        case .lastChange: return String(localized: "sortField.lastChange", defaultValue: "by last change")
+        case .creation:   return String(localized: "sortField.creation", defaultValue: "by creation date")
         }
     }
 }

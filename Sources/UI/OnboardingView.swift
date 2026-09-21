@@ -33,7 +33,7 @@ struct OnboardingView: View {
                 HStack {
                     Spacer()
                     if page < 2 {
-                        Button("Passer", action: onFinish)
+                        Button("onboarding.skip", action: onFinish)
                             .font(.dynamic(size: 15))
                             .foregroundStyle(Theme.dim)
                     }
@@ -58,7 +58,7 @@ struct OnboardingView: View {
                         onFinish()
                     }
                 } label: {
-                    Text(page < 2 ? "Continuer" : "Écouter un disque")
+                    Text(page < 2 ? "onboarding.continue" : "onboarding.listen")
                         .font(.dynamic(size: 17, weight: .semibold))
                         .foregroundStyle(Theme.background)
                         .frame(maxWidth: .infinity, minHeight: 52)
@@ -80,42 +80,37 @@ struct OnboardingView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Écran \(page + 1) sur 3")
+        .accessibilityLabel(String(localized: "onboarding.page",
+                                   defaultValue: "Screen \(page + 1) of 3",
+                                   comment: "Étiquette d'accessibilité des points de page de l'accueil"))
     }
 
     // MARK: - Les trois écrans
 
     private var sounds: some View {
-        screen(title: "Ce qu'on entend",
-             lead: "Trois sons, produits en direct par la mécanique simulée.") {
-            item("arrow.left.and.right", Theme.read, "Le seek",
-                 "Le bras saute d'un cylindre à l'autre.")
-            item("arrow.uturn.backward", Theme.write, "Le retour au bord",
-                 "Un « clac » franc : le bras revient au début de la partition réécrire la FAT, à chaque fichier.")
-            item("circle.dotted", Theme.arm, "Le ronronnement",
-                 "La rotation, en continu, sous tout le reste.")
+        screen(title: "onboarding.sounds.title", lead: "onboarding.sounds.lead") {
+            item("arrow.left.and.right", Theme.read, "onboarding.sounds.seek.title",
+                 "onboarding.sounds.seek.text")
+            item("arrow.uturn.backward", Theme.write, "onboarding.sounds.return.title",
+                 "onboarding.sounds.return.text")
+            item("circle.dotted", Theme.arm, "onboarding.sounds.hum.title",
+                 "onboarding.sounds.hum.text")
         }
     }
 
     private var map: some View {
-        screen(title: "Ce que montre la carte",
-             lead: "Un bloc vaut quelques dizaines de clusters. Il change de couleur à l'instant où son écriture s'entend.") {
+        screen(title: "onboarding.map.title", lead: "onboarding.map.lead") {
             swatchItem([Theme.categoryColor(.document, contiguous: true), Theme.categoryColor(.document)],
-                       "Même couleur, deux teintes",
-                       "Plus sombre : rangé d'un seul tenant. Plus clair : en morceaux.")
+                       "onboarding.map.shades.title", "onboarding.map.shades.text")
             swatchItem([Theme.read, Theme.write],
-                       "Ambre et turquoise",
-                       "Ambre quand on lit, turquoise quand on écrit. La trace s'efface en un tiers de seconde.")
+                       "onboarding.map.trace.title", "onboarding.map.trace.text")
             swatchItem([Theme.categoryColor(.free)],
-                       "Gris foncé : libre",
-                       "Les trous entre les fichiers sont ce qui fragmente les suivants.")
+                       "onboarding.map.free.title", "onboarding.map.free.text")
         }
     }
 
     private var headphones: some View {
-        screen(title: "Mettez un casque",
-             lead: "Le haut-parleur de l'iPhone efface le grave de la rotation et les transitoires du bras. "
-                + "Au casque, un seek court et une pleine course ne sonnent pas pareil.") {
+        screen(title: "onboarding.headphones.title", lead: "onboarding.headphones.lead") {
             HStack {
                 Spacer()
                 Image(systemName: "headphones")
@@ -130,10 +125,10 @@ struct OnboardingView: View {
                 if engine.supportsHaptics {
                     Toggle(isOn: $hapticsEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Vibrations")
+                            Text("onboarding.haptics.title")
                                 .font(.dynamic(size: 15, weight: .semibold))
                                 .foregroundStyle(Theme.text)
-                            Text("Les transitoires du bras dans la main")
+                            Text("onboarding.haptics.text")
                                 .font(.dynamic(size: 12))
                                 .foregroundStyle(Theme.dim)
                         }
@@ -144,10 +139,10 @@ struct OnboardingView: View {
                         engine.mix.save(to: .standard)
                     }
                 } else {
-                    Text("Vibrations")
+                    Text("onboarding.haptics.title")
                         .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
-                    Text("Indisponibles sur cet appareil. Le son n'en dépend pas.")
+                    Text("onboarding.haptics.unavailable")
                         .font(.dynamic(size: 12))
                         .foregroundStyle(Theme.dim)
                 }
@@ -155,7 +150,7 @@ struct OnboardingView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
 
-            Text("Tout se règle plus tard dans « Son et vibrations ».")
+            Text("onboarding.headphones.later")
                 .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
         }
@@ -163,7 +158,7 @@ struct OnboardingView: View {
 
     // MARK: - Composants
 
-    private func screen<Content: View>(title: String, lead: String,
+    private func screen<Content: View>(title: LocalizedStringKey, lead: LocalizedStringKey,
                                      @ViewBuilder content: () -> Content) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -183,7 +178,8 @@ struct OnboardingView: View {
         }
     }
 
-    private func item(_ systemImage: String, _ color: Color, _ title: String, _ text: String) -> some View {
+    private func item(_ systemImage: String, _ color: Color, _ title: LocalizedStringKey,
+                      _ text: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: systemImage)
                 .font(.dynamic(size: 20, weight: .medium))
@@ -204,7 +200,8 @@ struct OnboardingView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func swatchItem(_ colors: [Color], _ title: String, _ text: String) -> some View {
+    private func swatchItem(_ colors: [Color], _ title: LocalizedStringKey,
+                            _ text: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: 14) {
             HStack(spacing: 3) {
                 ForEach(colors.indices, id: \.self) { index in

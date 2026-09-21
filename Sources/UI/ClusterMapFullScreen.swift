@@ -90,7 +90,7 @@ private struct FullScreenMapChrome<Map: View, Transport: View>: View {
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.text)
             }
-            .accessibilityLabel("Quitter le plein écran")
+            .accessibilityLabel("map.full.close")
         }
     }
 }
@@ -142,7 +142,9 @@ struct DefragFullScreenMap: View {
 
     private var detail: String {
         let grid = model.mapGrid
-        return "\(grid.columns)×\(grid.rows) · 1 bloc \(FrenchFormat.clustersPerCell(model.clustersPerCell))"
+        return String(localized: "map.full.detail",
+                      defaultValue: "\(grid.columns)×\(grid.rows) · 1 block \(Format.clustersPerCell(model.clustersPerCell))",
+                      comment: "Sous-titre du plein écran : la grille, puis ce que vaut un bloc")
     }
 
     /// Ce qu'on sait d'un bloc pendant la passe : sa catégorie et son
@@ -157,12 +159,14 @@ struct DefragFullScreenMap: View {
         let category = ClusterCategory(rawValue: shade.category) ?? .free
         return CellInfoBar(
             swatch: Theme.categoryColor(category, contiguous: shade.contiguous),
-            title: shade.fill == 0 ? "Libre" : category.label,
-            line: "Bloc \(FrenchFormat.integer(cell + 1)) · clusters \(FrenchFormat.integer(start)) à "
-                + "\(FrenchFormat.integer(max(end - 1, start))) · "
-                + "\(FrenchFormat.percent(Double(shade.fill) / 255)) occupé",
+            title: shade.fill == 0
+                ? String(localized: "map.cell.free", defaultValue: "Free") : category.label,
+            line: String(localized: "map.cell.line",
+                         defaultValue: "Block \(Format.integer(cell + 1)) · clusters \(Format.integer(start)) to \(Format.integer(max(end - 1, start))) · \(Format.percent(Double(shade.fill) / 255)) used",
+                         comment: "Détail d'un bloc : son rang, ses clusters, son remplissage"),
             files: [],
-            note: "Les fichiers ne sont pas suivis pendant une passe : ils changent de place.",
+            note: String(localized: "map.cell.passNote",
+                         defaultValue: "Files are not tracked during a pass: they move."),
             onClose: { selected = nil })
     }
 
@@ -179,7 +183,7 @@ struct DefragFullScreenMap: View {
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.text)
             }
-            .accessibilityLabel(engine.isPlaying ? "Pause" : "Lecture")
+            .accessibilityLabel(engine.isPlaying ? "transport.pause" : "transport.play")
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -264,30 +268,37 @@ struct LibraryFullScreenMap: View {
         let others = contents.fileCount - contents.occupants.count
         var note: String? = nil
         if contents.systemClusters > 0 {
-            note = "\(FrenchFormat.integer(Int(contents.systemClusters))) clusters réservés par le système de fichiers."
+            note = String(localized: "map.cell.systemClusters",
+                          defaultValue: "\(Format.integer(Int(contents.systemClusters))) clusters reserved by the file system.")
         }
         if others > 0 {
-            let more = "Et \(FrenchFormat.integer(others)) autre\(others > 1 ? "s" : "") fichier\(others > 1 ? "s" : "")."
+            let more = String(localized: "map.cell.moreFiles",
+                              defaultValue: "And \(others) more files.",
+                              comment: "Le reste des fichiers d'un bloc, au pluriel de la langue")
             note = note.map { "\(more) \($0)" } ?? more
         }
         return CellInfoBar(
             swatch: Theme.categoryColor(category, contiguous: shade.contiguous),
-            title: contents.usedClusters == 0 ? "Libre" : category.label,
-            line: "Bloc \(FrenchFormat.integer(cell + 1)) · clusters "
-                + "\(FrenchFormat.integer(Int(contents.clusters.lowerBound))) à "
-                + "\(FrenchFormat.integer(Int(max(contents.clusters.upperBound, contents.clusters.lowerBound + 1) - 1))) · "
-                + "\(FrenchFormat.percent(size > 0 ? Double(contents.usedClusters) / size : 0)) occupé",
+            title: contents.usedClusters == 0
+                ? String(localized: "map.cell.free", defaultValue: "Free") : category.label,
+            line: String(localized: "map.cell.line",
+                         defaultValue: "Block \(Format.integer(cell + 1)) · clusters \(Format.integer(Int(contents.clusters.lowerBound))) to \(Format.integer(Int(max(contents.clusters.upperBound, contents.clusters.lowerBound + 1) - 1))) · \(Format.percent(size > 0 ? Double(contents.usedClusters) / size : 0)) used"),
             files: contents.occupants.map { occupant in
-                let pieces = occupant.fragments > 1 ? "\(occupant.fragments) morceaux" : "d'un seul tenant"
+                let pieces = occupant.fragments > 1
+                    ? String(localized: "map.cell.pieces",
+                             defaultValue: "\(occupant.fragments) pieces",
+                             comment: "Un fichier en morceaux, au pluriel de la langue")
+                    : String(localized: "map.cell.onePiece", defaultValue: "in one piece")
                 return (occupant.path,
-                        "\(FrenchFormat.megabytes(occupant.logicalSize, smallInKilobytes: true)) · \(pieces)")
+                        "\(Format.megabytes(occupant.logicalSize, smallInKilobytes: true)) · \(pieces)")
             },
             note: note,
             onClose: { select(nil) })
     }
 
     private var detail: String {
-        "\(model.grid.columns)×\(model.grid.rows) · 1 bloc \(FrenchFormat.clustersPerCell(model.clustersPerCell))"
+        String(localized: "map.full.detail",
+               defaultValue: "\(model.grid.columns)×\(model.grid.rows) · 1 block \(Format.clustersPerCell(model.clustersPerCell))")
     }
 }
 
@@ -339,7 +350,7 @@ private struct CellInfoBar: View {
                     .foregroundStyle(Theme.dim)
                     .padding(6)
             }
-            .accessibilityLabel("Fermer le détail du bloc")
+            .accessibilityLabel("map.cell.close")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
@@ -372,6 +383,6 @@ struct FullScreenMapButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Carte en plein écran")
+        .accessibilityLabel("map.full.label")
     }
 }

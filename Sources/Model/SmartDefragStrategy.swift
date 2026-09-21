@@ -39,7 +39,7 @@ import DiskCore
 struct SmartDefragStrategy: DefragStrategy, BootLayoutConsumer {
 
     let id = "smart"
-    let label = "Rangement intelligent"
+    let label = String(localized: "strategy.smart", defaultValue: "Smart tidying")
 
     /// Ce que le démarrage lit, dans l'ordre. Sans lui, pas de bloc de
     /// démarrage : la passe se réduit au tassage, queue d'abord.
@@ -56,15 +56,15 @@ struct SmartDefragStrategy: DefragStrategy, BootLayoutConsumer {
     /// rien dire sur un NTFS, qui décrit ses fichiers par extents dans la MFT.
     func phases(on format: VolumeFormat) -> [PhaseDescriptor] {
         [
-            PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                            detail: "Lecture des tables, parcours de l'arborescence et de Layout.ini"),
-            PhaseDescriptor(id: "boot", label: "Bloc de démarrage",
-                            detail: "Ce que lit le démarrage, posé en tête du volume dans l'ordre où il le lit"),
-            PhaseDescriptor(id: "compact", label: "Tassage",
-                            detail: "La queue du volume remplie, puis le reste tassé derrière le bloc"),
-            PhaseDescriptor.commit(on: format, label: "Écriture des tables"),
-            PhaseDescriptor(id: "done", label: "Terminé",
-                            detail: "Démarrage d'un trait, fichiers d'un seul tenant, espace libre d'un tenant"),
+            PhaseDescriptor(id: "analyse", label: String(localized: "phase.analyse", defaultValue: "Analysing the volume"),
+                            detail: String(localized: "phase.analyse.smart.detail", defaultValue: "Reading the tables, walking the tree and Layout.ini")),
+            PhaseDescriptor(id: "boot", label: String(localized: "phase.bootBlock", defaultValue: "Boot block"),
+                            detail: String(localized: "phase.bootBlock.detail", defaultValue: "What the boot reads, laid at the head of the volume in the order it reads it")),
+            PhaseDescriptor(id: "compact", label: String(localized: "phase.compact", defaultValue: "Packing"),
+                            detail: String(localized: "phase.compact.smart.detail", defaultValue: "The tail of the volume filled, then the rest packed behind the block")),
+            PhaseDescriptor.commit(on: format, label: String(localized: "phase.commitTables", defaultValue: "Writing the tables")),
+            PhaseDescriptor(id: "done", label: String(localized: "phase.done", defaultValue: "Finished"),
+                            detail: String(localized: "phase.done.smart.detail", defaultValue: "Boot in one sweep, files in one piece, free space in one run")),
         ]
     }
 
@@ -137,10 +137,8 @@ struct SmartDefragStrategy: DefragStrategy, BootLayoutConsumer {
     }
 
     func summary(of plan: DefragPlan) -> String {
-        String(format: "La passe pose en tête ce que lit le démarrage, dans l'ordre où il le lit, "
-               + "puis tasse le reste derrière : %d fichiers déplacés, %d laissés en place, "
-               + "%d évacuations.",
-               plan.filesMoved, plan.filesAlreadyInPlace, plan.evacuations)
+        String(localized: "summary.smart",
+               defaultValue: "The pass lays what the boot reads at the head, in the order it reads it, then packs the rest behind: \(plan.filesMoved) files moved, \(plan.filesAlreadyInPlace) left in place, \(plan.evacuations) evacuations.")
     }
 }
 

@@ -128,7 +128,7 @@ private struct MapAccessibility: ViewModifier {
             let zones = MapZone.zones(of: shades)
             content
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel("Carte du volume")
+                .accessibilityLabel("map.accessibility.label")
                 .accessibilityChildren {
                     ForEach(zones.indices, id: \.self) { index in
                         Color.clear.accessibilityLabel(zones[index].description)
@@ -267,15 +267,19 @@ struct ClusterLegend: View {
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(Theme.categoryColor(sample, contiguous: true))
                             .frame(width: 9, height: 9)
-                        Text("Plus sombre : rangé d'un seul tenant")
+                        Text("map.legend.contiguous")
                             .font(.dynamic(size: 10))
                             .foregroundStyle(Theme.dim)
                     }
                 }
             }
-            Text("1 bloc \(FrenchFormat.clustersPerCell(clustersPerCell)) = "
-                 + FrenchFormat.megabytes(UInt64((clustersPerCell * Double(clusterBytes)).rounded()),
-                                          smallInKilobytes: true))
+            Text(verbatim: {
+                let size = Format.megabytes(
+                    UInt64((clustersPerCell * Double(clusterBytes)).rounded()), smallInKilobytes: true)
+                return String(localized: "map.legend.blockSize",
+                              defaultValue: "1 block \(Format.clustersPerCell(clustersPerCell)) = \(size)",
+                              comment: "Légende de la carte : ce que vaut un bloc")
+            }())
                 .font(.dynamic(size: 10, design: .monospaced))
                 .foregroundStyle(Theme.dim.opacity(0.8))
         }

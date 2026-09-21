@@ -32,11 +32,11 @@ struct SoundSheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle("Son et vibrations")
+            .navigationTitle("settings.sound.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("OK") { dismiss() }
+                    Button("common.ok") { dismiss() }
                 }
             }
         }
@@ -88,7 +88,7 @@ struct SoundSheet: View {
         .disabled(unavailable)
         .opacity(unavailable ? 0.4 : 1)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityHint(unavailable ? "Indisponible : cet appareil ne vibre pas" : "")
+        .accessibilityHint(unavailable ? "sound.preset.unavailable" : "")
     }
 
     private func icon(_ preset: SoundMix.Preset) -> String {
@@ -102,15 +102,19 @@ struct SoundSheet: View {
     private func presetNote(_ preset: SoundMix.Preset?) -> String {
         switch preset {
         case .headphones:
-            return "Le mixage d'origine. Au casque, un seek court et une pleine course ne sonnent pas pareil."
+            return String(localized: "sound.preset.headphones.note",
+                          defaultValue: "The original mix. On headphones, a short seek and a full stroke do not sound alike.")
         case .speaker:
-            return "Le haut-parleur efface le grave de la rotation : elle monte, et le grondement passe dans la main."
+            return String(localized: "sound.preset.speaker.note",
+                          defaultValue: "The speaker erases the low end of the rotation: it rises, and the rumble moves into your hand.")
         case .hapticsOnly:
-            return "Le son est coupé ; la passe continue, et le bras se sent dans la main."
+            return String(localized: "sound.preset.hapticsOnly.note",
+                          defaultValue: "The sound is off; the pass carries on, and the arm is felt in your hand.")
         case nil:
             return engine.supportsHaptics
-                ? "Réglage personnel."
-                : "Réglage personnel. Cet appareil ne vibre pas : « Vibrations seules » est indisponible."
+                ? String(localized: "sound.preset.custom.note", defaultValue: "Custom mix.")
+                : String(localized: "sound.preset.custom.noHaptics.note",
+                         defaultValue: "Custom mix. This device does not vibrate: “Haptics only” is unavailable.")
         }
     }
 
@@ -118,10 +122,10 @@ struct SoundSheet: View {
 
     private var layers: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Son")
-            LevelSlider(label: "Rotation", value: binding(\.spindleLevel))
-            LevelSlider(label: "Tête", value: binding(\.transientLevel))
-            LevelSlider(label: "Général", value: binding(\.masterLevel))
+            sectionTitle("sound.section.sound")
+            LevelSlider(label: "sound.level.rotation", value: binding(\.spindleLevel))
+            LevelSlider(label: "sound.level.head", value: binding(\.transientLevel))
+            LevelSlider(label: "sound.level.master", value: binding(\.masterLevel))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
@@ -132,26 +136,25 @@ struct SoundSheet: View {
             if engine.supportsHaptics {
                 Toggle(isOn: binding(\.hapticsEnabled)) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Haptique")
+                        Text("sound.haptics.title")
                             .font(.dynamic(size: 14, weight: .semibold))
                             .foregroundStyle(Theme.text)
-                        Text("Taptic Engine · transitoires du bras")
+                        Text("sound.haptics.subtitle")
                             .font(.dynamic(size: 11))
                             .foregroundStyle(Theme.dim)
                     }
                 }
                 if engine.hapticsEnabled {
-                    LevelSlider(label: "Intensité des transitoires", value: binding(\.hapticIntensity))
+                    LevelSlider(label: "sound.level.transients", value: binding(\.hapticIntensity))
                     Toggle(isOn: binding(\.spindleHaptics)) {
-                        Text("Grondement de rotation")
+                        Text("sound.haptics.spindle")
                             .font(.dynamic(size: 13))
                             .foregroundStyle(Theme.text)
                     }
                 }
             } else {
-                sectionTitle("Haptique")
-                Text("Indisponible sur cet appareil : il n'a pas de Taptic Engine que l'app puisse piloter. "
-                     + "Le son n'en dépend pas.")
+                sectionTitle("sound.section.haptics")
+                Text("sound.haptics.unavailable")
                     .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
@@ -167,18 +170,18 @@ struct SoundSheet: View {
             DisclosureGroup(isExpanded: $showsAdvanced) {
                 VStack(alignment: .leading, spacing: 10) {
                     if engine.hapticsEnabled && engine.spindleHaptics {
-                        LevelSlider(label: "Niveau du grondement", value: binding(\.spindleHapticLevel))
+                        LevelSlider(label: "sound.level.rumble", value: binding(\.spindleHapticLevel))
                     }
-                    Text(engine.hapticReport)
+                    Text(verbatim: engine.hapticReport)
                         .font(.dynamic(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Revenir au mixage d'origine") { apply(.standard) }
+                    Button("sound.reset") { apply(.standard) }
                         .font(.dynamic(size: 13))
                 }
                 .padding(.top, 10)
             } label: {
-                Text("Réglages avancés")
+                Text("sound.advanced")
                     .font(.dynamic(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
             }
@@ -186,8 +189,10 @@ struct SoundSheet: View {
         }
     }
 
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title.uppercased())
+    /// La clé porte déjà les capitales : `uppercased()` suit la locale de
+    /// l'appareil, pas celle du texte, et sur quelques alphabets il abîme.
+    private func sectionTitle(_ title: LocalizedStringKey) -> some View {
+        Text(title)
             .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
             .foregroundStyle(Theme.dim)
     }
@@ -213,7 +218,7 @@ struct SoundSheet: View {
 }
 
 struct LevelSlider: View {
-    let label: String
+    let label: LocalizedStringKey
     @Binding var value: Float
 
     var body: some View {
@@ -223,14 +228,14 @@ struct LevelSlider: View {
                     .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.dim)
                 Spacer()
-                Text(FrenchFormat.percent(Double(value)))
+                Text(Format.percent(Double(value)))
                     .font(.dynamic(size: 12, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .monospacedDigit()
             }
             Slider(value: $value, in: 0...1)
                 .accessibilityLabel(label)
-                .accessibilityValue(FrenchFormat.percent(Double(value)))
+                .accessibilityValue(Format.percent(Double(value)))
         }
     }
 }

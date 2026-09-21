@@ -567,9 +567,9 @@ struct PlaybackInterruption: Equatable {
 
     var label: String {
         switch reason {
-        case .otherAudio:    return "un appel ou une autre app"
-        case .outputRemoved: return "sortie audio retirée"
-        case .outputChanged: return "sortie audio changée"
+        case .otherAudio:    return String(localized: "interruption.otherAudio", defaultValue: "a call or another app")
+        case .outputRemoved: return String(localized: "interruption.outputRemoved", defaultValue: "audio output removed")
+        case .outputChanged: return String(localized: "interruption.outputChanged", defaultValue: "audio output changed")
         }
     }
 }

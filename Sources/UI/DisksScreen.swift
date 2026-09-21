@@ -48,7 +48,7 @@ struct DisksScreen: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(alignment: .top) {
-                            ScreenTitle("Disques", subtitle: "Écouter tout de suite, ou choisir un disque d'époque")
+                            ScreenTitle("disks.title", subtitle: "disks.subtitle")
                             Button {
                                 wizard = .blank()
                             } label: {
@@ -57,11 +57,11 @@ struct DisksScreen: View {
                                     .frame(width: 40, height: 40)
                                     .background(Circle().fill(Color.white.opacity(0.08)))
                             }
-                            .accessibilityLabel("Construire un disque usagé")
+                            .accessibilityLabel("disks.build")
                         }
                         demos
                         myDisks
-                        Text("DISQUES D'ÉPOQUE")
+                        Text("disks.gallery.header")
                             .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                             .padding(.top, 6)
@@ -73,7 +73,7 @@ struct DisksScreen: View {
             }
             // Le titre ne s'affiche pas — l'écran a le sien — mais c'est lui
             // que prend le bouton de retour de la fiche.
-            .navigationTitle("Disques")
+            .navigationTitle("disks.title")
             .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $report) { record in
                 PassReportSheet(model: model, record: record, onLaunched: onOpenPass,
@@ -84,47 +84,48 @@ struct DisksScreen: View {
                     try launch(disk, as: activity, using: strategy)
                 }
             }
-            .confirmationDialog("Remplacer la passe en cours ?",
+            .confirmationDialog("disks.replace.title",
                                 isPresented: Binding(get: { pendingLaunch != nil },
                                                      set: { if !$0 { pendingLaunch = nil } }),
                                 titleVisibility: .visible) {
-                Button("Remplacer") {
+                Button("disks.replace.confirm") {
                     let launch = pendingLaunch
                     pendingLaunch = nil
                     launch?.start()
                 }
-                Button("Continuer d'écouter", role: .cancel) { pendingLaunch = nil }
+                Button("disks.replace.keep", role: .cancel) { pendingLaunch = nil }
             } message: {
-                Text("« \(pendingLaunch?.running ?? "") » est en cours d'écoute. "
-                     + "Il n'y a qu'un moteur : la nouvelle passe prend sa place.")
+                Text(verbatim: String(localized: "disks.replace.message",
+                                      defaultValue: "“\(pendingLaunch?.running ?? "")” is playing. There is only one engine: the new pass takes its place."))
             }
-            .alert("La passe n'a pas pu démarrer", isPresented: Binding(
+            .alert("disks.launchFailed", isPresented: Binding(
                 get: { launchFailure != nil }, set: { if !$0 { launchFailure = nil } })) {
-                Button("Fermer", role: .cancel) { launchFailure = nil }
+                Button("common.close", role: .cancel) { launchFailure = nil }
             } message: {
-                Text(launchFailure ?? "")
+                Text(verbatim: launchFailure ?? "")
             }
             .fullScreenCover(item: $reviving) { revived in
                 DiskLifeScreen(life: revived.life, model: model, onListen: onOpenPass)
             }
-            .alert("Renommer le disque", isPresented: Binding(get: { renaming != nil },
+            .alert("disk.rename.title", isPresented: Binding(get: { renaming != nil },
                                                               set: { if !$0 { renaming = nil } })) {
-                TextField("Nom", text: $newName)
-                Button("Renommer") {
+                TextField("disk.rename.field", text: $newName)
+                Button("disk.action.rename") {
                     if let renaming, !newName.isEmpty { library.rename(renaming.id, to: newName) }
                     renaming = nil
                 }
-                Button("Annuler", role: .cancel) { renaming = nil }
+                Button("common.cancel", role: .cancel) { renaming = nil }
             }
-            .confirmationDialog("Supprimer ce disque ?", isPresented: Binding(get: { deleting != nil },
+            .confirmationDialog("disk.delete.title", isPresented: Binding(get: { deleting != nil },
                                                                              set: { if !$0 { deleting = nil } }),
                                 titleVisibility: .visible) {
-                Button("Supprimer « \(deleting?.displayName ?? "") »", role: .destructive) {
+                Button(String(localized: "disk.delete.confirm",
+                              defaultValue: "Delete “\(deleting?.displayName ?? "")”"), role: .destructive) {
                     if let deleting { library.delete(deleting.id) }
                     deleting = nil
                 }
             } message: {
-                Text("Son histoire est perdue ; les disques d'époque ne sont pas touchés.")
+                Text("disk.delete.message")
             }
             .navigationDestination(for: String.self) { id in
                 DiskDetailScreen(library: library, history: model.history, id: id,
@@ -193,12 +194,12 @@ struct DisksScreen: View {
     @ViewBuilder
     private var myDisks: some View {
         if !library.customs.isEmpty || library.storeFailure != nil {
-            Text("MES DISQUES")
+            Text("disks.mine.header")
                 .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
                 .padding(.top, 6)
             if let failure = library.storeFailure {
-                Text(failure)
+                Text(verbatim: failure)
                     .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.read)
                     .fixedSize(horizontal: false, vertical: true)
@@ -212,15 +213,15 @@ struct DisksScreen: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
-                    Button("Modifier l'histoire", systemImage: "pencil") { wizard = spec }
-                    Button("Renommer", systemImage: "character.cursor.ibeam") {
+                    Button("disk.action.editHistory", systemImage: "pencil") { wizard = spec }
+                    Button("disk.action.rename", systemImage: "character.cursor.ibeam") {
                         newName = spec.displayName
                         renaming = spec
                     }
-                    Button("Dupliquer", systemImage: "plus.square.on.square") {
+                    Button("disk.action.duplicate", systemImage: "plus.square.on.square") {
                         library.save(library.duplicate(spec))
                     }
-                    Button("Supprimer", systemImage: "trash", role: .destructive) { deleting = spec }
+                    Button("common.delete", systemImage: "trash", role: .destructive) { deleting = spec }
                 }
             }
         }
@@ -237,16 +238,16 @@ struct DisksScreen: View {
     private func demoCard(_ kind: ScenarioKind) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(kind.title.uppercased())
+                Text(verbatim: kind.title.uppercased())
                     .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(kind == .windowsBoot ? Theme.write : Theme.read)
-                Text(kind.summary)
+                Text(verbatim: kind.summary)
                     .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            Button("Lancer") { launch(kind) }
+            Button("disks.demo.start") { launch(kind) }
                 .font(.dynamic(size: 13, weight: .semibold))
                 .buttonStyle(.borderedProminent)
                 .foregroundStyle(Theme.background)

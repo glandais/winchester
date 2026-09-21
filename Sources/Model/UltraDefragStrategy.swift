@@ -60,7 +60,7 @@ import DiskCore
 struct UltraDefragStrategy: DefragStrategy {
 
     let id = "ultraDefrag"
-    let label = "UltraDefrag"
+    let label = String(localized: "strategy.ultraDefrag", defaultValue: "UltraDefrag")
 
     /// En dessous de cette taille, un fragment est « petit » et vaut d'être
     /// recollé à son voisin — `PART_DEFRAG_MAGIC_CONSTANT`, 20 Mo
@@ -142,15 +142,15 @@ struct UltraDefragStrategy: DefragStrategy {
     /// c'est lui qui annonçait une MFT aux douze volumes FAT du catalogue.
     func phases(on format: VolumeFormat) -> [PhaseDescriptor] {
         [
-            PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                            detail: "Les fichiers cassés, classés du plus fragmenté au moins"),
-            PhaseDescriptor(id: "defrag", label: "Défragmentation",
-                            detail: "Chaque fichier cassé recopié d'un seul tenant, tant qu'un trou l'accepte"),
-            PhaseDescriptor(id: "partial", label: "Défragmentation partielle",
-                            detail: "Sur les fichiers trop gros pour tenir ailleurs : recoller les petits morceaux, laisser les gros"),
+            PhaseDescriptor(id: "analyse", label: String(localized: "phase.analyse", defaultValue: "Analysing the volume"),
+                            detail: String(localized: "phase.analyse.ultra.detail", defaultValue: "The broken files, sorted from the most fragmented down")),
+            PhaseDescriptor(id: "defrag", label: String(localized: "scenario.defrag.title", defaultValue: "Defragmentation"),
+                            detail: String(localized: "phase.defrag.ultra.detail", defaultValue: "Every broken file copied back in one piece, as long as a hole takes it")),
+            PhaseDescriptor(id: "partial", label: String(localized: "phase.defragPartial", defaultValue: "Partial defragmentation"),
+                            detail: String(localized: "phase.defragPartial.detail", defaultValue: "On files too big to fit elsewhere: merge the small pieces, leave the big ones")),
             PhaseDescriptor.commit(on: format),
-            PhaseDescriptor(id: "done", label: "Terminé",
-                            detail: "Le rapport compte séparément ce qui a été réparé entièrement et partiellement"),
+            PhaseDescriptor(id: "done", label: String(localized: "phase.done", defaultValue: "Finished"),
+                            detail: String(localized: "phase.done.ultra.detail", defaultValue: "The report counts what was fully and partly repaired separately")),
         ]
     }
 
@@ -537,17 +537,15 @@ struct UltraDefragStrategy: DefragStrategy {
     /// XP aurait laissé intact, faute de trou à sa taille.
     func summary(of plan: DefragPlan) -> String {
         let repaired = plan.before.fragmentedFiles - plan.after.fragmentedFiles
-        var text = String(format: "La passe traite %d fichiers cassés sur %d en n'évacuant personne, "
-                          + "et commence par les plus abîmés.",
-                          plan.filesMoved, plan.before.fragmentedFiles)
+        var text = String(localized: "summary.ultraDefrag",
+                          defaultValue: "The pass handles \(plan.filesMoved) broken files out of \(plan.before.fragmentedFiles) while evicting nobody, and starts with the worst damaged.")
         if repaired < plan.filesMoved {
-            text += String(format: " %d d'entre eux sont trop gros pour tenir ailleurs : "
-                           + "elle n'en recolle que les petits morceaux, et les laisse sur place.",
-                           plan.filesMoved - repaired)
+            text += " " + String(localized: "summary.ultraDefrag.tooBig",
+                                 defaultValue: "\(plan.filesMoved - repaired) of them are too big to fit elsewhere: it merges only their small pieces, and leaves them where they are.")
         }
         if plan.after.fragmentedFiles > 0 {
-            text += String(format: " %d restent en morceaux — moins qu'ils ne l'étaient, "
-                           + "mais en morceaux.", plan.after.fragmentedFiles)
+            text += " " + String(localized: "summary.ultraDefrag.remaining",
+                                 defaultValue: "\(plan.after.fragmentedFiles) stay in pieces — fewer than they were, but in pieces.")
         }
         return text
     }

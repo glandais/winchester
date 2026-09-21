@@ -44,8 +44,11 @@ struct DefragTool: Identifiable {
     func refusal(on format: VolumeFormat, label: String) -> String? {
         guard let onlyOn, onlyOn != FormatFamily(format) else { return nil }
         return onlyOn == .ntfs
-            ? "Réservé à NTFS · ce volume est en \(label)"
-            : "Réservé à FAT · ce volume est en NTFS"
+            ? String(localized: "tool.refusal.ntfsOnly",
+                     defaultValue: "NTFS only · this volume is \(label)",
+                     comment: "Pourquoi un outil est grisé pour ce volume")
+            : String(localized: "tool.refusal.fatOnly",
+                     defaultValue: "FAT only · this volume is NTFS")
     }
 
     func isPeriodTool(on format: VolumeFormat) -> Bool {
@@ -64,94 +67,94 @@ struct DefragTool: Identifiable {
             var measured: [FormatFamily: String] = [:]
             measured[.fat] = fat
             measured[.ntfs] = ntfs
-            return DefragTool(strategy: strategy(id), name: name, origin: "JkDefrag 3.36 · 2008",
+            return DefragTool(strategy: strategy(id), name: name, origin: String(localized: "tool.jkDefrag.advanced.origin", defaultValue: "JkDefrag 3.36 · 2008"),
                               principle: principle, sound: sound, periodFormats: [], onlyOn: nil,
                               isAdvanced: true, measured: measured)
         }
         return [
             DefragTool(strategy: strategy("windows95"),
-                       name: "Défragmenteur Windows 95/98",
-                       origin: "1995 · FAT uniquement",
-                       principle: "Tasse tout au début du disque, dans l'ordre de l'arborescence, en évacuant ce qui gêne.",
-                       sound: "Des allers-retours permanents, et un « clac » au bord du plateau à chaque fichier.",
+                       name: String(localized: "tool.windows95.name", defaultValue: "Windows 95/98 Defragmenter"),
+                       origin: String(localized: "tool.windows95.origin", defaultValue: "1995 · FAT only"),
+                       principle: String(localized: "tool.windows95.principle", defaultValue: "Packs everything to the start of the disk, in tree order, evicting whatever is in the way."),
+                       sound: String(localized: "tool.windows95.sound", defaultValue: "Constant back-and-forth, and a “clack” at the edge of the platter for every file."),
                        periodFormats: [.fat], onlyOn: .fat, isAdvanced: false,
-                       measured: [.fat: "de 6 min à 1 h"]),
+                       measured: [.fat: String(localized: "tool.windows95.fat.measured", defaultValue: "6 min to 1 h")]),
             DefragTool(strategy: strategy("windowsXP"),
-                       name: "Défragmenteur Windows XP",
-                       origin: "2001 · NTFS uniquement",
-                       principle: "Ne répare que les fichiers en morceaux, en les recopiant dans un trou déjà libre.",
-                       sound: "Court et calme ; il échoue quand aucun trou n'est à la taille.",
+                       name: String(localized: "tool.windowsXP.name", defaultValue: "Windows XP Defragmenter"),
+                       origin: String(localized: "tool.windowsXP.origin", defaultValue: "2001 · NTFS only"),
+                       principle: String(localized: "tool.windowsXP.principle", defaultValue: "Only repairs files in pieces, by copying them into a hole that is already free."),
+                       sound: String(localized: "tool.windowsXP.sound", defaultValue: "Short and calm; it gives up when no hole is the right size."),
                        periodFormats: [.ntfs], onlyOn: .ntfs, isAdvanced: false,
-                       measured: [.ntfs: "de quelques secondes à 45 min"]),
+                       measured: [.ntfs: String(localized: "tool.windowsXP.ntfs.measured", defaultValue: "a few seconds to 45 min")]),
             DefragTool(strategy: strategy("ultraDefrag"),
-                       name: "UltraDefrag 7.1.1",
-                       origin: "2018 · tous formats",
-                       principle: "Recolle les petits éclats sans déplacer les gros blocs, et n'évacue personne.",
-                       sound: "Beaucoup de requêtes courtes ; bien moins de morceaux à la fin.",
+                       name: String(localized: "tool.ultraDefrag.name", defaultValue: "UltraDefrag 7.1.1"),
+                       origin: String(localized: "tool.ultraDefrag.origin", defaultValue: "2018 · all formats"),
+                       principle: String(localized: "tool.ultraDefrag.principle", defaultValue: "Merges the small splinters without moving the big blocks, and evicts nobody."),
+                       sound: String(localized: "tool.ultraDefrag.sound", defaultValue: "Many short requests; far fewer pieces at the end."),
                        periodFormats: [], onlyOn: nil, isAdvanced: false,
-                       measured: [.fat: "de quelques secondes à 9 min",
-                                  .ntfs: "de quelques secondes à 40 min"]),
+                       measured: [.fat: String(localized: "tool.ultraDefrag.fat.measured", defaultValue: "a few seconds to 9 min"),
+                                  .ntfs: String(localized: "tool.ultraDefrag.ntfs.measured", defaultValue: "a few seconds to 40 min")]),
             DefragTool(strategy: strategy("jkDefrag"),
-                       name: "JkDefrag 3.36",
-                       origin: "2008 · mode par défaut",
-                       principle: "Range le volume par zones et comble les trous, sans jamais évacuer.",
-                       sound: "Rapide tant qu'il reste de la place ; presque rien sur un disque plein.",
+                       name: String(localized: "tool.jkDefrag.name", defaultValue: "JkDefrag 3.36"),
+                       origin: String(localized: "tool.jkDefrag.origin", defaultValue: "2008 · default mode"),
+                       principle: String(localized: "tool.jkDefrag.principle", defaultValue: "Tidies the volume by zones and fills the holes, never evicting."),
+                       sound: String(localized: "tool.jkDefrag.sound", defaultValue: "Fast as long as there is room; almost nothing on a full disk."),
                        periodFormats: [], onlyOn: nil, isAdvanced: false,
-                       measured: [.fat: "de quelques secondes à 10 min", .ntfs: "de 4 min à 1 h 15"]),
+                       measured: [.fat: String(localized: "tool.jkDefrag.fat.measured", defaultValue: "a few seconds to 10 min"), .ntfs: String(localized: "tool.jkDefrag.ntfs.measured", defaultValue: "4 min to 1 h 15")]),
             // Les deux derniers n'imitent aucun outil : ils ont été écrits dans
             // ce projet, chacun pour un format, à partir de ce que les autres
             // font mal. Proposés sur leur format seulement.
             DefragTool(strategy: strategy("frontierCompaction"),
-                       name: "Tassage à la frontière",
-                       origin: "écrit pour Winchester · FAT uniquement",
-                       principle: "Tasse le volume dans l'ordre où il est : les fichiers glissent vers le début par tronçons, et aucune écriture ne tombe sur une donnée encore référencée.",
-                       sound: "Une navette courte qui remonte le plateau ; long sur un disque plein.",
+                       name: String(localized: "tool.frontierCompaction.name", defaultValue: "Frontier compaction"),
+                       origin: String(localized: "tool.frontierCompaction.origin", defaultValue: "written for Winchester · FAT only"),
+                       principle: String(localized: "tool.frontierCompaction.principle", defaultValue: "Packs the volume in the order it is in: files slide towards the start in runs, and no write ever lands on data that is still referenced."),
+                       sound: String(localized: "tool.frontierCompaction.sound", defaultValue: "A short shuttle working its way up the platter; long on a full disk."),
                        periodFormats: [], onlyOn: .fat, isAdvanced: false,
-                       measured: [.fat: "de 6 à 55 min"]),
+                       measured: [.fat: String(localized: "tool.frontierCompaction.fat.measured", defaultValue: "6 to 55 min")]),
             DefragTool(strategy: strategy("fragmentMerge"),
-                       name: "Recollage économe",
-                       origin: "écrit pour Winchester · NTFS uniquement",
-                       principle: "Ne recopie que les petits morceaux, contre leur gros voisin ou dans le trou le plus proche, et regroupe l'espace libre.",
-                       sound: "Des blocs lus morceau par morceau puis écrits d'un coup, et un point de contrôle tous les seize déplacements.",
+                       name: String(localized: "tool.fragmentMerge.name", defaultValue: "Thrifty merge"),
+                       origin: String(localized: "tool.fragmentMerge.origin", defaultValue: "written for Winchester · NTFS only"),
+                       principle: String(localized: "tool.fragmentMerge.principle", defaultValue: "Only copies the small pieces, next to their big neighbour or into the nearest hole, and gathers the free space."),
+                       sound: String(localized: "tool.fragmentMerge.sound", defaultValue: "Blocks read piece by piece then written in one go, and a checkpoint every sixteen moves."),
                        periodFormats: [], onlyOn: .ntfs, isAdvanced: false,
-                       measured: [.ntfs: "de quelques secondes à 20 min"]),
+                       measured: [.ntfs: String(localized: "tool.fragmentMerge.ntfs.measured", defaultValue: "a few seconds to 20 min")]),
             // Le rangement intelligent vise ce qu'on mesure après la passe —
             // le démarrage, les morceaux, les trous —, pas sa durée.
             DefragTool(strategy: strategy("smart"),
-                       name: "Rangement intelligent",
-                       origin: "écrit pour Winchester · tous formats",
-                       principle: "Pose en tête ce que lit le démarrage, dans l'ordre où il le lit, puis tasse le reste derrière : plus un morceau, presque plus de trous.",
-                       sound: "Un grand déménagement au début du disque, puis la navette du tassage ; long sur NTFS, où tout le contenu passe sous les têtes.",
+                       name: String(localized: "tool.smart.name", defaultValue: "Smart tidying"),
+                       origin: String(localized: "tool.smart.origin", defaultValue: "written for Winchester · all formats"),
+                       principle: String(localized: "tool.smart.principle", defaultValue: "Lays what the boot reads at the head, in the order it reads it, then packs the rest behind: not a piece left, almost no holes."),
+                       sound: String(localized: "tool.smart.sound", defaultValue: "A great removal at the start of the disk, then the shuttle of the packing; long on NTFS, where all the contents pass under the heads."),
                        periodFormats: [], onlyOn: nil, isAdvanced: false,
-                       measured: [.fat: "de 8 min à 1 h", .ntfs: "de 5 min à 4 h"]),
-            jk("jkDefragForcedFill", "Tasser au début",
-               "Remplit chaque trou par la fin du fragment le plus haut du volume.",
-               "Court, mais il casse plus de fichiers qu'il n'en répare.",
-               fat: "jusqu'à 2 min", ntfs: "jusqu'à 25 min"),
-            jk("jkDefragMoveUp", "Tasser à la fin",
-               "Remplit chaque trou, du fond vers le début, par les fichiers pris dessous.",
-               "Le début du volume se vide peu à peu.",
-               fat: "de 1 à 6 min", ntfs: "de 2 à 25 min"),
-            jk("jkDefragSortName", "Trier par nom",
-               "Repose chaque fichier à son rang, en délogeant ce qui occupe sa place.",
-               "Le seul mode de JkDefrag qui évacue : long, et ce qui part revient.",
-               fat: "de 6 à 32 min", ntfs: "de 3 min à 3 h 30"),
-            jk("jkDefragSortSize", "Trier par taille",
-               "Repose chaque fichier à son rang de taille, en délogeant ce qui gêne.",
-               "Long : ce qu'on évacue redescend quand vient son tour.",
-               fat: "de 7 à 21 min", ntfs: "de 4 min à 1 h 15"),
-            jk("jkDefragSortAccess", "Trier par dernier accès",
-               "Repose chaque fichier selon sa dernière lecture, en délogeant ce qui gêne.",
-               "Long : ce qu'on évacue redescend quand vient son tour.",
-               fat: "de 10 à 30 min", ntfs: "de 3 min à 3 h 50"),
-            jk("jkDefragSortChange", "Trier par modification",
-               "Repose chaque fichier selon sa dernière écriture, en délogeant ce qui gêne.",
-               "Long : ce qu'on évacue redescend quand vient son tour.",
-               fat: "de 10 à 35 min", ntfs: "de 3 min à 4 h 05"),
-            jk("jkDefragSortCreation", "Trier par création",
-               "Repose chaque fichier selon sa date de création, en délogeant ce qui gêne.",
-               "Long : ce qu'on évacue redescend quand vient son tour.",
-               fat: "de 10 à 35 min", ntfs: "de 3 min à 4 h 10"),
+                       measured: [.fat: String(localized: "tool.smart.fat.measured", defaultValue: "8 min to 1 h"), .ntfs: String(localized: "tool.smart.ntfs.measured", defaultValue: "5 min to 4 h")]),
+            jk("jkDefragForcedFill", String(localized: "tool.jkDefragForcedFill.name", defaultValue: "Pack to the start"),
+               String(localized: "tool.jkDefragForcedFill.principle", defaultValue: "Fills every hole with the end of the highest fragment of the volume."),
+               String(localized: "tool.jkDefragForcedFill.sound", defaultValue: "Short, but it breaks more files than it repairs."),
+               fat: String(localized: "tool.jkDefragForcedFill.fat.measured", defaultValue: "up to 2 min"), ntfs: String(localized: "tool.jkDefragForcedFill.ntfs.measured", defaultValue: "up to 25 min")),
+            jk("jkDefragMoveUp", String(localized: "tool.jkDefragMoveUp.name", defaultValue: "Pack to the end"),
+               String(localized: "tool.jkDefragMoveUp.principle", defaultValue: "Fills every hole, from the far end towards the start, with the files taken below."),
+               String(localized: "tool.jkDefragMoveUp.sound", defaultValue: "The start of the volume empties little by little."),
+               fat: String(localized: "tool.jkDefragMoveUp.fat.measured", defaultValue: "1 to 6 min"), ntfs: String(localized: "tool.jkDefragMoveUp.ntfs.measured", defaultValue: "2 to 25 min")),
+            jk("jkDefragSortName", String(localized: "tool.jkDefragSortName.name", defaultValue: "Sort by name"),
+               String(localized: "tool.jkDefragSortName.principle", defaultValue: "Puts every file back at its rank, evicting whatever holds its place."),
+               String(localized: "tool.jkDefragSortName.sound", defaultValue: "The only JkDefrag mode that evicts: long, and what leaves comes back."),
+               fat: String(localized: "tool.jkDefragSortName.fat.measured", defaultValue: "6 to 32 min"), ntfs: String(localized: "tool.jkDefragSortName.ntfs.measured", defaultValue: "3 min to 3 h 30")),
+            jk("jkDefragSortSize", String(localized: "tool.jkDefragSortSize.name", defaultValue: "Sort by size"),
+               String(localized: "tool.jkDefragSortSize.principle", defaultValue: "Puts every file back at its rank by size, evicting whatever is in the way."),
+               String(localized: "tool.jkDefragSortSize.sound", defaultValue: "Long: what is evicted comes back down when its turn arrives."),
+               fat: String(localized: "tool.jkDefragSortSize.fat.measured", defaultValue: "7 to 21 min"), ntfs: String(localized: "tool.jkDefragSortSize.ntfs.measured", defaultValue: "4 min to 1 h 15")),
+            jk("jkDefragSortAccess", String(localized: "tool.jkDefragSortAccess.name", defaultValue: "Sort by last access"),
+               String(localized: "tool.jkDefragSortAccess.principle", defaultValue: "Puts every file back by its last read, evicting whatever is in the way."),
+               String(localized: "tool.jkDefragSortAccess.sound", defaultValue: "Long: what is evicted comes back down when its turn arrives."),
+               fat: String(localized: "tool.jkDefragSortAccess.fat.measured", defaultValue: "10 to 30 min"), ntfs: String(localized: "tool.jkDefragSortAccess.ntfs.measured", defaultValue: "3 min to 3 h 50")),
+            jk("jkDefragSortChange", String(localized: "tool.jkDefragSortChange.name", defaultValue: "Sort by last change"),
+               String(localized: "tool.jkDefragSortChange.principle", defaultValue: "Puts every file back by its last write, evicting whatever is in the way."),
+               String(localized: "tool.jkDefragSortChange.sound", defaultValue: "Long: what is evicted comes back down when its turn arrives."),
+               fat: String(localized: "tool.jkDefragSortChange.fat.measured", defaultValue: "10 to 35 min"), ntfs: String(localized: "tool.jkDefragSortChange.ntfs.measured", defaultValue: "3 min to 4 h 05")),
+            jk("jkDefragSortCreation", String(localized: "tool.jkDefragSortCreation.name", defaultValue: "Sort by creation date"),
+               String(localized: "tool.jkDefragSortCreation.principle", defaultValue: "Puts every file back by its creation date, evicting whatever is in the way."),
+               String(localized: "tool.jkDefragSortCreation.sound", defaultValue: "Long: what is evicted comes back down when its turn arrives."),
+               fat: String(localized: "tool.jkDefragSortCreation.fat.measured", defaultValue: "10 to 35 min"), ntfs: String(localized: "tool.jkDefragSortCreation.ntfs.measured", defaultValue: "3 min to 4 h 10")),
         ]
     }
 }
@@ -195,10 +198,10 @@ struct DefragToolChoiceScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Avec quel outil ?")
+                        Text("tool.choice.title")
                             .font(.dynamic(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(Theme.text)
-                        Text("\(disk.spec.displayName) · \(formatLabel)")
+                        Text(verbatim: "\(disk.spec.displayName) · \(formatLabel)")
                             .font(.dynamic(size: 12, design: .monospaced))
                             .foregroundStyle(Theme.dim)
                     }
@@ -216,17 +219,17 @@ struct DefragToolChoiceScreen: View {
                         .padding(.top, 10)
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Options avancées")
+                            Text("tool.choice.advanced")
                                 .font(.dynamic(size: 14, weight: .semibold))
                                 .foregroundStyle(Theme.text)
-                            Text("7 autres modes de JkDefrag")
+                            Text("tool.choice.advanced.note")
                                 .font(.dynamic(size: 11))
                                 .foregroundStyle(Theme.dim)
                         }
                     }
                     .panel()
 
-                    Text("Les durées sont celles mesurées sur les disques de la galerie : un ordre de grandeur, pas un décompte. La vraie se découvre à l'écoute.")
+                    Text("tool.choice.durations")
                         .font(.dynamic(size: 11))
                         .foregroundStyle(Theme.dim)
                         .fixedSize(horizontal: false, vertical: true)
@@ -260,9 +263,9 @@ struct DefragToolChoiceScreen: View {
                     }
                     Spacer()
                     if refusal != nil {
-                        badge("INDISPO.", color: Theme.dim)
+                        badge("tool.badge.unavailable", color: Theme.dim)
                     } else if tool.isPeriodTool(on: format) {
-                        badge("D'ÉPOQUE", color: Theme.read)
+                        badge("tool.badge.period", color: Theme.read)
                     }
                 }
                 if refusal == nil {
@@ -275,7 +278,8 @@ struct DefragToolChoiceScreen: View {
                         .foregroundStyle(Theme.dim)
                         .fixedSize(horizontal: false, vertical: true)
                     if let measured = tool.measured[DefragTool.FormatFamily(format)] {
-                        Text("Mesuré sur la galerie : \(measured)")
+                        Text(verbatim: String(localized: "tool.measured",
+                                              defaultValue: "Measured on the gallery: \(measured)"))
                             .font(.dynamic(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.write)
                             .fixedSize(horizontal: false, vertical: true)
@@ -297,7 +301,8 @@ struct DefragToolChoiceScreen: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private func badge(_ text: String, color: Color) -> some View {
+    /// La clé porte déjà ses capitales : le catalogue décide, pas la locale.
+    private func badge(_ text: LocalizedStringKey, color: Color) -> some View {
         Text(text)
             .font(.dynamic(size: 9, weight: .bold, design: .monospaced))
             .foregroundStyle(color)
@@ -313,10 +318,10 @@ struct DefragToolChoiceScreen: View {
             if let tool = selectedTool, DefragPlanner.withFullBlocks(tool.strategy) != nil {
                 Toggle(isOn: $fullBlocks) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Déplacer par blocs pleins")
+                        Text("tool.option.fullBlocks")
                             .font(.dynamic(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.text)
-                        Text("Pas le comportement de l'outil : pour le comparer au recollage économe. Les durées mesurées ne valent plus.")
+                        Text("tool.option.fullBlocks.note")
                             .font(.dynamic(size: 10))
                             .foregroundStyle(Theme.dim)
                             .fixedSize(horizontal: false, vertical: true)
@@ -342,7 +347,7 @@ struct DefragToolChoiceScreen: View {
                     failure = "\(error)"
                 }
             } label: {
-                Text("Lancer la passe")
+                Text("tool.start")
                     .font(.dynamic(size: 16, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)

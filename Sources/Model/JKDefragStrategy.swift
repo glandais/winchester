@@ -112,14 +112,14 @@ struct JKDefragStrategy: DefragStrategy {
 
     var label: String {
         switch mode {
-        case .fastOptimize:           return "JkDefrag 3.36"
-        case .forcedFill:             return "JkDefrag 3.36, comblement forcé"
-        case .moveUp:                 return "JkDefrag 3.36, vers la fin du volume"
-        case .sort(.name):            return "JkDefrag 3.36, tri par nom"
-        case .sort(.size):            return "JkDefrag 3.36, tri par taille"
-        case .sort(.lastAccess):      return "JkDefrag 3.36, tri par dernier accès"
-        case .sort(.lastChange):      return "JkDefrag 3.36, tri par dernière modification"
-        case .sort(.creation):        return "JkDefrag 3.36, tri par création"
+        case .fastOptimize: return "JkDefrag 3.36"
+        case .forcedFill:
+            return String(localized: "strategy.jkDefrag.forcedFill", defaultValue: "JkDefrag 3.36, forced fill")
+        case .moveUp:
+            return String(localized: "strategy.jkDefrag.moveUp", defaultValue: "JkDefrag 3.36, towards the end of the volume")
+        case .sort(let field):
+            return String(localized: "strategy.jkDefrag.sort",
+                          defaultValue: "JkDefrag 3.36, sort \(field.phrase)")
         }
     }
 
@@ -200,26 +200,32 @@ struct JKDefragStrategy: DefragStrategy {
     var phases: [PhaseDescriptor] {
         switch mode {
         case .fastOptimize: return Self.fastOptimizePhases
-        case .forcedFill:   return Self.phases(named: "forcedFill", "Comblement forcé",
-                                               "Chaque trou rempli par la fin du fragment le plus haut du volume")
-        case .moveUp:       return Self.phases(named: "moveUp", "Vers la fin du volume",
-                                               "Chaque trou, du fond vers le début, rempli par les fichiers pris dessous")
+        case .forcedFill:
+            return Self.phases(named: "forcedFill",
+                               String(localized: "phase.forcedFill", defaultValue: "Forced fill"),
+                               String(localized: "phase.forcedFill.detail", defaultValue: "Every hole filled by the end of the highest fragment of the volume"))
+        case .moveUp:
+            return Self.phases(named: "moveUp",
+                               String(localized: "phase.moveUp", defaultValue: "Towards the end of the volume"),
+                               String(localized: "phase.moveUp.detail", defaultValue: "Every hole, from the far end to the start, filled by the files taken below"))
         case .sort(let field):
             return [Self.analysis,
-                    PhaseDescriptor(id: "sortRegular", label: "Tri \(field.phrase)",
-                                    detail: "Les fichiers ordinaires reposés un à un, en évacuant ce qui gêne"),
-                    PhaseDescriptor(id: "sortSpaceHogs", label: "Tri \(field.phrase)",
-                                    detail: "Les gros fichiers et les archives, au fond du volume"),
+                    PhaseDescriptor(id: "sortRegular",
+                                    label: String(localized: "phase.sort", defaultValue: "Sort \(field.phrase)"),
+                                    detail: String(localized: "phase.sortRegular.detail", defaultValue: "The ordinary files put back one by one, evicting whatever is in the way")),
+                    PhaseDescriptor(id: "sortSpaceHogs",
+                                    label: String(localized: "phase.sort", defaultValue: "Sort \(field.phrase)"),
+                                    detail: String(localized: "phase.sortSpaceHogs.detail", defaultValue: "The big files and the archives, at the far end of the volume")),
                     Self.commit, Self.done]
         }
     }
 
-    private static let analysis = PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                                                  detail: "Les fichiers, leur zone, et les trois bandes du volume")
-    private static let commit = PhaseDescriptor(id: "commit", label: "Écriture des métadonnées",
-                                                detail: "Les tables du volume, une dernière fois")
-    private static let done = PhaseDescriptor(id: "done", label: "Terminé",
-                                              detail: "La passe demandée est allée au bout")
+    private static let analysis = PhaseDescriptor(id: "analyse", label: String(localized: "phase.analyse", defaultValue: "Analysing the volume"),
+                                                  detail: String(localized: "phase.analyse.jk.detail", defaultValue: "The files, their zone, and the three bands of the volume"))
+    private static let commit = PhaseDescriptor(id: "commit", label: String(localized: "phase.commitMeta", defaultValue: "Writing the metadata"),
+                                                detail: String(localized: "phase.commitMeta.detail", defaultValue: "The volume's tables, one last time"))
+    private static let done = PhaseDescriptor(id: "done", label: String(localized: "phase.done", defaultValue: "Finished"),
+                                              detail: String(localized: "phase.done.jk.detail", defaultValue: "The requested pass ran to the end"))
 
     private static func phases(named id: String, _ label: String, _ detail: String) -> [PhaseDescriptor] {
         [analysis, PhaseDescriptor(id: id, label: label, detail: detail), commit, done]
@@ -230,20 +236,20 @@ struct JKDefragStrategy: DefragStrategy {
     /// passe les parcourt l'une après l'autre, et une phase par zone
     /// n'apprendrait rien de plus.
     private static let fastOptimizePhases: [PhaseDescriptor] = [
-        PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                        detail: "Les fichiers, leur zone, et les trois bandes du volume"),
-        PhaseDescriptor(id: "defrag", label: "Défragmentation",
-                        detail: "Chaque fichier cassé recopié d'un tenant, ou par tranches dans les plus grands trous"),
-        PhaseDescriptor(id: "fixup", label: "Mise en zone",
-                        detail: "Les gros fichiers et les archives renvoyés au fond du volume"),
-        PhaseDescriptor(id: "optimize", label: "Optimisation rapide",
-                        detail: "Chaque trou comblé par des fichiers pris plus haut, au cluster près si possible"),
-        PhaseDescriptor(id: "refixup", label: "Mise en zone",
-                        detail: "Ce que l'optimisation a laissé hors de sa zone"),
-        PhaseDescriptor(id: "commit", label: "Écriture des métadonnées",
-                        detail: "Les tables du volume, une dernière fois"),
-        PhaseDescriptor(id: "done", label: "Terminé",
-                        detail: "Le volume est rangé en trois bandes, sans trou sous les fichiers déplacés"),
+        PhaseDescriptor(id: "analyse", label: String(localized: "phase.analyse", defaultValue: "Analysing the volume"),
+                        detail: String(localized: "phase.analyse.jk.detail", defaultValue: "The files, their zone, and the three bands of the volume")),
+        PhaseDescriptor(id: "defrag", label: String(localized: "scenario.defrag.title", defaultValue: "Defragmentation"),
+                        detail: String(localized: "phase.defrag.jk.detail", defaultValue: "Every broken file copied back in one run, or in slices into the biggest holes")),
+        PhaseDescriptor(id: "fixup", label: String(localized: "phase.zoning", defaultValue: "Moving into zone"),
+                        detail: String(localized: "phase.zoning.detail", defaultValue: "The big files and the archives sent back to the far end of the volume")),
+        PhaseDescriptor(id: "optimize", label: String(localized: "phase.fastOptimize", defaultValue: "Fast optimisation"),
+                        detail: String(localized: "phase.fastOptimize.detail", defaultValue: "Every hole filled with files taken from higher up, to the cluster if possible")),
+        PhaseDescriptor(id: "refixup", label: String(localized: "phase.zoning", defaultValue: "Moving into zone"),
+                        detail: String(localized: "phase.refixup.detail", defaultValue: "What the optimisation left outside its zone")),
+        PhaseDescriptor(id: "commit", label: String(localized: "phase.commitMeta", defaultValue: "Writing the metadata"),
+                        detail: String(localized: "phase.commitMeta.detail", defaultValue: "The volume's tables, one last time")),
+        PhaseDescriptor(id: "done", label: String(localized: "phase.done", defaultValue: "Finished"),
+                        detail: String(localized: "phase.done.jkFull.detail", defaultValue: "The volume is tidied into three bands, with no hole under the files that moved")),
     ]
 
     // MARK: - Planification
@@ -389,27 +395,21 @@ struct JKDefragStrategy: DefragStrategy {
         switch mode {
         case .fastOptimize: break
         case .forcedFill:
-            return String(format: "La passe tasse le volume contre son début : %d fichiers déplacés, "
-                          + "chacun pris par la fin de son fragment le plus haut. Elle ne répare rien, "
-                          + "et peut en casser : %d fichiers fragmentés à l'arrivée contre %d au départ.",
-                          plan.filesMoved, plan.after.fragmentedFiles, plan.before.fragmentedFiles)
+            return String(localized: "summary.jkDefrag.forcedFill",
+                          defaultValue: "The pass packs the volume against its start: \(plan.filesMoved) files moved, each taken by the end of its highest fragment. It repairs nothing, and can break some: \(plan.after.fragmentedFiles) fragmented files on arrival against \(plan.before.fragmentedFiles) at the start.")
         case .moveUp:
-            return String(format: "La passe vide le début du volume : %d fichiers remontés vers la fin, "
-                          + "chaque trou comblé par les fichiers pris dessous.",
-                          plan.filesMoved)
+            return String(localized: "summary.jkDefrag.moveUp",
+                          defaultValue: "The pass empties the start of the volume: \(plan.filesMoved) files moved up towards the end, every hole filled by the files taken below.")
         case .sort(let field):
-            return "La passe repose \(plan.filesMoved) fichiers un à un, \(field.phrase), et évacue "
-                + "\(plan.evacuations) fragments pour leur faire de la place — dont certains "
-                + "reviendront à leur tour."
+            return String(localized: "summary.jkDefrag.sort",
+                          defaultValue: "The pass puts \(plan.filesMoved) files back one by one, \(field.phrase), and evacuates \(plan.evacuations) fragments to make room for them — some of which will come back in turn.")
         }
         let repaired = plan.before.fragmentedFiles - plan.after.fragmentedFiles
-        var text = String(format: "La passe déplace %d fichiers et n'évacue personne : chaque trou "
-                          + "est comblé par des fichiers pris plus haut, et les gros sont "
-                          + "renvoyés au fond du volume.",
-                          plan.filesMoved)
+        var text = String(localized: "summary.jkDefrag.fastOptimize",
+                          defaultValue: "The pass moves \(plan.filesMoved) files and evicts nobody: every hole is filled with files taken from higher up, and the big ones are sent back to the far end of the volume.")
         if plan.before.fragmentedFiles > 0 {
-            text += String(format: " Elle répare %d fichiers cassés sur %d.",
-                           repaired, plan.before.fragmentedFiles)
+            text += " " + String(localized: "summary.jkDefrag.repaired",
+                                 defaultValue: "It repairs \(repaired) broken files out of \(plan.before.fragmentedFiles).")
         }
         return text
     }

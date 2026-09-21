@@ -20,12 +20,12 @@ struct AmbientScreen: View {
     /// Les durées proposées, en secondes ; `nil` désarme.
     private static let timers: [(label: String, seconds: Double?)] = {
         var timers: [(label: String, seconds: Double?)] = [
-            ("Sans minuterie", nil),
-            ("15 min", 15 * 60),
-            ("30 min", 30 * 60),
-            ("1 h", 3_600),
-            ("2 h", 2 * 3_600),
-            ("6 h", 6 * 3_600),
+            (String(localized: "ambient.timer.off", defaultValue: "No timer"), nil),
+            (String(localized: "ambient.timer.15min", defaultValue: "15 min"), 15 * 60),
+            (String(localized: "ambient.timer.30min", defaultValue: "30 min"), 30 * 60),
+            (String(localized: "ambient.timer.1h", defaultValue: "1 h"), 3_600),
+            (String(localized: "ambient.timer.2h", defaultValue: "2 h"), 2 * 3_600),
+            (String(localized: "ambient.timer.6h", defaultValue: "6 h"), 6 * 3_600),
         ]
         #if DEBUG
         // Pour voir le fondu et l'arrêt sans attendre un quart d'heure.
@@ -63,7 +63,7 @@ struct AmbientScreen: View {
                 .frame(width: 180, height: 180)
                 .accessibilityHidden(true)
 
-            Text(FrenchFormat.duration(time))
+            Text(Format.duration(time))
                 .font(.dynamic(size: 44, weight: .light, design: .monospaced))
                 .foregroundStyle(Theme.text.opacity(0.75))
                 .monospacedDigit()
@@ -84,7 +84,7 @@ struct AmbientScreen: View {
                         .frame(width: 44, height: 44)
                         .background(Circle().fill(Color.white.opacity(0.06)))
                 }
-                .accessibilityLabel(engine.isPlaying || engine.isBuffering ? "Pause" : "Lecture")
+                .accessibilityLabel(engine.isPlaying || engine.isBuffering ? "transport.pause" : "transport.play")
 
                 Menu {
                     ForEach(Self.timers.indices, id: \.self) { index in
@@ -102,7 +102,7 @@ struct AmbientScreen: View {
             }
             .foregroundStyle(Theme.text.opacity(0.7))
 
-            Text("Touchez l'écran pour revenir à la passe.")
+            Text("ambient.tapToReturn")
                 .font(.dynamic(size: 11))
                 .foregroundStyle(Theme.dim.opacity(0.7))
                 .padding(.bottom, 12)
@@ -112,9 +112,19 @@ struct AmbientScreen: View {
     }
 
     private var subtitle: String {
-        if let strategy = model.defrag?.strategy { return "\(model.label.title) · \(strategy.label)" }
-        if let install = model.install { return "\(model.label.title) · installation de \(install.osName)" }
-        if let day = model.dayPlayback { return "\(model.label.title) · jour \(day.day)" }
+        if let strategy = model.defrag?.strategy {
+            return String(localized: "ambient.subtitle.defrag",
+                          defaultValue: "\(model.label.title) · \(strategy.label)",
+                          comment: "Sous-titre du mode ambiance : le disque, puis l'outil")
+        }
+        if let install = model.install {
+            return String(localized: "ambient.subtitle.install",
+                          defaultValue: "\(model.label.title) · installing \(install.osName)")
+        }
+        if let day = model.dayPlayback {
+            return String(localized: "ambient.subtitle.day",
+                          defaultValue: "\(model.label.title) · day \(day.day)")
+        }
         return model.label.title
     }
 
@@ -124,20 +134,24 @@ struct AmbientScreen: View {
         var parts: [String] = []
         let engine = model.engine
         if engine.isFinished {
-            parts.append("passe terminée")
+            parts.append(String(localized: "ambient.status.finished", defaultValue: "pass finished"))
         } else if let progress = model.defragProgress {
-            parts.append(FrenchFormat.percent(progress))
+            parts.append(Format.percent(progress))
         }
-        if !engine.isPlaying && !engine.isBuffering && !engine.isFinished { parts.append("en pause") }
+        if !engine.isPlaying && !engine.isBuffering && !engine.isFinished { parts.append(String(localized: "ambient.status.paused", defaultValue: "paused")) }
         if let deadline = model.sleepDeadline {
-            parts.append("minuterie dans \(FrenchFormat.duration(max(deadline.timeIntervalSince(now), 0)))")
+            parts.append(String(localized: "ambient.status.timerIn",
+                                defaultValue: "timer in \(Format.duration(max(deadline.timeIntervalSince(now), 0)))"))
         }
         return parts.joined(separator: " · ")
     }
 
     private func timerLabel(now: Date) -> String {
-        guard let deadline = model.sleepDeadline else { return "Minuterie d'arrêt" }
-        return "Arrêt dans \(FrenchFormat.duration(max(deadline.timeIntervalSince(now), 0)))"
+        guard let deadline = model.sleepDeadline else {
+            return String(localized: "ambient.timer.title", defaultValue: "Sleep timer")
+        }
+        return String(localized: "ambient.timer.stopIn",
+                      defaultValue: "Stops in \(Format.duration(max(deadline.timeIntervalSince(now), 0)))")
     }
 }
 

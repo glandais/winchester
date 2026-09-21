@@ -16,11 +16,14 @@ struct MapZoneTests {
             + Array(repeating: Self.shade(.free, fill: 0), count: 10)
             + Array(repeating: Self.shade(.swap), count: 5) + Array(repeating: Self.shade(.free, fill: 0), count: 5)
         let zones = MapZone.zones(of: shades)
-        #expect(zones.map(\.name) == ["début du disque", "deuxième quart", "troisième quart", "fin du disque"])
-        #expect(zones[0].description == "début du disque, 100\u{00A0}% occupé, surtout des applications rangées")
-        #expect(zones[1].description == "deuxième quart, 100\u{00A0}% occupé, surtout des documents en morceaux")
-        #expect(zones[2].description == "troisième quart, vide")
-        #expect(zones[3].description == "fin du disque, 50\u{00A0}% occupé, surtout le fichier d'échange")
+        // Hors de l'app, `String(localized:)` ne trouve pas le catalogue dans
+        // `Bundle.main` : ce sont les `defaultValue` anglais qui sortent, et
+        // c'est bien la langue source qu'on vérifie ici.
+        #expect(zones.map(\.name) == ["start of the disk", "second quarter", "third quarter", "end of the disk"])
+        #expect(zones[0].description == "start of the disk, 100\u{00A0}% used, mostly tidy applications")
+        #expect(zones[1].description == "second quarter, 100\u{00A0}% used, mostly documents in pieces")
+        #expect(zones[2].description == "third quarter, empty")
+        #expect(zones[3].description == "end of the disk, 50\u{00A0}% used, mostly the page file")
     }
 
     @Test("La catégorie qui pèse le plus l'emporte, au remplissage près")
@@ -33,7 +36,7 @@ struct MapZoneTests {
         #expect(zone.dominant == .system)
         #expect(zone.dominantIsContiguous)
         #expect(abs(zone.occupied - 0.7) < 0.01)
-        #expect(zone.description == "tout le disque, 70\u{00A0}% occupé, surtout du système rangé")
+        #expect(zone.description == "the whole disk, 70\u{00A0}% used, mostly tidy system files")
     }
 
     @Test("Une carte plus courte que les zones n'en invente pas")
@@ -41,7 +44,7 @@ struct MapZoneTests {
         #expect(MapZone.zones(of: []).isEmpty)
         let zones = MapZone.zones(of: [Self.shade(.document), Self.shade(.free, fill: 0)])
         #expect(zones.count == 2)
-        #expect(zones[1].description == "deuxième quart, vide")
+        #expect(zones[1].description == "second quarter, empty")
     }
 
     @Test("Chaque catégorie se dit")

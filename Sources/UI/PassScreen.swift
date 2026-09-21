@@ -59,9 +59,9 @@ struct SimulatorScreen: View {
                         finishedCard(record)
                     }
                     if model.mapSource != nil {
-                        Picker("Vue", selection: $view) {
-                            Text("Carte").tag(View_.map)
-                            Text("Plateau").tag(View_.platter)
+                        Picker("pass.view", selection: $view) {
+                            Text("pass.view.map").tag(View_.map)
+                            Text("pass.view.platter").tag(View_.platter)
                         }
                         .pickerStyle(.segmented)
                     }
@@ -138,7 +138,7 @@ struct SimulatorScreen: View {
                     }
                     .buttonStyle(.plain)
                     .allowsHitTesting(model.disk != nil)
-                    .accessibilityHint(model.disk != nil ? "Ouvrir la fiche du disque" : "")
+                    .accessibilityHint(model.disk != nil ? "pass.openDisk" : "")
                     Text(model.defrag?.strategy.label ?? model.install.map(installTitle)
                          ?? model.dayPlayback.map(dayTitle) ?? model.boot.map(bootTitle)
                          ?? model.geometry.model)
@@ -147,14 +147,16 @@ struct SimulatorScreen: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                headerButton("speaker.wave.2", label: "Son et vibrations") { showsSound = true }
-                headerButton("moon.stars", label: "Mode ambiance") { showsAmbient = true }
+                headerButton("speaker.wave.2", label: String(localized: "settings.sound.title", defaultValue: "Sound and haptics")) { showsSound = true }
+                headerButton("moon.stars", label: String(localized: "pass.ambientMode", defaultValue: "Ambient mode")) { showsAmbient = true }
                 activityLED
             }
 
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("PHASE \(model.phaseIndex + 1) · \((model.phase?.label ?? "—").uppercased())")
+                    Text(verbatim: String(localized: "pass.phase",
+                                          defaultValue: "PHASE \(model.phaseIndex + 1) · \((model.phase?.label ?? "—").uppercased())",
+                                          comment: "Bandeau de la passe, en capitales : le rang de la phase et son nom"))
                         .font(.dynamic(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.read)
                         .fixedSize(horizontal: false, vertical: true)
@@ -166,12 +168,12 @@ struct SimulatorScreen: View {
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 2) {
                     if model.mapSource != nil {
-                        Text(FrenchFormat.percent(model.defragProgress ?? 0))
+                        Text(Format.percent(model.defragProgress ?? 0))
                             .font(.dynamic(size: 24, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.read)
                             .monospacedDigit()
                     }
-                    Text(FrenchFormat.duration(time))
+                    Text(Format.duration(time))
                         .font(.dynamic(size: 13, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                         .monospacedDigit()
@@ -200,16 +202,18 @@ struct SimulatorScreen: View {
                 .foregroundStyle(Theme.read)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Passe interrompue à \(FrenchFormat.duration(interruption.time))")
+                Text(verbatim: String(localized: "pass.interrupted.title",
+                                      defaultValue: "Pass interrupted at \(Format.duration(interruption.time))"))
                     .font(.dynamic(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.text)
-                Text("Cause : \(interruption.label). Elle reprend où elle s'est arrêtée.")
+                Text(verbatim: String(localized: "pass.interrupted.reason",
+                                      defaultValue: "Cause: \(interruption.label). It resumes where it stopped."))
                     .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            Button("Reprendre") { engine.play() }
+            Button("pass.resume") { engine.play() }
                 .font(.dynamic(size: 13, weight: .semibold))
                 .buttonStyle(.borderedProminent)
                 .foregroundStyle(Theme.background)
@@ -229,16 +233,16 @@ struct SimulatorScreen: View {
                     .font(.dynamic(size: 20))
                     .foregroundStyle(Theme.read)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Passe terminée")
+                    Text("pass.finished")
                         .font(.dynamic(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.text)
-                    Text(record.kind == .install ? "Le disque posé, et son premier démarrage"
-                                                 : "Avant → après, un autre outil, le disque rangé")
+                    Text(record.kind == .install ? "pass.finished.install"
+                                                 : "pass.finished.defrag")
                         .font(.dynamic(size: 11))
                         .foregroundStyle(Theme.dim)
                 }
                 Spacer()
-                Text("Voir le bilan")
+                Text("pass.seeReport")
                     .font(.dynamic(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.background)
                     .padding(.horizontal, 12)
@@ -259,20 +263,22 @@ struct SimulatorScreen: View {
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(Color.white.opacity(0.06)))
         }
-        .accessibilityLabel(label)
+        .accessibilityLabel(label)  // déjà résolu par l'appelant
     }
 
     private func installTitle(_ install: InstallPlayback) -> String {
-        "Installation depuis \(install.medium)"
+        String(localized: "pass.title.installFrom", defaultValue: "Installing from \(install.medium)")
     }
 
     private func dayTitle(_ day: DayPlayback) -> String {
-        day.activities.isEmpty ? "Journée sans activité"
+        day.activities.isEmpty ? String(localized: "pass.title.idleDay", defaultValue: "A day with no activity")
             : day.activities.map(\.label).joined(separator: ", ")
     }
 
     private func bootTitle(_ boot: BootPlayback) -> String {
-        boot.appName.map { "\(boot.osName), puis \($0)" } ?? boot.osName
+        boot.appName.map {
+            String(localized: "pass.title.bootThen", defaultValue: "\(boot.osName), then \($0)")
+        } ?? boot.osName
     }
 
     private var activityLED: some View {
@@ -282,12 +288,12 @@ struct SimulatorScreen: View {
                 .fill(on ? Theme.read : Color.white.opacity(0.10))
                 .frame(width: 11, height: 11)
                 .shadow(color: on ? Theme.read.opacity(0.9) : .clear, radius: 6)
-            Text("HDD")
+            Text(verbatim: "HDD")
                 .font(.dynamic(size: 8, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(on ? "Disque actif" : "Disque au repos")
+        .accessibilityLabel(on ? "pass.led.active" : "pass.led.idle")
     }
 
     // MARK: - Carte
@@ -299,10 +305,10 @@ struct SimulatorScreen: View {
         let active = model.activeCell()
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                legendDot(Theme.read, "lecture")
-                legendDot(Theme.write, "écriture")
+                legendDot(Theme.read, "pass.legend.read")
+                legendDot(Theme.write, "pass.legend.write")
                 Spacer()
-                Text("\(partition.capacityDescription) · \(partition.format.label)")
+                Text(verbatim: "\(partition.capacityDescription) · \(partition.format.label)")
                     .font(.dynamic(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.dim)
                     .lineLimit(1)
@@ -324,7 +330,7 @@ struct SimulatorScreen: View {
         .panel()
     }
 
-    private func legendDot(_ color: Color, _ label: String) -> some View {
+    private func legendDot(_ color: Color, _ label: LocalizedStringKey) -> some View {
         HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 9, height: 9)
             Text(label)
@@ -364,18 +370,19 @@ struct SimulatorScreen: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
                 // « jusqu'ici » ne se dit que tant que la passe court : une
                 // fois le plan rendu, le compteur est définitif.
-                StatTile(label: "Déplacé",
-                         value: FrenchFormat.megabytes(UInt64(max(model.movedBytes, 0))),
-                         unit: plan == nil ? "jusqu'ici" : "en tout")
-                StatTile(label: "Seek moyen",
-                         value: FrenchFormat.integer(model.totals.averageSeekDistance),
-                         unit: "cyl.", why: .seekLaw)
-                StatTile(label: "Fichiers déplacés",
-                         value: plan.map { FrenchFormat.integer($0.filesMoved) } ?? "—",
-                         unit: plan == nil ? "au bilan" : "au total")
-                StatTile(label: "Évacuations",
-                         value: plan.map { FrenchFormat.integer($0.evacuations) } ?? "—",
-                         unit: plan == nil ? "au bilan" : "au total", why: .evacuations)
+                StatTile(label: String(localized: "instruments.stat.moved", defaultValue: "Moved"),
+                         value: Format.megabytes(UInt64(max(model.movedBytes, 0))),
+                         unit: plan == nil ? String(localized: "pass.unit.soFar", defaultValue: "so far") : String(localized: "pass.unit.inTotal", defaultValue: "in total"))
+                StatTile(label: String(localized: "instruments.tile.averageSeek", defaultValue: "Average seek"),
+                         value: Format.integer(model.totals.averageSeekDistance),
+                         unit: String(localized: "pass.unit.cylinders", defaultValue: "cyl."), why: .seekLaw)
+                StatTile(label: String(localized: "instruments.stat.filesMoved", defaultValue: "Files moved"),
+                         value: plan.map { Format.integer($0.filesMoved) } ?? "—",
+                         unit: plan == nil ? String(localized: "instruments.unit.atReport", defaultValue: "at the report") : String(localized: "pass.unit.total", defaultValue: "total"))
+                StatTile(label: String(localized: "instruments.stat.evacuations", defaultValue: "Evacuations"),
+                         value: plan.map { Format.integer($0.evacuations) } ?? "—",
+                         unit: plan == nil ? String(localized: "instruments.unit.atReport", defaultValue: "at the report") : String(localized: "pass.unit.total", defaultValue: "total"),
+                         why: .evacuations)
             }
             // « éléments » et non « fichiers » : depuis le lot 4 les répertoires
             // sont des occupants comme les autres, et ce compteur les inclut —
@@ -383,11 +390,12 @@ struct SimulatorScreen: View {
             // Le taux, lui, est rapporté à tout le catalogue, quand la fiche le
             // rapporte aux seuls fichiers fragmentables : le dire, les deux
             // nombres se lisent côte à côte.
-            Text("Au départ : \(FrenchFormat.integer(before.fileCount)) éléments, "
-                 + "\(FrenchFormat.percent(before.fragmentedRatio)) fragmentés, "
-                 + "\(FrenchFormat.integer(before.freeHoles)) trous dans l'espace libre."
-                 + (plan.map { " À l'arrivée : \(FrenchFormat.integer($0.after.fragmentedFiles)) éléments fragmentés, "
-                     + "\(FrenchFormat.integer($0.after.freeHoles)) trous." } ?? ""))
+            Text(verbatim: String(localized: "pass.defrag.start",
+                                  defaultValue: "At the start: \(Format.integer(before.fileCount)) items, \(Format.percent(before.fragmentedRatio)) fragmented, \(Format.integer(before.freeHoles)) holes in the free space.")
+                 + (plan.map {
+                     " " + String(localized: "pass.defrag.arrival",
+                                  defaultValue: "On arrival: \(Format.integer($0.after.fragmentedFiles)) fragmented items, \(Format.integer($0.after.freeHoles)) holes.")
+                 } ?? ""))
                 .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -410,26 +418,29 @@ struct SimulatorScreen: View {
         let arrival = install.installed.metrics
         return VStack(alignment: .leading, spacing: 10) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
-                StatTile(label: "Fichiers posés",
-                         value: FrenchFormat.integer(placed),
-                         unit: "sur \(FrenchFormat.integer(install.files))")
-                StatTile(label: "Écrit",
-                         value: FrenchFormat.megabytes(UInt64(max(model.movedBytes, 0))),
-                         unit: finished ? "en tout" : "jusqu'ici")
-                StatTile(label: "Source", value: install.medium, unit: "le système")
-                StatTile(label: "Redémarrages",
-                         value: FrenchFormat.integer(install.reboots),
-                         unit: "prévus", why: .installation)
+                StatTile(label: String(localized: "instruments.stat.filesLaid", defaultValue: "Files laid down"),
+                         value: Format.integer(placed),
+                         unit: String(localized: "instruments.stat.outOf",
+                                      defaultValue: "of \(Format.integer(install.files))"))
+                StatTile(label: String(localized: "report.row.written", defaultValue: "Written"),
+                         value: Format.megabytes(UInt64(max(model.movedBytes, 0))),
+                         unit: finished ? String(localized: "pass.unit.inTotal", defaultValue: "in total") : String(localized: "pass.unit.soFar", defaultValue: "so far"))
+                StatTile(label: String(localized: "pass.stat.source", defaultValue: "Source"), value: install.medium,
+                         unit: String(localized: "pass.stat.source.unit", defaultValue: "the system"))
+                StatTile(label: String(localized: "instruments.stat.reboots", defaultValue: "Restarts"),
+                         value: Format.integer(install.reboots),
+                         unit: String(localized: "pass.unit.planned", defaultValue: "planned"), why: .installation)
             }
-            Text("À poser : \(FrenchFormat.integer(install.files)) fichiers, "
-                 + "\(FrenchFormat.megabytes(UInt64(install.bytes))), "
+            Text(verbatim: String(localized: "pass.install.toLay",
+                                  defaultValue: "To lay down: \(Format.integer(install.files)) files, \(Format.megabytes(UInt64(install.bytes))), ")
                  + (install.temporaryFiles > 0
-                    ? "et \(FrenchFormat.integer(install.temporaryFiles)) archives extraites puis effacées "
-                        + "(\(FrenchFormat.megabytes(UInt64(install.temporaryBytes)))). "
-                    : "sans rien extraire à côté. ")
+                    ? String(localized: "pass.install.archives",
+                             defaultValue: "and \(Format.integer(install.temporaryFiles)) archives extracted then deleted (\(Format.megabytes(UInt64(install.temporaryBytes)))). ")
+                    : String(localized: "pass.install.noArchives",
+                             defaultValue: "extracting nothing on the side. "))
                  + (finished
-                    ? "À l'arrivée : \(FrenchFormat.integer(arrival.fragmentedFileCount)) fichiers fragmentés, "
-                        + "\(FrenchFormat.integer(arrival.freeRunCount)) trous dans l'espace libre."
+                    ? String(localized: "pass.install.arrival",
+                             defaultValue: "On arrival: \(Format.integer(arrival.fragmentedFileCount)) fragmented files, \(Format.integer(arrival.freeRunCount)) holes in the free space.")
                     : ""))
                 .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
@@ -442,20 +453,26 @@ struct SimulatorScreen: View {
         let detail = model.totals.detail
         return VStack(alignment: .leading, spacing: 10) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
-                StatTile(label: "Lu", value: FrenchFormat.megabytes(UInt64(detail.readBytes)),
-                         unit: "jusqu'ici")
-                StatTile(label: "Écrit", value: FrenchFormat.megabytes(UInt64(detail.writeBytes)),
-                         unit: "sur \(FrenchFormat.megabytes(UInt64(day.bytes))) annoncés")
-                StatTile(label: "Seek moyen", value: FrenchFormat.integer(model.totals.averageSeekDistance),
-                         unit: "cyl.", why: .seekLaw)
-                StatTile(label: "Volume ce matin", value: FrenchFormat.percent(day.disk.metrics.fill),
-                         unit: "\(FrenchFormat.integer(day.disk.metrics.fragmentedFileCount)) en morceaux")
+                StatTile(label: String(localized: "instruments.stat.read", defaultValue: "Read"),
+                         value: Format.megabytes(UInt64(detail.readBytes)),
+                         unit: String(localized: "pass.unit.soFar", defaultValue: "so far"))
+                StatTile(label: String(localized: "report.row.written", defaultValue: "Written"),
+                         value: Format.megabytes(UInt64(detail.writeBytes)),
+                         unit: String(localized: "pass.day.announced",
+                                      defaultValue: "of \(Format.megabytes(UInt64(day.bytes))) announced"))
+                StatTile(label: String(localized: "instruments.tile.averageSeek", defaultValue: "Average seek"),
+                         value: Format.integer(model.totals.averageSeekDistance),
+                         unit: String(localized: "pass.unit.cylinders", defaultValue: "cyl."), why: .seekLaw)
+                StatTile(label: String(localized: "pass.stat.volumeThisMorning", defaultValue: "Volume this morning"),
+                         value: Format.percent(day.disk.metrics.fill),
+                         unit: String(localized: "pass.day.inPieces",
+                                      defaultValue: "\(Format.integer(day.disk.metrics.fragmentedFileCount)) in pieces"))
             }
-            Text("Jour \(FrenchFormat.integer(Int(day.day))) du disque, \(day.date). "
+            Text(verbatim: String(localized: "pass.day.intro",
+                                  defaultValue: "Day \(Format.integer(Int(day.day))) of the disk, \(day.date). ")
                  + (day.activities.isEmpty
-                    ? "Rien n'y est écrit : la machine s'allume et s'éteint."
-                    : "Ce qui s'y écrit vient de l'histoire du profil ; ce qui s'y lit, de ce que "
-                        + "l'activité suppose."))
+                    ? String(localized: "pass.day.idle", defaultValue: "Nothing is written: the machine switches on and off.")
+                    : String(localized: "pass.day.busy", defaultValue: "What is written comes from the profile's history; what is read, from what the activity implies.")))
                 .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -470,10 +487,10 @@ struct SimulatorScreen: View {
             PlatterView(track: model.platter, frame: frame)
                 .frame(maxHeight: 300)
             HStack(alignment: .firstTextBaseline) {
-                Text("CYLINDRE")
+                Text("pass.cylinder.header")
                     .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Theme.dim)
-                Text("\(FrenchFormat.integer(Int(frame.cylinder.rounded()))) / \(FrenchFormat.integer(model.geometry.cylinders))")
+                Text(verbatim: "\(Format.integer(Int(frame.cylinder.rounded()))) / \(Format.integer(model.geometry.cylinders))")
                     .font(.dynamic(size: 15, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.read)
                     .monospacedDigit()
@@ -494,11 +511,11 @@ struct SimulatorScreen: View {
         // Une passe entendue jusqu'au bout n'a plus de phase en cours.
         let current = engine.isFinished ? -1 : model.phaseIndex
         return VStack(alignment: .leading, spacing: 8) {
-            Text(model.defrag != nil ? "PHASES ÉCOUTÉES" : "ÉTAPES")
+            Text(model.defrag != nil ? "pass.phases.header" : "pass.steps.header")
                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             if model.phaseTimes.isEmpty {
-                Text("Rien encore.")
+                Text("pass.phases.empty")
                     .font(.dynamic(size: 12))
                     .foregroundStyle(Theme.dim)
             }
@@ -507,12 +524,14 @@ struct SimulatorScreen: View {
                     Circle()
                         .fill(Theme.phaseColor(entry.index))
                         .frame(width: 8, height: 8)
-                    Text(model.phases.indices.contains(entry.index) ? model.phases[entry.index].label : "—")
+                    Text(verbatim: model.phases.indices.contains(entry.index) ? model.phases[entry.index].label : "—")
                         .font(.dynamic(size: 13))
                         .foregroundStyle(Theme.text)
                     Spacer()
-                    Text(entry.index == current ? "en cours · \(FrenchFormat.duration(entry.seconds))"
-                                                : FrenchFormat.duration(entry.seconds))
+                    Text(verbatim: entry.index == current
+                         ? String(localized: "pass.phase.running",
+                                  defaultValue: "running · \(Format.duration(entry.seconds))")
+                         : Format.duration(entry.seconds))
                         .font(.dynamic(size: 12, design: .monospaced))
                         .foregroundStyle(entry.index == current ? Theme.read : Theme.dim)
                         .monospacedDigit()
@@ -532,9 +551,10 @@ struct SimulatorScreen: View {
                 window: LivePass.activityWindow
             )
             HStack {
-                Text("−1 min")
+                Text("pass.activity.minusOneMinute")
                 Spacer()
-                Text("\(FrenchFormat.integer(model.totals.requests)) requêtes")
+                Text(verbatim: String(localized: "pass.activity.requests",
+                                      defaultValue: "\(Format.integer(model.totals.requests)) requests"))
             }
             .font(.dynamic(size: 11, design: .monospaced))
             .foregroundStyle(Theme.dim)
@@ -550,15 +570,20 @@ struct SimulatorScreen: View {
         let detail = model.totals.detail
         let disk = detail.seekSeconds + detail.rotationSeconds + detail.transferSeconds
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
-            StatTile(label: "Fichiers à lire", value: FrenchFormat.integer(boot.filesRead),
-                     unit: boot.residentFiles > 0 ? "dont \(FrenchFormat.integer(boot.residentFiles)) dans la MFT" : "")
-            StatTile(label: "Lu",
-                     value: FrenchFormat.megabytes(UInt64(detail.readBytes)),
-                     unit: "jusqu'ici")
-            StatTile(label: "Calcul", value: FrenchFormat.duration(detail.thinkSeconds),
-                     unit: "la machine")
-            StatTile(label: "Disque", value: FrenchFormat.duration(disk),
-                     unit: "le bras et le plateau")
+            StatTile(label: String(localized: "pass.stat.filesToRead", defaultValue: "Files to read"),
+                     value: Format.integer(boot.filesRead),
+                     unit: boot.residentFiles > 0
+                         ? String(localized: "pass.boot.residentFiles",
+                                  defaultValue: "including \(Format.integer(boot.residentFiles)) in the MFT")
+                         : "")
+            StatTile(label: String(localized: "instruments.stat.read", defaultValue: "Read"),
+                     value: Format.megabytes(UInt64(detail.readBytes)),
+                     unit: String(localized: "pass.unit.soFar", defaultValue: "so far"))
+            StatTile(label: String(localized: "instruments.stat.compute", defaultValue: "Compute"),
+                     value: Format.duration(detail.thinkSeconds),
+                     unit: String(localized: "pass.stat.compute.unit", defaultValue: "the machine"))
+            StatTile(label: String(localized: "pass.stat.disk", defaultValue: "Disk"), value: Format.duration(disk),
+                     unit: String(localized: "pass.stat.disk.unit", defaultValue: "the arm and the platter"))
         }
     }
 
@@ -572,12 +597,15 @@ struct SimulatorScreen: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(duration.map { "DÉMARRAGE TERMINÉ · \(FrenchFormat.duration($0).uppercased())" }
-                         ?? "DÉMARRAGE EN COURS · \(FrenchFormat.duration(time).uppercased())")
+                    Text(verbatim: duration.map {
+                        String(localized: "pass.boot.done",
+                               defaultValue: "BOOT FINISHED · \(Format.duration($0).uppercased())")
+                    } ?? String(localized: "pass.boot.running",
+                                defaultValue: "BOOTING · \(Format.duration(time).uppercased())"))
                         .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                     HStack(spacing: 2) {
-                        Text("Le témoin")
+                        Text("explanation.witness.title")
                             .font(.dynamic(size: 17, weight: .semibold))
                             .foregroundStyle(Theme.text)
                         WhyButton(topic: .witness)
@@ -595,17 +623,22 @@ struct SimulatorScreen: View {
                    let other = model.counterpartBoot(ofDisk: diskID, rangedBy: model.rangedBy) {
                     // Le même disque, entendu dans l'autre état : vieilli, ou
                     // rangé par un outil.
-                    witnessRow(other.rangedBy.map { "rangé par \($0)" } ?? "avant rangement",
-                               FrenchFormat.decimal(other.duration, digits: 1) + "\u{00A0}s",
+                    witnessRow(other.rangedBy.map {
+                                   String(localized: "pass.witness.tidiedBy", defaultValue: "tidied by \($0)")
+                               } ?? String(localized: "pass.witness.beforeTidying", defaultValue: "before tidying"),
+                               Format.decimal(other.duration, digits: 1) + "\u{00A0}s",
                                seeks: other.seeks, average: other.averageSeek,
                                final: true)
                 }
-                witnessRow(model.rangedBy.map { "rangé par \($0)" } ?? "ce disque",
-                           duration.map { FrenchFormat.decimal($0, digits: 1) + "\u{00A0}s" } ?? "en cours",
+                witnessRow(model.rangedBy.map {
+                               String(localized: "pass.witness.tidiedBy", defaultValue: "tidied by \($0)")
+                           } ?? String(localized: "pass.witness.thisDisk", defaultValue: "this disk"),
+                           duration.map { Format.decimal($0, digits: 1) + "\u{00A0}s" }
+                               ?? String(localized: "pass.witness.running", defaultValue: "running"),
                            seeks: totals.seeks, average: totals.averageSeekDistance,
                            final: duration != nil)
-                witnessRow("jamais fragmenté",
-                           FrenchFormat.decimal(boot.freshSeconds, digits: 1) + "\u{00A0}s",
+                witnessRow(String(localized: "pass.witness.neverFragmented", defaultValue: "never fragmented"),
+                           Format.decimal(boot.freshSeconds, digits: 1) + "\u{00A0}s",
                            seeks: boot.freshSeeks, average: boot.freshAverageSeek,
                            final: true)
             }
@@ -619,8 +652,10 @@ struct SimulatorScreen: View {
                 WhyButton(topic: .prefetch)
                     .padding(.vertical, -6)
                 Text(boot.readsByPosition
-                     ? "Préchargeur de \(boot.osName) : la liste de lecture est rangée par position sur le disque, et relue d'une seule course du bras."
-                     : "Pas de préchargeur sur \(boot.osName) : le bras suit l'ordre dans lequel le système demande ses fichiers, pas leur position.")
+                     ? String(localized: "pass.boot.prefetch",
+                              defaultValue: "\(boot.osName) prefetcher: the read list is sorted by position on the disk, and read back in a single sweep of the arm.")
+                     : String(localized: "pass.boot.noPrefetch",
+                              defaultValue: "No prefetcher on \(boot.osName): the arm follows the order in which the system asks for its files, not their position."))
                     .font(.dynamic(size: 11))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
@@ -637,7 +672,8 @@ struct SimulatorScreen: View {
                 .font(.dynamic(size: 13))
                 .foregroundStyle(Theme.text)
             Spacer()
-            Text("\(FrenchFormat.integer(seeks)) seeks · \(FrenchFormat.integer(average)) cyl.")
+            Text(verbatim: String(localized: "pass.witness.seeks",
+                                  defaultValue: "\(Format.integer(seeks)) seeks · \(Format.integer(average)) cyl."))
                 .font(.dynamic(size: 10, design: .monospaced))
                 .foregroundStyle(Theme.dim)
             Text(duration)
@@ -649,7 +685,7 @@ struct SimulatorScreen: View {
     }
 
     private func signedPercent(_ ratio: Double) -> String {
-        (ratio >= 0 ? "+" : "−") + FrenchFormat.decimal(abs(ratio) * 100, digits: 1) + "\u{00A0}%"
+        Format.signedPercent(ratio * 100)
     }
 
     /// Ce que dit l'écart. Sur les vingt démarrages de la galerie, FAT coûte
@@ -657,27 +693,21 @@ struct SimulatorScreen: View {
     /// le signe, pas un chiffre attendu.
     private func witnessExplanation(_ boot: BootPlayback, gap: Double?) -> String {
         guard let gap else {
-            return "Le témoin lit exactement les mêmes fichiers, chacun d'un seul tenant et tassé contre "
-                + "le début du volume. Il a été simulé avant l'écoute ; l'écart se lit à la fin."
+            return String(localized: "pass.witness.note.pending", defaultValue: "The witness reads exactly the same files, each in one piece and packed against the start of the volume. It was simulated before the listening; the gap reads at the end.")
         }
         switch boot.fileSystem {
         case .fat16, .vfat, .fat32:
             if gap < 0.05 {
-                return "Sur FAT, la fragmentation ne coûte presque rien au démarrage : ces fichiers ont été "
-                    + "écrits d'un seul tenant par l'installeur, sur un disque vide. Ce qui fait le bruit, "
-                    + "c'est l'ordre dans lequel on les demande."
+                return String(localized: "pass.witness.note.fatCheap", defaultValue: "On FAT, fragmentation costs almost nothing at boot: these files were written in one piece by the installer, on an empty disk. What makes the noise is the order they are asked for in.")
             }
-            return "Ici, la place des fichiers coûte \(signedPercent(gap)) : plus que ce qu'un démarrage FAT "
-                + "paie d'ordinaire. Les fichiers lus n'ont pas tous gardé la place que l'installeur "
-                + "leur avait donnée."
+            return String(localized: "pass.witness.note.fatCostly",
+                          defaultValue: "Here, where the files sit costs \(signedPercent(gap)): more than a FAT boot usually pays. Not every file read kept the place the installer gave it.")
         case .ntfs:
             if gap < 0 {
-                return "Le témoin perd : NTFS choisit le trou qui convient plutôt que le premier venu, et sa "
-                    + "disposition bat ici un rangement qui empile tout dans l'ordre du répertoire."
+                return String(localized: "pass.witness.note.ntfsLoses", defaultValue: "The witness loses: NTFS picks the hole that fits rather than the first one it meets, and its layout beats a tidying that piles everything up in directory order.")
             }
-            return "Sur NTFS, le témoin ne gagne pas toujours ; ici il gagne \(FrenchFormat.decimal(gap * 100, digits: 1)) %. "
-                + "Il ne mesure pas la fragmentation seule, mais ce que coûte la place réelle des fichiers "
-                + "face à un rangement naïf."
+            return String(localized: "pass.witness.note.ntfsWins",
+                          defaultValue: "On NTFS the witness does not always win; here it wins by \(Format.decimal(gap * 100, digits: 1)) %. It does not measure fragmentation alone, but what the real placement of the files costs against a naive tidying.")
         }
     }
 
@@ -688,7 +718,7 @@ struct SimulatorScreen: View {
     private var transport: some View {
         let playing = engine.isPlaying || engine.isBuffering
         return HStack(spacing: 0) {
-            transportButton("Arrêter", systemImage: "stop.fill", size: 18) {
+            transportButton("pass.stop", systemImage: "stop.fill", size: 18) {
                 // Arrêter, c'est revenir au début sans rejouer.
                 engine.pause()
                 model.restart()
@@ -710,11 +740,11 @@ struct SimulatorScreen: View {
                     }
                 }
             }
-            .accessibilityLabel(playing ? "Pause" : "Lecture")
+            .accessibilityLabel(playing ? "transport.pause" : "transport.play")
 
             Spacer()
 
-            transportButton("Relancer", systemImage: "arrow.counterclockwise", size: 18) {
+            transportButton("pass.restart", systemImage: "arrow.counterclockwise", size: 18) {
                 model.restart()
             }
         }
@@ -728,7 +758,7 @@ struct SimulatorScreen: View {
         )
     }
 
-    private func transportButton(_ title: String, systemImage: String, size: CGFloat,
+    private func transportButton(_ title: LocalizedStringKey, systemImage: String, size: CGFloat,
                                  action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {

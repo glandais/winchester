@@ -101,43 +101,49 @@ struct DiskLibraryView: View {
 
     /// « 1996 · 850 Mo · 5 400 tr/min · VFAT 16 Ko · Windows 95 »
     private func specLine(_ spec: ProfileSpec, clusterBytes: UInt32?) -> String {
-        let cluster = clusterBytes.map { " \($0 / 1024) Ko" }
-            ?? spec.fileSystem.clusterKB.map { " \($0) Ko" }
+        func kilobytes(_ value: Int) -> String {
+            " " + String(localized: "disk.cluster.kilobytes", defaultValue: "\(value) KB")
+        }
+        let cluster = clusterBytes.map { kilobytes(Int($0) / 1024) }
+            ?? spec.fileSystem.clusterKB.map { kilobytes(Int($0)) }
             ?? ""
         return "\(spec.year) · \(spec.capacityLabel) · \(spec.rpmLabel) · "
-            + "\(spec.fileSystemLabel)\(cluster) · \(spec.osName)"
+            + "\(spec.fileSystemLabel)\(cluster) · \(spec.osName)"  // que des données
     }
 
     // MARK: - Fabrication
 
     private func progress(fraction: Double, day: UInt32, fileCount: Int, fill: Double) -> some View {
-        let date = model.selected.map { FrenchFormat.date($0.timeline.start.adding(days: Int(day))) }
+        let date = model.selected.map { Format.date($0.timeline.start.adding(days: Int(day))) }
         return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Fabrication du volume")
+                Text("build.title")
                     .font(.dynamic(size: 20, weight: .semibold))
                     .foregroundStyle(Theme.text)
-                Text("On rejoue l'histoire du disque, jour après jour. L'allocateur fait le reste.")
+                Text("build.subtitle")
                     .font(.dynamic(size: 13))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(spacing: 9) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("JOUR SIMULÉ")
+                    Text("build.day.header")
                         .font(.dynamic(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(Theme.dim)
                     Spacer()
-                    Text(date ?? "jour \(day)")
+                    Text(verbatim: date ?? String(localized: "build.day.fallback",
+                                                  defaultValue: "day \(day)"))
                         .font(.dynamic(size: 15, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Theme.text)
                 }
                 ProgressView(value: fraction)
                     .tint(Theme.read)
                 HStack {
-                    Text("\(FrenchFormat.integer(fileCount)) fichiers")
+                    Text(verbatim: String(localized: "build.fileCount",
+                                          defaultValue: "\(Format.integer(fileCount)) files"))
                     Spacer()
-                    Text("\(Int((fill * 100).rounded())) % occupé")
+                    Text(verbatim: String(localized: "build.fillShare",
+                                          defaultValue: "\(Int((fill * 100).rounded())) % used"))
                 }
                 .font(.dynamic(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.dim)
@@ -145,7 +151,7 @@ struct DiskLibraryView: View {
             Button {
                 model.cancel()
             } label: {
-                Text("Annuler")
+                Text("common.cancel")
                     .font(.dynamic(size: 15, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -163,14 +169,14 @@ struct DiskLibraryView: View {
     /// repart du premier jour de l'histoire.
     private var cancelled: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Génération annulée")
+            Text("build.cancelled.title")
                 .font(.dynamic(size: 13, weight: .medium))
                 .foregroundStyle(Theme.text)
-            Text("L'histoire du disque est conservée ; le volume, lui, se refabrique depuis le premier jour.")
+            Text("build.cancelled.message")
                 .font(.dynamic(size: 12))
                 .foregroundStyle(Theme.dim)
                 .fixedSize(horizontal: false, vertical: true)
-            regenerateButton("Générer depuis le début")
+            regenerateButton("build.restart")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
@@ -178,20 +184,20 @@ struct DiskLibraryView: View {
 
     private func failure(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Génération impossible")
+            Text("build.failed.title")
                 .font(.dynamic(size: 13, weight: .medium))
                 .foregroundStyle(Theme.text)
-            Text(message)
+            Text(verbatim: message)
                 .font(.dynamic(size: 12, design: .monospaced))
                 .foregroundStyle(Theme.read)
                 .fixedSize(horizontal: false, vertical: true)
-            regenerateButton("Réessayer")
+            regenerateButton("common.retry")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
     }
 
-    private func regenerateButton(_ title: String) -> some View {
+    private func regenerateButton(_ title: LocalizedStringKey) -> some View {
         Button(title) {
             if let id = model.selectedID { model.open(id) }
         }
@@ -220,12 +226,12 @@ struct DiskLibraryView: View {
             // cette session : la carte du disque rangé ne survit pas à la
             // fermeture, seule sa ligne d'état reste.
             if tidyMap != nil {
-                Picker("Carte du volume", selection: $showsTidied) {
-                    Text("D'origine").tag(false)
-                    Text("Rangé").tag(true)
+                Picker("map.accessibility.label", selection: $showsTidied) {
+                    Text("disk.map.original").tag(false)
+                    Text("disk.map.tidied").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .accessibilityLabel("Carte du volume, d'origine ou rangé")
+                .accessibilityLabel("disk.map.accessibility")
             }
             ZStack(alignment: .topTrailing) {
                 ClusterMapView(grid: shownMap.grid, shades: shownMap.shades)
@@ -246,7 +252,7 @@ struct DiskLibraryView: View {
         .panel()
         .fullScreenCover(isPresented: $showsFullScreenMap) {
             LibraryFullScreenMap(model: model,
-                                 title: model.selected?.displayName ?? "Volume",
+                                 title: model.selected?.displayName ?? String(localized: "disk.map.fallbackTitle", defaultValue: "Volume"),
                                  clusterBytes: Int(model.state.disk?.clusterBytes ?? 0))
         }
     }
@@ -256,19 +262,19 @@ struct DiskLibraryView: View {
         let m = disk.metrics
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 3),
                          spacing: 9) {
-            MetricTile(label: "Fichiers", value: FrenchFormat.integer(m.fileCount))
+            MetricTile(label: String(localized: "metric.files", defaultValue: "Files"), value: Format.integer(m.fileCount))
             // Rapporté aux seuls fichiers fragmentables, quand la Passe et les
             // Instruments le rapportent à tous les éléments : les deux taux
             // sont justes et diffèrent, alors la tuile dit sur quoi elle porte
             // (`UX_REVIEW.md` §3).
-            MetricTile(label: "Fragmentés",
-                       value: FrenchFormat.percent(m.fragmentedRatioAmongFragmentable),
-                       note: "des fragmentables",
+            MetricTile(label: String(localized: "metric.fragmented", defaultValue: "Fragmented"),
+                       value: Format.percent(m.fragmentedRatioAmongFragmentable),
+                       note: String(localized: "metric.fragmented.note", defaultValue: "of the fragmentable ones"),
                        accent: true)
-            MetricTile(label: "Morceaux/f.", value: FrenchFormat.decimal(m.meanExtentsPerFile, digits: 2))
-            MetricTile(label: "Trous", value: FrenchFormat.integer(m.freeRunCount))
-            MetricTile(label: "Slack", value: FrenchFormat.percent(m.slackRatio))
-            MetricTile(label: "Rempli", value: FrenchFormat.percent(m.fill))
+            MetricTile(label: String(localized: "metric.piecesPerFile", defaultValue: "Pieces/f."), value: Format.decimal(m.meanExtentsPerFile, digits: 2))
+            MetricTile(label: String(localized: "metric.holes", defaultValue: "Holes"), value: Format.integer(m.freeRunCount))
+            MetricTile(label: String(localized: "metric.slack", defaultValue: "Slack"), value: Format.percent(m.slackRatio))
+            MetricTile(label: String(localized: "metric.filled", defaultValue: "Filled"), value: Format.percent(m.fill))
         }
     }
 
@@ -290,24 +296,31 @@ struct DiskLibraryView: View {
         let m = disk.metrics
         return DisclosureGroup(isExpanded: $showsDetails) {
             FlowRow(spacing: 10) {
-                StatTile(label: "Pire fichier", value: FrenchFormat.integer(m.maxExtentsPerFile), unit: "morceaux")
-                StatTile(label: "95ᵉ centile", value: FrenchFormat.integer(m.p95ExtentsPerFile), unit: "morceaux")
-                StatTile(label: "Plus grand trou",
-                         value: FrenchFormat.megabytes(UInt64(m.largestFreeRunClusters) * UInt64(disk.clusterBytes)),
-                         unit: "libres")
-                StatTile(label: "Histoire", value: FrenchFormat.integer(Int(disk.dayCount)), unit: "jours simulés")
+                StatTile(label: String(localized: "metric.worstFile", defaultValue: "Worst file"),
+                         value: Format.integer(m.maxExtentsPerFile),
+                         unit: String(localized: "metric.unit.pieces", defaultValue: "pieces"))
+                StatTile(label: String(localized: "metric.p95", defaultValue: "95th percentile"),
+                         value: Format.integer(m.p95ExtentsPerFile),
+                         unit: String(localized: "metric.unit.pieces", defaultValue: "pieces"))
+                StatTile(label: String(localized: "metric.largestHole", defaultValue: "Largest hole"),
+                         value: Format.megabytes(UInt64(m.largestFreeRunClusters) * UInt64(disk.clusterBytes)),
+                         unit: String(localized: "metric.unit.free", defaultValue: "free"))
+                StatTile(label: String(localized: "metric.history", defaultValue: "History"), value: Format.integer(Int(disk.dayCount)),
+                         unit: String(localized: "metric.unit.simulatedDays", defaultValue: "simulated days"))
                 if m.residentFileCount > 0 {
-                    StatTile(label: "Résidents", value: FrenchFormat.integer(m.residentFileCount), unit: "dans la MFT")
+                    StatTile(label: String(localized: "metric.resident", defaultValue: "Resident"), value: Format.integer(m.residentFileCount),
+                             unit: String(localized: "metric.unit.inMFT", defaultValue: "in the MFT"))
                 }
                 if disk.mftClusters > 0 {
                     StatTile(label: "MFT",
-                             value: FrenchFormat.megabytes(UInt64(disk.mftClusters) * UInt64(disk.clusterBytes)),
-                             unit: "en \(disk.mftExtents) morceaux")
+                             value: Format.megabytes(UInt64(disk.mftClusters) * UInt64(disk.clusterBytes)),
+                             unit: String(localized: "metric.unit.inPieces",
+                                          defaultValue: "in \(disk.mftExtents) pieces"))
                 }
             }
             .padding(.top, 10)
         } label: {
-            Text("Plus de détails")
+            Text("disk.moreDetails")
                 .font(.dynamic(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.text)
         }
@@ -320,30 +333,22 @@ struct DiskLibraryView: View {
         let m = disk.metrics
         switch disk.spec.fileSystem.type {
         case .fat16:
-            return "MS-DOS sert le premier cluster libre à partir du début du volume, "
-                + "à chaque écriture : les trous se rebouchent aussitôt et les fichiers "
-                + "récents sont hachés. Le slack de \(FrenchFormat.percent(m.slackRatio)) vient "
-                + "des clusters de \(disk.clusterBytes / 1024) Ko, que la taille du volume impose."
+            return String(localized: "allocator.firstFit",
+                          defaultValue: "MS-DOS serves the first free cluster from the start of the volume, on every write: holes are plugged at once and recent files are chopped up. The \(Format.percent(m.slackRatio)) of slack comes from the \(disk.clusterBytes / 1024) KB clusters the volume size imposes.",
+                          comment: "Ce que l'allocateur a fait de ce volume")
         case .vfat, .fat32:
-            return "Le pilote reprend au dernier cluster alloué : l'écriture est propre "
-                + "tant que le curseur avance, puis il revient au début du volume et "
-                + "repasse par-dessus des trous laissés des mois plus tôt. "
-                + "\(FrenchFormat.integer(m.freeRunCount)) trous subsistent."
+            return String(localized: "allocator.nextFit",
+                          defaultValue: "The driver resumes at the last allocated cluster: writing is clean as long as the cursor moves forward, then it wraps to the start of the volume and passes back over holes left months earlier. \(Format.integer(m.freeRunCount)) holes remain.")
         case .ntfs:
             // La moyenne de morceaux se lit sur tous les fichiers : quelques
             // gros fichiers hachés suffisent à la tirer loin au-dessus de ce
             // que vit un fichier ordinaire. Le dire, sinon la tuile ment.
             guard m.fragmentedFileCount > 0 else {
-                return "NTFS choisit le trou qui convient plutôt que le premier venu, et tient "
-                    + "les données à l'écart de sa zone MFT : aucun fichier de ce volume n'est "
-                    + "en morceaux."
+                return String(localized: "allocator.bestFit.clean",
+                              defaultValue: "NTFS picks the hole that fits rather than the first one it meets, and keeps data away from its MFT zone: not one file on this volume is in pieces.")
             }
-            return "NTFS choisit le trou qui convient plutôt que le premier venu, et tient "
-                + "les données à l'écart de sa zone MFT : seuls "
-                + "\(FrenchFormat.percent(m.fragmentedRatioAmongFragmentable)) des fichiers fragmentables sont en "
-                + "morceaux. Ceux-là le sont beaucoup — le pire en compte "
-                + "\(FrenchFormat.integer(m.maxExtentsPerFile)) —, et ce sont eux qui portent la "
-                + "moyenne à \(FrenchFormat.decimal(m.meanExtentsPerFile, digits: 2)) morceaux par fichier."
+            return String(localized: "allocator.bestFit",
+                          defaultValue: "NTFS picks the hole that fits rather than the first one it meets, and keeps data away from its MFT zone: only \(Format.percent(m.fragmentedRatioAmongFragmentable)) of the fragmentable files are in pieces. Those are in many — the worst counts \(Format.integer(m.maxExtentsPerFile)) — and they are what carries the average to \(Format.decimal(m.meanExtentsPerFile, digits: 2)) pieces per file.")
         }
     }
 

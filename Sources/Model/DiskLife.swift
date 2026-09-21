@@ -46,12 +46,13 @@ final class DiskLife {
 
         var label: String {
             switch self {
-            case .installation:   return "Installation"
-            case let .filling(percent): return "Disque à \(percent) %"
-            case .full:           return "Disque plein"
-            case .heavyDay:       return "Grosse journée"
-            case .defragmented:   return "Défragmentation"
-            case .fragmentation:  return "Pic de fragmentation"
+            case .installation:   return String(localized: "landmark.installation", defaultValue: "Installation")
+            case let .filling(percent):
+                return String(localized: "landmark.filling", defaultValue: "Disk \(percent) %% full")
+            case .full:           return String(localized: "landmark.full", defaultValue: "Disk full")
+            case .heavyDay:       return String(localized: "landmark.heavyDay", defaultValue: "A heavy day")
+            case .defragmented:   return String(localized: "landmark.defragmented", defaultValue: "Defragmentation")
+            case .fragmentation:  return String(localized: "landmark.fragmentation", defaultValue: "Fragmentation peak")
             }
         }
     }

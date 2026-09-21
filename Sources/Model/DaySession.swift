@@ -32,29 +32,29 @@ enum DayActivity: Int, CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .system:   return "Système"
-        case .compile:  return "Compilation"
-        case .browse:   return "Navigation"
-        case .office:   return "Bureautique"
-        case .media:    return "Import de médias"
-        case .download: return "Téléchargement"
-        case .game:     return "Jeu"
-        case .hoard:    return "Archivage"
-        case .update:   return "Mise à jour"
+        case .system:   return String(localized: "activity.system", defaultValue: "System")
+        case .compile:  return String(localized: "activity.compile", defaultValue: "Build")
+        case .browse:   return String(localized: "activity.browse", defaultValue: "Browsing")
+        case .office:   return String(localized: "activity.office", defaultValue: "Office work")
+        case .media:    return String(localized: "activity.media", defaultValue: "Media import")
+        case .download: return String(localized: "activity.download", defaultValue: "Download")
+        case .game:     return String(localized: "activity.game", defaultValue: "Gaming")
+        case .hoard:    return String(localized: "activity.hoard", defaultValue: "Archiving")
+        case .update:   return String(localized: "activity.update", defaultValue: "Update")
         }
     }
 
     var detail: String {
         switch self {
-        case .system:   return "Fichier d'échange, ménage, tables"
-        case .compile:  return "Sources relues, objets réécrits, édition de liens"
-        case .browse:   return "Cache : des milliers de fichiers minuscules"
-        case .office:   return "Documents ouverts, puis réenregistrés à côté"
-        case .media:    return "Copie depuis l'appareil, écriture d'un seul tenant"
-        case .download: return "Écriture au rythme de la ligne"
-        case .game:     return "Niveaux chargés, sauvegardes réécrites"
-        case .hoard:    return "Ce qu'on garde, écrit une fois"
-        case .update:   return "Fichiers système remplacés un par un"
+        case .system:   return String(localized: "activity.system.detail", defaultValue: "Page file, housekeeping, tables")
+        case .compile:  return String(localized: "activity.compile.detail", defaultValue: "Sources read back, objects rewritten, linking")
+        case .browse:   return String(localized: "activity.browse.detail", defaultValue: "Cache: thousands of tiny files")
+        case .office:   return String(localized: "activity.office.detail", defaultValue: "Documents opened, then re-saved alongside")
+        case .media:    return String(localized: "activity.media.detail", defaultValue: "Copied from the device, written in one piece")
+        case .download: return String(localized: "activity.download.detail", defaultValue: "Written at the speed of the line")
+        case .game:     return String(localized: "activity.game.detail", defaultValue: "Levels loaded, saved games rewritten")
+        case .hoard:    return String(localized: "activity.hoard.detail", defaultValue: "What is kept, written once")
+        case .update:   return String(localized: "activity.update.detail", defaultValue: "System files replaced one by one")
         }
     }
 }
@@ -148,13 +148,13 @@ enum DayPlanner {
     /// Les phases d'une journée : le démarrage ouvre, l'arrêt ferme, et une
     /// phase par séance entre les deux.
     static func phases(of sessions: [DayActivity]) -> [PhaseDescriptor] {
-        var phases = [PhaseDescriptor(id: "boot", label: "Démarrage", detail: "La machine s'allume")]
+        var phases = [PhaseDescriptor(id: "boot", label: String(localized: "pass.title.boot", defaultValue: "Boot"), detail: String(localized: "phase.boot.detail", defaultValue: "The machine switches on"))]
         for (index, activity) in sessions.enumerated() {
             phases.append(PhaseDescriptor(id: "act-\(index)-\(activity.rawValue)",
                                           label: activity.label, detail: activity.detail))
         }
-        phases.append(PhaseDescriptor(id: "shutdown", label: "Arrêt",
-                                      detail: "Tables et cache écrits, la machine s'éteint"))
+        phases.append(PhaseDescriptor(id: "shutdown", label: String(localized: "phase.shutdown", defaultValue: "Shutdown"),
+                                      detail: String(localized: "phase.shutdown.detail", defaultValue: "Tables and cache written, the machine switches off")))
         return phases
     }
 

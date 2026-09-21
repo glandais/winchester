@@ -48,7 +48,7 @@ import DiskCore
 struct FragmentMergeStrategy: DefragStrategy {
 
     let id = "fragmentMerge"
-    let label = "Recollage économe"
+    let label = String(localized: "strategy.fragmentMerge", defaultValue: "Thrifty merge")
 
     /// En dessous de cette taille, un morceau vaut d'être recollé.
     ///
@@ -84,13 +84,13 @@ struct FragmentMergeStrategy: DefragStrategy {
     var maximumRounds = 60
 
     let phases: [PhaseDescriptor] = [
-        PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                        detail: "Les fichiers cassés, et les trous hors de la zone MFT"),
-        PhaseDescriptor(id: "merge", label: "Recollage",
-                        detail: "Les petits morceaux recopiés d'un seul tenant, et les petits fichiers qui séparent deux trous déplacés"),
+        PhaseDescriptor(id: "analyse", label: String(localized: "phase.analyse", defaultValue: "Analysing the volume"),
+                        detail: String(localized: "phase.analyse.merge.detail", defaultValue: "The broken files, and the holes outside the MFT zone")),
+        PhaseDescriptor(id: "merge", label: String(localized: "phase.merge", defaultValue: "Merging"),
+                        detail: String(localized: "phase.merge.detail", defaultValue: "The small pieces copied back in one piece, and the small files separating two holes moved")),
         PhaseDescriptor.commit(on: .ntfs),
-        PhaseDescriptor(id: "done", label: "Terminé",
-                        detail: "Les gros morceaux n'ont pas bougé"),
+        PhaseDescriptor(id: "done", label: String(localized: "phase.done", defaultValue: "Finished"),
+                        detail: String(localized: "phase.done.merge.detail", defaultValue: "The big pieces have not moved")),
     ]
 
     // MARK: - Planification
@@ -168,10 +168,8 @@ struct FragmentMergeStrategy: DefragStrategy {
     }
 
     func summary(of plan: DefragPlan) -> String {
-        String(format: "La passe recolle les petits morceaux de %d fichiers cassés et laisse les gros "
-               + "où ils sont ; %d fichiers ont bougé en tout, les autres pour réunir des trous. "
-               + "Aucune écriture ne tombe sur un cluster dont la libération n'est pas écrite.",
-               plan.before.fragmentedFiles, plan.filesMoved)
+        String(localized: "summary.fragmentMerge",
+               defaultValue: "The pass merges the small pieces of \(plan.before.fragmentedFiles) broken files and leaves the big ones where they are; \(plan.filesMoved) files moved in all, the others to bring holes together. No write ever lands on a cluster whose release is not written.")
     }
 }
 

@@ -81,7 +81,8 @@ enum GeneratedVolumeBridge {
         var description: String {
             switch self {
             case let .unusableClusterSize(bytes):
-                return "cluster de \(bytes) octets : plus petit qu'un secteur"
+                return String(localized: "error.unusableClusterSize",
+                              defaultValue: "\(bytes)-byte cluster: smaller than a sector")
             }
         }
     }
@@ -205,8 +206,8 @@ extension GeneratedVolumeBridge {
     /// s'il se défragmente — c'est le cas des vingt scénarios de la galerie.
     static func refusal(for disk: GeneratedDisk) -> String? {
         guard !isSupported(disk) else { return nil }
-        return "Cluster de \(disk.clusterBytes) octets : plus petit qu'un secteur, "
-            + "ce volume n'est pas adressable."
+        return String(localized: "refusal.clusterTooSmall",
+                      defaultValue: "\(disk.clusterBytes)-byte cluster: smaller than a sector, this volume is not addressable.")
     }
 
     /// Matériel décrit par le profil : géométrie zonée et loi de seek.
@@ -228,11 +229,12 @@ extension GeneratedVolumeBridge {
                       atLeast sectors: Int) -> (geometry: DriveGeometry, seek: SeekModel) {
         let capacity = max(spec.disk.sizeBytes,
                            UInt64(sectors) * UInt64(DriveGeometry.bytesPerSector))
-        // Même typographie que les deux disques écrits à la main : espace fine
-        // insécable dans le régime, virgule décimale.
-        let size = FrenchUnits.megabytes(spec.disk.sizeBytes)
-        let rpm = String(format: "%d\u{202F}%03d", spec.disk.rpm / 1_000, spec.disk.rpm % 1_000)
-        let label = "IDE \(size) · \(rpm) tr/min"
+        // Le disque n'a pas de marque : son nom se déduit de sa capacité et de
+        // son régime, écrits comme la langue de l'appareil les écrit.
+        let size = DisplayFormat.megabytes(spec.disk.sizeBytes)
+        let rpm = String(localized: "disk.rpm",
+                         defaultValue: "\(DisplayFormat.integer(spec.disk.rpm)) rpm")
+        let label = "IDE \(size) · \(rpm)"
         let year = spec.timeline.start.year
         let geometry = DriveGeometry.era(model: label,
                                          capacityBytes: capacity,

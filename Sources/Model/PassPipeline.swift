@@ -100,11 +100,11 @@ enum SeekClass: Int, CaseIterable, Sendable {
 
     var label: String {
         switch self {
-        case .adjacent: return "piste voisine"
-        case .short:    return "courts"
-        case .medium:   return "moyens"
-        case .long:     return "longs"
-        case .full:     return "pleine course"
+        case .adjacent: return String(localized: "seekClass.adjacent", defaultValue: "next track")
+        case .short:    return String(localized: "seekClass.short", defaultValue: "short")
+        case .medium:   return String(localized: "seekClass.medium", defaultValue: "medium")
+        case .long:     return String(localized: "seekClass.long", defaultValue: "long")
+        case .full:     return String(localized: "seekClass.full", defaultValue: "full stroke")
         }
     }
 }

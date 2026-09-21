@@ -25,8 +25,13 @@ struct MapZone: Equatable, Sendable {
         // Arrondi à l'unité : VoiceOver lit « 84 pour cent », une décimale n'y
         // ajouterait qu'une attente.
         let share = "\(Int((occupied * 100).rounded()))\u{00A0}%"
-        guard occupied >= Self.emptyThreshold, let dominant else { return "\(name), vide" }
-        return "\(name), \(share) occupé, surtout \(dominant.spokenContent(contiguous: dominantIsContiguous))"
+        guard occupied >= Self.emptyThreshold, let dominant else {
+            return String(localized: "mapZone.empty", defaultValue: "\(name), empty")
+        }
+        let content = dominant.spokenContent(contiguous: dominantIsContiguous)
+        return String(localized: "mapZone.description",
+                      defaultValue: "\(name), \(share) used, mostly \(content)",
+                      comment: "Une zone de la carte, dite par VoiceOver")
     }
 
     /// Découpe la carte en `count` zones de blocs consécutifs.
@@ -62,14 +67,20 @@ struct MapZone: Equatable, Sendable {
     }
 
     private static func zoneNames(_ count: Int) -> [String] {
+        let start = String(localized: "mapZone.name.start", defaultValue: "start of the disk")
+        let end = String(localized: "mapZone.name.end", defaultValue: "end of the disk")
         switch count {
-        case 1: return ["tout le disque"]
-        case 2: return ["première moitié", "seconde moitié"]
-        case 3: return ["début du disque", "milieu du disque", "fin du disque"]
-        case 4: return ["début du disque", "deuxième quart", "troisième quart", "fin du disque"]
+        case 1: return [String(localized: "mapZone.name.whole", defaultValue: "the whole disk")]
+        case 2: return [String(localized: "mapZone.name.firstHalf", defaultValue: "first half"),
+                        String(localized: "mapZone.name.secondHalf", defaultValue: "second half")]
+        case 3: return [start, String(localized: "mapZone.name.middle", defaultValue: "middle of the disk"), end]
+        case 4: return [start, String(localized: "mapZone.name.secondQuarter", defaultValue: "second quarter"),
+                        String(localized: "mapZone.name.thirdQuarter", defaultValue: "third quarter"), end]
         default:
             return (0..<count).map { index in
-                index == 0 ? "début du disque" : index == count - 1 ? "fin du disque" : "zone \(index + 1) sur \(count)"
+                index == 0 ? start : index == count - 1 ? end
+                    : String(localized: "mapZone.name.nth",
+                             defaultValue: "zone \(index + 1) of \(count)")
             }
         }
     }
@@ -80,21 +91,27 @@ extension ClusterCategory {
     /// Ce que contient une zone, dit à voix haute : « des applications rangées ».
     /// Le fichier d'échange et les tables du système de fichiers ne se rangent
     /// pas : ils ne portent pas la nuance.
+    ///
+    /// Chaque cas porte sa phrase entière, rangé et en morceaux séparément :
+    /// le français accorde l'adjectif au nom, et le coller après coup —
+    /// « rangé » + « e » + « s » — ne se traduit dans aucune autre langue.
     func spokenContent(contiguous: Bool) -> String {
-        func state(_ masculine: Bool, plural: Bool) -> String {
-            if !contiguous { return "en morceaux" }
-            return "rangé" + (masculine ? "" : "e") + (plural ? "s" : "")
-        }
-        switch self {
-        case .free:        return "de l'espace libre"
-        case .system:      return "du système \(state(true, plural: false))"
-        case .application: return "des applications \(state(false, plural: true))"
-        case .document:    return "des documents \(state(true, plural: true))"
-        case .archive:     return "de l'aide et des archives \(state(false, plural: true))"
-        case .churn:       return "des fichiers temporaires \(state(true, plural: true))"
-        case .swap:        return "le fichier d'échange"
-        case .reserved:    return "les tables du système de fichiers"
-        case .directory:   return "des répertoires \(state(true, plural: true))"
+        switch (self, contiguous) {
+        case (.free, _):        return String(localized: "mapZone.content.free", defaultValue: "free space")
+        case (.swap, _):        return String(localized: "mapZone.content.swap", defaultValue: "the page file")
+        case (.reserved, _):    return String(localized: "mapZone.content.reserved", defaultValue: "the file system tables")
+        case (.system, true):        return String(localized: "mapZone.content.system.tidy", defaultValue: "tidy system files")
+        case (.system, false):       return String(localized: "mapZone.content.system.broken", defaultValue: "system files in pieces")
+        case (.application, true):   return String(localized: "mapZone.content.application.tidy", defaultValue: "tidy applications")
+        case (.application, false):  return String(localized: "mapZone.content.application.broken", defaultValue: "applications in pieces")
+        case (.document, true):      return String(localized: "mapZone.content.document.tidy", defaultValue: "tidy documents")
+        case (.document, false):     return String(localized: "mapZone.content.document.broken", defaultValue: "documents in pieces")
+        case (.archive, true):       return String(localized: "mapZone.content.archive.tidy", defaultValue: "tidy help and archives")
+        case (.archive, false):      return String(localized: "mapZone.content.archive.broken", defaultValue: "help and archives in pieces")
+        case (.churn, true):         return String(localized: "mapZone.content.churn.tidy", defaultValue: "tidy temporary files")
+        case (.churn, false):        return String(localized: "mapZone.content.churn.broken", defaultValue: "temporary files in pieces")
+        case (.directory, true):     return String(localized: "mapZone.content.directory.tidy", defaultValue: "tidy directories")
+        case (.directory, false):    return String(localized: "mapZone.content.directory.broken", defaultValue: "directories in pieces")
         }
     }
 }

@@ -62,7 +62,7 @@ import DiskCore
 struct FrontierCompactionStrategy: DefragStrategy {
 
     let id = "frontierCompaction"
-    let label = "Tassage à la frontière"
+    let label = String(localized: "strategy.frontierCompaction", defaultValue: "Frontier compaction")
 
     /// Le même tampon que la passe de Windows 95 : l'écart de durée doit venir
     /// de l'algorithme, pas d'une mémoire plus généreuse.
@@ -89,14 +89,14 @@ struct FrontierCompactionStrategy: DefragStrategy {
     var exactFillLimit: UInt32 = 16
 
     let phases: [PhaseDescriptor] = [
-        PhaseDescriptor(id: "analyse", label: "Analyse du volume",
-                        detail: "Lecture des tables d'allocation et parcours de l'arborescence"),
-        PhaseDescriptor(id: "compact", label: "Tassage",
-                        detail: "Chaque trou comblé par un fichier qui devait bouger, sinon refermé en faisant glisser le suivant"),
-        PhaseDescriptor(id: "commit", label: "Écriture des tables d'allocation",
-                        detail: "Réécriture complète des tables et de la racine"),
-        PhaseDescriptor(id: "done", label: "Terminé",
-                        detail: "Les fichiers sont d'un seul tenant, l'espace libre est au fond du volume"),
+        PhaseDescriptor(id: "analyse", label: String(localized: "phase.analyse", defaultValue: "Analysing the volume"),
+                        detail: String(localized: "phase.analyse.fat.detail", defaultValue: "Reading the allocation tables and walking the tree")),
+        PhaseDescriptor(id: "compact", label: String(localized: "phase.compact", defaultValue: "Packing"),
+                        detail: String(localized: "phase.compact.detail", defaultValue: "Every hole filled by a file that had to move, otherwise closed by sliding the next one down")),
+        PhaseDescriptor(id: "commit", label: String(localized: "phase.commitFAT", defaultValue: "Writing the allocation tables"),
+                        detail: String(localized: "phase.commitFAT.detail", defaultValue: "Full rewrite of the tables and the root")),
+        PhaseDescriptor(id: "done", label: String(localized: "phase.done", defaultValue: "Finished"),
+                        detail: String(localized: "phase.done.frontier.detail", defaultValue: "The files are in one piece, the free space is at the far end of the volume")),
     ]
 
     // MARK: - Planification
@@ -183,10 +183,8 @@ struct FrontierCompactionStrategy: DefragStrategy {
     /// Ce qui distingue cette passe du tassage de Windows 95 : le même
     /// résultat, sans remettre le volume dans un autre ordre.
     func summary(of plan: DefragPlan) -> String {
-        String(format: "La passe tasse le volume dans l'ordre où il est déjà : %d fichiers déplacés, "
-               + "%d laissés en place, %d évacuations. Aucune écriture ne tombe sur une donnée "
-               + "encore utilisée.",
-               plan.filesMoved, plan.filesAlreadyInPlace, plan.evacuations)
+        String(localized: "summary.frontierCompaction",
+               defaultValue: "The pass packs the volume in the order it is already in: \(plan.filesMoved) files moved, \(plan.filesAlreadyInPlace) left in place, \(plan.evacuations) evacuations. No write ever lands on data that is still in use.")
     }
 }
 

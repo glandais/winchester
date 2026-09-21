@@ -22,15 +22,15 @@ enum ClusterCategory: UInt8, CaseIterable {
 
     var label: String {
         switch self {
-        case .free:        return "Libre"
-        case .system:      return "Système"
-        case .application: return "Applications"
-        case .document:    return "Documents"
-        case .archive:     return "Aide, archives"
-        case .churn:       return "Temporaires, cache"
-        case .swap:        return "Fichier d'échange"
-        case .reserved:    return "FAT, MFT, racine"
-        case .directory:   return "Répertoires"
+        case .free:        return String(localized: "category.free", defaultValue: "Free")
+        case .system:      return String(localized: "category.system", defaultValue: "System")
+        case .application: return String(localized: "category.application", defaultValue: "Applications")
+        case .document:    return String(localized: "category.document", defaultValue: "Documents")
+        case .archive:     return String(localized: "category.archive", defaultValue: "Help, archives")
+        case .churn:       return String(localized: "category.churn", defaultValue: "Temporary, cache")
+        case .swap:        return String(localized: "category.swap", defaultValue: "Page file")
+        case .reserved:    return String(localized: "category.reserved", defaultValue: "FAT, MFT, root")
+        case .directory:   return String(localized: "category.directory", defaultValue: "Directories")
         }
     }
 

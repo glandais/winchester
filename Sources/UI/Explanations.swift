@@ -25,80 +25,76 @@ enum Explanation: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .seekLaw:            return "La loi de seek"
-        case .edgeReturn:         return "Le retour au bord"
-        case .prefetch:           return "Le préchargeur"
-        case .witness:            return "Le témoin"
-        case .installation:       return "L'installation"
-        case .nextFit:            return "L'allocateur next-fit"
-        case .mftZone:            return "La zone MFT"
-        case .fragmentedVsPieces: return "Fragmentés ou en morceaux"
-        case .evacuations:        return "Les évacuations"
-        case .pagefile:           return "Le fichier d'échange"
-        case .headSound:          return "Le timbre du bras"
-        case .rotation:           return "Le ronronnement"
-        case .haptics:            return "Dans la main"
+        case .seekLaw:
+            return String(localized: "explanation.seekLaw.title", defaultValue: "The seek law")
+        case .edgeReturn:
+            return String(localized: "explanation.edgeReturn.title", defaultValue: "The return to the edge")
+        case .prefetch:
+            return String(localized: "explanation.prefetch.title", defaultValue: "The prefetcher")
+        case .witness:
+            return String(localized: "explanation.witness.title", defaultValue: "The witness")
+        case .installation:
+            return String(localized: "explanation.installation.title", defaultValue: "The installation")
+        case .nextFit:
+            return String(localized: "explanation.nextFit.title", defaultValue: "The next-fit allocator")
+        case .mftZone:
+            return String(localized: "explanation.mftZone.title", defaultValue: "The MFT zone")
+        case .fragmentedVsPieces:
+            return String(localized: "explanation.fragmentedVsPieces.title", defaultValue: "Fragmented, or in pieces")
+        case .evacuations:
+            return String(localized: "explanation.evacuations.title", defaultValue: "Evacuations")
+        case .pagefile:
+            return String(localized: "explanation.pagefile.title", defaultValue: "The page file")
+        case .headSound:
+            return String(localized: "explanation.headSound.title", defaultValue: "The timbre of the arm")
+        case .rotation:
+            return String(localized: "explanation.rotation.title", defaultValue: "The hum")
+        case .haptics:
+            return String(localized: "explanation.haptics.title", defaultValue: "In your hand")
         }
     }
 
     var text: String {
         switch self {
         case .seekLaw:
-            return "Pour les seeks courts, le temps croît comme la racine de la distance ; au-delà, il devient "
-                + "proportionnel. Deux seeks courts prennent donc plus longtemps qu'un seul de même distance "
-                + "totale, et sonnent autrement."
+            return String(localized: "explanation.seekLaw.text",
+                          defaultValue: "For short seeks, the time grows as the square root of the distance; beyond that it becomes proportional. Two short seeks therefore take longer than a single one covering the same total distance, and sound different.")
         case .edgeReturn:
-            return "Sur FAT, chaque déplacement validé réécrit les deux copies de la table d'allocation, au "
-                + "tout début de la partition, puis l'entrée du fichier dans son répertoire. Le bras revient au "
-                + "bord à peu près une fois par fichier : c'est le « clac » franc qui rythme une passe de "
-                + "Windows 95."
+            return String(localized: "explanation.edgeReturn.text",
+                          defaultValue: "On FAT, every committed move rewrites both copies of the allocation table, at the very start of the partition, then the file's entry in its directory. The arm comes back to the edge roughly once per file: that is the sharp “clack” that paces a Windows 95 pass.")
         case .prefetch:
-            return "Windows XP et Vista rangent la liste des fichiers à lire au démarrage par position sur le "
-                + "disque, et la relisent d'une seule course du bras, avec les fiches de la MFT qui les "
-                + "décrivent. Avant XP, pas de préchargeur : le bras suit l'ordre dans lequel le système "
-                + "demande ses fichiers, pas leur position."
+            return String(localized: "explanation.prefetch.text",
+                          defaultValue: "Windows XP and Vista sort the list of files read at boot by position on the disk, and read it back in a single sweep of the arm, together with the MFT records that describe them. Before XP there was no prefetcher: the arm follows the order in which the system asks for its files, not their position.")
         case .witness:
-            return "Les mêmes fichiers, chacun d'un seul tenant, tassés contre le début du volume. L'écart "
-                + "mesure ce que coûte le placement réel. Sur FAT il est presque nul ; sur NTFS, le témoin perd "
-                + "parfois."
+            return String(localized: "explanation.witness.text",
+                          defaultValue: "The same files, each in one piece, packed against the start of the volume. The gap measures what the real placement costs. On FAT it is almost nil; on NTFS, the witness sometimes loses.")
         case .installation:
-            return "Le premier jour du disque, rejoué : chaque fichier est écrit là où l'allocateur l'a posé. "
-                + "La source bride la copie — une disquette se lit à 45 Ko/s, un CD 24x à 3,6 Mo/s. Les "
-                + "installeurs extraient d'abord leurs archives et les relisent en copiant : c'est le "
-                + "va-et-vient qui crépite. Puis ils les effacent, et laissent les premiers trous. Chaque "
-                + "redémarrage relit ce qui vient d'être posé."
+            return String(localized: "explanation.installation.text",
+                          defaultValue: "The disk's first day, replayed: every file is written where the allocator put it. The source throttles the copy — a floppy reads at 45 KB/s, a 24x CD at 3.6 MB/s. Installers first extract their archives and read them back while copying: that is the back-and-forth that crackles. Then they delete them, and leave the first holes. Every restart reads back what was just laid down.")
         case .nextFit:
-            return "Sous Windows 95 et 98, VFAT et FAT32 repartent du dernier cluster alloué. Tant que ce "
-                + "curseur avance, les fichiers sont propres. Arrivé au bout du volume, il revient au début et "
-                + "comble les trous laissés des mois plus tôt : c'est là que les fichiers se hachent, par vagues. "
-                + "MS-DOS, en FAT16, sert au contraire le premier cluster libre depuis le début : chaque trou est "
-                + "rebouché aussitôt, et les fichiers récents s'éclatent en miettes."
+            return String(localized: "explanation.nextFit.text",
+                          defaultValue: "Under Windows 95 and 98, VFAT and FAT32 resume from the last allocated cluster. As long as that cursor moves forward, files stay clean. Once it reaches the end of the volume it wraps around and fills the holes left months earlier: that is where files get chopped up, in waves. MS-DOS, on FAT16, serves the first free cluster from the start instead: every hole is plugged at once, and recent files shatter into crumbs.")
         case .mftZone:
-            return "NTFS réserve 12,5 % du volume pour que sa table de fichiers puisse grandir, et n'y écrit "
-                + "qu'une fois le reste plein. Ouvrir un fichier relit sa fiche dans cette table, en tête du "
-                + "volume : sans préchargeur, cela fait deux courses du bras par fichier."
+            return String(localized: "explanation.mftZone.text",
+                          defaultValue: "NTFS reserves 12.5% of the volume so its file table can grow, and writes there only once the rest is full. Opening a file reads its record back from that table, at the head of the volume: with no prefetcher, that makes two sweeps of the arm per file.")
         case .fragmentedVsPieces:
-            return "Un fichier est « fragmenté » dès qu'il tient en deux morceaux : ramené de 40 morceaux à 2, "
-                + "il l'est encore. Le taux de fichiers fragmentés peut donc stagner pendant que le nombre de "
-                + "morceaux s'effondre. Les deux chiffres se lisent ensemble."
+            return String(localized: "explanation.fragmentedVsPieces.text",
+                          defaultValue: "A file counts as “fragmented” the moment it sits in two pieces: brought down from 40 pieces to 2, it still is. The share of fragmented files can therefore stall while the number of pieces collapses. The two figures are read together.")
         case .evacuations:
-            return "La place où doit aller un fichier est presque toujours occupée : l'occupant part d'abord "
-                + "au fond du volume, et sera redéplacé quand viendra son tour. C'est ce va-et-vient, plus que la "
-                + "quantité de données, qui fait durer une passe. Un outil qui ne déloge personne en compte zéro."
+            return String(localized: "explanation.evacuations.text",
+                          defaultValue: "The place a file has to go is nearly always taken: the occupant first leaves for the far end of the volume, and will be moved again when its turn comes. It is that back-and-forth, more than the amount of data, that makes a pass long. A tool that evicts nobody counts zero.")
         case .pagefile:
-            return "Windows l'a ouvert : le défragmenteur ne peut pas le déplacer et range tout autour. C'est "
-                + "le bloc rouge qui ne bouge jamais sur la carte."
+            return String(localized: "explanation.pagefile.text",
+                          defaultValue: "Windows has it open: the defragmenter cannot move it and tidies around it. It is the red block that never moves on the map.")
         case .headSound:
-            return "Un banc de résonateurs à fréquences fixes, vers 4,5 et 5,5 kHz : seule l'excitation varie "
-                + "avec la distance, les résonances de l'actionneur ne changent pas avec la vitesse. Deux seeks "
-                + "rapprochés ne relancent pas deux sons : ils forment un seul train, fermé par un choc."
+            return String(localized: "explanation.headSound.text",
+                          defaultValue: "A bank of fixed-frequency resonators, around 4.5 and 5.5 kHz: only the excitation varies with distance, the actuator's resonances do not change with speed. Two seeks close together do not start two sounds: they form a single train, closed by a thud.")
         case .rotation:
-            return "Le ronronnement est calculé à partir du régime, faute d'enregistrement. C'est le maillon "
-                + "faible du modèle : les projets qui sonnent juste bouclent un enregistrement réel."
+            return String(localized: "explanation.rotation.text",
+                          defaultValue: "The hum is computed from the spindle speed, for lack of a recording. It is the weak link of the model: projects that sound right start from a real recording.")
         case .haptics:
-            return "Le Taptic Engine reçoit les mêmes repères que le son : un choc au départ du bras, un "
-                + "grondement pendant sa course, un choc à l'arrivée. Les trains rapprochés deviennent une "
-                + "texture continue plutôt qu'une salve de chocs."
+            return String(localized: "explanation.haptics.text",
+                          defaultValue: "The Taptic Engine gets the same cues as the sound: a thud as the arm leaves, a rumble along its travel, a thud on arrival. Trains close together become a continuous texture rather than a burst of thuds.")
         }
     }
 
@@ -122,11 +118,16 @@ enum Explanation: String, CaseIterable, Identifiable {
     }
 
     /// Les fiches par thème, dans l'ordre des Réglages.
-    static let groups: [(title: String, topics: [Explanation])] = [
-        ("Le bras et le démarrage", [.seekLaw, .edgeReturn, .prefetch, .witness, .installation]),
-        ("Le volume", [.nextFit, .mftZone, .fragmentedVsPieces, .evacuations, .pagefile]),
-        ("Le son", [.headSound, .rotation, .haptics]),
-    ]
+    static var groups: [(title: String, topics: [Explanation])] {
+        [
+            (String(localized: "explanation.group.arm", defaultValue: "The arm and the boot"),
+             [.seekLaw, .edgeReturn, .prefetch, .witness, .installation]),
+            (String(localized: "explanation.group.volume", defaultValue: "The volume"),
+             [.nextFit, .mftZone, .fragmentedVsPieces, .evacuations, .pagefile]),
+            (String(localized: "explanation.group.sound", defaultValue: "The sound"),
+             [.headSound, .rotation, .haptics]),
+        ]
+    }
 }
 
 /// Le ⓘ posé à côté d'un chiffre. Il ouvre sa fiche, et porte lui-même la
@@ -151,7 +152,9 @@ struct WhyButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Pourquoi : \(topic.title)")
+        .accessibilityLabel(String(localized: "explanation.why",
+                                   defaultValue: "Why: \(topic.title)",
+                                   comment: "Étiquette du ⓘ posé à côté d'un chiffre"))
         .sheet(isPresented: $isPresented) {
             WhySheet(topic: topic, context: context)
         }
@@ -179,7 +182,7 @@ struct WhySheet: View {
                         }
                         ExplanationCard(topic: topic, highlighted: true)
                         if !topic.related.isEmpty {
-                            Text("VOIR AUSSI")
+                            Text("explanation.seeAlso")
                                 .font(.dynamic(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(Theme.dim)
                                 .padding(.top, 6)
@@ -193,11 +196,11 @@ struct WhySheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle("Pourquoi ça sonne comme ça ?")
+            .navigationTitle("settings.explanations.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("OK") { dismiss() }
+                    Button("common.ok") { dismiss() }
                 }
             }
         }
@@ -251,7 +254,7 @@ struct ExplanationRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(.isHeader)
-            .accessibilityValue(isOpen ? "ouverte" : "repliée")
+            .accessibilityValue(isOpen ? "common.expanded" : "common.collapsed")
             if isOpen {
                 Text(topic.text)
                     .font(.dynamic(size: 13))

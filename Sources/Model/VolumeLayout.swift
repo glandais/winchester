@@ -170,7 +170,7 @@ struct PartitionGeometry {
     ///
     /// Elle divisait par 10⁶ quand la fiche du disque divisait par 2²⁰ : le
     /// même volume s'y annonçait « 220 Mo » et « 210 Mo » (`UX_REVIEW.md` §3).
-    var capacityDescription: String { FrenchUnits.megabytes(UInt64(max(capacityBytes, 0))) }
+    var capacityDescription: String { DisplayFormat.megabytes(UInt64(max(capacityBytes, 0))) }
 }
 
 // MARK: - Ce que coûte une validation

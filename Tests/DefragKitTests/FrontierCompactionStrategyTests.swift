@@ -223,6 +223,7 @@ struct FrontierCompactionStrategyTests {
     func itIsNeverThePeriodTool() {
         #expect(DefragPlanner.strategy(for: .fat16).id == "windows95")
         #expect(DefragPlanner.strategy(for: .fat32).id == "windows95")
-        #expect(DefragPlanner.strategy(named: "frontierCompaction")?.label == "Tassage à la frontière")
+        // Hors de l'app, `String(localized:)` retombe sur la langue source.
+        #expect(DefragPlanner.strategy(named: "frontierCompaction")?.label == "Frontier compaction")
     }
 }

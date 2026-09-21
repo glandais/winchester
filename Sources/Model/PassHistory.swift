@@ -32,7 +32,8 @@ final class PassHistory: ObservableObject {
             // rien plutôt que de refuser de démarrer, et le prochain
             // enregistrement réécrira le fichier.
             digests = []
-            failure = "Les passes entendues n'ont pas pu être relues : \(error.localizedDescription)"
+            failure = String(localized: "error.history.read",
+                             defaultValue: "The passes heard could not be read back: \(error.localizedDescription)")
         }
     }
 
@@ -63,7 +64,8 @@ final class PassHistory: ObservableObject {
             try store.save(digests)
             failure = nil
         } catch {
-            failure = "La passe entendue n'a pas pu être enregistrée : \(error.localizedDescription)"
+            failure = String(localized: "error.history.save",
+                             defaultValue: "The pass heard could not be saved: \(error.localizedDescription)")
         }
     }
 
@@ -75,7 +77,8 @@ final class PassHistory: ObservableObject {
             try store.save([])
             failure = nil
         } catch {
-            failure = "L'historique n'a pas pu être effacé : \(error.localizedDescription)"
+            failure = String(localized: "error.history.clear",
+                             defaultValue: "The history could not be cleared: \(error.localizedDescription)")
         }
     }
 

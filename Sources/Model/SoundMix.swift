@@ -33,9 +33,9 @@ struct SoundMix: Codable, Equatable, Sendable {
 
         var label: String {
             switch self {
-            case .headphones:  return "Casque"
-            case .speaker:     return "Haut-parleur"
-            case .hapticsOnly: return "Vibrations seules"
+            case .headphones:  return String(localized: "sound.preset.headphones", defaultValue: "Headphones")
+            case .speaker:     return String(localized: "sound.preset.speaker", defaultValue: "Speaker")
+            case .hapticsOnly: return String(localized: "sound.preset.hapticsOnly", defaultValue: "Haptics only")
             }
         }
 

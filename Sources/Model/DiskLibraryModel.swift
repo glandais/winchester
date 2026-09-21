@@ -89,14 +89,17 @@ final class DiskLibraryModel: ObservableObject {
     init(store: CustomDiskStore = .standard()) {
         self.store = store
         do {
-            scenarios = try ScenarioLibrary.loadAll()
+            // Traduits une fois, au chargement : tout ce qui suit en hérite.
+            scenarios = try ScenarioLibrary.loadAll().map { $0.localized() }
         } catch {
-            state = .failed("scénarios illisibles : \(error)")
+            state = .failed(String(localized: "error.scenariosUnreadable",
+                                   defaultValue: "scenarios unreadable: \(error)"))
         }
         do {
             customs = try store.load()
         } catch {
-            storeFailure = "Mes disques n'ont pas pu être relus : \(error.localizedDescription)"
+            storeFailure = String(localized: "error.myDisks.read",
+                                  defaultValue: "My disks could not be read back: \(error.localizedDescription)")
         }
     }
 
@@ -160,7 +163,8 @@ final class DiskLibraryModel: ObservableObject {
             try store.save(customs)
             storeFailure = nil
         } catch {
-            storeFailure = "Mes disques n'ont pas pu être enregistrés : \(error.localizedDescription)"
+            storeFailure = String(localized: "error.myDisks.save",
+                                  defaultValue: "My disks could not be saved: \(error.localizedDescription)")
         }
     }
 

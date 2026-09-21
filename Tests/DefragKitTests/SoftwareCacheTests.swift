@@ -53,7 +53,10 @@ struct SoftwareCacheTests {
         #expect(before.contains { $0.sectorCount % SmartDrive.elementSectors != 0 })
         let report = try #require(plan.softwareCache)
         #expect(report.hasPrefix("SMARTDRV"))
-        let served = Int(report.split(separator: " ")[2]) ?? 0
+        // Le premier nombre du rapport, quelle que soit la langue : le compte
+        // des éléments servis ne tient plus à la position d'un mot.
+        let served = Int(report.split(whereSeparator: { !$0.isNumber })
+            .first.map(String.init) ?? "") ?? 0
         #expect(served > 0, "\(report)")
     }
 
