@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  HÉROS — le texte en haut, l'appareil qui sort par le bas.
+  Le titre possède le haut de la toile (~27 %), l'appareil le reste et déborde du bord
+  inférieur : on voit le haut de l'écran, là où l'app met ce qui compte. Derrière lui,
+  une nappe de clusters estompée, la carte du volume en fond.
+  Un gabarit pour les deux toiles : iPhone 1242 x 2688 (iPhone6_5) et iPad 2048 x 2732
+  (iPadPro12_9). La seconde, presque carrée, est reconnue par `min-aspect-ratio` et y
+  reprend ses tailles : en vw, un titre d'iPhone serait deux fois trop gros sur l'iPad.
+-->
+<style>
+  /* La palette de l'app (Sources/UI/Theme.swift) : le fond presque noir, les
+     panneaux, l'ambre de la lecture et le turquoise de l'écriture — les deux
+     couleurs que la carte allume à l'instant où l'on entend le bras. */
+  :root {
+    --bg: #0E0F12; --panel: #191B20; --read: #FFB347; --write: #5CD1D1;
+    --text: #EBEBEB;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 100vw; height: 100vh; overflow: hidden; position: relative;
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 {
+    font-weight: 800; color: #FFFFFF; line-height: 1.04; letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+  p {
+    font-weight: 400; color: rgba(235,235,235,0.72); line-height: 1.3; text-wrap: balance;
+  }
+  /* Le motif de l'icône : une rangée de clusters, rangés d'abord, puis un trou,
+     un fragment, du libre. Il tient lieu de filet entre le titre et le texte. */
+  .blocks { display: flex; gap: 1.1vw; }
+  .blocks i { display: block; width: 3.2vw; height: 3.2vw; border-radius: 0.7vw; background: #2563EB; }
+  .blocks i:nth-child(2) { background: #3B82F6; }
+  .blocks i:nth-child(3) { background: #60A5FA; }
+  .blocks i:nth-child(4) { background: #1E2438; }
+  .blocks i:nth-child(5) { background: var(--read); }
+  .blocks i:nth-child(6) { background: #60A5FA; }
+  .blocks i:nth-child(7) { background: #1E2438; }
+  .blocks i:nth-child(8) { background: var(--write); }
+  @media (min-aspect-ratio: 3/5) {
+    .blocks { gap: 0.7vw; }
+    .blocks i { width: 2vw; height: 2vw; border-radius: 0.45vw; }
+  }
+
+  .field {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(90% 55% at 50% 78%, rgba(92,209,209,0.20), rgba(92,209,209,0) 70%),
+      radial-gradient(70% 40% at 15% 8%, rgba(255,179,71,0.16), rgba(255,179,71,0) 70%);
+  }
+  /* Une grille de clusters, très sombre : la matière même de l'app. */
+  .grid {
+    position: absolute; inset: 0; opacity: 0.55;
+    background-image:
+      linear-gradient(90deg, var(--bg) 0.6vw, transparent 0.6vw),
+      linear-gradient(0deg, var(--bg) 0.6vw, transparent 0.6vw),
+      linear-gradient(180deg, #1B2135 0%, #141824 45%, var(--bg) 70%);
+    background-size: 4.6vw 4.6vw, 4.6vw 4.6vw, 100% 100%;
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,0.2) 55%, transparent 75%);
+  }
+  .copy { position: absolute; top: 6%; left: 7%; right: 7%; z-index: 3; }
+  .copy .blocks { margin: 2.8vh 0 2.6vh; }
+  .device { position: absolute; bottom: -13%; left: 50%; transform: translateX(-50%); z-index: 2; }
+  .device img { display: block; width: 84vw; height: auto; filter: drop-shadow(0 40px 90px rgba(0,0,0,0.8)); }
+  @media (min-aspect-ratio: 3/5) {
+    .copy { top: 5.5%; left: 9%; right: 9%; }
+    .copy .blocks { margin: 2.2vh 0 2vh; }
+    .device { bottom: -21%; }
+    .device img { width: auto; height: 86vh; }
+  }
+</style>
+</head>
+<body>
+  <div class="field"></div>
+  <div class="grid"></div>
+  <div class="copy" data-fit-budget="27" data-fit-budget-ipad="27"
+       data-fit-start="11.2" data-fit-min="9.4" data-fit-sub="4.9" data-fit-sub-min="4.4"
+       data-fit-start-ipad="8.4" data-fit-min-ipad="7" data-fit-sub-ipad="3.7" data-fit-sub-min-ipad="3.2">
+    <h1 data-kou-id="headline" data-kou-role="headline">{{headline}}</h1>
+    <div class="blocks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <p data-kou-id="subtitle" data-kou-role="supporting">{{subtitle}}</p>
+  </div>
+  <div class="device"><img data-kou-id="device" data-kou-role="device" src="{{app_screenshot}}" alt=""></div>
+<script>
+/* Ajustement du texte. Un gabarit sert deux langues, et le français court 15 à
+   30 % plus long que l'anglais d'où il vient : le bloc de texte déclare la part
+   de la toile qu'il possède (data-fit-budget, en % de la hauteur), et ce script
+   réduit le titre, puis le sous-titre, jusqu'à ce qu'il y tienne. L'anglais ne
+   bouge pas. La largeur compte aussi : un mot trop long pour la ligne déborde
+   sans que la hauteur le voie. Les tailles de départ et plancher sont en vw, et
+   l'iPad déclare les siennes (data-fit-*-ipad). */
+(function () {
+  var box = document.querySelector('[data-fit-budget]');
+  if (!box) return;
+  var ipad = window.innerWidth / window.innerHeight > 0.6;
+  var d = function (k) { return parseFloat(box.dataset[ipad ? k + 'Ipad' : k] || box.dataset[k]); };
+  var budget = d('fitBudget') / 100 * window.innerHeight;
+  var h1 = box.querySelector('h1'), p = box.querySelector('p');
+  var size = d('fitStart'), min = d('fitMin'), sub = d('fitSub'), subMin = d('fitSubMin');
+  h1.style.fontSize = size + 'vw';
+  if (p) p.style.fontSize = sub + 'vw';
+  var over = function () {
+    return box.getBoundingClientRect().height > budget ||
+           h1.scrollWidth > h1.clientWidth ||
+           (p && p.scrollWidth > p.clientWidth);
+  };
+  while (over() && size > min) { size -= 0.15; h1.style.fontSize = size.toFixed(2) + 'vw'; }
+  if (p) { while (over() && sub > subMin) { sub -= 0.1; p.style.fontSize = sub.toFixed(2) + 'vw'; } }
+})();
+</script>
+</body>
+</html>

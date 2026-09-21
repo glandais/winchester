@@ -573,3 +573,39 @@ struct PlaybackInterruption: Equatable {
         }
     }
 }
+
+#if SCREENSHOTS
+// MARK: - Mode capture
+
+extension WinchesterEngine {
+
+    /// Avance la passe jusqu'à `target` sans la jouer, pour que la capture la
+    /// montre en plein travail et non à sa première seconde.
+    ///
+    /// L'écoute avance par demi-secondes, comme le ferait l'horloge : la carte
+    /// et le cumul par phase supposent qu'on n'avance jamais d'une minute d'un
+    /// coup. Le producteur ne prend que huit secondes d'avance ; quand il n'en
+    /// a plus, on lui laisse le temps d'en reprendre. Les repères dépassés sont
+    /// jetés sans être rendus. Ici seulement parce que l'horloge est privée.
+    func fastForward(to target: Double) async {
+        pause()
+        var time = currentTime
+        while time < target, let feed {
+            feed.update(now: time)
+            if let end = feed.endTime, time >= end { break }
+            guard feed.endTime != nil || feed.cueWatermark >= time + 1 else {
+                try? await Task.sleep(for: .milliseconds(5))
+                continue
+            }
+            let next = min(target, time + 0.5)
+            _ = feed.takeCues(before: next)
+            time = next
+        }
+        feed?.update(now: time)
+        timelineOffset = time
+        currentTime = time
+        // La passe tourne déjà depuis longtemps : le plateau est à son régime.
+        spindle.snap(to: 1)
+    }
+}
+#endif

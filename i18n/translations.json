@@ -5521,6 +5521,121 @@
           }
         }
       }
+    },
+    "Koubou": {
+      "path": "screenshots/koubou/koubou-strings.xcstrings",
+      "sourceLanguage": "en-US",
+      "version": "1.0",
+      "keys": {
+        "Disks with a life already lived": {
+          "translations": {
+            "en-US": "Disks with a life already lived",
+            "fr-FR": {
+              "value": "Des disques qui ont déjà vécu",
+              "state": "translated"
+            }
+          }
+        },
+        "Every block lights up the instant its write is heard.": {
+          "translations": {
+            "en-US": "Every block lights up the instant its write is heard.",
+            "fr-FR": {
+              "value": "Chaque bloc s'allume à l'instant où l'on entend son écriture.",
+              "state": "translated"
+            }
+          }
+        },
+        "Every millisecond accounted for": {
+          "translations": {
+            "en-US": "Every millisecond accounted for",
+            "fr-FR": {
+              "value": "Chaque milliseconde comptée",
+              "state": "translated"
+            }
+          }
+        },
+        "Every seek computed, not sampled": {
+          "translations": {
+            "en-US": "Every seek computed, not sampled",
+            "fr-FR": {
+              "value": "Chaque seek calculé, pas enregistré",
+              "state": "translated"
+            }
+          }
+        },
+        "Hear a hard disk tidy itself": {
+          "translations": {
+            "en-US": "Hear a hard disk tidy itself",
+            "fr-FR": {
+              "value": "Écoutez un disque se ranger",
+              "state": "translated"
+            }
+          }
+        },
+        "Period defragmenters, each its own way": {
+          "translations": {
+            "en-US": "Period defragmenters, each its own way",
+            "fr-FR": {
+              "value": "Des défragmenteurs d'époque, chacun sa méthode",
+              "state": "translated"
+            }
+          }
+        },
+        "Rotation, head, latency: a 1990s drive, sector by sector.": {
+          "translations": {
+            "en-US": "Rotation, head, latency: a 1990s drive, sector by sector.",
+            "fr-FR": {
+              "value": "Rotation, tête, latence : un disque des années 90, secteur par secteur.",
+              "state": "translated"
+            }
+          }
+        },
+        "Run two on the same disk and compare the reports.": {
+          "translations": {
+            "en-US": "Run two on the same disk and compare the reports.",
+            "fr-FR": {
+              "value": "Lancez-en deux sur le même disque et comparez les bilans.",
+              "state": "translated"
+            }
+          }
+        },
+        "Seek, rotation, transfer: see where the time goes.": {
+          "translations": {
+            "en-US": "Seek, rotation, transfer: see where the time goes.",
+            "fr-FR": {
+              "value": "Seek, rotation, transfert : voyez où passe le temps.",
+              "state": "translated"
+            }
+          }
+        },
+        "The arm travels from cylinder to cylinder, and you hear how far.": {
+          "translations": {
+            "en-US": "The arm travels from cylinder to cylinder, and you hear how far.",
+            "fr-FR": {
+              "value": "Le bras va de cylindre en cylindre, et la distance s'entend.",
+              "state": "translated"
+            }
+          }
+        },
+        "Twenty period disks, 1993 to 2007, filled day after day.": {
+          "translations": {
+            "en-US": "Twenty period disks, 1993 to 2007, filled day after day.",
+            "fr-FR": {
+              "value": "Vingt disques d'époque, de 1993 à 2007, remplis jour après jour.",
+              "state": "translated"
+            }
+          }
+        },
+        "Watch the arm cross the platter": {
+          "translations": {
+            "en-US": "Watch the arm cross the platter",
+            "fr-FR": {
+              "value": "Suivez le bras sur le plateau",
+              "state": "translated"
+            }
+          }
+        }
+      }
     }
   },
   "metadata": {

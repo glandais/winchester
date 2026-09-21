@@ -13,6 +13,16 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+# `Screenshots` est un clone de Debug qui ne s'en distingue que par la
+# condition SCREENSHOTS : le mode capture (`Sources/Screenshots/`) et ses
+# points d'accroche vivent sous `#if SCREENSHOTS`, si bien que rien n'en entre
+# dans le binaire archivé. Debug et Release doivent être nommés aussi — déclarer
+# `configs` remplace la paire implicite d'XcodeGen.
+configs:
+  Debug: debug
+  Screenshots: debug
+  Release: release
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -25,6 +35,9 @@ settings:
     CURRENT_PROJECT_VERSION: "2"
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+  configs:
+    Screenshots:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG SCREENSHOTS"
 
 packages:
   DiskCore:
@@ -68,3 +81,30 @@ targets:
         # Fait écrire un .stringsdata par tranche d'architecture, d'où
         # `./scripts/xcb.sh strings` tire les clés nouvelles du catalogue.
         SWIFT_EMIT_LOC_STRINGS: "YES"
+
+schemes:
+  Winchester:
+    build:
+      targets:
+        Winchester: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  # Pour `scripts/screenshots.sh` seulement ; ne jamais archiver avec celui-ci.
+  Winchester-Screenshots:
+    build:
+      targets:
+        Winchester: [run, build]
+    run:
+      config: Screenshots
+    profile:
+      config: Screenshots
+    analyze:
+      config: Screenshots
+    archive:
+      config: Screenshots

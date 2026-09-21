@@ -1668,6 +1668,8 @@ Sources/Haptics/
     DiskHaptics.swift      Core Haptics : motifs de seek, texture des trains
 Sources/UI/                SwiftUI : plateau, carte des clusters, chronologie,
                            transport, mixage
+Sources/Screenshots/       mode capture de l'App Store, compilé seulement dans
+                           la configuration Screenshots
 Tools/RenderTrace/         rendu hors-ligne en WAV
 Tools/RenderVideo/         rendu hors-ligne en vidéo : carte, plateau, bilan
 Tools/Shared/              scénario demandé, mixage en flux et bilan, communs
@@ -1675,6 +1677,9 @@ Tools/Shared/              scénario demandé, mixage en flux et bilan, communs
 Tools/make-videos.sh       le lot de vidéos décrit dans Tools/videos.txt
 Tools/Measure/             mesurer un chantier : un binaire par étape, les
                            bilans en parallèle, comparaisons, tables du README
+scripts/screenshots.sh     captures de l'App Store, iPhone et iPad
+screenshots/               cadrage Koubou, assemblage, et les cartes envoyées
+                           (voir screenshots/README.md)
 ```
 
 ## Journal de bord

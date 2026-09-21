@@ -8,6 +8,7 @@
 Ce qu'il couvre, en anglais et en français :
 
   * `Sources/Resources/Localizable.xcstrings`  — les écrans
+  * `screenshots/koubou/koubou-strings.xcstrings` — les titres des captures du store
   * `metadata/app-info/<locale>.json`          — nom, sous-titre et adresses du store
   * `metadata/version/<version>/<locale>.json` — description, mots-clés, nouveautés
 
@@ -21,6 +22,11 @@ Une clé dont le nom est une phrase française est une chaîne **pas encore
 migrée** : `xcstringstool` l'a extraite du code telle quelle. Le registre de ce
 qui reste à traduire, c'est donc le catalogue lui-même — voir la section
 « Traduction » de `CLAUDE.md`.
+
+Les clés du catalogue Koubou sont la phrase anglaise elle-même : c'est ainsi que
+Koubou retrouve la traduction d'une variable de `screenshots/koubou/*.yaml`. Elles
+échappent donc à la règle des noms pointés, et `check` vérifie à la place que chaque
+variable des deux configurations est une clé du catalogue, et qu'elles concordent.
 
 Volontairement hors champ, parce qu'anglais par nature :
 `metadata/review-notes.md` et `metadata/app-privacy.json` (aucune prose).
@@ -37,7 +43,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 RESOURCES = ROOT / "Sources" / "Resources"
 
-CATALOGS = {"Localizable": RESOURCES / "Localizable.xcstrings"}
+CATALOGS = {
+    "Localizable": RESOURCES / "Localizable.xcstrings",
+    "Koubou": ROOT / "screenshots" / "koubou" / "koubou-strings.xcstrings",
+}
+# Les configurations Koubou dont les variables sont les clés du catalogue du même nom.
+KOUBOU_CONFIGS = sorted((ROOT / "screenshots" / "koubou").glob("[!.]*.yaml"))
 METADATA = ROOT / "metadata"
 DEFAULT_JSON = ROOT / "i18n" / "translations.json"
 
@@ -216,8 +227,8 @@ def build_export() -> dict:
     # été migrée. La chaîne vide n'en est pas une — c'est l'indice
     # d'accessibilité absent de `accessibilityHint(… : "")`.
     dotted = re.compile(r"^[a-z][A-Za-z0-9-]*(\.[A-Za-z0-9-]+)+$")
-    pending = sorted(k for t in tables.values() for k in t["keys"]
-                     if k and not dotted.match(k))
+    pending = sorted(k for name, t in tables.items() if name != "Koubou"
+                     for k in t["keys"] if k and not dotted.match(k))
     return {
         "generatedBy": "scripts/i18n.py export",
         "languages": languages,
@@ -260,9 +271,37 @@ def cmd_import(args) -> int:
     return 0
 
 
+def koubou_variables(path: Path) -> dict:
+    import yaml
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return {card: dict(spec.get("variables", {}))
+            for card, spec in config.get("screenshots", {}).items()}
+
+
+def check_koubou(keys: set) -> bool:
+    """Chaque variable est une clé du catalogue, et l'iPhone dit ce que dit l'iPad."""
+    ok = True
+    configs = [p for p in KOUBOU_CONFIGS if not p.name.endswith(".local.yaml")]
+    seen = {p.name: koubou_variables(p) for p in configs}
+    for name, cards in seen.items():
+        for card, variables in cards.items():
+            for var, value in variables.items():
+                if value not in keys:
+                    ok = False
+                    print(f"{name} : {card}.{var} n'est pas une clé du catalogue Koubou",
+                          file=sys.stderr)
+    if len({json.dumps(c, sort_keys=True) for c in seen.values()}) > 1:
+        ok = False
+        print(f"{', '.join(seen)} : les variables divergent — un titre se change "
+              f"dans toutes les configurations", file=sys.stderr)
+    if ok and seen:
+        print(f"screenshots/koubou/ : {len(seen)} configurations, variables toutes au catalogue")
+    return ok
+
+
 def cmd_check(args) -> int:
     data = build_export()
-    ok = True
+    ok = check_koubou(set(data["tables"]["Koubou"]["keys"]))
     for name, table in data["tables"].items():
         path = ROOT / table["path"]
         after = dump_catalog(decode_catalog(table), catalog_style(path))

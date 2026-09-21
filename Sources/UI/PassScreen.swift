@@ -17,7 +17,13 @@ struct SimulatorScreen: View {
     @ObservedObject var model: SimulationModel
     @StateObject private var clock: ClockRelay
     @State private var showsFullScreenMap = false
-    @State private var view: View_ = .map
+    @State private var view: View_ = {
+        #if SCREENSHOTS
+        return ScreenshotMode.isActive && ScreenshotMode.screen == .platter ? .platter : .map
+        #else
+        return .map
+        #endif
+    }()
     @State private var report: PassRecord?
     @State private var showsSound = false
     @State private var showsAmbient = false
@@ -101,6 +107,15 @@ struct SimulatorScreen: View {
         .sheet(isPresented: $showsSound) { SoundSheet(engine: engine) }
         .fullScreenCover(isPresented: $showsAmbient) { AmbientScreen(model: model) }
         .onAppear { clock.isRelaying = isVisible && !isCovered }
+        #if SCREENSHOTS
+        .task {
+            // Le plein écran s'ouvre une fois l'écran posé : présenté dès
+            // l'initialisation, il arrive avant que la passe soit avancée.
+            guard ScreenshotMode.isActive, ScreenshotMode.screen == .fullmap else { return }
+            try? await Task.sleep(for: .seconds(1))
+            showsFullScreenMap = true
+        }
+        #endif
         .onChange(of: isVisible) { _, visible in
             clock.isRelaying = visible && !isCovered
         }

@@ -31,6 +31,10 @@ struct DiskLibraryView: View {
 
     @State private var handoverFailure: String?
     @State private var showsTools = false
+    #if SCREENSHOTS
+    /// Le choix de l'outil ne s'ouvre qu'une fois, sur le disque de la capture.
+    @State private var stagedTools = false
+    #endif
     @State private var showsFullScreenMap = false
     @State private var showsDetails = false
     /// La carte montrée : celle du volume vieilli, ou celle qu'un outil a
@@ -60,6 +64,13 @@ struct DiskLibraryView: View {
                 failure(message)
             }
         }
+        #if SCREENSHOTS
+        .onChange(of: model.state.disk != nil) { _, ready in
+            guard ready, !stagedTools, ScreenshotMode.isActive, ScreenshotMode.screen == .tools else { return }
+            stagedTools = true
+            showsTools = true
+        }
+        #endif
         .navigationDestination(isPresented: $showsTools) {
             if let disk = model.state.disk {
                 DefragToolChoiceScreen(disk: disk) { disk, activity, strategy in

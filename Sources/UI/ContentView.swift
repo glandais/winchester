@@ -17,10 +17,16 @@ enum AppTab: Hashable {
 struct ContentView: View {
     @StateObject private var model = SimulationModel()
     @StateObject private var library = DiskLibraryModel()
-    @State private var tab: AppTab = .disks
+    @State private var tab: AppTab = .launch
     /// La pile de l'onglet Disques. Tenue ici parce que la Passe y pousse la
     /// fiche du disque qu'on écoute : son titre y mène (`UX_REVIEW.md` §2.4).
-    @State private var disksPath: [String] = []
+    @State private var disksPath: [String] = {
+        #if SCREENSHOTS
+        return ScreenshotMode.isActive ? ScreenshotMode.disksPath : []
+        #else
+        return []
+        #endif
+    }()
     @State private var nowPlaying: NowPlaying?
     @AppStorage(OnboardingView.seenKey) private var onboardingSeen = false
     /// Quand l'app est passée en arrière-plan, pour savoir au retour si l'absence
@@ -81,6 +87,9 @@ struct ContentView: View {
         .onAppear {
             if nowPlaying == nil { nowPlaying = NowPlaying(model: model) }
         }
+        #if SCREENSHOTS
+        .task { if ScreenshotMode.isActive { await ScreenshotMode.stage(model, library: library) } }
+        #endif
         // L'accueil ne se montre qu'une fois ; il se referme sur les disques,
         // où sont les deux démos prêtes à écouter.
         .fullScreenCover(isPresented: Binding(get: { !onboardingSeen }, set: { onboardingSeen = !$0 })) {

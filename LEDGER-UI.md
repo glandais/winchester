@@ -1489,3 +1489,98 @@ l'élément présenté qui le porte désormais.
 - **Le défilement ne survit pas au lancement**, seulement à son plein écran.
   Garder une vie en cours demanderait de sérialiser son état de rejeu, ce qui
   n'est pas le même travail que garder un résumé de passe.
+
+## Chantier 31 — les captures de l'App Store
+
+Branche `captures`, sur le modèle de `../whereiwas`.
+
+### Le problème
+
+La fiche App Store Connect était prête (métadonnées, classification, tarif,
+confidentialité), et `asc validate` ne remontait plus qu'une erreur : aucune
+capture. L'app vise l'iPhone et l'iPad, si bien qu'il en faut deux jeux —
+`IPHONE_65` et `IPAD_PRO_3GEN_129` — dans les deux langues. Des captures
+faites à la main se refont à la main à chaque changement d'écran ; aucune
+n'existait encore, et il n'y avait pas de simulateur iPad sur la machine.
+
+Ce qui rendait l'exercice propre à Winchester : une passe **ne se rembobine
+pas**. Elle se calcule pendant qu'on l'écoute, huit secondes d'avance au plus,
+et l'écran ne connaît que son présent. Une capture à la première seconde montre
+une carte immobile à 0 % ; attendre deux minutes et demie par capture en
+coûterait une heure pour vingt-quatre fichiers.
+
+### Les décisions
+
+- **Une configuration `Screenshots`**, clone de Debug avec la condition
+  `SCREENSHOTS`, et son schéma `Winchester-Screenshots`, comme dans
+  whereiwas. Le mode capture (`Sources/Screenshots/ScreenshotMode.swift`) et
+  ses points d'accroche vivent sous `#if SCREENSHOTS` : la configuration
+  Release n'a aucune condition active, vérifié par `-showBuildSettings`.
+- **Un lancement par capture, sans tap** : `-screenshotScreen` choisit l'onglet,
+  la vue de la passe, le plein écran, la fiche ou le choix de l'outil. Rien ne
+  dépend d'un libellé, et `axe` — dont le tap par défaut n'arrive plus à l'app
+  depuis Xcode 27 — n'intervient pas.
+- **Avancer la passe sans la jouer** : `WinchesterEngine.fastForward(to:)`
+  pousse l'écoute par demi-secondes, en laissant au producteur le temps de
+  reprendre son avance, et jette les repères dépassés. Par demi-secondes parce
+  que la carte et le cumul par phase supposent qu'on n'avance jamais d'une
+  minute d'un coup. Puis la passe joue, **muette** : sans quoi chaque capture
+  sortait par les haut-parleurs du Mac. 150 s sur la démo de défragmentation,
+  la frontière au milieu du volume.
+- **Un témoin plutôt qu'un délai** : l'app écrit `tmp/screenshot-ready` dans son
+  conteneur une fois la passe avancée — et, pour la fiche et le choix de
+  l'outil, une fois « Famille, 1999 » fabriqué. Le premier passage attendait
+  seulement la passe : la carte française du choix de l'outil a montré la barre
+  de « Fabrication du volume », 6,4 Go se fabriquant plus lentement que la démo
+  ne s'avance.
+- **L'iPad, créé pour l'occasion** (`iPad Pro 13-inch (M4)`, iOS 26.5) : M4 et
+  non M5 parce que c'est le cadre que Koubou connaît, à la même définition. Il
+  est déclaré dans `sim-config.sh` à côté de l'iPhone. Le script éteint tout
+  autre simulateur avant de le démarrer, l'éteint à la fin même sur une erreur,
+  et rallume l'iPhone s'il l'était. La première version rendait « l'état
+  d'avant » : l'iPad, trouvé démarré sans qu'on sache par qui, a été rallumé,
+  et deux simulateurs tournaient. Seul l'iPhone du dépôt est désormais rallumé.
+- **La langue du système suit le jeu** : l'iPad écrit la date dans sa barre
+  d'état, et l'écrivait « Lundi 21 septembre » sous les captures anglaises.
+  Même remède que whereiwas (`defaults write -g`, redémarrage de SpringBoard,
+  restitution à la fin). L'heure est forcée à 9:41 : aucun écran ne dit l'heure.
+- **Un conteneur neuf par appareil** (désinstaller, réinstaller) : ni historique
+  ni disques construits, rien de ce qu'on a écouté sur le simulateur.
+- **Six cartes, quatre compositions, un seul jeu de gabarits** pour les deux
+  toiles, l'iPad reconnu par `min-aspect-ratio`. La direction vient de l'app :
+  fond presque noir, ambre de la lecture, turquoise de l'écriture, la rangée de
+  clusters de l'icône en filet. La carte plein écran ouvre, parce que c'est
+  l'image qu'aucune autre app n'a. Aucun titre ne nomme un produit d'une autre
+  société (directive 2.3.7).
+- **Les titres passent par `i18n/translations.json`**, table `Koubou`. Ses clés
+  sont la phrase anglaise — c'est ainsi que Koubou retrouve une traduction —,
+  donc exclues du compte `notYetMigrated` ; `i18n.py check` vérifie à la place
+  que chaque variable des deux configurations est une clé, et qu'elles
+  concordent. Koubou relit le catalogue sans le réécrire : l'aller-retour reste
+  exact à l'octet.
+
+### Ce qui valide
+
+- `./scripts/screenshots.sh` : vingt-quatre captures, deux passages complets,
+  aucune capture en double, formes conformes. Environ une minute par jeu de six
+  sur l'iPhone, deux sur l'iPad. Un seul simulateur démarré à la fin.
+- `./screenshots/assemble.sh` : vingt-quatre cartes aux dimensions exactes,
+  sans alpha, et `asc screenshots validate` passe sur les quatre dossiers.
+- Relecture visuelle des vingt-quatre cartes : sur l'iPad, le premier rendu
+  laissait l'appareil mordre sur le sous-titre, corrigé.
+- `swift test` : 289 tests, rien de touché dans le noyau ni dans le modèle.
+- `./scripts/i18n.py check` : aller-retour exact pour le catalogue de l'app, celui
+  de Koubou et les métadonnées.
+
+### Laissé ouvert
+
+- **Rien n'est encore envoyé** : l'envoi (`asc screenshots upload`, par locale et
+  par type) attend qu'on ait relu les cartes.
+- **L'app n'a pas de mise en page iPad** : ses textes gardent leur taille
+  d'iPhone sur un écran deux fois plus large, et les cartes iPad le montrent —
+  lisibles une fois agrandies, petites en vignette. Le gabarit du choix de
+  l'outil grossit la capture de 28 % pour compenser ; les autres ne le peuvent
+  pas sans couper l'écran.
+- **Le plateau montre la position du bras à l'instant capturé** : le cylindre
+  change d'un jeu à l'autre (0, 284, 1 144…), puisque la passe joue. Rien
+  d'inexact, mais les deux langues ne montrent pas exactement le même instant.

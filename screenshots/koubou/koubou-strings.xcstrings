@@ -1,0 +1,198 @@
+{
+  "sourceLanguage": "en-US",
+  "strings": {
+    "Disks with a life already lived": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disks with a life already lived"
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Des disques qui ont déjà vécu"
+          }
+        }
+      }
+    },
+    "Every block lights up the instant its write is heard.": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every block lights up the instant its write is heard."
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque bloc s'allume à l'instant où l'on entend son écriture."
+          }
+        }
+      }
+    },
+    "Every millisecond accounted for": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every millisecond accounted for"
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque milliseconde comptée"
+          }
+        }
+      }
+    },
+    "Every seek computed, not sampled": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every seek computed, not sampled"
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque seek calculé, pas enregistré"
+          }
+        }
+      }
+    },
+    "Hear a hard disk tidy itself": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hear a hard disk tidy itself"
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Écoutez un disque se ranger"
+          }
+        }
+      }
+    },
+    "Period defragmenters, each its own way": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Period defragmenters, each its own way"
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Des défragmenteurs d'époque, chacun sa méthode"
+          }
+        }
+      }
+    },
+    "Rotation, head, latency: a 1990s drive, sector by sector.": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rotation, head, latency: a 1990s drive, sector by sector."
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rotation, tête, latence : un disque des années 90, secteur par secteur."
+          }
+        }
+      }
+    },
+    "Run two on the same disk and compare the reports.": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run two on the same disk and compare the reports."
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lancez-en deux sur le même disque et comparez les bilans."
+          }
+        }
+      }
+    },
+    "Seek, rotation, transfer: see where the time goes.": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seek, rotation, transfer: see where the time goes."
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seek, rotation, transfert : voyez où passe le temps."
+          }
+        }
+      }
+    },
+    "The arm travels from cylinder to cylinder, and you hear how far.": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The arm travels from cylinder to cylinder, and you hear how far."
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le bras va de cylindre en cylindre, et la distance s'entend."
+          }
+        }
+      }
+    },
+    "Twenty period disks, 1993 to 2007, filled day after day.": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twenty period disks, 1993 to 2007, filled day after day."
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vingt disques d'époque, de 1993 à 2007, remplis jour après jour."
+          }
+        }
+      }
+    },
+    "Watch the arm cross the platter": {
+      "localizations": {
+        "en-US": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch the arm cross the platter"
+          }
+        },
+        "fr-FR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suivez le bras sur le plateau"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

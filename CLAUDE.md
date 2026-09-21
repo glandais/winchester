@@ -43,6 +43,11 @@ cette machine : `WINCHESTER_SIM_DEVICE` bascule dessus pour une session entière
 — exporté dans l'environnement, pas préfixé sur une commande, sinon le hook ne
 le voit pas. `WINCHESTER_DERIVED_DATA` déplace le dossier de construction.
 
+Un `iPad Pro 13-inch (M4)` (iOS 26.5, `IPAD_DEVICE` dans le même fichier)
+n'existe que pour les captures de l'App Store : seul `scripts/screenshots.sh`
+le démarre, après avoir éteint tout autre simulateur, et l'éteint en partant
+en rallumant l'iPhone. Ne pas le démarrer à la main.
+
 Le schéma construit en **Debug** ; `xcb.sh run` installe le produit par son
 chemin explicite. Un `Release-iphonesimulator/` périmé traîne dans le même
 dossier, et un `find … | head -1` tombe dessus : on installe alors un binaire
@@ -318,7 +323,27 @@ confidentialité doit suivre `Sources/Resources/PrivacyInfo.xcprivacy` et
 `metadata/app-privacy.json` — une donnée gardée de plus, une autorisation, un
 accès réseau, et elle change avec sa date d'effet.
 
+### Captures
+
+Trois temps, tous scriptés, décrits dans `screenshots/README.md` :
+
+```bash
+./scripts/screenshots.sh                     # captures brutes, iPhone et iPad, en et fr
+kou generate screenshots/koubou/iphone.yaml  # cartes Koubou (cadre, titre)
+kou generate screenshots/koubou/ipad.yaml
+./screenshots/assemble.sh                    # -> screenshots/IPHONE_65/ et IPAD_PRO_3GEN_129/
+```
+
+La configuration **`Screenshots`** (un Debug avec la condition `SCREENSHOTS`) et
+son schéma `Winchester-Screenshots` sont les seuls à compiler le mode capture
+(`Sources/Screenshots/`, et quelques `#if SCREENSHOTS`) : rien n'en entre dans
+l'archive. Ne rien lancer d'autre sur le simulateur pendant une capture —
+`xcb.sh run` installerait l'app Debug par-dessus, sous le même identifiant. Les
+titres des cartes se traduisent par `i18n/translations.json` (table `Koubou`),
+dont les clés sont la phrase anglaise elle-même.
+
 Ce qui manque encore avant une première soumission :
 
-- les captures d'écran (iPhone et iPad), seule erreur que `asc validate`
-  remonte encore.
+- l'envoi des captures d'écran, seule erreur que `asc validate` remonte
+  encore : les vingt-quatre cartes sont prêtes sous `screenshots/IPHONE_65/`
+  et `screenshots/IPAD_PRO_3GEN_129/` (voir « Captures » ci-dessus).

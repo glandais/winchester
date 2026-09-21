@@ -61,3 +61,15 @@ sim_dest() {
   if [ -z "$udid" ]; then udid=$(sim_udid) || return 1; fi
   echo "platform=iOS Simulator,id=${udid}"
 }
+
+# L'iPad des captures de l'App Store, et rien d'autre : la fiche en réclame un
+# jeu en 13 pouces. Un M4 parce que c'est le cadre que Koubou connaît (« iPad
+# Pro 13 - M4 »), à la même définition que le M5. Il ne démarre que pendant
+# `scripts/screenshots.sh`, qui éteint l'iPhone avant et le rallume après :
+# jamais deux simulateurs à la fois.
+IPAD_DEVICE="${WINCHESTER_IPAD_DEVICE:-iPad Pro 13-inch (M4)}"
+
+# Écrit l'UDID de l'iPad des captures, avec les mêmes messages que `sim_udid`.
+ipad_udid() {
+  SIM_DEVICE="$IPAD_DEVICE" sim_udid
+}

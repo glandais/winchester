@@ -19,3 +19,13 @@ __pycache__/
 .claude/settings.local.json
 # État local de `asc` (artefacts, plans de métadonnées, rapports d'échec)
 .asc
+
+# Captures de l'App Store (scripts/screenshots.sh) — les captures brutes sont la
+# matière de Koubou, refaites à chaque passage ; screenshots/IPHONE_65/ et
+# screenshots/IPAD_PRO_3GEN_129/ gardent les cartes envoyées, et sont versionnés.
+# screenshots/koubou/ (configurations, gabarits, catalogue) est la source ; seuls
+# ses rendus et ses configurations de travail ne le sont pas.
+screenshots/flat/
+screenshots/koubou/out/
+screenshots/koubou/*.local.yaml
+screenshots/koubou/*.local.xcstrings

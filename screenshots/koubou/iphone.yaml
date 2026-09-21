@@ -1,0 +1,86 @@
+# Cartes des captures de l'App Store (iphone) — sources Koubou.
+#
+# Depuis la racine du dépôt :
+#   kou generate screenshots/koubou/iphone.yaml --output json
+#
+# Tous les chemins ci-dessous sont relatifs à CE fichier.
+#
+# Entrées : screenshots/flat/iphone/<locale>/NN-*.png  (./scripts/screenshots.sh, non versionnées)
+# Sorties : screenshots/koubou/out/iphone/<locale>/<cadre>/NN-*.png  (non versionnées)
+#           ./screenshots/assemble.sh les range sous screenshots/IPHONE_65/<locale>/.
+#
+# Le cadre est celui du simulateur des captures (scripts/sim-config.sh) : Koubou n'y fait
+# entrer que la forme exacte de son écran. Deep Blue, la finition sombre, la plus proche du bleu des clusters de l'icône.
+# Toile 1242×2688, celle qu'App Store Connect accepte pour IPHONE_65. Les gabarits et le catalogue
+# sont partagés avec l'autre appareil : un titre se traduit une fois.
+
+project:
+  name: "Winchester"
+  output_dir: "out/iphone"
+  device: "iPhone 17 Pro Max - Deep Blue - Portrait"
+  output_size: "iPhone6_5"
+
+localization:
+  base_language: "en-US"
+  languages: ["en-US", "fr-FR"]
+  xcstrings_path: "koubou-strings.xcstrings"
+
+screenshots:
+
+  # 1 — l'accroche : la carte du volume en plein écran, l'image que personne d'autre n'a. Les trois
+  # premières cartes sont celles des résultats de recherche : elles doivent raconter l'app seules.
+  01-map:
+    template: "templates/hero.html"
+    variables:
+      headline: "Hear a hard disk tidy itself"
+      subtitle: "Every block lights up the instant its write is heard."
+    assets:
+      app_screenshot: "../flat/iphone/01-map.png"
+
+  # 2 — ce qui la distingue : le son n'est pas un enregistrement en boucle.
+  02-pass:
+    template: "templates/rise.html"
+    variables:
+      headline: "Every seek computed, not sampled"
+      subtitle: "The arm travels from cylinder to cylinder, and you hear how far."
+    assets:
+      app_screenshot: "../flat/iphone/02-pass.png"
+
+  # 3 — la mécanique qu'on entend, montrée.
+  03-platter:
+    template: "templates/offset.html"
+    variables:
+      headline: "Watch the arm cross the platter"
+      subtitle: "Rotation, head, latency: a 1990s drive, sector by sector."
+    assets:
+      app_screenshot: "../flat/iphone/03-platter.png"
+
+  # 4 — les outils. Sans cadre : dans un appareil, le texte des fiches ne se lirait plus. Aucun
+  # nom de produit d'une autre société dans le titre (directive 2.3.7) ; la capture, elle, montre
+  # l'app telle qu'elle est.
+  04-tools:
+    template: "templates/crop.html"
+    frame: false
+    variables:
+      headline: "Period defragmenters, each its own way"
+      subtitle: "Run two on the same disk and compare the reports."
+    assets:
+      app_screenshot: "../flat/iphone/04-tools.png"
+
+  # 5 — les disques d'époque, leur carte vieillie en tête.
+  05-disk:
+    template: "templates/offset.html"
+    variables:
+      headline: "Disks with a life already lived"
+      subtitle: "Twenty period disks, 1993 to 2007, filled day after day."
+    assets:
+      app_screenshot: "../flat/iphone/05-disk.png"
+
+  # 6 — la preuve, pour qui lit jusque-là.
+  06-instruments:
+    template: "templates/hero.html"
+    variables:
+      headline: "Every millisecond accounted for"
+      subtitle: "Seek, rotation, transfer: see where the time goes."
+    assets:
+      app_screenshot: "../flat/iphone/06-instruments.png"
