@@ -309,7 +309,9 @@ confidentialité) vit dans `docs/` et se sert par GitHub Pages depuis ce dossier
 sur la branche par défaut (`develop`) : `docs/index.html`, `docs/support/`,
 `docs/privacy/`, plus `docs/how-it-works/`. HTML et CSS statiques, sans
 JavaScript, sans police ni ressource externe ; liens relatifs à `index.html`
-explicite, pour marcher sous le sous-chemin `/Winchester/` comme en `file://`.
+explicite, pour marcher sous le sous-chemin `/winchester/` comme en `file://`.
+L'adresse est `https://glandais.github.io/winchester/`, **en minuscules** :
+Pages suit la casse du dépôt, et `/Winchester/` répond 404.
 Il est **en anglais seul, exprès**, comme celui de WhereIWas. Le garder vrai :
 chaque libellé cité est celui de l'unité `en` du catalogue, et la page
 confidentialité doit suivre `Sources/Resources/PrivacyInfo.xcprivacy` et
@@ -318,8 +320,5 @@ accès réseau, et elle change avec sa date d'effet.
 
 Ce qui manque encore avant une première soumission :
 
-- activer GitHub Pages (source : `develop`, dossier `/docs`), puis vérifier que
-  les trois adresses répondent — le dépôt s'écrit `winchester`, les adresses
-  `Winchester` ;
 - les captures d'écran (iPhone et iPad), seule erreur que `asc validate`
   remonte encore.
