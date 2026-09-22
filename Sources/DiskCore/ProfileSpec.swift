@@ -116,8 +116,11 @@ public struct DiskSpec: Sendable, Codable {
         self.model = model
     }
 
-    /// Le disque d'une fiche nommée, champs recopiés : la capacité en Mio
-    /// entiers, pour que la partition ne déborde jamais du disque.
+    /// Le disque d'une fiche nommée, champs recopiés : la capacité en
+    /// mégaoctets **décimaux** entiers, arrondis par défaut — l'unité de
+    /// `sizeMB` —, pour que la partition ne déborde jamais du disque. Le
+    /// WD5000HHTZ (500 107 862 016 octets) donne 500107, et non les 476940
+    /// Mio que ses deux profils ont longtemps portés (B#5, B#12).
     public init(reference: DriveReference) {
         self.init(sizeMB: reference.capacityBytes / 1_000_000,
                   rpm: reference.rpm,
