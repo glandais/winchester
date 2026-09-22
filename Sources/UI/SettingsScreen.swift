@@ -10,9 +10,11 @@ struct SettingsScreen: View {
 
     @ObservedObject var model: SimulationModel
     let engine: WinchesterEngine
+    @Environment(TipJar.self) private var tipJar
     @State private var opened: Set<Explanation> = []
     @AppStorage(OnboardingView.seenKey) private var onboardingSeen = false
     @State private var showsSound = false
+    @State private var showsTips = false
     /// Change quand la feuille « Son et vibrations » se ferme, pour relire le
     /// mixage qu'on y a laissé.
     @State private var revision = 0
@@ -27,6 +29,7 @@ struct SettingsScreen: View {
                                 subtitle: DiskHaptics.isHardwareSupported ? "settings.subtitle" : "settings.subtitle.noHaptics")
                     mixer
                     welcome
+                    support
                     explanations
                     AboutSection()
                 }
@@ -36,6 +39,9 @@ struct SettingsScreen: View {
         // La feuille fermée, la ligne relit le mixage qu'on y a laissé.
         .sheet(isPresented: $showsSound, onDismiss: { revision += 1 }) {
             SoundSheet(engine: engine)
+        }
+        .sheet(isPresented: $showsTips) {
+            TipSheet(tipJar: tipJar)
         }
     }
 
@@ -136,6 +142,37 @@ struct SettingsScreen: View {
                     .font(.dynamic(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Spacer()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .panel()
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Le pourboire passe par l'achat intégré et reste dans l'app (directive
+    /// 3.1.1) : un chevron, pas la flèche ↗ des liens sortants.
+    private var support: some View {
+        Button {
+            showsTips = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "cup.and.saucer")
+                    .font(.dynamic(size: 17))
+                    .foregroundStyle(Theme.write)
+                    .frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("settings.support.title")
+                        .font(.dynamic(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                    Text("settings.support.note")
+                        .font(.dynamic(size: 12))
+                        .foregroundStyle(Theme.dim)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.dynamic(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.dim)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

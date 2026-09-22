@@ -6940,3 +6940,60 @@ le départ de la ligne Ko-fi (chantier 36).
   grand corps de texte.
 - Les notes de revue ne sont toujours pas poussées (`asc review details-update`),
   et le build 4 ne porte pas la section : il faut un nouveau build.
+
+## Chantier 38 — les pourboires par l'achat intégré
+
+### Le problème
+
+Le chantier 36 avait retiré le lien Ko-fi de l'app : un pourboire au
+développeur, dans l'app, passe par l'achat intégré (directive 3.1.1). Restait à
+offrir ce pourboire par la voie permise.
+
+### Les décisions
+
+- **Trois consommables** dans App Store Connect, créés le 22 septembre 2026 :
+  `io.github.glandais.winchester.tip.small` (0,99 €, ID `6814712124`),
+  `.medium` (2,99 €, `6814712555`) et `.large` (4,99 €, `6814712862`). Pays de
+  base la France, disponibles dans les 175 pays, noms et descriptions en anglais
+  et en français, note de revue sur chacun. Ils ne débloquent rien : il n'y a
+  rien à restaurer, donc pas de bouton de restauration.
+- **`Sources/Tips/TipJar.swift`** est copié du fichier de référence commun aux
+  apps du développeur (hors de ce dépôt). Les identifiants sont tirés du bundle.
+  Un achat vérifié est fini tout de suite, puis l'app dit merci. `start()`
+  écoute `Transaction.updates` dès le lancement (`WinchesterApp`), pour finir un
+  pourboire approuvé plus tard (Ask to Buy) ou interrompu.
+- **`TipSheet`**, une feuille au style de « Son et vibrations », s'ouvre depuis
+  une ligne « Soutenir Winchester » des Réglages, sous « Revoir l'accueil ». Elle
+  a un chevron et pas la flèche ↗ : on reste dans l'app. Les noms et les prix
+  viennent du store (`displayName`, `displayPrice`), dans la langue et la devise
+  de l'acheteur, et le catalogue n'en porte aucun. Les achats passent par
+  `@Environment(\.purchase)`.
+- **Neuf clés** : `settings.support.title` / `.note` et `tip.*` (titre,
+  en-tête, merci, en attente, échec, indisponible, réessayer), en anglais et en
+  français.
+- **`Support/Tips.storekit`** reprend les trois produits. Il est branché sur les
+  schémas `Winchester` et `Winchester-Screenshots` par `storeKitConfiguration`
+  (`project.yml`). Il ne vaut **que depuis Xcode** : `xcb.sh run` lance l'app par
+  `simctl`, sans configuration StoreKit, et la feuille dit alors
+  « indisponible » tant que les produits ne sont pas validés.
+- **Page confidentialité** : un paragraphe « Tips » (Apple traite le paiement,
+  le développeur ne reçoit rien de nominatif), en vigueur au 22 septembre 2026.
+  **Notes de revue** : les trois identifiants, et qu'ils ne débloquent rien.
+
+### Ce qui valide
+
+- `./scripts/xcb.sh strings`, `i18n.py export` / `import` / `check` : aller-retour
+  exact à l'octet.
+- Sur l'iPhone 17 Pro Max, lancé depuis Xcode avec `Tips.storekit`, en français :
+  la feuille liste 0,99 €, 2,99 € et 4,99 €. Un petit pourboire passe par la
+  feuille de paiement de test, puis « Merci ! » s'affiche.
+
+### Laissé ouvert
+
+- **Les captures pour la revue** des trois produits sont à envoyer : les trois
+  restent « Finaliser avant soumission » tant qu'elles manquent.
+- **La soumission** : le premier achat intégré part avec une version de l'app.
+  Joindre les trois à la 1.0.0, avec un build 5 qui porte ce chantier.
+- Pas vu : l'attente d'approbation (Ask to Buy), l'échec simulé, l'anglais,
+  l'iPad et les grands corps de texte.
+- Les notes de revue ne sont toujours pas poussées (`asc review details-update`).

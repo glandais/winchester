@@ -89,6 +89,8 @@ schemes:
         Winchester: all
     run:
       config: Debug
+      # Les pourboires (chantier 38) s'achètent en local, sans compte sandbox.
+      storeKitConfiguration: Support/Tips.storekit
     profile:
       config: Release
     analyze:
@@ -102,6 +104,7 @@ schemes:
         Winchester: [run, build]
     run:
       config: Screenshots
+      storeKitConfiguration: Support/Tips.storekit
     profile:
       config: Screenshots
     analyze:

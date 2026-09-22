@@ -1,0 +1,95 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "5E0C3B7A-2F4D-4C1E-9A6B-7D8E9F0A1B2C",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "900000001",
+      "localizations" : [
+        {
+          "description" : "A small thank-you to the developer. Unlocks nothing.",
+          "displayName" : "Small Tip",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "Un petit merci au développeur. Ne débloque rien.",
+          "displayName" : "Petit pourboire",
+          "locale" : "fr_FR"
+        }
+      ],
+      "productID" : "io.github.glandais.winchester.tip.small",
+      "referenceName" : "Tip - small",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "900000002",
+      "localizations" : [
+        {
+          "description" : "A bigger thank-you to the developer. Unlocks nothing.",
+          "displayName" : "Medium Tip",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "Un plus grand merci au développeur. Ne débloque rien.",
+          "displayName" : "Pourboire moyen",
+          "locale" : "fr_FR"
+        }
+      ],
+      "productID" : "io.github.glandais.winchester.tip.medium",
+      "referenceName" : "Tip - medium",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "900000003",
+      "localizations" : [
+        {
+          "description" : "A generous thank-you to the developer. Unlocks nothing.",
+          "displayName" : "Large Tip",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "Un merci généreux au développeur. Ne débloque rien.",
+          "displayName" : "Grand pourboire",
+          "locale" : "fr_FR"
+        }
+      ],
+      "productID" : "io.github.glandais.winchester.tip.large",
+      "referenceName" : "Tip - large",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "0",
+    "_developerTeamID" : "7Q49262697",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "fr_FR",
+    "_storefront" : "FRA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

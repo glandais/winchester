@@ -4305,6 +4305,18 @@
             "fr": "Le son, et pourquoi ça sonne comme ça"
           }
         },
+        "settings.support.note": {
+          "translations": {
+            "en": "Leave a tip · unlocks nothing",
+            "fr": "Laisser un pourboire · ne débloque rien"
+          }
+        },
+        "settings.support.title": {
+          "translations": {
+            "en": "Support Winchester",
+            "fr": "Soutenir Winchester"
+          }
+        },
         "settings.title": {
           "translations": {
             "en": "Settings",
@@ -4682,6 +4694,48 @@
           "translations": {
             "en": "Settings",
             "fr": "Réglages"
+          }
+        },
+        "tip.failed": {
+          "translations": {
+            "en": "The purchase didn't go through.",
+            "fr": "L'achat n'a pas abouti."
+          }
+        },
+        "tip.header": {
+          "translations": {
+            "en": "Winchester is free and open source. A tip unlocks nothing: it just says thank you.",
+            "fr": "Winchester est gratuit et open source. Un pourboire ne débloque rien : il dit simplement merci."
+          }
+        },
+        "tip.pending": {
+          "translations": {
+            "en": "Waiting for approval. The tip will go through once it is approved.",
+            "fr": "En attente d'approbation. Le pourboire passera une fois approuvé."
+          }
+        },
+        "tip.retry": {
+          "translations": {
+            "en": "Try Again",
+            "fr": "Réessayer"
+          }
+        },
+        "tip.thanks": {
+          "translations": {
+            "en": "Thank you!",
+            "fr": "Merci !"
+          }
+        },
+        "tip.title": {
+          "translations": {
+            "en": "Leave a Tip",
+            "fr": "Laisser un pourboire"
+          }
+        },
+        "tip.unavailable": {
+          "translations": {
+            "en": "Tips are unavailable right now.",
+            "fr": "Les pourboires sont indisponibles pour le moment."
           }
         },
         "tool.badge.period": {
