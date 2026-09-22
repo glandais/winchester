@@ -52,13 +52,15 @@ struct ProfileIssuesTests {
     /// il le fait donc sur ces profils-là, jusqu'à ce que leurs dates bougent.
     @Test("Un logiciel installé avant sa sortie avertit")
     func anachronisticSoftwareWarns() throws {
-        let spec = try ScenarioLibrary.load("gamer-1996")
-        #expect(spec.isBuildable)
-        #expect(spec.issues.contains { $0.message.contains("« Quake » ne sort que le 1996-06-22") })
-
-        var later = spec
-        later.timeline.start = CivilDate("1996-09-01")!
-        #expect(!later.issues.contains { $0.message.contains("ne sort que") })
+        // La galerie n'avertit plus : ses dates ont été déplacées après la
+        // sortie des logiciels qu'elle installe.
+        for spec in try ScenarioLibrary.loadAll() {
+            #expect(!spec.issues.contains { $0.message.contains("ne sort que") }, "\(spec.id)")
+        }
+        var early = try ScenarioLibrary.load("gamer-1996")
+        early.timeline.start = CivilDate("1996-03-01")!
+        #expect(early.isBuildable)
+        #expect(early.issues.contains { $0.message.contains("« Quake » ne sort que le 1996-06-22") })
     }
 
     @Test("Un profil anachronique mais valide se fabrique")

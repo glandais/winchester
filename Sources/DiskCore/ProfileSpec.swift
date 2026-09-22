@@ -119,7 +119,7 @@ public struct DiskSpec: Sendable, Codable {
     /// Le disque d'une fiche nommée, champs recopiés : la capacité en Mio
     /// entiers, pour que la partition ne déborde jamais du disque.
     public init(reference: DriveReference) {
-        self.init(sizeMB: reference.capacityBytes / (1_024 * 1_024),
+        self.init(sizeMB: reference.capacityBytes / 1_000_000,
                   rpm: reference.rpm,
                   averageSeekMs: reference.averageSeekMs,
                   trackToTrackMs: reference.trackToTrackMs,
@@ -129,7 +129,14 @@ public struct DiskSpec: Sendable, Codable {
     /// La fiche nommée de ce disque, s'il en a une.
     public var reference: DriveReference? { model.flatMap(DriveCatalog.reference(named:)) }
 
-    public var sizeBytes: UInt64 { sizeMB * 1_024 * 1_024 }
+    /// Les octets du disque : `sizeMB` est le mégaoctet **de l'étiquette**,
+    /// décimal, comme les « secteurs garantis » des manuels le confirment. Le
+    /// modèle a longtemps compté 2²⁰ : vingt-et-un volumes sur vingt-quatre
+    /// étaient 4,86 % plus gros que le disque affiché, un 1 To simulait
+    /// 1 048,6 Go (`LEDGER-REALISME.md`, E1). Ce que le système en montre
+    /// ensuite est en mébioctets, comme CHKDSK : un 210 Mo de 1993 en affiche
+    /// 200, et c'est ce qu'il affichait.
+    public var sizeBytes: UInt64 { sizeMB * 1_000_000 }
 }
 
 public enum FileSystemKind: String, Sendable, Codable {

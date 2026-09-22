@@ -86,7 +86,12 @@ struct PartitionGeometry {
     let fatSectors: Int
     /// Où `FORMAT` a posé les métafichiers d'un NTFS : près du début depuis
     /// Windows 2000, au milieu du volume avant. Sans objet sur FAT.
-    var ntfsPlacement: NTFSAllocator.MirrorPlacement = .nearStart
+    var ntfsFormatting: NTFSAllocator.Formatting = .xp
+    /// Les extents de `$MFT` telle que le volume la porte, dans l'ordre des
+    /// enregistrements (`GeneratedDisk.mftFileExtents`). `nil` pour un volume
+    /// qui ne les connaît pas : la MFT est alors lue d'un seul tenant à sa
+    /// place de formatage.
+    var mftExtents: [Extent]? = nil
 
     /// Partition occupant un nombre de secteurs donné, dimensionnée comme
     /// l'aurait fait l'outil de formatage du système — et comme le générateur
@@ -189,13 +194,34 @@ extension PartitionGeometry {
     var ntfsLayout: NTFSAllocator.Layout {
         NTFSAllocator.layout(profile: NTFSProfile(clusterKB: UInt32(max(clusterBytes / 1_024, 1))),
                              clusterCount: UInt32(clusterCount),
-                             mirrorPlacement: ntfsPlacement)
+                             formatting: ntfsFormatting)
     }
 
-    /// Premier secteur de `$MFT`. Son enregistrement *n* est `n` kilo-octets
-    /// plus loin.
+    /// Premier secteur de `$MFT`.
     var mftLBA: Int {
         format == .ntfs ? lba(ofCluster: Int(ntfsLayout.mftStart)) : dataStartLBA
+    }
+
+    /// Le secteur qui porte l'enregistrement *n* de `$MFT`, là où elle est :
+    /// *n* kilo-octets dans la suite de ses extents, qui peuvent être
+    /// trente. Au-delà de ce que le volume a alloué — un enregistrement que
+    /// le générateur n'a pas compté —, la suite continue derrière le dernier
+    /// extent, comme si la MFT y avait grandi.
+    func mftRecordLBA(_ record: Int) -> Int {
+        guard format == .ntfs, let extents = mftExtents, !extents.isEmpty else {
+            return mftLBA + record * mftRecordSectors
+        }
+        let recordsPerCluster = max(clusterSectors / mftRecordSectors, 1)
+        var remaining = record
+        for extent in extents {
+            let capacity = Int(extent.length) * recordsPerCluster
+            if remaining < capacity {
+                return lba(ofCluster: Int(extent.start)) + remaining * mftRecordSectors
+            }
+            remaining -= capacity
+        }
+        let last = extents[extents.count - 1]
+        return lba(ofCluster: Int(last.end)) + remaining * mftRecordSectors
     }
 
     // MARK: - Le journal
@@ -293,7 +319,7 @@ extension PartitionGeometry {
             // La bitmap, elle aussi, sur toute la longueur de chaque extent :
             // un bit par cluster, 4 096 clusters par secteur.
             let bitsPerSector = 8 * DriveGeometry.bytesPerSector
-            var accesses = [MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
+            var accesses = [MetadataAccess(lba: mftRecordLBA(fileIndex),
                                            sectors: mftRecordSectors)]
             accesses += extents.map { extent in
                 let first = Int(extent.start) / bitsPerSector
@@ -330,7 +356,7 @@ extension PartitionGeometry {
         case .fat16, .fat32:
             return []
         case .ntfs:
-            return [MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
+            return [MetadataAccess(lba: mftRecordLBA(fileIndex),
                                    sectors: mftRecordSectors)]
         }
     }

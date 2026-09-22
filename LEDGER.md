@@ -7393,3 +7393,105 @@ tête ».
   sans source, ce serait de l'oreille.
 - **La gestion acoustique** (*quiet seek*, trajectoires sinusoïdales) n'est
   pas modélisée, et le README le dit maintenant.
+
+## Chantier 44 — réalisme, lot F : ce qui change les volumes
+
+Sixième lot de `LEDGER-REALISME.md`, branche `realisme`, le seul qui touche
+aux vingt-quatre disques eux-mêmes — d'où sa place en dernier, et un seul
+recalage.
+
+### Le problème
+
+- **E1** — `sizeBytes = sizeMB × 2²⁰`, quand l'étiquette est décimale :
+  vingt-et-un volumes sur vingt-quatre étaient 4,86 % plus gros que le disque
+  affiché (un 1 To simulait 1 048,6 Go).
+- **La place de `$MFT`** — la branche `.nearStart` posait la MFT derrière les
+  64 Mo du journal, vers le cluster 16 400, et interdisait toute donnée avant
+  12,5 % du volume. Aucune disposition Windows attestée ne fait cela (la
+  relecture sur source du 21 septembre).
+- **F2** — les enregistrements de MFT étaient adressés `mftLBA + n × 2`,
+  comme si `$MFT` était d'un seul tenant, alors qu'elle se fragmente (31
+  extents sur `famille-2003`) et que le générateur publie ses extents.
+- **E6, la suite** — quatre profils installaient un logiciel avant sa sortie.
+
+### Les décisions
+
+- **`sizeMB` est le mégaoctet de l'étiquette**, décimal ; les JSON ne
+  bougent pas, `sizeBytes = sizeMB × 10⁶`, `DiskSpec(reference:)` divise par
+  10⁶. Ce que le système montre ensuite est en mébioctets, comme CHKDSK : un
+  210 Mo de 1993 en affiche 200, et c'est ce qu'il affichait. La phrase de
+  `CLAUDE.md` sur le 2²⁰ « sans quoi un 210 Mo ne retrouverait pas ses 210 »
+  décrivait ce défaut ; elle est à relire.
+- **`NTFSAllocator.Formatting`** — `.nt`, `.xp`, `.vista`, `.win7`, choisi
+  par le champ `os` du profil, l'année en repli. `$MFT` en tête sous NT, **à
+  3 Gio** depuis XP (Sedory, une source secondaire ; au huitième d'un volume
+  plus petit, une règle du modèle) ; `$MFTMirr` au milieu jusqu'à Vista, au
+  LCN 2 sous Windows 7 ; zone de 12,5 % jusqu'à XP, **200 Mo renouvelables**
+  depuis Vista (KB 961095, primaire : quand la MFT a rempli sa tranche, une
+  tranche neuve et contiguë est réservée derrière le vierge, et la MFT y
+  continue d'un seul tenant). **Les données se posent devant `$MFT`**, dans
+  les trois premiers gigaoctets, puis derrière la zone : c'est ce que montre
+  un `fsutil` moderne, et c'est une hypothèse pour XP — la KB 961095 dit le
+  contraire à la lettre. `$LogFile` derrière le miroir, comme `mkntfs`,
+  faute de source. Tout cela est écrit dans l'allocateur et le README.
+  Mécaniquement : deux plages de données au lieu d'une, le `highWater` qui
+  part devant la MFT, et le vierge borné à sa plage — la zone est libre dans
+  la bitmap, un premier trou pouvait y déborder.
+- **`PartitionGeometry.mftRecordLBA(_:)`** : l'enregistrement *n* est *n*
+  kilo-octets dans la suite des extents de `$MFT` (`GeneratedDisk.mftFileExtents`),
+  et au-delà du dernier, derrière lui. Les validations, les lectures groupées
+  d'un démarrage (coupées à chaque extent) et les dates d'accès y passent.
+- **`MFTNumbering` reste le rang parmi les vivants.** L'autre approximation
+  — compter les disparus, chaque fichier gardant le rang de sa création — a
+  été écrite et **écartée** : elle suppose que rien n'a été effacé avant la
+  dernière création, et elle défait ce qui s'entend, des fichiers créés à la
+  suite dans des enregistrements voisins qui partagent leur page de 4 Ko
+  quand XP les horodate. Le catalogue ne date pas les suppressions ; la
+  reprise du plus petit enregistrement libre ne se rejoue pas, et le
+  commentaire le dit.
+- **Les dates** : `gamer-1996` et `famille-1996` commencent le 1ᵉʳ septembre
+  1996 (Quake, Netscape 3), `gamer-2007` le 15 novembre 2007 (Crysis), leurs
+  fins déplacées d'autant. MS-DOS 6.22 devient **MS-DOS 6** — le 6.0 est de
+  mars 1993, et le manifeste décrit la famille ; `osName` et le site suivent.
+  Aucun profil de la galerie n'avertit plus, et un test le garde.
+- **Le recalage** : `perMegabyte` seul, par époque, sur `f0` — 1993 0,65 →
+  0,93, 1996 0,42 → 0,41, 1999 0,24, 2003 0,19 → 0,185, 2007 0,15 → 0,146.
+  Le 0,93 de 1993 est **le prix des cibles** : la fiche du Conner (chantier
+  37) a rendu au disque ses 79 secteurs par piste et quatre secondes de
+  démarrage, que la cible n'accorde pas ; le processeur les reprend, et le
+  plancher de calcul de 1993 passe de 15 à 19 s sur 42. Le commentaire de
+  `ThinkModel.boot` le dit.
+
+### Ce qui valide
+
+| prédiction | mesuré |
+|---|---|
+| 412 bilans différents, 0 identique (tous les volumes rétrécissent) | 412 / 0 |
+| 0 rendu identique | 0 sur 58 |
+| les démarrages retombent près de leurs cibles, sauf là où la disposition déplace chaque profil différemment | dix-sept des vingt sur ±5 % ; `famille-2003` +18 %, `famille-2007` +13 %, `dev-2007` −10 % — la MFT à 3 Gio et les données devant elle changent le nombre de seeks (`famille-2003` : 741 → 1 062) sans qu'une constante d'époque puisse le suivre |
+
+`swift test` : 306 tests. Ceux de la disposition sont refaits : `$MFT` à
+3 Gio (LCN 786 432 sur 250 Go, un premier fichier devant elle), le miroir
+selon l'époque, la zone selon le système, la disposition selon `os`, le
+montage en quatre ou cinq zones. Le test des dates d'accès de 2003 garde
+son sens avec un seuil desserré (994 fichiers, 567 écritures : le cache vide
+plus souvent depuis que la MFT est loin des données). README : 173 lignes,
+et les trois passages sur la zone MFT réécrits. `xcb.sh build` passe.
+
+Un accident de méthode : retoucher un commentaire de `BootSession.swift`
+pendant que `snapshot.sh` compilait a donné un binaire qui plantait
+(« modified during the build ») — refait, sans toucher aux sources.
+
+### Laissé ouvert
+
+- **Trois démarrages loin de leur cible** (`famille-2003`, `famille-2007`,
+  `dev-2007`) : la disposition de la MFT n'est pas un coût au mégaoctet, et
+  le recalage ne peut pas l'absorber. C'est l'endroit où les cibles — les
+  durées d'avant la relecture — cessent d'être une référence.
+- **Les données devant `$MFT` sous XP** : une hypothèse, contre la lettre
+  d'une KB. Un `fsutil` et une carte de défragmenteur d'un volume XP frais
+  trancheraient.
+- **La place de `$LogFile`** depuis XP : inconnue.
+- `GalleryAllocationAudit` en release, sur les deux plages de données, a
+  passé (21 min) : l'invariant d'allocation tient sur les vingt-quatre
+  volumes.

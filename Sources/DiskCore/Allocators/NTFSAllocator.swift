@@ -75,13 +75,39 @@ import Foundation
 /// qu'aucun FAT ne produit jamais.
 public struct NTFSAllocator: Allocator {
 
-    /// Position de `$MFTMirr`, la copie de secours des premiers enregistrements
-    /// de la MFT.
-    public enum MirrorPlacement: Sendable {
-        /// Au milieu du volume : NT 3.1 à Windows 2000.
-        case volumeMiddle
-        /// Ramené près du début : XP et au-delà.
-        case nearStart
+    /// Où `FORMAT` pose les métafichiers, selon le système qui formate.
+    ///
+    /// Quatre dispositions, et ce que chacune doit à une source :
+    ///
+    /// - **NT 4 et 2000** (`mkntfs.c`, qui reproduit `FORMAT` de l'époque) :
+    ///   `$MFT` en tête derrière `$Boot`, `$MFTMirr` au **milieu** du volume,
+    ///   `$LogFile` juste derrière lui, zone MFT de 12,5 % du volume ;
+    /// - **XP et Server 2003** : `$MFT` à **3 Gio** du début (LCN 786 432 en
+    ///   clusters de 4 Ko — Sedory, relevés ; une seule source, secondaire),
+    ///   `$MFTMirr` au milieu, zone de 12,5 % (KB 961095) ;
+    /// - **Vista** : comme XP, mais la zone fait **200 Mo**, renouvelés par
+    ///   tranches de 200 Mo quand la MFT la remplit (KB 961095, primaire) ;
+    /// - **Windows 7** : comme Vista, `$MFTMirr` ramené au **LCN 2**.
+    ///
+    /// Ce que les sources ne disent pas, et que le modèle pose : la place de
+    /// `$LogFile` sous XP, Vista et 7 (ici derrière le miroir, comme
+    /// `mkntfs`) ; ce que fait un volume de moins de 3 Gio (ici la MFT au
+    /// huitième du volume) ; et que les données ordinaires se posent
+    /// **devant** `$MFT`, dans les 3 premiers Gio — ce que montre un `fsutil`
+    /// moderne (la zone commence à la MFT), mais que la KB 961095 contredit à
+    /// la lettre pour les anciennes versions. Le modèle a longtemps mis
+    /// `$MFT` derrière le journal, vers le cluster 16 400, et interdit toute
+    /// donnée avant 12,5 % du volume : cela ne correspondait à aucune
+    /// disposition attestée (`LEDGER-REALISME.md`, la place de `$MFT`).
+    public enum Formatting: Sendable {
+        case nt, xp, vista, win7
+
+        /// Le miroir au milieu du volume, ou près du début.
+        var mirrorInTheMiddle: Bool { self != .win7 }
+        /// `$MFT` à 3 Gio, ou en tête.
+        var mftAtThreeGibibytes: Bool { self != .nt }
+        /// La zone MFT : une part du volume, ou 200 Mo renouvelables.
+        var renewableZoneBytes: UInt64? { self == .vista || self == .win7 ? 200 << 20 : nil }
     }
 
     public let ntfs: NTFSProfile
@@ -192,7 +218,7 @@ public struct NTFSAllocator: Allocator {
     public init(profile: NTFSProfile = NTFSProfile(),
                 clusterCount: UInt32,
                 initialMFTRecords: UInt64 = 32,
-                mirrorPlacement: MirrorPlacement = .nearStart,
+                formatting: Formatting = .xp,
                 search: SearchBounds = .standard) {
         precondition(profile.supports(clusterCount: clusterCount))
         self.ntfs = profile
@@ -202,8 +228,10 @@ public struct NTFSAllocator: Allocator {
         self.mftPeakRecords = initialMFTRecords
 
         let layout = Self.layout(profile: profile, clusterCount: clusterCount,
-                                 mirrorPlacement: mirrorPlacement,
+                                 formatting: formatting,
                                  initialMFTRecords: initialMFTRecords)
+        self.renewableZoneClusters = formatting.renewableZoneBytes.map { profile.clusters(forBytes: $0) } ?? 0
+        self.frontRange = layout.dataFront
         bitmap.allocate(layout.boot)
         self.mftMirror = layout.mirror
         bitmap.allocate(self.mftMirror)
@@ -223,8 +251,18 @@ public struct NTFSAllocator: Allocator {
         self.mftZone = zoneStart..<max(layout.mftZoneEnd, zoneStart)
         self.volumeBitmap = layout.bitmap
         bitmap.allocate(layout.bitmap)
-        self.highWater = max(zoneStart, self.mftMirror.end, self.logFile.end, layout.bitmap.end)
+        // Le premier vierge est devant la MFT quand `FORMAT` l'a posée à
+        // 3 Gio : c'est là que les données commencent.
+        self.highWater = layout.dataFront.isEmpty
+            ? max(zoneStart, self.mftMirror.end, self.logFile.end, layout.bitmap.end)
+            : layout.dataFront.lowerBound
     }
+
+    /// La zone MFT renouvelable de Vista et de Windows 7, en clusters ; 0 pour
+    /// une zone en part du volume.
+    private let renewableZoneClusters: UInt32
+    /// Les clusters devant `$MFT` où les données ont le droit d'aller.
+    private let frontRange: Range<UInt32>
 
     /// Où `FORMAT` pose les métafichiers d'un volume neuf.
     ///
@@ -253,10 +291,13 @@ public struct NTFSAllocator: Allocator {
         /// de `g_mft_zone_end`), et là que le simulateur lit et écrit la
         /// table.
         public let bitmap: Extent
+        /// Les clusters devant `$MFT` où les données ordinaires se posent :
+        /// les 3 premiers Gio d'un volume XP, rien sous NT.
+        public let dataFront: Range<UInt32>
     }
 
     public static func layout(profile: NTFSProfile, clusterCount: UInt32,
-                              mirrorPlacement: MirrorPlacement,
+                              formatting: Formatting,
                               initialMFTRecords: UInt64 = 32) -> Layout {
         // $Boot occupe les huit premiers kilo-octets du volume — deux clusters
         // à 4 Ko, et non un. La copie du secteur d'amorçage, elle, est au tout
@@ -267,30 +308,21 @@ public struct NTFSAllocator: Allocator {
 
         // $MFTMirr : la copie des **quatre premiers enregistrements** de la
         // MFT, soit 4 Ko, soit un cluster à 4 Ko — et non quatre. Au milieu du
-        // volume jusqu'à Windows 2000, ramené près du début ensuite : au
-        // milieu, il impose un aller-retour à chaque écriture de métadonnées,
-        // c'est audible, et c'est pour cela qu'il a été déplacé.
-        //
-        // « Près du début », c'est derrière `$Boot`, à l'endroit où vivent les
-        // premiers métafichiers — de l'ordre du cluster 16 —, et non à la
-        // frontière de la zone MFT : posé là, il tombait à 31 Go du début d'un
-        // volume de 250 Go, sur le premier cluster où les données ont le droit
-        // d'aller, qu'il coupait en deux.
+        // volume de NT 4 à Vista, au LCN 2 depuis Windows 7 (Sedory).
         let mirrorClusters = max(profile.clusters(forBytes: 4 * 1_024), 1)
-        let mirrorStart: UInt32 = switch mirrorPlacement {
-        case .volumeMiddle: clusterCount / 2
-        case .nearStart:    min(16, clusterCount - mirrorClusters)
-        }
+        let mirrorStart: UInt32 = formatting.mirrorInTheMiddle
+            ? clusterCount / 2
+            : min(2, clusterCount - mirrorClusters)
         let mirror = Extent(start: max(mirrorStart, bootClusters), length: mirrorClusters)
 
-        // $LogFile suit le miroir, comme le pose `mkntfs`, qui reproduit la
-        // disposition de Windows : au milieu du volume avec lui jusqu'à
-        // Windows 2000, en tête ensuite. Sa taille est fixée au formatage et ne
-        // change plus — 64 Mio à partir de 12 Gio de volume, ce que tous les
-        // NTFS de la galerie dépassent. En dessous, `mkntfs` le réduit, et le
-        // modèle prend sa valeur (4 Mio, 2 Mio sous 200 Mio) ; le plafond au
-        // seizième du volume ne sert qu'aux volumes d'essai de quelques
-        // centaines de clusters.
+        // $LogFile suit le miroir, comme le pose `mkntfs` : c'est un choix du
+        // modèle pour XP, Vista et 7, dont aucune source ne place le journal.
+        // Sa taille est fixée au formatage et ne change plus — 64 Mio à
+        // partir de 12 Gio de volume, ce que tous les NTFS de la galerie
+        // dépassent. En dessous, `mkntfs` le réduit, et le modèle prend sa
+        // valeur (4 Mio, 2 Mio sous 200 Mio) ; le plafond au seizième du
+        // volume ne sert qu'aux volumes d'essai de quelques centaines de
+        // clusters.
         let volumeBytes = UInt64(clusterCount) * UInt64(profile.clusterBytes)
         let logBytes: UInt64 = volumeBytes >= 12 << 30 ? 64 << 20
             : volumeBytes >= 200 << 20 ? 4 << 20
@@ -298,23 +330,28 @@ public struct NTFSAllocator: Allocator {
         let logClusters = max(min(profile.clusters(forBytes: logBytes), clusterCount / 16), 1)
         let logFile = Extent(start: mirror.end, length: logClusters)
 
-        // La MFT suit ce qui la précède : `$Boot` seul quand le miroir et le
-        // journal sont au milieu du volume, `$Boot`, le miroir et le journal
-        // quand ils sont près du début.
-        let mftStart = mirrorPlacement == .nearStart
-            ? max(logFile.end, bootClusters)
-            : bootClusters
+        // $MFT : à 3 Gio depuis XP — au huitième du volume quand il fait
+        // moins, une règle du modèle —, et en tête sous NT. Ce qui précède
+        // (le journal en tête sous Windows 7) la repousse d'autant.
         let mftClusters = max(profile.clusters(forBytes: initialMFTRecords * 1_024), 1)
-        let zoneEnd = min(clusterCount,
-                          mftStart + max(UInt32(Double(clusterCount) * profile.mftZoneShare),
-                                         mftClusters))
+        let head = formatting.mirrorInTheMiddle ? bootClusters : max(logFile.end, bootClusters)
+        let threeGibibytes = UInt32(min(UInt64(3) << 30 / UInt64(profile.clusterBytes),
+                                        UInt64(clusterCount / 8)))
+        let mftStart = formatting.mftAtThreeGibibytes ? max(head, threeGibibytes) : head
+        let zoneClusters = formatting.renewableZoneBytes.map { profile.clusters(forBytes: $0) }
+            ?? UInt32(Double(clusterCount) * profile.mftZoneShare)
+        let zoneEnd = min(clusterCount, mftStart + max(zoneClusters, mftClusters))
         let bitmapBytes = ((UInt64(clusterCount) + 7) / 8 + 7) / 8 * 8
         let bitmapClusters = max(profile.clusters(forBytes: bitmapBytes), 1)
         let bitmapStart = min(zoneEnd, clusterCount - min(bitmapClusters, clusterCount))
+        // Les clusters libres devant la MFT : entre ce que `$Boot`, le miroir
+        // et le journal occupent en tête, et la MFT. Vide sous NT.
+        let front = head..<mftStart
         return Layout(boot: Extent(start: 0, length: bootClusters),
                       mirror: mirror, logFile: logFile, mftStart: mftStart,
                       mftClusters: mftClusters, mftZoneEnd: zoneEnd,
-                      bitmap: Extent(start: bitmapStart, length: bitmapClusters))
+                      bitmap: Extent(start: bitmapStart, length: bitmapClusters),
+                      dataFront: front)
     }
 
     // MARK: - Zones
@@ -330,13 +367,12 @@ public struct NTFSAllocator: Allocator {
     /// La zone MFT a-t-elle encore toute sa taille d'origine ?
     public var mftZoneIsProtected: Bool { !mftZoneBreached }
 
-    /// Plage dans laquelle les données ordinaires ont le droit d'aller : tout
-    /// ce qui suit la zone courante. Devant elle, il n'y a que `$Boot` et la
-    /// MFT.
-    private var dataRange: Range<UInt32> {
-        mftZone.isEmpty
-            ? 0..<bitmap.clusterCount
-            : mftZone.upperBound..<bitmap.clusterCount
+    /// Plages dans lesquelles les données ordinaires ont le droit d'aller :
+    /// devant `$MFT` d'abord (les 3 premiers Gio, depuis XP), puis tout ce
+    /// qui suit la zone courante. Entre les deux, `$MFT` et sa réserve.
+    private var dataRanges: [Range<UInt32>] {
+        let back = mftZone.isEmpty ? 0..<bitmap.clusterCount : mftZone.upperBound..<bitmap.clusterCount
+        return frontRange.isEmpty ? [back] : [frontRange, back]
     }
 
     /// Le reste du volume est plein : la zone rend la moitié de sa queue.
@@ -379,8 +415,10 @@ public struct NTFSAllocator: Allocator {
         // plus assez de clusters libres : `scatter` prend n'importe quels
         // morceaux.
         while true {
-            let extents = place(count, hint: hint, in: dataRange)
-            if !extents.isEmpty { return extents }
+            for range in dataRanges {
+                let extents = place(count, hint: hint, in: range)
+                if !extents.isEmpty { return extents }
+            }
             guard yieldMFTZone() else { return [] }
         }
     }
@@ -452,12 +490,15 @@ public struct NTFSAllocator: Allocator {
         }
 
         // Espace vierge : au-delà du `highWater`, il n'y a qu'un seul trou, et
-        // le fichier se pose à son début.
-        let virgin = max(highWater, range.lowerBound)..<range.upperBound
+        // le fichier se pose à son début. Une plage entièrement derrière le
+        // `highWater` — les 3 Gio devant la MFT, une fois remplis — n'en a
+        // plus.
+        let virginStart = max(highWater, range.lowerBound)
+        let virgin = virginStart..<max(range.upperBound, virginStart)
         if virgin.lowerBound < virgin.upperBound,
            let run = bitmap.firstFitRun(minLength: count, maxLength: count,
                                         from: virgin.lowerBound),
-           run.start < virgin.upperBound {
+           run.start < virgin.upperBound, run.end <= virgin.upperBound {
             return Extent(start: run.start, length: count)
         }
 
@@ -618,6 +659,24 @@ public struct NTFSAllocator: Allocator {
                 mft.extents.appendRun(start: run.start, length: run.length)
                 remaining -= room
             }
+        }
+
+        // Vista et Windows 7 : la zone est de 200 Mo, et quand la MFT l'a
+        // remplie « the MFT will create another 200MB zone to grow into »
+        // (KB 961095) — une tranche neuve, contiguë, réservée derrière le
+        // vierge, où la MFT continue d'un seul tenant.
+        if remaining > 0, renewableZoneClusters > 0,
+           let run = bitmap.firstFitRun(minLength: renewableZoneClusters,
+                                        maxLength: renewableZoneClusters,
+                                        from: max(highWater, mftZone.upperBound)),
+           run.end <= bitmap.clusterCount {
+            let taken = Extent(start: run.start, length: min(remaining, run.length))
+            bitmap.allocate(taken)
+            highWater = max(highWater, run.end)
+            mft.extents.appendRun(start: taken.start, length: taken.length)
+            mftZone = taken.end..<run.end
+            remaining -= taken.length
+            if remaining == 0 { return }
         }
 
         // Sa zone est pleine ou entamée : la MFT part chercher de la place

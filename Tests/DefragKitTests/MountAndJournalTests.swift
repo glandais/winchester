@@ -29,7 +29,7 @@ struct MountAndJournalTests {
             startLBA: 0, clusterCount: Int(spec.clusterCount),
             clusterSectors: Int(spec.resolvedFileSystem().clusterBytes) / DriveGeometry.bytesPerSector,
             format: format)
-        partition.ntfsPlacement = DiskGenerator.mirrorPlacement(for: spec)
+        partition.ntfsFormatting = DiskGenerator.formatting(for: spec)
         return partition
     }
 
@@ -73,11 +73,13 @@ struct MountAndJournalTests {
         #expect(!mount.contains { $0.lba == partition.fat2LBA })
     }
 
-    /// `$Boot`, les seize premiers enregistrements de la MFT, `$MFTMirr` et la
-    /// zone de redémarrage du journal en tête ; `$Bitmap` derrière la zone MFT ;
-    /// la copie du secteur d'amorçage au fond du disque. Quelques dizaines de
-    /// kilo-octets en trois endroits, là où le modèle lisait 2 Mo d'un trait.
-    @Test("Monter un NTFS touche trois zones du volume, pas une plage de 2 Mo",
+    /// `$Boot` en tête ; les seize premiers enregistrements de la MFT à 3 Gio
+    /// et `$Bitmap` derrière sa zone — la même zone à 1 % près sur un 320 Go,
+    /// deux sur un 40 Go où la zone fait 12,5 % ; `$MFTMirr` et la zone de
+    /// redémarrage du journal au milieu du volume (XP, Vista) ; la copie du
+    /// secteur d'amorçage au fond du disque. Quelques dizaines de kilo-octets
+    /// en quatre ou cinq endroits, là où le modèle lisait 2 Mo d'un trait.
+    @Test("Monter un NTFS touche quatre ou cinq zones du volume, pas une plage de 2 Mo",
           arguments: ["dev-2003", "famille-2007"])
     func ntfsMount(id: String) throws {
         let partition = try Self.partition(id)
@@ -93,7 +95,7 @@ struct MountAndJournalTests {
         for lba in mount.map(\.lba).sorted() {
             if let last = zones.last, lba - last < span { zones[zones.count - 1] = lba } else { zones.append(lba) }
         }
-        #expect(zones.count == 3, "\(id) : zones \(zones)")
+        #expect((4...5).contains(zones.count), "\(id) : zones \(zones)")
         #expect(mount.contains { $0.lba == partition.startLBA + partition.totalSectors - 1 })
     }
 

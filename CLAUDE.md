@@ -126,7 +126,7 @@ retrouverait pas ses 210 à l'écran.
 **Deux textes restent français exprès**, parce qu'ils ne vont nulle part dans
 l'app et que les outils les relisent au mot près : le rapport de cache
 (`BootSession.softwareCacheReport`, que `Tools/Measure/bilan.py` cherche sous
-« dont N relues après éviction ») et le nom de système `MS-DOS 6.22 et Windows
+« dont N relues après éviction ») et le nom de système `MS-DOS 6 et Windows
 3.1`, que `readme-tables.py` recopie dans la table des démarrages du
 `README.md`. Le commentaire le dit sur place. Avant de traduire une chaîne du
 modèle, vérifier qui la lit : `Tools/Shared/Report.swift` imprime le bilan que

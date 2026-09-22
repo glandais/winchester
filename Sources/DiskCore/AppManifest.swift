@@ -101,7 +101,7 @@ public enum AppLibrary {
 
         // MARK: 1993 — MS-DOS et Windows 3.1
 
-        AppManifest(id: "msdos-6", displayName: "MS-DOS 6.22", groups: [
+        AppManifest(id: "msdos-6", displayName: "MS-DOS 6", groups: [
             .init(directory: "\\DOS", extension_: "EXE", category: .systemCore,
                   fileCount: 70, medianBytes: 30_000, sigma: 1.0),
             .init(directory: "\\DOS", extension_: "SYS", category: .systemCore,
@@ -109,8 +109,10 @@ public enum AppLibrary {
             .init(directory: "\\DOS", extension_: "HLP", category: .archive,
                   fileCount: 6, medianBytes: 180_000, sigma: 0.5),
         ],
-            // MS-DOS 6.22 : juin 1994 (6.0 : mars 1993). Les profils de 1993 l'installent en avril 1993.
-            releaseDate: CivilDate("1994-06-01")!),
+            // MS-DOS 6.0 : 30 mars 1993 — c'est lui qu'une machine d'avril 1993
+            // installe ; 6.22 n'arrive qu'en juin 1994. Le manifeste décrit
+            // la famille, et s'appelle ainsi.
+            releaseDate: CivilDate("1993-03-30")!),
 
         AppManifest(id: "win31", displayName: "Windows 3.1", groups: [
             .init(directory: "\\WINDOWS", extension_: "EXE", category: .systemCore,

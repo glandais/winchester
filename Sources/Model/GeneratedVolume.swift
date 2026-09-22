@@ -49,6 +49,18 @@ extension ClusterCategory {
 ///
 /// Derrière les seize métafichiers, les répertoires, qu'un installeur crée
 /// avant d'y copier, puis les fichiers vivants, dans l'ordre de leur création.
+///
+/// NTFS reprend le plus petit enregistrement libre : un fichier créé après
+/// une suppression prend la place du disparu. Le catalogue ne date pas les
+/// suppressions et ne peut pas le rejouer exactement ; il a deux
+/// approximations à sa portée. Compter les disparus (chaque fichier garde le
+/// rang de sa création, les trous restent) suppose que rien n'a été effacé
+/// avant la dernière création ; ne pas les compter — ce qui est fait ici —
+/// suppose que chaque trou a été repris avant. La seconde garde ce qui
+/// s'entend : des fichiers créés à la suite dans des enregistrements
+/// voisins, qui partagent leur page de 4 Ko quand le système les horodate
+/// (`BootSessionTests`, « 2003 horodate ses accès »). La première a été
+/// essayée et écartée au lot F de `LEDGER-REALISME.md` pour cette raison.
 struct MFTNumbering {
     let files: [UInt32: Int]
     let directories: [UInt32: Int]
@@ -108,7 +120,10 @@ enum GeneratedVolumeBridge {
                                           clusterCount: Int(disk.clusterCount),
                                           clusterSectors: clusterSectors,
                                           format: format(of: disk))
-        partition.ntfsPlacement = DiskGenerator.mirrorPlacement(for: disk.spec)
+        partition.ntfsFormatting = DiskGenerator.formatting(for: disk.spec)
+        if partition.format == .ntfs, !disk.mftFileExtents.isEmpty {
+            partition.mftExtents = disk.mftFileExtents
+        }
         return partition
     }
 

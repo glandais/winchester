@@ -14,6 +14,12 @@ public struct GeneratedDisk: Sendable {
     /// MFT : taille et morcellement. Nul hors NTFS.
     public var mftClusters: UInt32
     public var mftExtents: Int
+    /// Les extents de `$MFT` elle-même, dans l'ordre des enregistrements :
+    /// l'enregistrement *n* est *n* kilo-octets dans cette suite, pas
+    /// `mftStart + n` — la MFT se fragmente (31 extents sur `famille-2003`),
+    /// et l'adresser d'un seul tenant visait un endroit où elle n'est pas
+    /// (`LEDGER-REALISME.md`, F2). Vide hors NTFS.
+    public var mftFileExtents: [Extent] = []
     /// Plage que NTFS tient à l'écart pour la croissance de la MFT, `nil` hors
     /// NTFS. Elle est libre dans la bitmap sans être disponible : qui la lit
     /// doit la traiter comme occupée.
@@ -322,7 +328,7 @@ public enum DiskGenerator {
                               search: NTFSAllocator.SearchBounds = .standard) -> NTFSAllocator {
         NTFSAllocator(profile: ntfsProfile(for: spec),
                       clusterCount: spec.clusterCount,
-                      mirrorPlacement: mirrorPlacement(for: spec),
+                      formatting: formatting(for: spec),
                       search: search)
     }
 
@@ -336,8 +342,15 @@ public enum DiskGenerator {
     /// Aucun scénario embarqué ne démarre en 2000 ; c'est un disque
     /// personnalisé daté de cette année-là que la borne d'avant traitait comme
     /// un NT 4.
-    public static func mirrorPlacement(for spec: ProfileSpec) -> NTFSAllocator.MirrorPlacement {
-        spec.timeline.start.year >= 2000 ? .nearStart : .volumeMiddle
+    public static func formatting(for spec: ProfileSpec) -> NTFSAllocator.Formatting {
+        switch spec.os {
+        case "winxp-sp1": return .xp
+        case "vista":     return .vista
+        case "win7-sp1":  return .win7
+        default:
+            let year = spec.timeline.start.year
+            return year < 2001 ? .nt : year < 2007 ? .xp : year < 2009 ? .vista : .win7
+        }
     }
 
     /// Le disque que décrit un simulateur en cours de rejeu.
@@ -354,17 +367,19 @@ public enum DiskGenerator {
     private static func disk<A: GeneratorAllocator>(spec: ProfileSpec, allocator: A,
                                                     catalog: FileCatalog, metrics: AllocationMetrics,
                                                     failedWrites: Int, dayCount: UInt32) -> GeneratedDisk {
-        GeneratedDisk(spec: spec,
-                      catalog: catalog,
-                      bitmap: allocator.bitmap,
-                      metrics: metrics,
-                      clusterBytes: allocator.profile.clusterBytes,
-                      failedWrites: failedWrites,
-                      dayCount: dayCount,
-                      mftClusters: allocator.generatedMFT.clusters,
-                      mftExtents: allocator.generatedMFT.extents,
-                      mftZone: allocator.generatedMFT.zone,
-                      systemExtents: allocator.generatedMFT.system)
+        var disk = GeneratedDisk(spec: spec,
+                                 catalog: catalog,
+                                 bitmap: allocator.bitmap,
+                                 metrics: metrics,
+                                 clusterBytes: allocator.profile.clusterBytes,
+                                 failedWrites: failedWrites,
+                                 dayCount: dayCount,
+                                 mftClusters: allocator.generatedMFT.clusters,
+                                 mftExtents: allocator.generatedMFT.extents,
+                                 mftZone: allocator.generatedMFT.zone,
+                                 systemExtents: allocator.generatedMFT.system)
+        disk.mftFileExtents = allocator.generatedMFT.file
+        return disk
     }
 
     /// Version asynchrone, annulable, qui publie son avancement.
@@ -385,17 +400,17 @@ public enum DiskGenerator {
 /// Ce que le générateur lit d'un allocateur pour décrire le disque qu'il a
 /// produit.
 protocol GeneratorAllocator: Allocator {
-    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent]) { get }
+    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent], file: [Extent]) { get }
 }
 
 extension FATAllocator: GeneratorAllocator {
-    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent]) {
-        (0, 0, nil, [])
+    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent], file: [Extent]) {
+        (0, 0, nil, [], [])
     }
 }
 
 extension NTFSAllocator: GeneratorAllocator {
-    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent]) {
-        (mft.clusterCount, mft.extents.count, mftZone, systemExtents)
+    var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent], file: [Extent]) {
+        (mft.clusterCount, mft.extents.count, mftZone, systemExtents, mft.extents)
     }
 }

@@ -232,9 +232,11 @@ struct BootSessionTests {
         // rapport était de plus de quatre tant que les enregistrements lus se
         // suivaient (le numéro était le rang de lecture) ; dans l'ordre de
         // création, ils sont épars, et seuls ceux d'une même page de 4 Ko ou de
-        // pages voisines partagent une écriture — 994 fichiers, 430 écritures.
+        // pages voisines partagent une écriture — 994 fichiers, 430 écritures,
+        // puis 567 quand la MFT est partie à 3 Gio et les données devant elle
+        // (lot F de `LEDGER-REALISME.md`) : le cache vide plus souvent.
         #expect(xp.stampWrites > 0)
-        #expect(xp.stampWrites * 2 < xp.stampedFiles)
+        #expect(xp.stampWrites * 3 < xp.stampedFiles * 2)
 
         // Le même volume sous Vista : plus rien.
         var vistaDisk = disk

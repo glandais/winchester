@@ -109,10 +109,10 @@ struct FormatRulesTests {
 struct NTFSMetafileTests {
 
     private static func allocator(clusterCount: UInt32,
-                                  placement: NTFSAllocator.MirrorPlacement) -> NTFSAllocator {
+                                  formatting: NTFSAllocator.Formatting) -> NTFSAllocator {
         NTFSAllocator(profile: NTFSProfile(clusterKB: 4),
                       clusterCount: clusterCount,
-                      mirrorPlacement: placement)
+                      formatting: formatting)
     }
 
     /// `$Boot` fait huit kilo-octets — deux clusters à 4 Ko —, et `$MFTMirr`
@@ -121,56 +121,71 @@ struct NTFSMetafileTests {
     /// `$Boot`, quatre pour le miroir.
     @Test("$Boot fait deux clusters, $MFTMirr un seul")
     func metafileSizes() {
-        for placement in [NTFSAllocator.MirrorPlacement.nearStart, .volumeMiddle] {
-            let ntfs = Self.allocator(clusterCount: 1_000_000, placement: placement)
+        for formatting in [NTFSAllocator.Formatting.nt, .xp, .vista, .win7] {
+            let ntfs = Self.allocator(clusterCount: 1_000_000, formatting: formatting)
             #expect(ntfs.bootExtent == Extent(start: 0, length: 2))
             #expect(ntfs.mftMirror.length == 1)
         }
     }
 
-    /// « Près du début », c'est derrière `$Boot`. Posé à la frontière de la
-    /// zone MFT, le miroir tombait à 12,5 % du volume — 31 Go du début sur un
-    /// 250 Go —, c'est-à-dire ni au milieu ni près du début, et pile sur le
-    /// premier cluster où les données ont le droit d'aller.
-    @Test("Près du début, le miroir est derrière $Boot et non à la frontière de la zone")
-    func mirrorNearStart() {
+    /// Depuis XP, `$MFT` est à 3 Gio du début du volume — LCN 786 432 en
+    /// clusters de 4 Ko —, et les données ordinaires se posent devant elle.
+    /// Sous NT elle est en tête, derrière `$Boot`.
+    @Test("$MFT est à 3 Gio depuis XP, en tête sous NT")
+    func mftAtThreeGibibytes() {
         let clusterCount: UInt32 = 64_000_000     // les 250 Go de `dev-2007`
-        let ntfs = Self.allocator(clusterCount: clusterCount, placement: .nearStart)
-
-        #expect(ntfs.mftMirror.start >= ntfs.bootExtent.end)
-        #expect(ntfs.mftMirror.start <= 32,
-                "le miroir est à \(ntfs.mftMirror.start), soit \(ntfs.mftMirror.start / 256) Mo du début")
-        // Et il ne coupe plus en deux le premier cluster des données.
-        #expect(ntfs.mftMirror.end <= ntfs.mftZone.lowerBound)
-    }
-
-    /// Au milieu, il y reste : c'est l'aller-retour par écriture de métadonnées
-    /// qui a fait déplacer le miroir, et le modèle doit garder les deux
-    /// époques.
-    @Test("Au milieu du volume, le miroir est au milieu")
-    func mirrorAtMiddle() {
-        let clusterCount: UInt32 = 1_000_000
-        let ntfs = Self.allocator(clusterCount: clusterCount, placement: .volumeMiddle)
-        #expect(ntfs.mftMirror.start == clusterCount / 2)
-    }
-
-    /// Le déplacement accompagne NTFS 3.0, donc **Windows 2000**, et non XP.
-    /// Aucun scénario embarqué ne démarre en 2000 : sans ce test, la borne
-    /// pourrait redevenir 2001 sans que rien ne le dise.
-    @Test("Le miroir remonte en 2000, pas en 2001")
-    func mirrorMovesWithWindows2000() throws {
-        let reference = try ScenarioLibrary.load("dev-2003")
-        for (year, expected) in [(1999, NTFSAllocator.MirrorPlacement.volumeMiddle),
-                                 (2000, .nearStart),
-                                 (2001, .nearStart)] {
-            var spec = reference
-            spec.timeline = TimelineSpec(start: CivilDate(year: year, month: 1, day: 1),
-                                         end: CivilDate(year: year + 1, month: 1, day: 1))
-            let ntfs = DiskGenerator.ntfsAllocator(for: spec)
-            let middle = ntfs.mftMirror.start == spec.clusterCount / 2
-            #expect(middle == (expected == .volumeMiddle),
-                    "un volume de \(year) pose son miroir en \(ntfs.mftMirror.start)")
+        for formatting in [NTFSAllocator.Formatting.xp, .vista, .win7] {
+            let ntfs = Self.allocator(clusterCount: clusterCount, formatting: formatting)
+            #expect(ntfs.mft.extents[0].start == 786_432, "\(formatting)")
+            // Un premier fichier se pose devant la MFT, pas derrière sa zone.
+            var copy = ntfs
+            let placed = copy.allocate(clusterCount: 8, hint: .normal)
+            #expect(placed.first.map { $0.end <= 786_432 } == true, "\(formatting)")
         }
+        let nt = Self.allocator(clusterCount: clusterCount, formatting: .nt)
+        #expect(nt.mft.extents[0].start == nt.bootExtent.end)
+        // Un volume de moins de 3 Gio : la MFT au huitième, une règle du modèle.
+        let small = Self.allocator(clusterCount: 100_000, formatting: .xp)
+        #expect(small.mft.extents[0].start == 12_500)
+    }
+
+    /// `$MFTMirr` est au milieu du volume de NT 4 à Vista, et au LCN 2
+    /// depuis Windows 7 (Sedory) : les deux époques restent.
+    @Test("Le miroir est au milieu jusqu'à Vista, au LCN 2 sous Windows 7")
+    func mirrorPlacement() {
+        let clusterCount: UInt32 = 1_000_000
+        for formatting in [NTFSAllocator.Formatting.nt, .xp, .vista] {
+            let ntfs = Self.allocator(clusterCount: clusterCount, formatting: formatting)
+            #expect(ntfs.mftMirror.start == clusterCount / 2, "\(formatting)")
+        }
+        let seven = Self.allocator(clusterCount: clusterCount, formatting: .win7)
+        #expect(seven.mftMirror.start == 2)
+        #expect(seven.mft.extents[0].start > seven.logFile.end)
+    }
+
+    /// La zone MFT : 12,5 % du volume jusqu'à XP, 200 Mo depuis Vista
+    /// (KB 961095), renouvelés quand la MFT les a remplis.
+    @Test("La zone MFT fait 12,5 % sous XP et 200 Mo depuis Vista")
+    func mftZoneSize() {
+        let clusterCount: UInt32 = 64_000_000
+        let xp = Self.allocator(clusterCount: clusterCount, formatting: .xp)
+        #expect(xp.mftZone.upperBound - xp.mft.extents[0].start == clusterCount / 8)
+        let vista = Self.allocator(clusterCount: clusterCount, formatting: .vista)
+        #expect(vista.mftZone.upperBound - vista.mft.extents[0].start == (200 << 20) / 4_096)
+    }
+
+    /// La disposition suit le système du profil, pas son année.
+    @Test("La disposition suit le champ os du profil")
+    func formattingFollowsTheOS() throws {
+        for (id, expected) in [("dev-2003", NTFSAllocator.Formatting.xp),
+                               ("dev-2007", .vista), ("dev-2012", .win7)] {
+            #expect(DiskGenerator.formatting(for: try ScenarioLibrary.load(id)) == expected, "\(id)")
+        }
+        var spec = try ScenarioLibrary.load("dev-2003")
+        spec.os = "nt4"
+        spec.timeline = TimelineSpec(start: CivilDate(year: 1999, month: 1, day: 1),
+                                     end: CivilDate(year: 2000, month: 1, day: 1))
+        #expect(DiskGenerator.formatting(for: spec) == .nt)
     }
 }
 

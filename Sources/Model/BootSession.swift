@@ -64,11 +64,15 @@ extension ThinkModel {
     /// ne départagent plus les deux constantes : avec quatre profils par
     /// époque, fichiers et mégaoctets sont colinéaires (`fit-think.py`).
     ///
-    /// Le niveau de 2003 et 2007 — 0,19 et 0,15 s par mégaoctet, un Vista à
+    /// Le niveau de 2003 et 2007 — 0,185 et 0,146 s par mégaoctet, un Vista à
     /// peine sous un XP sur des processeurs trois ou quatre fois plus rapides —
     /// n'est justifié par rien dans la description : c'est la question des
-    /// cibles, que seules des mesures d'époque trancheraient. L'histoire des
-    /// calages est dans `LEDGER.md` (chantiers 22, 26 et 29).
+    /// cibles, que seules des mesures d'époque trancheraient. Le 0,93 de 1993
+    /// dit la même chose autrement : quand la fiche du Conner a rendu au
+    /// disque ses 79 secteurs par piste (chantier 40), le démarrage a gagné
+    /// quatre secondes que la cible n'accorde pas, et c'est le processeur qui
+    /// les reprend. L'histoire des calages est dans `LEDGER.md` (chantiers 22,
+    /// 26, 29 et 41).
     ///
     /// **Windows 7 n'a pas de cible** : le modèle d'avant la relecture ne
     /// connaissait pas 2012. Ses deux constantes sont celles de Vista divisées
@@ -77,12 +81,12 @@ extension ThinkModel {
     /// démarrage. **Une hypothèse**, que rien ne recoupe (chantier 34).
     static func boot(_ os: String) -> ThinkModel {
         switch os {
-        case "msdos-6.22+win31": ThinkModel(perFile: 0.045, perMegabyte: 0.65)
-        case "win95-osr1":       ThinkModel(perFile: 0.022, perMegabyte: 0.42)
+        case "msdos-6.22+win31": ThinkModel(perFile: 0.045, perMegabyte: 0.93)
+        case "win95-osr1":       ThinkModel(perFile: 0.022, perMegabyte: 0.41)
         case "win98se":          ThinkModel(perFile: 0.015, perMegabyte: 0.24)
-        case "winxp-sp1":        ThinkModel(perFile: 0.009, perMegabyte: 0.19)
+        case "winxp-sp1":        ThinkModel(perFile: 0.009, perMegabyte: 0.185)
         case "win7-sp1":         ThinkModel(perFile: 0.006, perMegabyte: 0.10)
-        default:                 ThinkModel(perFile: 0.009, perMegabyte: 0.15)  // Vista
+        default:                 ThinkModel(perFile: 0.009, perMegabyte: 0.146)  // Vista
         }
     }
 }
@@ -300,7 +304,7 @@ extension BootScript {
                 // il ne l'est pas : `Tools/Measure/readme-tables.py` le recopie
                 // tel quel dans la table des démarrages du `README.md`, qui est
                 // française. Un « and » ici y ferait un diff à chaque mesure.
-                osName: "MS-DOS 6.22 et Windows 3.1",
+                osName: "MS-DOS 6 et Windows 3.1",
                 post: 8.0,
                 kernelFiles: 5, driverFiles: 16, serviceFiles: 14,
                 shellFiles: 220, appBytes: 6_000_000,
@@ -889,10 +893,22 @@ enum BootPlanner {
                 var first = numbers[0]
                 var last = first
                 func readRun() {
-                    let sectors = (last - first + 1) * partition.mftRecordSectors
-                    append(lba: partition.mftLBA + first * partition.mftRecordSectors,
-                           sectors: sectors, isWrite: false, phase: phase)
-                    bytesRead += sectors * DriveGeometry.bytesPerSector
+                    // Une suite d'enregistrements n'est contiguë sur le
+                    // plateau que dans un même extent de la MFT : la lecture
+                    // se coupe là où elle se coupe.
+                    var from = first
+                    while from <= last {
+                        let start = partition.mftRecordLBA(from)
+                        var to = from
+                        while to < last,
+                              partition.mftRecordLBA(to + 1) == start + (to + 1 - from) * partition.mftRecordSectors {
+                            to += 1
+                        }
+                        let sectors = (to - from + 1) * partition.mftRecordSectors
+                        append(lba: start, sectors: sectors, isWrite: false, phase: phase)
+                        bytesRead += sectors * DriveGeometry.bytesPerSector
+                        from = to + 1
+                    }
                 }
                 for number in numbers.dropFirst() where number != last {
                     if number == last + 1 {
@@ -956,8 +972,8 @@ enum BootPlanner {
                 // et c'est la page que le vidage réécrit. Quatre fichiers créés
                 // à la suite partagent une page.
                 let pageSectors = 4_096 / DriveGeometry.bytesPerSector
-                let offset = mftRecord(of: record, readingRank: fileIndex) * partition.mftRecordSectors
-                access = MetadataAccess(lba: partition.mftLBA + offset / pageSectors * pageSectors,
+                let lba = partition.mftRecordLBA(mftRecord(of: record, readingRank: fileIndex))
+                access = MetadataAccess(lba: lba / pageSectors * pageSectors,
                                         sectors: pageSectors)
             }
             dirtyStamps[access.lba] = max(dirtyStamps[access.lba] ?? 0, access.sectors)

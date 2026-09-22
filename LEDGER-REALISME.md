@@ -493,3 +493,12 @@ seek (le tableau du dépouillement ne le citait pas, mais « les manuels du
 dépôt publient la puissance en seek » laissait croire à tous) ; et le
 7200.14 vaut 1,97 B de bras seul, non 2,17. Le coude de la broche attend
 l'écoute.
+
+### Lot F — fait (chantier 44 de `LEDGER.md`)
+
+E1, la place de `$MFT`, F2, les dates, MS-DOS 6, un recalage. Ce qui
+corrige ce fichier : « la zone MFT et son halving, exacts contre `mkntfs.c` »
+ne vaut plus que pour NT et XP — Vista et 7 réservent 200 Mo renouvelables
+(KB 961095) ; et `MFTNumbering` **ne change pas**, l'autre approximation
+ayant été essayée et écartée pour ce qu'elle défait à l'écoute. Trois
+démarrages NTFS sont loin de leur cible, et c'est la cible qui est en cause.

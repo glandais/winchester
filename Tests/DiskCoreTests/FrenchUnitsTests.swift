@@ -15,12 +15,13 @@ struct FrenchUnitsTests {
     @Test("Le mégaoctet du projet est binaire, et il n'y en a qu'un")
     func megabyteIsBinary() {
         #expect(FrenchUnits.bytesPerMegabyte == 1_048_576)
-        // Le disque de « Développeur, 1993 » : 210 au catalogue, 210 à l'écran.
+        // Le disque de « Développeur, 1993 » : 210 Mo sur l'étiquette, en
+        // mégaoctets décimaux, comme les secteurs garantis des manuels ; le
+        // système en montre 200, en mébioctets, comme CHKDSK le faisait. Le
+        // modèle a longtemps compté 2²⁰ sur l'étiquette : 4,86 % de trop.
         let spec = DiskSpec(sizeMB: 210, rpm: 3_600, averageSeekMs: 14)
-        #expect(FrenchUnits.megabytes(spec.sizeBytes) == "210\u{00A0}Mo")
-        // Le même nombre d'octets divisé par 10⁶ donnait « 220 Mo » : c'est
-        // très exactement l'écart que l'audit a vu à l'écran.
-        #expect(Int((Double(spec.sizeBytes) / 1_000_000).rounded()) == 220)
+        #expect(spec.sizeBytes == 210_000_000)
+        #expect(FrenchUnits.megabytes(spec.sizeBytes) == "200\u{00A0}Mo")
     }
 
     @Test("Go au-delà du gigaoctet, Ko en dessous quand on le demande")
