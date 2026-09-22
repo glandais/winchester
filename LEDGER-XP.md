@@ -67,25 +67,32 @@ Chaque chantier suit le protocole des lots réalisme :
 
 ## Chantier 47 : les défauts sans dépendance
 
-- **B#15** : `mftRecordLBA` suit `DefragVolume.mftExtents` après
+**Fait** le 22 septembre 2026, branche `xp` (`LEDGER.md`, chantier 47). Tout
+ce qui suit est livré. Écarts au plan : B#15 ne s'entend que sur 4 volumes
+(ceux dont des fichiers ont leur enregistrement dans la queue de la MFT), et
+la prédiction « seules les passes XP et les volumes 2012 bougent » tient au
+bilan près (344 identiques, 56 changés, 12 absents ; 54 md5 sur 58).
+Calibration en Release : inchangée, aux mêmes chiffres.
+
+- [x] **B#15** : `mftRecordLBA` suit `DefragVolume.mftExtents` après
   `relocateMFTTail`, soit par une `partition` mutable, soit par les extents
   passés au `commit`.
-- **B#16** : l'avancement de la passe XP ne recule plus
+- [x] **B#16** : l'avancement de la passe XP ne recule plus
   (`dfrgntfs.cpp:981-985` : borne sur la dernière valeur).
-- **B#25** : l'outil par défaut est daté par l'année du scénario, et non par
+- [x] **B#25** : l'outil par défaut est daté par l'année du scénario, et non par
   celle du disque nommé.
-- **B#17** : `filesAlreadyInPlace` ne compte ni les fichiers qui seront
+- [x] **B#17** : `filesAlreadyInPlace` ne compte ni les fichiers qui seront
   déplacés ni les intouchables.
-- **B#21** : l'arrêt au premier fichier sans trou est limité à l'ordre par
+- [x] **B#21** : l'arrêt au premier fichier sans trou est limité à l'ordre par
   taille.
-- **`xp-defrag-tri`** : départager par `mftRecord`, non par `id`.
-- **B#35** : l'état de `TipJar` est remis à zéro à la fermeture de la
+- [x] **`xp-defrag-tri`** : départager par `mftRecord`, non par `id`.
+- [x] **B#35** : l'état de `TipJar` est remis à zéro à la fermeture de la
   feuille.
-- **B#51** : `wav-md5.py` part d'un environnement propre et sort en erreur
+- [x] **B#51** : `wav-md5.py` part d'un environnement propre et sort en erreur
   quand un rendu échoue.
-- **Décision 3** : retirer les 12 passes XP sur FAT des mesures, et refaire
+- [x] **Décision 3** : retirer les 12 passes XP sur FAT des mesures, et refaire
   le test de B#30.
-- **B#5 et B#12**, dans leur propre lot de rendus : `sizeMB: 500107` pour
+- [x] **B#5 et B#12**, dans leur propre lot de rendus : `sizeMB: 500107` pour
   `dev-2012` et `gamer-2012`, et la doc de `DiskSpec(reference:)`.
 
 Prédiction attendue : seules les passes XP et les volumes 2012 bougent.

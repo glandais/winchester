@@ -167,7 +167,8 @@ Le WD5000HHTZ prend la mécanique du WD1000DHTZ, que la fiche de 2012 décrit da
 la même table.
 
 Un disque nommé garde son année, qui décide de sa voix ; celle du scénario décide
-du reste. Posé dans une machine plus ancienne (`DRIVE=VelociRaptor`), il se
+du reste, y compris l'outil de défragmentation qu'on prend sans en nommer
+(chantier 47 : il suivait l'année du disque). Posé dans une machine plus ancienne (`DRIVE=VelociRaptor`), il se
 branche sur le contrôleur SATA de celle-ci.
 
 Ce que remplace ce modèle faisait tout porter à la densité linéaire, avec un seul
@@ -794,7 +795,7 @@ peu plus de pilotes et de services.
 | `gamer-2003` | Windows XP | 912 | 226 Mo | 66,2 s | 72 % | −2 % |
 | `dev-2003` | Windows XP | 414 | 176 Mo | 51,5 s | 67 % | −1 % |
 | `famille-2007` | Windows Vista | 683 | 136 Mo | 43,2 s | 58 % | +3 % |
-| `gamer-2012` | Windows 7 | 672 | 283 Mo | 45,3 s | 68 % | +2 % |
+| `gamer-2012` | Windows 7 | 600 | 275 Mo | 43,6 s | 68 % | +2 % |
 
 **Le témoin** est la colonne qui compte. C'est le même contenu posé comme au
 premier jour — mêmes fichiers, mêmes tailles, chacun d'un seul tenant, tassé
@@ -1013,16 +1014,16 @@ passe de XP sur le même volume tient en **1 196 949 requêtes et 30 min 20**.
 |-------------------|------:|---------:|-----------:|---------:|--------------------------|------------------------|
 | `gamer-2003`      |   9 % |    2 332 |       12 s |       90 | 11 → **0**               | 93 → **0**             |
 | `secretaire-2003` |  91 % |  255 335 |  15 min 20 |     8716 | 2 934 → 187              | 36 962 → 10 825        |
-| `famille-2003`    |  88 % |  157 226 |   8 min 41 |     4473 | 992 → 35                 | 32 713 → 9 455         |
-| `dev-2003`        |  91 % |  474 759 |  24 min 43 |    10159 | 192 → 7                  | 6 671 → 119            |
-| `secretaire-2007` |  88 % | 2 342 701 |  55 min 23 |     5249 | 838 → 2                  | 16 024 → 4             |
+| `famille-2003`    |  88 % |  157 226 |   8 min 42 |     4473 | 992 → 35                 | 32 713 → 9 455         |
+| `dev-2003`        |  91 % |  474 759 |  24 min 42 |    10159 | 192 → 7                  | 6 671 → 119            |
+| `secretaire-2007` |  88 % | 2 342 701 |  55 min 19 |     5249 | 838 → 2                  | 16 024 → 4             |
 | `famille-2007`    |  97 % | 1 196 949 |  30 min 20 |    10123 | 2 752 → 168              | 71 575 → 29 956        |
 | `gamer-2007`      |  87 % | 6 913 582 |     2 h 18 |    13164 | 3 386 → 30               | 61 230 → 68            |
 | `dev-2007`        |  93 % | 6 175 438 |     2 h 40 |    13703 | 1 423 → 1                | 106 585 → 2            |
-| `secretaire-2012` |  89 % | 4 500 833 |  54 min 13 |     6672 | 1 053 → 2                | 19 938 → 4             |
+| `secretaire-2012` |  89 % | 4 500 833 |  54 min 11 |     6672 | 1 053 → 2                | 19 938 → 4             |
 | `famille-2012`    |  92 % | 10 522 678 |     2 h 11 |    18763 | 3 904 → 258              | 82 824 → 15 541        |
-| `gamer-2012`      |  91 % | 12 270 289 |     2 h 12 |    17870 | 4 327 → 52               | 84 498 → 4 080         |
-| `dev-2012`        |  90 % | 6 601 151 |     1 h 10 |    18745 | 1 409 → 1                | 74 871 → 2             |
+| `gamer-2012`      |  92 % | 13 083 569 |     2 h 24 |    17567 | 4 319 → 50               | 81 041 → 5 158         |
+| `dev-2012`        |  85 % | 5 026 543 |  51 min 26 |    17135 | 1 413 → 2                | 57 299 → 5             |
 
 Ce qu'il laisse en morceaux, il le dit dans son rapport : un fichier que ni
 un trou ni une région vidée ne peuvent recevoir y reste.
@@ -1067,16 +1068,16 @@ sujet : un fichier ramené de quarante morceaux à deux y reste « fragmenté »
 | scénario NTFS     | morceaux restants, XP | UltraDefrag |  requêtes XP → UD |    durée XP → UD |
 |-------------------|----------------------:|------------:|------------------:|-----------------:|
 | `secretaire-2003` |                10 825 |         828 |  255 335 → 80 093 | 15 min 20 → 10 min 21 |
-| `famille-2003`    |                 9 455 |         657 |  157 226 → 70 030 | 8 min 41 → 7 min 42 |
-| `dev-2003`        |                   119 |          29 |  474 759 → 16 159 | 24 min 43 → 6 min 00 |
-| `secretaire-2007` |                     4 |           2 | 2 342 701 → 42 825 | 55 min 23 → 27 min 12 |
+| `famille-2003`    |                 9 455 |         657 |  157 226 → 70 030 | 8 min 42 → 7 min 42 |
+| `dev-2003`        |                   119 |          29 |  474 759 → 16 159 | 24 min 42 → 6 min 00 |
+| `secretaire-2007` |                     4 |           2 | 2 342 701 → 42 825 | 55 min 19 → 27 min 12 |
 | `famille-2007`    |                29 956 |       1 139 | 1 196 949 → 151 444 | 30 min 20 → 20 min 20 |
 | `gamer-2007`      |                    68 |         161 | 6 913 582 → 139 043 | 2 h 18 → 46 min 18 |
 | `dev-2007`        |                     2 |          93 | 6 175 438 → 229 869 | 2 h 40 → 47 min 27 |
-| `secretaire-2012` |                     4 |           4 | 4 500 833 → 51 488 | 54 min 13 → 23 min 24 |
+| `secretaire-2012` |                     4 |           4 | 4 500 833 → 51 488 | 54 min 11 → 23 min 24 |
 | `famille-2012`    |                15 541 |       1 313 | 10 522 678 → 188 580 | 2 h 11 → 40 min 06 |
-| `gamer-2012`      |                 4 080 |         573 | 12 270 289 → 189 503 | 2 h 12 → 27 min 38 |
-| `dev-2012`        |                     2 |          46 | 6 601 151 → 162 265 | 1 h 10 → 21 min 44 |
+| `gamer-2012`      |                 5 158 |         562 | 13 083 569 → 182 896 | 2 h 24 → 27 min 49 |
+| `dev-2012`        |                     5 |           0 | 5 026 543 → 127 722 | 51 min 26 → 22 min 19 |
 
 Sur `famille-2007`, les 29 956 morceaux que XP laisse derrière lui tombent à
 **1 139** — 96 % de moins — pendant que le nombre de fichiers fragmentés, lui,
@@ -1161,8 +1162,8 @@ tout le volume et déplace bien plus que les seuls fichiers cassés — 4,1 Go s
 | scénario | plein | morceaux restants, XP | UltraDefrag | JkDefrag | durée, XP → JkDefrag | Go déplacés, XP → JkDefrag |
 |---|---:|---:|---:|---:|---:|---:|
 | `secretaire-2003` | 91 % | 10 825 | 828 | 916 | 15 min 20 → 16 min 12 | 6,2 → 10,5 |
-| `famille-2003` | 88 % | 9 455 | 657 | 502 | 8 min 41 → 15 min 35 | 3,5 → 13,6 |
-| `dev-2003` | 91 % | 119 | 29 | 129 | 24 min 43 → 11 min 08 | 13,7 → 8,6 |
+| `famille-2003` | 88 % | 9 455 | 657 | 502 | 8 min 42 → 15 min 35 | 3,5 → 13,6 |
+| `dev-2003` | 91 % | 119 | 29 | 129 | 24 min 42 → 11 min 08 | 13,7 → 8,6 |
 | `gamer-2003` | 9 % | 0 | 0 | 0 | 12 s → 4 min 01 | 0,1 → 4,1 |
 | `famille-2007` | 97 % | 29 956 | 1 139 | 1 079 | 30 min 20 → 36 min 46 | 35,5 → 56,2 |
 | `gamer-2007` | 87 % | 68 | 161 | 50 | 2 h 18 → 1 h 49 | 217,4 → 187,0 |
@@ -1320,29 +1321,29 @@ bras par morceau. La zone MFT n'est jamais une destination.
 
 | scénario | plein | durée, XP / UltraDefrag / JkDefrag / recollage | morceaux restants | trous libres |
 |---|---:|---:|---:|---:|
-| `dev-2003` | 91 % | 24 min 43 / 6 min 00 / 11 min 08 / **2 min 29** | 119 / 29 / 129 / **355** | 381 / 1 061 / 223 / **81** |
-| `famille-2003` | 88 % | 8 min 41 / 7 min 42 / 15 min 35 / **8 min 24** | 9 455 / 657 / 502 / **637** | 6 445 / 3 579 / 724 / **57** |
+| `dev-2003` | 91 % | 24 min 42 / 6 min 00 / 11 min 08 / **2 min 29** | 119 / 29 / 129 / **355** | 381 / 1 061 / 223 / **81** |
+| `famille-2003` | 88 % | 8 min 42 / 7 min 42 / 15 min 35 / **8 min 24** | 9 455 / 657 / 502 / **637** | 6 445 / 3 579 / 724 / **57** |
 | `secretaire-2003` | 91 % | 15 min 20 / 10 min 21 / 16 min 12 / **12 min 44** | 10 825 / 828 / 916 / **807** | 6 180 / 6 445 / 1 570 / **460** |
 | `gamer-2003` | 9 % | 12 s / 8 s / 4 min 01 / **10 s** | 0 / 0 / 0 / **2** | 97 / 102 / 26 / **38** |
 | `dev-2007` | 93 % | 2 h 40 / 47 min 27 / 1 h 20 / **12 min 57** | 2 / 93 / 90 / **890** | 1 935 / 8 139 / 815 / **76** |
 | `famille-2007` | 97 % | 30 min 20 / 20 min 20 / 36 min 46 / **12 min 25** | 29 956 / 1 139 / 1 079 / **1 525** | 12 252 / 8 499 / 1 177 / **234** |
 | `gamer-2007` | 87 % | 2 h 18 / 46 min 18 / 1 h 49 / **12 min 27** | 68 / 161 / 50 / **877** | 2 129 / 7 401 / 929 / **184** |
-| `secretaire-2007` | 88 % | 55 min 23 / 27 min 12 / 39 min 05 / **4 min 23** | 4 / 2 / 0 / **218** | 1 544 / 3 592 / 670 / **74** |
-| `dev-2012` | 90 % | 1 h 10 / 21 min 44 / 47 min 12 / **6 min 48** | 2 / 46 / 0 / **632** | 2 275 / 9 628 / 526 / **131** |
+| `secretaire-2007` | 88 % | 55 min 19 / 27 min 12 / 39 min 05 / **4 min 23** | 4 / 2 / 0 / **218** | 1 544 / 3 592 / 670 / **74** |
+| `dev-2012` | 85 % | 51 min 26 / 22 min 19 / 46 min 18 / **6 min 02** | 5 / 0 / 0 / **651** | 2 026 / 9 546 / 277 / **152** |
 | `famille-2012` | 92 % | 2 h 11 / 40 min 06 / 1 h 11 / **11 min 09** | 15 541 / 1 313 / 1 089 / **2 181** | 8 043 / 10 499 / 892 / **219** |
-| `gamer-2012` | 91 % | 2 h 12 / 27 min 38 / 1 h 12 / **10 min 03** | 4 080 / 573 / 456 / **958** | 8 037 / 10 227 / 993 / **260** |
-| `secretaire-2012` | 89 % | 54 min 13 / 23 min 24 / 40 min 06 / **3 min 41** | 4 / 4 / 0 / **150** | 2 046 / 4 796 / 134 / **123** |
+| `gamer-2012` | 92 % | 2 h 24 / 27 min 49 / 1 h 12 / **9 min 45** | 5 158 / 562 / 447 / **892** | 9 136 / 10 291 / 893 / **294** |
+| `secretaire-2012` | 89 % | 54 min 11 / 23 min 24 / 40 min 06 / **3 min 41** | 4 / 4 / 0 / **150** | 2 046 / 4 796 / 134 / **123** |
 
-Sur les douze volumes, la passe dure 1 h 38, contre 13 h 43 pour XP, 4 h 38 pour
-UltraDefrag et 9 h 04 pour JkDefrag, et laisse moins de morceaux (9 232) et
-moins de trous (1 937) que chacun d'eux. Sa durée tient à deux choses qui se
+Sur les douze volumes, la passe dure 1 h 37, contre 13 h 35 pour XP, 4 h 39 pour
+UltraDefrag et 9 h 03 pour JkDefrag, et laisse moins de morceaux (9 185) et
+moins de trous (1 992) que chacun d'eux. Sa durée tient à deux choses qui se
 compensent. Le cache d'écriture du disque pose les destinations de XP,
 contiguës, par salves de 6,7 à 96,7 écritures selon le volume, quand celles du
 recollage sont éparses, 1,2 par vidage. Mais les volumes de 2007 et 2012 portent les
 fichiers en quelques morceaux que leur donne un NTFS qui étend un fichier près
 de lui (`NTFSAllocator`), et XP les recopie en entier, quand le recollage ne
 déplace que les morceaux. Les blocs pleins ne comptent presque plus : donnés à
-XP et à UltraDefrag (`FULL_BLOCKS=1`), ils les mènent à 14 h 22 et 4 h 35, sans
+XP et à UltraDefrag (`FULL_BLOCKS=1`), ils les mènent à 14 h 17 et 4 h 36, sans
 changer ce qu'ils laissent — à un fichier près, les points de contrôle ne
 tombant plus aux mêmes déplacements. Ce que la passe
 apporte en propre, c'est la qualité à durée voisine. Elle ne recopie jamais un fichier
@@ -1420,7 +1421,7 @@ frontière seule en laisse 18 et le rangement 24.
 Le prix est la passe. Sur FAT, elle dure 4 h 42 pour les douze volumes, contre
 4 h 32 au tassage à la frontière et 4 h 51 à Windows 95. Sur NTFS, c'est un
 tassage complet : 1,3 To déplacés et 15 h 43 pour les huit volumes, jusqu'à
-3 h 50 sur `famille-2007`, quand le recollage économe s'en tient à 1 h 38.
+3 h 50 sur `famille-2007`, quand le recollage économe s'en tient à 1 h 37.
 
 Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
 démarrage :
@@ -1690,7 +1691,7 @@ par étape, le jeu complet des bilans, les comparaisons — sous
 
 ```sh
 ./Tools/Measure/snapshot.sh base              # avant de toucher au code
-./Tools/Measure/run.sh base full              # 412 bilans, ~7 à 9 min
+./Tools/Measure/run.sh base full              # 400 bilans, ~7 à 9 min
 # … une correction …
 ./Tools/Measure/snapshot.sh m1 && ./Tools/Measure/run.sh m1 boots   # 3 s
 ./Tools/Measure/boots.py base m1              # les démarrages et leur cible

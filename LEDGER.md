@@ -7700,3 +7700,130 @@ l'utilisateur, mais c'est celle qu'on pilote : juger l'allure en Release.
   ambiance) le sont peut-être aussi, clavier branché : essai non concluant.
 - **Le site** (`docs/support/`) ne parle pas de l'allure : il décrit la version
   publiée, et changera avec le build qui la portera. Les captures aussi.
+
+## Chantier 47 — XP à la lettre : les défauts sans dépendance
+
+**Fait** · branche `xp`, partie de `develop` à `2a15ed2` · plan : `LEDGER-XP.md`
+
+### Le problème
+
+Le premier des six chantiers de `LEDGER-XP.md` : les défauts de l'audit
+(`AUDIT_REALISME.md`) et du relevé contre le code de XP SP1
+(`WINDOWS_CHECK.md`) qui ne dépendent de rien d'autre. B#15 passe avant tout :
+le chantier 50 fera recoller la MFT à presque chaque passe XP, et les
+validations doivent d'abord suivre la MFT déplacée (`WINDOWS_CHECK.md`, §4).
+
+### Les décisions
+
+- **B#15** : `DefragVolume.partition` devient `private(set) var`, et
+  `relocateMFTTail` y reporte les extents de la MFT. `mftRecordLBA`, qui
+  situe l'enregistrement de chaque validation, suit donc la MFT déplacée
+  (l'autre voie, passer les extents au `commit`, touchait toutes les
+  stratégies). Le plan rend la partition d'après la passe.
+- **B#16** : l'avancement de la passe XP ne descend plus
+  (`Pass.advance(to:)`, un `max`), comme `SendStatusData`
+  (`dfrgntfs.cpp:981-985`) borne le pourcentage envoyé sur
+  `uLastPercentDone`. La barre plafonne au lieu de retomber à zéro à chaque
+  tour.
+- **B#17** : « déjà en place » compte les fichiers contigus au départ, que
+  l'outil a le droit de déplacer (`canTouch`), et qu'aucune phase n'a
+  déplacés. Ni le fichier d'échange ni les métafichiers, ni ce que la
+  consolidation ou le tassement emmènent.
+- **B#21** : l'arrêt au premier fichier sans trou (« Sigh. No free space
+  chunk ») reste réservé à l'ordre de XP ; un autre ordre passe au suivant
+  et retient le plus petit échec comme `MinimumLength`.
+- **`xp-defrag-tri`** : `FileEntrySizeCompareRoutine`
+  (`dfrgntfs.cpp:395-432`) départage par `FileRecordNumber`. `Order.precedes`
+  reçoit l'enregistrement de chaque fichier (`DefragVolume.mftRecord(of:)`)
+  et départage par lui, pour `.sizeThenRecord` comme pour `.mftRecord`.
+- **B#25** : sans outil demandé, `build(generated:)` prend celui de l'année
+  **du scénario** (`timeline.start`), comme l'écran de choix, et le passe par
+  `prepared`. `assembleDefrag` ne choisit plus rien. L'année d'un disque
+  nommé reste celle de sa voix.
+- **B#35** : `TipJar.sheetClosed()`, appelé à la fermeture de la feuille,
+  remet l'état au repos sauf pendant un achat. Le fichier diverge donc de la
+  copie de référence commune aux apps (dépôt `donations`) : à y reporter.
+- **B#51** : `wav-md5.py` rend chaque scénario dans un environnement propre
+  (`PATH`, `HOME`, `TMPDIR`, `USER` et `SCENARIO`), efface le WAV d'avant,
+  imprime l'erreur d'un rendu raté et sort en erreur s'il y en a un.
+- **Décision 3** : `run.sh` ne lance plus l'outil de XP sur les douze FAT
+  (400 bilans) ; `compare.py` dit « absent » d'un bilan que la seconde étape
+  ne fait plus au lieu de planter ; `readme-tables.py` ne lisait aucune de ces
+  passes. Le test de B#30 ne porte plus que sur UltraDefrag et compare les
+  extents de chaque répertoire, avant et après.
+- **B#5 et B#12**, dans leur propre étape (`47a` sans, `47` avec) :
+  `sizeMB: 500107` pour `dev-2012` et `gamer-2012`, et la doc de
+  `DiskSpec(reference:)` dit des mégaoctets décimaux.
+
+Tests neufs (`WindowsXPLetterTests`) : la validation qui suit la MFT déplacée,
+l'avancement qui ne recule pas (sur un volume tiré d'un générateur
+déterministe : le premier essai, trop simple, passait aussi sur l'ancien
+code), « déjà en place », l'ordre qui ne s'arrête pas, le départage par
+enregistrement. Les cinq échouent sur le code d'avant, vérifié en y
+remettant `WindowsXPStrategy.swift` et `DefragVolume.swift` de `2a15ed2`.
+Trois comptes « déjà en place » des tests existants suivent B#17 : 1 → 0,
+2 → 0, 12 000 → 450.
+
+### Ce qui valide
+
+Mesures sous `.build/measure-xp` (dépôt principal), prédiction écrite avant
+dans `prediction-47.md`.
+
+| prédiction, écrite avant | mesuré |
+|---|---|
+| 47a : 400 bilans, 12 absents | 400, 12 absents |
+| 47a : les 24 passes XP sur NTFS changent, par « déjà en place » partout | **24**, et **seulement** par « déjà en place » et la durée : requêtes, déplacements, évacuations, morceaux et trous identiques partout |
+| 47a : durées XP qui bougent sur les 7 volumes à MFT morcelée (B#15), et un peu ailleurs par le tri | B#15 : **4** volumes sur 7 (voir plus bas) ; le tri : 12 bilans, de −2,8 à +0,6 s |
+| 47a : 376 identiques | 376 |
+| 47a : 58 md5 identiques | 58 |
+| 47 contre 47a : « 34 bilans » dev-2012 et gamer-2012 | **36** : la liste de la prédiction était juste (2 volumes, 2 démarrages, 2 installations, 26 passes, 4 pleines), son addition fausse |
+| 47 : 54 md5 identiques, les démarrages et installations 2012 changent | 54 ; `boot-` et `install-` de dev-2012 et gamer-2012 |
+| contre base : 346 identiques | **344** (la même erreur d'addition) ; 56 changent, 12 absents |
+| Calibration en Release : les mêmes échecs | les mêmes 4 tests, les mêmes 8 constats (dont 3 connus), **aux mêmes chiffres** sur `2a15ed2` et sur 47 |
+
+**B#15 sur 4 volumes, pas 7.** Une sonde jetable (Release) montre que
+`MFTDefrag` recolle bien la queue sur les sept, mais qu'une validation n'en
+change que si un fichier déplacé a son enregistrement dans la queue. Or le
+premier extent de la MFT tient 4 enregistrements par cluster : 7 024 sur
+famille-2003 pour 5 320 enregistrements au plus, 21 512 sur dev-2007 pour
+20 981, 16 704 sur famille-2007 pour 13 368. Sur dev-2003 (13 612 pour
+13 941), secretaire-2007, dev-2012 et secretaire-2012, la queue porte des
+fichiers : −0,9 s, −4,0 s, +0,4 s et −1,9 s. Un binaire sans le départage
+(`notri`) sépare les deux effets : sans lui, les seize passes des huit autres
+volumes sont identiques à base hors « déjà en place ».
+
+**« Déjà en place »** tombe partout, le tassement emmenant la moitié des
+fichiers contigus ou plus : dev-2003 12 857 → 5 662, dev-2007 18 582 →
+8 519, famille-2012 15 564 → 6 100.
+
+**La capacité 2012.** 116 440 429 → 122 096 435 clusters (+4,86 %).
+`dev-2012` passe de 90 à 85 % plein ; sa passe XP de 1 h 10 à 51 min 26, et
+les tris de JkDefrag de +12 à +93 %. `gamer-2012` passe de 91 à **92 %** :
+il amasse 160 Go par an et range à 95 % (`hoarding.tidiesUpAt`), si bien que
+son remplissage final dépend de l'endroit où tombe la fin du cycle ; sa passe
+XP passe de 2 h 12 à 2 h 24. Les démarrages perdent 1,4 et 1,7 s ; les
+installations, moins d'une seconde.
+
+`swift test` : 157 + 318 tests, verts. `xcb.sh build` passe ; aucune clé
+neuve. README : les tables XP, du recollage économe et des démarrages suivent
+les mesures de 47 ; « 400 bilans » ; le paragraphe de `DRIVE` dit que l'outil
+par défaut suit l'année du scénario. `readme-tables.py 47 --check` : un seul
+écart, la durée de génération de `dev-2007` (1,7 s au README), qu'une
+machine chargée à 150 ne permet pas de mesurer. Elle était déjà hors
+tolérance à base (2,5 s), et le volume n'a pas bougé (empreinte identique).
+Les durées de génération ont été restaurées comme d'habitude.
+
+### Laissé ouvert
+
+- **La durée de génération de `dev-2012`** a pu changer avec sa capacité ; la
+  machine chargée ne permet pas de le dire. Le README garde 2,5 s, dans la
+  tolérance de `--check`.
+- **Les tests qui parlent de l'ancien XP** : `DefragPlannerTests` dit encore
+  « XP suit les numéros d'enregistrement » (B#22, chantier 50).
+- **La table du rangement intelligent** (douze non vérifiées) n'est pas
+  refaite, comme au chantier 45.
+- **`TipJar`** : reporter `sheetClosed()` dans la copie de référence
+  (`donations`) et dans les autres apps. Rien n'a été vu dans le simulateur.
+- **B#15 aggravé plus tard** : avec la condition de XP (chantier 50,
+  `> 1` extent, avant et après), la queue repartira plus souvent. La
+  correction d'aujourd'hui l'y attend.
