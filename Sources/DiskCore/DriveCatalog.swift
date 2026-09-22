@@ -56,6 +56,10 @@ public struct DriveReference: Sendable {
     public let rpm: Int
     public let averageSeekMs: Double
     public let trackToTrackMs: Double
+    /// Pleine course, quand la fiche la publie : Fireball, U8, Conner. Aucun
+    /// manuel Barracuda du dépôt n'en donne — la loi prend alors celle de la
+    /// forme de référence (`SeekModel.referenceFullStrokeRatio`).
+    public let fullStrokeMs: Double?
     /// Débit soutenu sur la piste externe, quand la fiche l'annonce. Sert de
     /// vérification croisée : il n'entre dans aucun calcul.
     public let sustainedOuterMBs: Double?
@@ -85,7 +89,8 @@ public struct DriveReference: Sendable {
 
     public init(model: String, shortName: String, year: Int, capacityBytes: UInt64, heads: Int,
                 tracksPerFace: Int, rpm: Int, averageSeekMs: Double,
-                trackToTrackMs: Double, sustainedOuterMBs: Double? = nil,
+                trackToTrackMs: Double, fullStrokeMs: Double? = nil,
+                sustainedOuterMBs: Double? = nil,
                 isAnchor: Bool = true,
                 platterInches: Double = 3.5,
                 innerRatio: Double? = nil,
@@ -102,6 +107,7 @@ public struct DriveReference: Sendable {
         self.rpm = rpm
         self.averageSeekMs = averageSeekMs
         self.trackToTrackMs = trackToTrackMs
+        self.fullStrokeMs = fullStrokeMs
         self.sustainedOuterMBs = sustainedOuterMBs
         self.isAnchor = isAnchor
         self.source = source
@@ -115,6 +121,13 @@ public struct DriveReference: Sendable {
     /// Une fiche de 3,5 pouces suit la courbe des densités de son époque ; une
     /// autre a sa propre mécanique, et sa géométrie vient de sa fiche seule.
     public var followsEra: Bool { platterInches == 3.5 }
+
+    /// Pleine course rapportée au seek moyen : celle de la fiche, ou celle
+    /// de la forme de référence. C'est ce qu'un disque de la galerie, qui a
+    /// son propre seek moyen, emprunte à la fiche la plus proche.
+    public var fullStrokeRatio: Double {
+        fullStrokeMs.map { $0 / averageSeekMs } ?? SeekModel.referenceFullStrokeRatio
+    }
 
     /// Octets sur une face du plateau.
     public var bytesPerFace: Double { Double(capacityBytes) / Double(heads) }
@@ -132,33 +145,46 @@ public struct DriveReference: Sendable {
 /// parce que la tête doit être mieux posée avant d'écrire (`SeekModel.writeLaw`).
 /// Le modèle en garde les **rapports** et non les valeurs : la colonne de
 /// lecture d'une table n'est pas toujours le chiffre commercial retenu par la
-/// fiche — le U8 annonce 8,9 ms en tête de manuel et 10,5 dans sa table de
-/// seeks —, et c'est ainsi qu'un disque de la galerie, qui a son propre seek
+/// fiche — le U8 annonce 8,9 ms en tête de manuel, sans le définir, et 10,5
+/// dans sa table de seeks —, et c'est ainsi qu'un disque de la galerie, qui a son propre seek
 /// moyen, reçoit le supplément de la fiche la plus proche.
 public struct WriteSeek: Sendable, Equatable {
     public let readAverageMs: Double
     public let writeAverageMs: Double
     public let readTrackToTrackMs: Double
     public let writeTrackToTrackMs: Double
+    /// La pleine course des deux colonnes, quand la table la porte (U8 :
+    /// 23,0 / 25,0). Sans elle, l'écriture est dans le rapport du seek moyen.
+    public let readFullStrokeMs: Double?
+    public let writeFullStrokeMs: Double?
     public let source: String
 
     public init(readAverageMs: Double, writeAverageMs: Double,
-                readTrackToTrackMs: Double, writeTrackToTrackMs: Double, source: String) {
+                readTrackToTrackMs: Double, writeTrackToTrackMs: Double,
+                readFullStrokeMs: Double? = nil, writeFullStrokeMs: Double? = nil,
+                source: String) {
         self.readAverageMs = readAverageMs
         self.writeAverageMs = writeAverageMs
         self.readTrackToTrackMs = readTrackToTrackMs
         self.writeTrackToTrackMs = writeTrackToTrackMs
+        self.readFullStrokeMs = readFullStrokeMs
+        self.writeFullStrokeMs = writeFullStrokeMs
         self.source = source
     }
 
     public var averageRatio: Double { writeAverageMs / readAverageMs }
     public var trackToTrackRatio: Double { writeTrackToTrackMs / readTrackToTrackMs }
+    public var fullStrokeRatio: Double {
+        if let readFullStrokeMs, let writeFullStrokeMs { return writeFullStrokeMs / readFullStrokeMs }
+        return averageRatio
+    }
 
     /// Une loi de lecture, et le seek d'écriture qui va avec.
     public func applied(to seek: SeekModel, averageSeekMs: Double, trackToTrackMs: Double,
-                        cylinders: Int) -> SeekModel {
+                        fullStrokeMs: Double? = nil, cylinders: Int) -> SeekModel {
         seek.withWriteSeek(averageSeekMs: averageSeekMs * averageRatio,
                            trackToTrackMs: trackToTrackMs * trackToTrackRatio,
+                           fullStrokeMs: fullStrokeMs.map { $0 * fullStrokeRatio },
                            cylinders: cylinders)
     }
 }
@@ -286,12 +312,14 @@ public enum DriveCatalog {
             shortName: "Conner CFA170A",
             year: 1993, capacityBytes: 170_000_000, heads: 2,
             tracksPerFace: 2_111, rpm: 4_011,
-            averageSeekMs: 13.0, trackToTrackMs: 3.0,
+            averageSeekMs: 13.0, trackToTrackMs: 3.0, fullStrokeMs: 25.0,
             source: "Fiche BBS Conner et transcription TULARC du manuel 00532-001 — "
                   + "« one disk with two data surfaces, two read/write heads », 2 111 "
                   + "cylindres, 67 à 91 secteurs par piste, RLL 1/7. La fiche portait "
                   + "longtemps la géométrie CHS de translation (1 806 × 4), d'où deux "
-                  + "fois trop de têtes sur tous les volumes de 1993",
+                  + "fois trop de têtes sur tous les volumes de 1993. Pleine course : "
+                  + "25 ms (TULARC, manuel 9/93 ; le manuel préliminaire 2/93 du CP30174, "
+                  + "son nom d'usine, dit 26)",
             buffer: DriveBuffer(
                 bufferKB: 64, readAhead: true, writeCache: false, zeroLatencyRead: false,
                 interfaceMBs: 7.0, commandOverheadMs: 0.5,
@@ -305,8 +333,10 @@ public enum DriveCatalog {
             shortName: "Fireball 1080AT",
             year: 1996, capacityBytes: 1_082_130_432, heads: 4,
             tracksPerFace: 3_835, rpm: 5_400,
-            averageSeekMs: 12.0, trackToTrackMs: 3.0,
-            source: "TULARC — 3 835 cylindres natifs, 4 têtes, PRML 16/17",
+            averageSeekMs: 12.0, trackToTrackMs: 3.0, fullStrokeMs: 21.0,
+            source: "TULARC — 3 835 cylindres natifs, 4 têtes, PRML 16/17. Pleine course "
+                  + "21,0 ms : manuel Fireball TM, table 4-3, colonne des « one-disk "
+                  + "drives », celle des 12,0 ms de seek moyen retenus",
             buffer: DriveBuffer(
                 bufferKB: 128, cacheKB: 76, readAhead: true, writeCache: true,
                 zeroLatencyRead: true,
@@ -329,11 +359,14 @@ public enum DriveCatalog {
             shortName: "Seagate U8",
             year: 1999, capacityBytes: 8_622_931_968, heads: 2,
             tracksPerFace: 20_570, rpm: 5_400,
-            averageSeekMs: 8.9, trackToTrackMs: 1.5,
+            averageSeekMs: 10.5, trackToTrackMs: 1.5, fullStrokeMs: 23.0,
             source: "Manuel Seagate U8 — 16 841 664 secteurs garantis (8 622 931 968 o, "
                   + "et non les 8,4 Go de l'étiquette), 18,7 kTPI, 349 kBPI, 1 plateau. "
                   + "Le débit interne du même manuel (285,5 Mbit/s) recoupe cette valeur "
-                  + "à 0,66, dans le rapport des autres fiches",
+                  + "à 0,66, dans le rapport des autres fiches. Seeks de la table §1.5 — "
+                  + "« Average 10.5 », « Full-stroke 23.0 » —, la seule définie (« a true "
+                  + "statistical random average of at least 5,000 measurements ») et "
+                  + "appariée à l'écriture ; la table de tête dit 8,9 sans rien définir",
             buffer: DriveBuffer(
                 bufferKB: 512, readAhead: true, writeCache: true, zeroLatencyRead: true,
                 interfaceMBs: 66.6, commandOverheadMs: DriveBuffer.measuredOverheadMs,
@@ -343,8 +376,10 @@ public enum DriveCatalog {
             writeSeek: WriteSeek(
                 readAverageMs: 10.5, writeAverageMs: 11.5,
                 readTrackToTrackMs: 1.5, writeTrackToTrackMs: 2.1,
+                readFullStrokeMs: 23.0, writeFullStrokeMs: 25.0,
                 source: "Manuel Seagate U8, §1.5 — « Track-to-track 1.5 / 2.1 », "
-                      + "« Average 10.5 / 11.5 » (lecture / écriture)")),
+                      + "« Average 10.5 / 11.5 », « Full-stroke 23.0 / 25.0 » "
+                      + "(lecture / écriture)")),
 
         DriveReference(
             model: "Seagate Barracuda ATA IV ST340016A",
@@ -818,10 +853,11 @@ extension DriveReference {
         let cylinders = geometry.cylinders
         let read = SeekModel.calibrated(averageSeekMs: averageSeekMs,
                                         trackToTrackMs: trackToTrackMs,
+                                        fullStrokeMs: fullStrokeMs,
                                         cylinders: cylinders)
         return DriveCatalog.writeSeek(year: year, reference: self)?
             .applied(to: read, averageSeekMs: averageSeekMs, trackToTrackMs: trackToTrackMs,
-                     cylinders: cylinders) ?? read
+                     fullStrokeMs: fullStrokeMs, cylinders: cylinders) ?? read
     }
 }
 

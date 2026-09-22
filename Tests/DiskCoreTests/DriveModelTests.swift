@@ -204,6 +204,33 @@ struct DriveModelTests {
         #expect(drive.outerSustainedMBs == drive.innerSustainedMBs)
     }
 
+    /// Trois fiches publient leur pleine course, et la loi passe par les
+    /// trois durées : piste-à-piste, seek moyen (l'espérance sur des seeks
+    /// aléatoires) et pleine course. Les rapports ne sont pas les mêmes —
+    /// 1,75 sur le Fireball, 1,92 sur le Conner, 2,19 sur le U8 — et une
+    /// forme unique ne les tenait pas : −30 % sur le U8.
+    @Test("La loi de seek passe par la pleine course publiée")
+    func calibrationHitsTheFullStroke() {
+        var checked = 0
+        for reference in DriveCatalog.all {
+            guard let full = reference.fullStrokeMs else { continue }
+            let cylinders = reference.geometry.cylinders
+            let seek = reference.seekModel
+            #expect(abs(seek.duration(distance: cylinders - 1) * 1_000 - full) < 0.05,
+                    "\(reference.model) : pleine course \(seek.duration(distance: cylinders - 1) * 1_000) ms")
+            #expect(abs(seek.averageSeekMs(cylinders: cylinders) - reference.averageSeekMs) < 0.05)
+            #expect(abs(seek.duration(distance: 1) * 1_000 - reference.trackToTrackMs) < 0.05)
+            checked += 1
+        }
+        #expect(checked == 3)
+
+        // Le U8 publie aussi la pleine course d'écriture : 25,0 pour 23,0.
+        let u8 = DriveCatalog.all.first { $0.shortName == "Seagate U8" }!
+        let n = u8.geometry.cylinders
+        let write = u8.seekModel.duration(distance: n - 1, isWrite: true) * 1_000
+        #expect(abs(write - 25.0) < 0.05, "\(write) ms")
+    }
+
     @Test("Le seek moyen annoncé est celui qu'on mesure")
     func calibratedSeekHitsItsTarget() {
         for cylinders in [500, 672, 2_000, 8_000, 24_000] {

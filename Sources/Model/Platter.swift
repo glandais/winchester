@@ -179,6 +179,10 @@ struct PlatterTrack {
     /// Mise sous tension : le bras quitte le moyeu pour le bord à cet instant,
     /// sa recherche de la piste 0 faite. `nil` : il attend au moyeu.
     var wake: (time: Double, cylinder: Int)? = nil
+    /// Têtes sur rampe : le bras se parque au bord, pas au moyeu.
+    var rampLoad = false
+
+    var parkCylinder: Int { geometry.parkCylinder(rampLoad: rampLoad) }
 
     /// Durée de la traînée : **un tour apparent**.
     ///
@@ -271,7 +275,7 @@ struct PlatterTrack {
             // la piste 0 l'a laissé. La salve elle-même n'est pas dessinée :
             // elle dure un dixième de seconde, pendant une rampe.
             if let wake, time >= wake.time { return (Double(wake.cylinder), .idle) }
-            return (Double(geometry.parkCylinder), .parked)
+            return (Double(parkCylinder), .parked)
         }
 
         let sample = samples[index]
@@ -326,8 +330,8 @@ struct PlatterTrack {
     private func parking(at time: Double, from resting: Double) -> (Double, HeadActivity) {
         guard let parkAt, time >= parkAt else { return (resting, .idle) }
 
-        let destination = Double(geometry.parkCylinder)
-        let distance = abs(geometry.parkCylinder - Int(resting))
+        let destination = Double(parkCylinder)
+        let distance = abs(parkCylinder - Int(resting))
         guard distance > 0 else { return (destination, .parked) }
 
         let travel = seekModel.duration(distance: distance)

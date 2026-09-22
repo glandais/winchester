@@ -53,6 +53,8 @@ final class LivePass: PassFeed {
     private(set) var spindle: SpindleTimeline
     /// Où attend le bras d'un disque qu'on vient d'allumer.
     let armReady: (time: Double, cylinder: Int)?
+    /// Têtes sur rampe : le bras se parque au bord (`PlatterTrack.rampLoad`).
+    let rampLoad: Bool
     let phases: [PhaseDescriptor]
     let map: ClusterMapPlayer?
 
@@ -102,9 +104,11 @@ final class LivePass: PassFeed {
          seekModel: SeekModel,
          spindle: SpindleTimeline,
          armReady: (time: Double, cylinder: Int)? = nil,
+         rampLoad: Bool = false,
          phases: [PhaseDescriptor],
          map: (clusterCount: Int, initialRuns: [MapRun])? = nil) {
         self.armReady = armReady
+        self.rampLoad = rampLoad
         self.session = session
         self.geometry = geometry
         self.seekModel = seekModel
@@ -295,7 +299,7 @@ final class LivePass: PassFeed {
 
     var platter: PlatterTrack {
         PlatterTrack(geometry: geometry, seekModel: seekModel, samples: samples,
-                     spindle: spindle, parkAt: parkAt, wake: armReady)
+                     spindle: spindle, parkAt: parkAt, wake: armReady, rampLoad: rampLoad)
     }
 
     /// Cellule en cours d'accès, s'il y en a une à cet instant.

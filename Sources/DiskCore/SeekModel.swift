@@ -177,9 +177,11 @@ extension SeekModel {
     /// que par leurs constantes : le croisement des branches est celui de la
     /// course, pas celui de la fiche.
     public func withWriteSeek(averageSeekMs: Double, trackToTrackMs: Double,
+                              fullStrokeMs: Double? = nil,
                               cylinders: Int) -> SeekModel {
         let write = SeekModel.calibrated(averageSeekMs: averageSeekMs,
                                          trackToTrackMs: trackToTrackMs,
+                                         fullStrokeMs: fullStrokeMs,
                                          cylinders: cylinders)
         var model = self
         guard write.crossover == crossover else { return model }
@@ -224,10 +226,45 @@ extension SeekModel {
     /// les lois dérivées se décaleraient avec eux.
     static let referenceCylinders = 2_000
 
-    /// Durée d'un seek moyen, en millisecondes. Par convention de fiche
-    /// technique, c'est celle d'un déplacement du tiers de la course.
+    /// Durée d'un seek moyen, en millisecondes : **l'espérance** de la durée
+    /// d'un seek entre deux cylindres tirés au hasard, ce que les manuels
+    /// mesurent (« a true statistical random average of at least 5,000
+    /// measurements of seeks between random tracks », Seagate U8, §1.5). La
+    /// distance entre deux cylindres uniformes a pour loi 2(N − d)/N² ; ce
+    /// n'est pas le tiers de course, T(N/3), que le modèle a longtemps pris
+    /// pour convention et qui le faisait 2,7 à 3,9 % plus rapide que sa fiche
+    /// en accès aléatoire (`LEDGER-REALISME.md`, la pleine course).
     public func averageSeekMs(cylinders: Int) -> Double {
-        duration(distance: max(cylinders / 3, 1)) * 1_000
+        let weights = SeekModel.RandomSeekWeights(cylinders: cylinders, crossover: crossover)
+        return weights.expectedMs(shortIntercept: shortIntercept, shortSqrtCoefficient: shortSqrtCoefficient,
+                                  longIntercept: longIntercept, longLinearCoefficient: longLinearCoefficient)
+    }
+
+    /// Les sommes pondérées qui font l'espérance d'une loi à deux branches sur
+    /// une course donnée : calculées une fois, l'espérance est ensuite
+    /// linéaire dans les quatre constantes — c'est ce qui permet de la caler
+    /// en fermé (`calibrated(averageSeekMs:trackToTrackMs:fullStrokeMs:cylinders:)`).
+    struct RandomSeekWeights {
+        /// Σ w(d) et Σ w(d)·√d sur la branche courte, Σ w(d) et Σ w(d)·d sur
+        /// la longue, pour w(d) = 2(N − d)/N².
+        let shortWeight: Double, shortRoot: Double, longWeight: Double, longDistance: Double
+
+        init(cylinders: Int, crossover: Int) {
+            let n = Double(max(cylinders, 2))
+            var ws = 0.0, rs = 0.0, wl = 0.0, dl = 0.0
+            for d in 1..<max(cylinders, 2) {
+                let w = 2 * (n - Double(d)) / (n * n)
+                if d < crossover { ws += w; rs += w * Double(d).squareRoot() }
+                else { wl += w; dl += w * Double(d) }
+            }
+            shortWeight = ws; shortRoot = rs; longWeight = wl; longDistance = dl
+        }
+
+        func expectedMs(shortIntercept: Double, shortSqrtCoefficient: Double,
+                        longIntercept: Double, longLinearCoefficient: Double) -> Double {
+            shortIntercept * shortWeight + shortSqrtCoefficient * shortRoot
+                + longIntercept * longWeight + longLinearCoefficient * longDistance
+        }
     }
 
     /// Même loi, étirée sur une course différente.
@@ -326,7 +363,82 @@ extension SeekModel {
         max(0.6 * trackToTrack / 1_000, 0.000_2)
     }
 
+    /// Pleine course rapportée au seek moyen dans `referenceShape` — ce que
+    /// reçoit une fiche qui ne publie pas la sienne. Aucun manuel Barracuda
+    /// du dépôt n'en publie ; le Fireball donne 1,75, le Conner 1,92, le U8
+    /// 2,19 : la loi n'est pas la même pour tous, et c'est pour cela que la
+    /// pleine course est une donnée de fiche quand elle existe.
+    public static let referenceFullStrokeRatio: Double = {
+        let shape = referenceShape
+        return shape.duration(distance: referenceCylinders - 1) * 1_000
+            / shape.averageSeekMs(cylinders: referenceCylinders)
+    }()
+
+    /// Loi de seek calée sur les **trois** durées d'une fiche : piste-à-piste,
+    /// seek moyen (l'espérance sur des seeks aléatoires) et pleine course.
+    ///
+    /// Les deux branches ont quatre constantes ; quatre équations les fixent :
+    /// la branche courte passe par `(1, piste-à-piste)`, rejoint la longue au
+    /// croisement, la longue passe par `(N − 1, pleine course)`, et
+    /// l'espérance vaut le seek moyen. Le croisement reste à 15 % de la course
+    /// (`referenceShape`). Sans pleine course publiée, celle de la forme de
+    /// référence, dans le même rapport au seek moyen.
+    ///
+    /// Avant, seule la branche courte était calée sur la fiche ; la longue
+    /// venait de la forme étirée, si bien que pleine course / seek moyen
+    /// valait 1,80 pour tous les disques — −30 % sur le U8.
     public static func calibrated(averageSeekMs average: Double,
+                                  trackToTrackMs trackToTrack: Double,
+                                  fullStrokeMs: Double?,
+                                  cylinders: Int) -> SeekModel {
+        let fallback = roughlyCalibrated(averageSeekMs: average, trackToTrackMs: trackToTrack,
+                                         cylinders: cylinders)
+        let n = cylinders
+        let c = fallback.crossover
+        guard n > c + 1, c >= 2, trackToTrack > 0, average > trackToTrack else { return fallback }
+        let full = fullStrokeMs ?? average * referenceFullStrokeRatio
+        guard full > average else { return fallback }
+
+        let w = RandomSeekWeights(cylinders: n, crossover: c)
+        let root = Double(c).squareRoot()
+        let k = 1 / (root - 1)
+        let p = k * (w.shortRoot - w.shortWeight)
+        // E = t2t·(Ws − P) + a·(P + Wl) + b·(P·c + Dl), avec a = F − b·(N − 1).
+        let denominator = p * Double(c) + w.longDistance - Double(n - 1) * (p + w.longWeight)
+        guard abs(denominator) > 1e-12 else { return fallback }
+        let b = (average - trackToTrack * (w.shortWeight - p) - full * (p + w.longWeight)) / denominator
+        let a = full - b * Double(n - 1)
+        let s1 = k * (a + b * Double(c) - trackToTrack)
+        let s0 = trackToTrack - s1
+        guard b > 0, s1 > 0 else { return fallback }
+
+        return SeekModel(
+            shortIntercept: s0,
+            shortSqrtCoefficient: s1,
+            longIntercept: a,
+            longLinearCoefficient: b,
+            crossover: c,
+            settleDuration: fallback.settleDuration,
+            accelerationCap: fallback.accelerationCap,
+            headSwitchDuration: fallback.headSwitchDuration
+        )
+    }
+
+    /// Les deux durées d'une fiche, sans pleine course : la forme de
+    /// référence donne la sienne, dans le même rapport au seek moyen.
+    public static func calibrated(averageSeekMs average: Double,
+                                  trackToTrackMs trackToTrack: Double,
+                                  cylinders: Int) -> SeekModel {
+        calibrated(averageSeekMs: average, trackToTrackMs: trackToTrack,
+                   fullStrokeMs: nil, cylinders: cylinders)
+    }
+
+    /// L'ancien calage à deux durées, gardé comme repli du calage en fermé :
+    /// la branche longue de la forme étirée, ramenée au seek moyen, puis la
+    /// branche courte refaite pour passer par le piste-à-piste — ce qui
+    /// décale l'espérance de ce que la branche courte pèse, un quart des
+    /// seeks aléatoires.
+    static func roughlyCalibrated(averageSeekMs average: Double,
                                   trackToTrackMs trackToTrack: Double,
                                   cylinders: Int) -> SeekModel {
         let base = calibrated(averageSeekMs: average, cylinders: cylinders)

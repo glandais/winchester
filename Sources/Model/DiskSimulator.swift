@@ -435,9 +435,9 @@ struct DiskMechanics {
         // Au repos le bras est parqué au diamètre intérieur, sur la zone
         // d'atterrissage. Un plateau qui tournait déjà l'y a laissé ; un disque
         // qu'on allume en part pour chercher sa piste 0 (`start`).
-        self.headCylinder = geometry.parkCylinder
-        self.headLBA = geometry.lba(of: DriveGeometry.Position(cylinder: geometry.parkCylinder,
-                                                                head: 0, sector: 0))
+        let park = geometry.parkCylinder(rampLoad: idle.rampLoad)
+        self.headCylinder = park
+        self.headLBA = geometry.lba(of: DriveGeometry.Position(cylinder: park, head: 0, sector: 0))
         self.nextRecalibration = idle.recalibration.map { clock + $0.firstAfter }
     }
 
@@ -1143,7 +1143,7 @@ struct DiskMechanics {
         // qu'à la coupure ; un disque à rampe, aussi au bout d'un repos.
         let parkDelay = idle.parkAfter ?? (stopAt != nil ? .infinity : nil)
         if let delay = parkDelay, served {
-            let distance = abs(geometry.parkCylinder - headCylinder)
+            let distance = abs(geometry.parkCylinder(rampLoad: idle.rampLoad) - headCylinder)
             let travel = seekModel.duration(distance: distance)
             // Si la coupure vient avant le délai d'inactivité, c'est elle qui
             // déclenche le voyage.
@@ -1154,7 +1154,7 @@ struct DiskMechanics {
                 tail.append(DiskEvent(
                     time: moment, kind: .seek(seekModel.profile(distance: distance))))
                 parkAt = moment
-                headCylinder = geometry.parkCylinder
+                headCylinder = geometry.parkCylinder(rampLoad: idle.rampLoad)
             }
         }
 

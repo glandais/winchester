@@ -167,6 +167,31 @@ struct PlatterTests {
         #expect(waiting.cylinder == Double(second.cylinder))
     }
 
+    /// Un disque à rampe se parque au bord, pas au moyeu : ni sa première
+    /// course ni sa dernière ne sont des pleines courses.
+    @Test("Un disque à rampe parque son bras au bord")
+    func rampDriveParksAtTheEdge() {
+        let geometry = Self.drive.geometry
+        #expect(geometry.parkCylinder(rampLoad: true) == 0)
+        #expect(geometry.parkCylinder(rampLoad: false) == geometry.cylinders - 1)
+        let track = PlatterTrack(geometry: geometry, seekModel: Self.drive.seekModel, samples: [],
+                                 spindle: SpindleTimeline(spinUpAt: 0, duration: 1, rpm: 5_400),
+                                 rampLoad: true)
+        #expect(track.frame(at: 0.5).cylinder == 0)
+        // Et le simulateur en part : un premier accès au bord ne coûte aucun
+        // seek, là où des têtes posées au moyeu faisaient une pleine course.
+        func firstSeek(rampLoad: Bool) -> Int {
+            let trace = DiskSimulator.run(geometry: geometry, seekModel: Self.drive.seekModel,
+                                          requests: [Self.request(at: 0, lba: 0)], totalDuration: 0,
+                                          spinUpAt: 0, spinUpDuration: 0,
+                                          idle: .desktop(year: 2012, rampLoad: rampLoad))
+            for event in trace.events { if case let .seek(profile) = event.kind { return profile.distance } }
+            return 0
+        }
+        #expect(firstSeek(rampLoad: true) == 0)
+        #expect(firstSeek(rampLoad: false) == geometry.cylinders - 1)
+    }
+
     /// Une passe d'époque aligne des millions d'échantillons : la structure
     /// tient dans vingt-quatre octets, latence comprise.
     @Test("Un échantillon de tête tient dans vingt-quatre octets")

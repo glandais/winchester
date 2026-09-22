@@ -129,9 +129,11 @@ public struct DriveGeometry: Sendable {
         return Int(f * Double(totalSectors))
     }
 
-    /// Cylindre de parcage du bras, moteur à l'arrêt : le diamètre intérieur,
-    /// ou une rampe juste au-delà. Un disque qu'on allume en part pour chercher
-    /// sa piste 0 (`DiskMechanics.start`).
+    /// Cylindre de parcage du bras, moteur à l'arrêt, pour un disque à
+    /// contact (*contact start-stop*) : le diamètre intérieur, sur la zone
+    /// d'atterrissage. Un disque qu'on allume en part pour chercher sa piste 0
+    /// (`DiskMechanics.start`). Un disque à rampe se parque **au bord**, pas
+    /// au moyeu : `parkCylinder(rampLoad:)`.
     ///
     /// Une passe sur un plateau qui tourne déjà part aussi de là, et ce n'est
     /// **pas** un fait : aucun disque de bureau de la période ne parquait au
@@ -139,6 +141,13 @@ public struct DriveGeometry: Sendable {
     /// le sait pas ; le moyeu est une convention, qui fait du premier accès
     /// d'une passe une course presque complète.
     public var parkCylinder: Int { cylinders - 1 }
+
+    /// Le cylindre de parcage selon le mécanisme : sur un 3,5 pouces à
+    /// *load/unload*, la rampe est au **diamètre extérieur** — le bras y monte
+    /// depuis la piste 0 et en redescend ; un tel disque ne commence ni ne
+    /// finit sa vie par une pleine course. La convention du moyeu ne vaut
+    /// que pour les têtes qui se posent sur le plateau.
+    public func parkCylinder(rampLoad: Bool) -> Int { rampLoad ? 0 : parkCylinder }
 
     /// Décalage angulaire du secteur 0 d'une piste à la suivante : le *skew*,
     /// tel que ces disques étaient formatés en usine.

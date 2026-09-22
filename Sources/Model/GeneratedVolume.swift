@@ -261,13 +261,20 @@ extension GeneratedVolumeBridge {
                                          zbr: spec.disk.zbr)
         let trackToTrack = spec.disk.trackToTrackMs
             ?? small?.trackToTrackMs ?? DriveCatalog.trackToTrackMs(year: year)
+        // La pleine course, dans le rapport de la fiche la plus proche à son
+        // seek moyen : 1,92 en 1993, 1,75 en 1996, 2,19 en 1999, et celui de
+        // la forme de référence pour les Barracuda, qui n'en publient pas.
+        let fullStroke = spec.disk.averageSeekMs
+            * (small ?? DriveCatalog.nearest(year: year)).fullStrokeRatio
         let read = SeekModel.calibrated(averageSeekMs: spec.disk.averageSeekMs,
                                         trackToTrackMs: trackToTrack,
+                                        fullStrokeMs: fullStroke,
                                         cylinders: geometry.cylinders)
         // Le seek d'écriture : le supplément de la fiche la plus proche.
         let seek = DriveCatalog.writeSeek(year: year)?
             .applied(to: read, averageSeekMs: spec.disk.averageSeekMs,
-                     trackToTrackMs: trackToTrack, cylinders: geometry.cylinders) ?? read
+                     trackToTrackMs: trackToTrack, fullStrokeMs: fullStroke,
+                     cylinders: geometry.cylinders) ?? read
         return DriveHardware(geometry: geometry, seek: seek,
                              interface: interface, year: year,
                              rampLoad: small?.rampLoad ?? DriveCatalog.nearest(year: year).rampLoad)

@@ -294,6 +294,7 @@ struct Scenario {
                             seekModel: seekModel,
                             spindle: setup.spindle,
                             armReady: setup.armReady,
+                            rampLoad: setup.idle.rampLoad,
                             phases: phases,
                             map: map.map { ($0.partition.clusterCount, $0.initialRuns) })
         session.start()

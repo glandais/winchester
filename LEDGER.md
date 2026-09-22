@@ -7256,3 +7256,76 @@ gardées.
 - **La MFT lue ici est celle du formatage plus les extents publiés** ; F2
   (les enregistrements adressés comme si `$MFT` était d'un seul tenant) reste
   au lot F.
+
+## Chantier 42 — réalisme, lot E : la pleine course
+
+Quatrième lot de `LEDGER-REALISME.md`, branche `realisme`, après A, B et C.
+
+### Le problème
+
+`calibrated(averageSeekMs:trackToTrackMs:cylinders:)` ne recalait que la
+branche courte de la loi sur la fiche ; la longue venait de `referenceShape`
+étirée, si bien que **pleine course / seek moyen valait 1,80 pour tous les
+disques** — 16,06 ms sur un U8 dont le manuel dit 23,0. Le « seek moyen »
+était T(N/3), quand quatre manuels le définissent comme une moyenne
+statistique de seeks aléatoires (E[T]), ce qui rendait le disque simulé 2,7 à
+3,9 % plus rapide que sa fiche en accès aléatoire. Le U8 portait 8,9 ms, le
+chiffre non défini de sa table de tête, contre 10,5 dans la table qui définit
+et publie la pleine course. Et les trois fiches à rampe se parquaient au
+moyeu, avec une pleine course en ouverture et en fermeture qu'elles ne font
+pas — la rampe d'un 3,5 pouces est au diamètre extérieur.
+
+### Les décisions
+
+- **Le seek moyen est l'espérance.** `averageSeekMs(cylinders:)` somme la loi
+  sur la distribution 2(N − d)/N² de la distance entre deux cylindres
+  uniformes ; `RandomSeekWeights` en fait quatre sommes, calculées une fois,
+  après quoi l'espérance est linéaire dans les quatre constantes.
+- **Trois durées, quatre équations, en fermé** :
+  `calibrated(averageSeekMs:trackToTrackMs:fullStrokeMs:cylinders:)` fait
+  passer la branche courte par (1, piste-à-piste), la joint à la longue au
+  croisement (gardé à 15 % de la course), fait passer la longue par (N − 1,
+  pleine course) et donne à l'espérance le seek moyen. Sans pleine course
+  publiée, celle de la forme de référence dans son rapport à E[T] : **1,855**
+  (et non 1,80 : le rapport change avec la définition du moyen). L'ancien
+  calage reste en repli, sous le nom qu'il mérite (`roughlyCalibrated`).
+- **`fullStrokeMs` sur trois fiches** : Conner 25,0 (TULARC ; 26 sur le
+  manuel préliminaire du CP30174), Fireball 21,0 (table 4-3, colonne des
+  « one-disk drives », celle des 12,0 ms retenus), U8 23,0 (§1.5). Les
+  rapports vont de 1,75 à 2,19 : une forme unique ne les tenait pas. Un disque
+  de la galerie emprunte le rapport de la fiche la plus proche
+  (`fullStrokeRatio`), comme il empruntait déjà le seek d'écriture. Le U8
+  publie aussi 25,0 en écriture : `WriteSeek` porte les deux pleines courses,
+  et la loi d'écriture est calée à trois durées elle aussi.
+- **Le U8 à 10,5 ms**, la seule des deux valeurs définie et appariée. Aucun
+  scénario ne lit son `seekModel` (les JSON de 1999 écrivent 9,0) ; ce qui
+  bouge est le rapport de pleine course des volumes de 1999 (2,19), et la
+  valeur par défaut de l'assistant vers 1997-2000.
+- **`parkCylinder(rampLoad:)`** : 0 pour une rampe, le moyeu sinon.
+  `DiskMechanics`, `PlatterTrack` (par `LivePass.rampLoad`, depuis
+  `setup.idle`) et le parcage final le prennent. Le commentaire « ou une rampe
+  juste au-delà » est corrigé.
+
+### Ce qui valide
+
+| prédiction, écrite avant | mesuré |
+|---|---|
+| tout ce qui fait un seek change (388), les 24 `disk-*` jamais | 373 changés, 39 identiques : les 24 `disk-*`, plus 15 bilans qui ne bougent pas **au dixième** (deux démarrages de 1993, les treize passes de `gamer-1996`, qui n'ont rien à ranger) |
+| 0 `md5` sonore identique | 0 sur 58 |
+| sens global incertain, ±3 % | **+0,1 à +1,1 %** selon l'année et le type : E[T] est tenu par construction, et ce que la loi perd à N/3 elle le rend sur les courses longues |
+
+Le modèle donne maintenant 16,7 ms de pleine course à l'ATA IV et 7,05 au
+VelociRaptor (contre 16 et 6,85) — le README les dit comme des sorties du
+modèle, ce qu'ils sont. `swift test` : 305 tests, dont la pleine course des
+trois fiches et de l'écriture du U8, et le disque à rampe qui part du bord.
+`xcb.sh build` passe. README : 97 lignes réécrites, générations gardées.
+
+### Laissé ouvert
+
+- **Le croisement à 15 %** de la course, quand Ruemmler & Wilkes se croisent
+  vers 20 % : non touché, il faudrait une mesure pour trancher.
+- **Le Fireball 1080AT** porte 4 têtes et les seeks de la colonne « one-disk »
+  de son manuel : la fiche mélange deux modèles de la gamme, comme avant.
+- **Les rapports de 1993 à 1999 sont ceux de trois disques** ; entre 2001 et
+  2012, tout le monde reçoit 1,855, faute d'un manuel Seagate qui publie sa
+  pleine course.

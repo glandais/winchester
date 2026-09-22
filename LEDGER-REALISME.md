@@ -476,3 +476,11 @@ sont résidents dans la MFT, et le volume n'en a que 18 hors d'elle. Et
 « une analyse de `dfrg.msc` se comptait en minutes » reste sans source : la
 phase est maintenant celle que le disque met à lire la MFT et les
 répertoires, 3 à 15 s sur les NTFS, plus un calcul assumé.
+
+### Lot E — fait (chantier 42 de `LEDGER.md`)
+
+`fullStrokeMs`, le calage sur E[T], le U8 à 10,5, le parcage à rampe. Ce qui
+corrige ce fichier : le rapport de la forme de référence n'est pas 1,80 mais
+1,855 une fois le seek moyen défini comme les manuels ; et l'effet sur les
+durées est de +0,1 à +1,1 %, pas « faible » au sens où l'entendait ce
+fichier — négligeable, parce que le seek moyen est tenu par construction.
