@@ -6990,8 +6990,8 @@ offrir ce pourboire par la voie permise.
 
 ### Laissé ouvert
 
-- **Les captures pour la revue** des trois produits sont à envoyer : les trois
-  restent « Finaliser avant soumission » tant qu'elles manquent.
+- ~~Les captures pour la revue~~ : la feuille en français, envoyée sur les
+  trois produits le 22 septembre 2026. Les trois sont « Prêts à soumettre ».
 - **La soumission** : le premier achat intégré part avec une version de l'app.
   Joindre les trois à la 1.0.0, avec un build 5 qui porte ce chantier.
 - Pas vu : l'attente d'approbation (Ask to Buy), l'échec simulé, l'anglais,
