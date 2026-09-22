@@ -26,7 +26,6 @@ struct SettingsScreen: View {
                                 subtitle: DiskHaptics.isHardwareSupported ? "settings.subtitle" : "settings.subtitle.noHaptics")
                     mixer
                     welcome
-                    support
                     explanations
                 }
                 .padding(16)
@@ -141,37 +140,5 @@ struct SettingsScreen: View {
             .panel()
         }
         .buttonStyle(.plain)
-    }
-
-    /// La page Ko-fi s'ouvre dans le navigateur : l'app, elle, ne touche pas au
-    /// réseau — `docs/privacy/` le dit, et cite ce libellé.
-    private static let kofi = URL(string: "https://ko-fi.com/gabylandais")!
-
-    private var support: some View {
-        Link(destination: Self.kofi) {
-            HStack(spacing: 12) {
-                Image(systemName: "cup.and.saucer")
-                    .font(.dynamic(size: 17))
-                    .foregroundStyle(Theme.write)
-                    .frame(width: 26)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("settings.support.title")
-                        .font(.dynamic(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.text)
-                    Text("settings.support.note")
-                        .font(.dynamic(size: 12))
-                        .foregroundStyle(Theme.dim)
-                }
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.dynamic(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.dim)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .panel()
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(.isLink)
     }
 }

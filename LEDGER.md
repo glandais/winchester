@@ -6860,3 +6860,34 @@ laisser un pourboire : `https://ko-fi.com/gabylandais`.
 - **Les notes de revue ne sont pas poussées** : `asc review details-update`
   reste à lancer, avec le build qui portera la ligne.
 - Le build 4 ne contient pas la ligne : il faut un build 5.
+
+## Chantier 36 — le lien Ko-fi quitte l'app
+
+### Le problème
+
+La directive 3.1.1 le dit en toutes lettres : un pourboire au développeur,
+dans l'app, passe par l'achat intégré — qu'il débloque quelque chose ou non. Et
+3.1.1(a) interdit, hors storefront américain, tout lien vers un autre moyen de
+paiement. La ligne du chantier 35 exposait la 1.0.0 à un refus.
+
+### Les décisions
+
+- **Plus de ligne « Soutenir Winchester »** dans les Réglages : la vue, la
+  constante et les clés `settings.support.title` / `settings.support.note`
+  (retirées de `i18n/translations.json`, puis `i18n.py import`) s'en vont.
+- **Le site garde Ko-fi** (pied des quatre pages, phrase de l'accueil) : c'est
+  hors de l'app et de ses métadonnées. Le README l'indique aussi.
+- **La page confidentialité** perd « The Ko-fi link » et redit « The app makes
+  no network request ». **Les notes de revue** ne mentionnent plus de lien
+  sortant.
+
+### Ce qui valide
+
+- `./scripts/i18n.py check` : 896 clés, aller-retour exact à l'octet.
+- `./scripts/xcb.sh build` réussit.
+
+### Laissé ouvert
+
+- Un pourboire StoreKit (consommables) reste possible, au prix de l'accord
+  Paid Applications et du statut de professionnel (DSA) dans l'UE.
+- Les notes de revue ne sont toujours pas poussées (`asc review details-update`).

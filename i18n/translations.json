@@ -4250,18 +4250,6 @@
             "fr": "Le son, et pourquoi ça sonne comme ça"
           }
         },
-        "settings.support.note": {
-          "translations": {
-            "en": "A tip on Ko-fi · opens in your browser",
-            "fr": "Un pourboire sur Ko-fi · s'ouvre dans le navigateur"
-          }
-        },
-        "settings.support.title": {
-          "translations": {
-            "en": "Support Winchester",
-            "fr": "Soutenir Winchester"
-          }
-        },
         "settings.title": {
           "translations": {
             "en": "Settings",
