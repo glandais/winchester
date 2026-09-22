@@ -7329,3 +7329,67 @@ trois fiches et de l'écriture du U8, et le disque à rampe qui part du bord.
 - **Les rapports de 1993 à 1999 sont ceux de trois disques** ; entre 2001 et
   2012, tout le monde reçoit 1,855, faute d'un manuel Seagate qui publie sa
   pleine course.
+
+## Chantier 43 — réalisme, lot D : la voix de la tête par disque
+
+Cinquième lot de `LEDGER-REALISME.md`, branche `realisme`, après A, B, C et
+E. Le chantier d'écoute que quatre journaux d'affilée réclamaient.
+
+### Le problème
+
+`SeekSynth` était le même pour les vingt-quatre disques : `modes` est un
+`let`, l'initialiseur ne recevait rien du disque, et `load` n'écrivait que
+`spindle.character`. Les manuels publient pourtant la puissance acoustique en
+seek, et, le repos retranché, le bras seul va de 3,20 B sur le U8 à 1,97 sur
+le 7200.14 — douze décibels que rien ne disait. Le coude du gain de la broche
+compensait côté plateau ce qui ne variait pas côté tête.
+
+### Les décisions
+
+- **`Acoustics` sur les fiches** : `idleBels`, `seekBels`, la source. Neuf
+  fiches en publient (U8, ATA IV, 7200.7, 7200.10 PATA et SATA, 7200.11,
+  7200.14, les deux VelociRaptor) ; ni le Conner ni le Fireball TM (son manuel
+  ne donne que le repos). `seekOnlyBels` retranche le repos en puissance.
+  Le PATA du 7200.10 ne publie que le *quiet seek* (3,0), le SATA le
+  *performance* (3,7) : chaque fiche porte ce que son manuel dit, et la
+  machine de 2007 reçoit la SATA.
+- **`SeekCharacter`**, à côté de `SpindleCharacter` : un niveau, pas un
+  timbre — aucune fiche ne publie un spectre. `init(geometry:year:)` emprunte
+  à la fiche la plus proche qui publie (`DriveCatalog.acoustics(year:)`,
+  comme `writeSeek`) : 1993 et 1996 au U8, 2012 au 7200.14, un 10 000 tr/min
+  à petits plateaux au VelociRaptor. Le gain est **à moitié en décibels**, le
+  U8 à 1 — le même parti qu'au plateau sous son coude : six décibels à
+  l'écoute pour douze aux manuels.
+- **`SeekSynth.headGain`**, immuable comme le reste du synthétiseur, appliqué
+  aux seeks, aux trains, aux tics — pas au décollement ni à l'atterrissage,
+  qui sont des contacts. `WinchesterEngine.load(feed:character:seek:)`
+  refait le synthétiseur et vide ses caches quand le gain change ;
+  `StreamingMixer` le reçoit à la construction. `PassSetup.seekCharacter`.
+- **Le coude de la broche n'est pas desserré** : c'est l'autre moitié de la
+  décision d'écoute, à prendre après avoir entendu celle-ci.
+
+### Ce qui valide
+
+| prédiction, écrite avant | mesuré |
+|---|---|
+| 412 bilans identiques (un gain ne change aucune requête) | 412 |
+| 33 rendus identiques au bit : tout ce qui emprunte au U8 (1993, 1996, 1999, les deux démos, trois journées) | 33 ; les 25 changés sont 2003, 2007, 2012 et `famille-2003_400` |
+
+`swift test` : 306 tests, dont les niveaux contre les manuels (3,20 / 1,97 /
+3,64 B, six décibels pour douze) et les emprunts par année. `xcb.sh gen` puis
+`build` : `SeekCharacter.swift` entre dans le projet et dans
+`Tools/build-render.sh`. README : la table des niveaux sous « Timbre de la
+tête ».
+
+### Laissé ouvert
+
+- **L'écoute**, enfin : `.build/measure-realisme/ecoute-d/` porte trois
+  démarrages avant et après — `secretaire-2003` (−0,8 dB), `famille-2007`
+  (+2,2), `famille-2012` (−6,2). C'est le 2012 qui juge le parti de la
+  moitié : s'il disparaît sous sa broche, le quart ; s'il reste trop fort, le
+  coude de la broche est à desserrer, pas la tête à monter.
+- **Le timbre reste commun.** Un `SeekCharacter` pourrait porter un dosage
+  de modes par époque (un bras de 1993 n'a pas les résonances d'un 2012) ;
+  sans source, ce serait de l'oreille.
+- **La gestion acoustique** (*quiet seek*, trajectoires sinusoïdales) n'est
+  pas modélisée, et le README le dit maintenant.

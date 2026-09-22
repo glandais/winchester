@@ -85,7 +85,7 @@ final class SimulationModel: ObservableObject {
         self.disk = disk
         self.engine = WinchesterEngine(character: scenario.setup.character)
         engine.mix = SoundMix.load(from: .standard)
-        engine.load(feed: live, character: scenario.setup.character)
+        engine.load(feed: live, character: scenario.setup.character, seek: scenario.setup.seekCharacter)
         captureStart()
         finished = engine.$isFinished
             .removeDuplicates()
@@ -244,7 +244,7 @@ final class SimulationModel: ObservableObject {
         let grid = live.map?.grid ?? .standard
         live = scenario.startLivePass()
         live.map?.setGrid(grid)
-        engine.load(feed: live, character: scenario.setup.character)
+        engine.load(feed: live, character: scenario.setup.character, seek: scenario.setup.seekCharacter)
         passNumber += 1
         captureStart()
     }

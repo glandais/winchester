@@ -109,7 +109,7 @@ let transientGain = Float(ScenarioRequest.environment["TRANSIENT_GAIN"] ?? "") ?
 
 let tally = Tally()
 let rawPath = outputPath + ".raw"
-let mixer = planOnly ? nil : StreamingMixer(character: scenario.setup.character, rawPath: rawPath,
+let mixer = planOnly ? nil : StreamingMixer(character: scenario.setup.character, seek: scenario.setup.seekCharacter, rawPath: rawPath,
                                             spindleGain: spindleGain, transientGain: transientGain)
 
 guard let end = scenario.produce(batchRequests: 4_096, batchSeconds: 5, deliver: { batch in

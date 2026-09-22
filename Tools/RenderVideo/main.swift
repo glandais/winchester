@@ -135,7 +135,7 @@ let encoder = try VideoEncoder(path: videoPath, width: size.width, height: size.
 let accelerated = speed > 1
 let finalSpeed = speed
 let snippets = accelerated ? AudioSnippets(speed: speed, snippet: snippet) : nil
-let mixer = StreamingMixer(character: scenario.setup.character, rawPath: accelerated ? nil : rawPath)
+let mixer = StreamingMixer(character: scenario.setup.character, seek: scenario.setup.seekCharacter, rawPath: accelerated ? nil : rawPath)
 if let snippets {
     mixer.onFlush = { start, samples in snippets.consume(start: start, interleaved: samples) }
 }

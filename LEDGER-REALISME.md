@@ -484,3 +484,12 @@ corrige ce fichier : le rapport de la forme de référence n'est pas 1,80 mais
 1,855 une fois le seek moyen défini comme les manuels ; et l'effet sur les
 durées est de +0,1 à +1,1 %, pas « faible » au sens où l'entendait ce
 fichier — négligeable, parce que le seek moyen est tenu par construction.
+
+### Lot D — fait (chantier 43 de `LEDGER.md`)
+
+`SeekCharacter`, les niveaux de neuf fiches, le gain à moitié en décibels.
+Ce qui corrige ce fichier : le Fireball TM ne publie **pas** de niveau en
+seek (le tableau du dépouillement ne le citait pas, mais « les manuels du
+dépôt publient la puissance en seek » laissait croire à tous) ; et le
+7200.14 vaut 1,97 B de bras seul, non 2,17. Le coude de la broche attend
+l'écoute.

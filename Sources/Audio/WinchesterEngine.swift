@@ -216,10 +216,18 @@ final class WinchesterEngine: ObservableObject {
     ///
     /// La passe repart toujours de son début : il n'y a plus de chronologie
     /// où sauter, seulement une passe qui se calcule à mesure qu'on l'écoute.
-    func load(feed: PassFeed, character: SpindleCharacter) {
+    func load(feed: PassFeed, character: SpindleCharacter,
+              seek: SeekCharacter = SeekCharacter(seekBels: SeekCharacter.referenceBels)) {
         stop()
         interruption = nil
         spindle.character = character
+        // La voix de la tête est immuable : un autre niveau, c'est un autre
+        // synthétiseur, et des caches à refaire.
+        if synth.headGain != seek.gain {
+            synth = SeekSynth(sampleRate: sampleRate, headGain: seek.gain)
+            seekCache.removeAll()
+            tickCache.removeAll()
+        }
         self.feed = feed
         isLoaded = true
         isFinished = false

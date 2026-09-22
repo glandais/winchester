@@ -212,6 +212,8 @@ struct PassSetup {
 
     /// Ce que le plateau fait entendre de lui-même.
     var character: SpindleCharacter { SpindleCharacter(geometry: geometry, year: year) }
+    /// Ce que sa tête fait entendre de plus ou de moins qu'une autre.
+    var seekCharacter: SeekCharacter { SeekCharacter(geometry: geometry, year: year) }
 
     /// Où le bras attend la première requête, et depuis quand : au bord, une
     /// fois la recherche de la piste 0 d'une mise sous tension finie. `nil`

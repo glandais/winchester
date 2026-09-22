@@ -86,6 +86,8 @@ public struct DriveReference: Sendable {
     /// Les têtes se garent sur une rampe hors du plateau au lieu de s'y poser :
     /// ni décollage à la mise en route, ni atterrissage à la coupure.
     public let rampLoad: Bool
+    /// Les niveaux du manuel, quand il en publie en seek (`Acoustics`).
+    public let acoustics: Acoustics?
 
     public init(model: String, shortName: String, year: Int, capacityBytes: UInt64, heads: Int,
                 tracksPerFace: Int, rpm: Int, averageSeekMs: Double,
@@ -95,6 +97,7 @@ public struct DriveReference: Sendable {
                 platterInches: Double = 3.5,
                 innerRatio: Double? = nil,
                 rampLoad: Bool = false,
+                acoustics: Acoustics? = nil,
                 source: String,
                 buffer: DriveBuffer,
                 writeSeek: WriteSeek? = nil) {
@@ -116,6 +119,7 @@ public struct DriveReference: Sendable {
         self.platterInches = platterInches
         self.innerRatio = innerRatio
         self.rampLoad = rampLoad
+        self.acoustics = acoustics
     }
 
     /// Une fiche de 3,5 pouces suit la courbe des densités de son époque ; une
@@ -135,6 +139,29 @@ public struct DriveReference: Sendable {
     /// Secteurs par piste, en moyenne sur la face.
     public var meanSectorsPerTrack: Double {
         bytesPerFace / Double(DriveGeometry.bytesPerSector) / Double(tracksPerFace)
+    }
+}
+
+/// Ce qu'un manuel publie du bruit d'un disque : la puissance acoustique au
+/// repos et en seek, en bels (ISO 7779). Le seek s'entend **au-dessus** du
+/// repos : ce qui revient au bras seul est la différence des puissances,
+/// `seekOnlyBels` — 3,20 B sur le U8 (3,5 pour 3,2 au repos), 1,97 sur le
+/// 7200.14 (2,4 pour 2,2). Douze décibels entre les deux, que la voix de la
+/// tête, longtemps la même pour tous, ignorait (`SeekCharacter`).
+public struct Acoustics: Sendable, Equatable {
+    public let idleBels: Double
+    public let seekBels: Double
+    public let source: String
+
+    public init(idleBels: Double, seekBels: Double, source: String) {
+        self.idleBels = idleBels
+        self.seekBels = seekBels
+        self.source = source
+    }
+
+    /// La puissance du seek, le repos retranché, en bels.
+    public var seekOnlyBels: Double {
+        log10(max(pow(10, seekBels) - pow(10, idleBels), 1))
     }
 }
 
@@ -360,6 +387,9 @@ public enum DriveCatalog {
             year: 1999, capacityBytes: 8_622_931_968, heads: 2,
             tracksPerFace: 20_570, rpm: 5_400,
             averageSeekMs: 10.5, trackToTrackMs: 1.5, fullStrokeMs: 23.0,
+            acoustics: Acoustics(idleBels: 3.2, seekBels: 3.5,
+                                 source: "Manuel Seagate U8, §2.9 — « Idle mode 3.2 (typ) », "
+                                       + "« Seek mode 3.5 (typ) »"),
             source: "Manuel Seagate U8 — 16 841 664 secteurs garantis (8 622 931 968 o, "
                   + "et non les 8,4 Go de l'étiquette), 18,7 kTPI, 349 kBPI, 1 plateau. "
                   + "Le débit interne du même manuel (285,5 Mbit/s) recoupe cette valeur "
@@ -412,6 +442,10 @@ public enum DriveCatalog {
             tracksPerFace: 63_800, rpm: 7_200,
             averageSeekMs: 9.0, trackToTrackMs: 0.95,
             isAnchor: false,
+            acoustics: Acoustics(idleBels: 2.1, seekBels: 3.0,
+                                 source: "Manuel Seagate Barracuda ATA IV, §2.10, « ST340016A, "
+                                       + "ST320011A (1 disc) » — « Idle 2.1 (typ) », "
+                                       + "« Performance seek 3.0 (typ) »"),
             source: "Manuel Seagate Barracuda ATA IV — 39 102 336 secteurs garantis, "
                   + "1 tête, 1 plateau",
             buffer: DriveBuffer(
@@ -435,6 +469,9 @@ public enum DriveCatalog {
             tracksPerFace: 104_060, rpm: 7_200,
             averageSeekMs: 8.5, trackToTrackMs: 1.0,
             sustainedOuterMBs: 58,
+            acoustics: Acoustics(idleBels: 2.2, seekBels: 3.1,
+                                 source: "Manuel Seagate Barracuda 7200.7, §2.10, ST340014A — "
+                                       + "« Idle <2.2 bels (typ) », « Performance seek 3.1 bels (typ) »"),
             source: "Manuel Seagate Barracuda 7200.7 — 94,6 kTPI, 595 kBPI, 1 plateau",
             buffer: DriveBuffer(
                 bufferKB: 2_048, readAhead: true, writeCache: true, zeroLatencyRead: true,
@@ -466,6 +503,9 @@ public enum DriveCatalog {
             averageSeekMs: 8.5, trackToTrackMs: 0.8,
             sustainedOuterMBs: 72,
             isAnchor: false,
+            acoustics: Acoustics(idleBels: 2.8, seekBels: 3.7,
+                                 source: "Manuel Seagate Barracuda 7200.10 SATA, table 2 — « Idle 2.8 "
+                                       + "bels (typical) », « Performance seek 3.7 bels (typical) »"),
             source: "Manuel Seagate Barracuda 7200.10 Serial ATA (100402371, rév. F et K) "
                   + "— ST3320620AS : « Average seek, read <8.5 msec typical », « write "
                   + "<10.0 », « *Measured in performance mode » ; 72 Mo/s soutenus pour "
@@ -489,6 +529,10 @@ public enum DriveCatalog {
             tracksPerFace: 159_500, rpm: 7_200,
             averageSeekMs: 11.0, trackToTrackMs: 0.8,
             sustainedOuterMBs: 72,
+            acoustics: Acoustics(idleBels: 2.7, seekBels: 3.0,
+                                 source: "Manuel Seagate Barracuda 7200.10 PATA, table 2 — « Idle 2.7 "
+                                       + "(typical) », « Quiet seek 3.0 (typical) » : ce manuel ne "
+                                       + "publie que le mode silencieux, comme ses seeks"),
             source: "Manuel Seagate Barracuda 7200.10 PATA (100402369, rév. F) — "
                   + "145 kTPI, 781 kBPI (table 2 ; 813 aux tables 1 et 3), enregistrement "
                   + "perpendiculaire, 2 plateaux. « <0.8 (read) », « Average seek, read "
@@ -515,6 +559,9 @@ public enum DriveCatalog {
             tracksPerFace: 165_000, rpm: 7_200,
             averageSeekMs: 8.5, trackToTrackMs: 1.0,
             sustainedOuterMBs: 105,
+            acoustics: Acoustics(idleBels: 2.9, seekBels: 3.2,
+                                 source: "Manuel Seagate Barracuda 7200.11, table 1 — « Idle 2.9 bels "
+                                       + "(typical) », « Performance Seek 3.2 bels (typical) »"),
             source: "Manuel Seagate Barracuda 7200.11 — 150 kTPI, 1 090 kBPI, 4 plateaux",
             buffer: DriveBuffer(
                 bufferKB: 32_768, readAhead: true, writeCache: true, zeroLatencyRead: true,
@@ -540,6 +587,9 @@ public enum DriveCatalog {
             averageSeekMs: 8.5, trackToTrackMs: 1.0,
             sustainedOuterMBs: 210,
             rampLoad: true,
+            acoustics: Acoustics(idleBels: 2.2, seekBels: 2.4,
+                                 source: "Manuel Seagate Barracuda 7200.14, §2.11, ST1000DM003 — "
+                                       + "« Idle 2.2 bels (typical) », « Seek 2.4 bels (typical) »"),
             source: "Manuel Seagate Barracuda 7200.14 (100686584, rév. G, octobre 2012), "
                   + "table 1 — 352 ktracks/in, 1 807 kFCI, 1 plateau et 2 têtes pour le "
                   + "ST1000DM003, 210 Mo/s soutenus au bord, 300 000 cycles de chargement",
@@ -583,6 +633,10 @@ public enum DriveCatalog {
             platterInches: 2.5,
             innerRatio: 0.55,
             rampLoad: true,
+            acoustics: Acoustics(idleBels: 3.0, seekBels: 3.7,
+                                 source: "Fiche WD 2879-701284-A05 — « Average acoustics (dBA) : Idle "
+                                       + "mode 30, Performance seek mode 37 », puissance en dBA, soit "
+                                       + "3,0 et 3,7 B"),
             source: "Fiche WD 2879-701284-A05 (avril 2012) — 1 953 525 168 secteurs, "
                   + "10 000 tr/min, 200 Mo/s soutenus, 30 dBA au repos et 37 en seek "
                   + "(puissance acoustique), rampe NoTouch. Tom's Hardware (2012) — "
@@ -610,6 +664,8 @@ public enum DriveCatalog {
             platterInches: 2.5,
             innerRatio: 0.55,
             rampLoad: true,
+            acoustics: Acoustics(idleBels: 3.0, seekBels: 3.7,
+                                 source: "Fiche WD 2879-701284-A05 — mêmes 30 et 37 dBA que le 1 To"),
             source: "Fiche WD 2879-701284-A05 (avril 2012) — 976 773 168 secteurs, les "
                   + "mêmes 10 000 tr/min, 200 Mo/s et 64 Mo que le WD1000DHTZ. Base de "
                   + "plateaux rml527 — 2 plateaux de 334 Go, 3 têtes. Seeks et débit au "
@@ -673,6 +729,15 @@ public enum DriveCatalog {
     /// de 1993 reçoivent donc le rapport du Fireball de 1996 : **une
     /// hypothèse**, celle qu'un disque de 1993 n'écrivait pas plus vite qu'il
     /// ne lisait, ce qu'aucun disque à asservissement ne fait.
+    /// Les niveaux publiés d'un disque de cette année : ceux de sa fiche, ou
+    /// ceux de la fiche la plus proche qui en publie. Le Conner et le
+    /// Fireball n'en ont pas en seek : 1993 et 1996 empruntent au U8.
+    public static func acoustics(year: Int, reference: DriveReference? = nil) -> Acoustics? {
+        if let own = reference?.acoustics { return own }
+        return all.filter { $0.acoustics != nil }
+            .min { abs($0.year - year) < abs($1.year - year) }?.acoustics
+    }
+
     public static func writeSeek(year: Int, reference: DriveReference? = nil) -> WriteSeek? {
         if let own = reference?.writeSeek { return own }
         return all.filter { $0.writeSeek != nil }

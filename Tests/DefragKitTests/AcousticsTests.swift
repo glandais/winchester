@@ -76,6 +76,37 @@ struct AcousticsTests {
 
     /// Le cœur du point 1 : à plein régime, deux disques de régime différent
     /// n'ont plus le même souffle.
+    /// Les manuels publient la puissance en seek ; le repos retranché, le
+    /// bras seul va de 3,20 B (U8) à 1,97 (7200.14), et la voix de la tête
+    /// suit — à moitié en décibels, comme le plateau, le U8 à 1.
+    @Test("Le niveau de la tête suit les manuels, le repos retranché")
+    func seekLevelsFollowManuals() {
+        func drive(_ shortName: String) -> DriveReference {
+            DriveCatalog.all.first { $0.shortName == shortName }!
+        }
+        let u8 = SeekCharacter(reference: drive("Seagate U8"))
+        let barracuda14 = SeekCharacter(reference: drive("Barracuda 7200.14"))
+        let sata10 = SeekCharacter(reference: drive("Barracuda 7200.10 SATA"))
+        #expect(abs(u8.seekBels - 3.20) < 0.01)
+        #expect(abs(barracuda14.seekBels - 1.97) < 0.01)
+        #expect(abs(sata10.seekBels - 3.64) < 0.01)
+        #expect(u8.gain == 1)
+        // Douze décibels aux manuels, six à l'écoute.
+        #expect(abs(20 * log10(u8.gain / barracuda14.gain) - 10 * (3.20 - 1.97) / 2) < 0.05)
+        #expect(sata10.gain > u8.gain && u8.gain > barracuda14.gain)
+
+        // Un disque de la galerie emprunte à la fiche la plus proche qui
+        // publie : 1993 et 1996 au U8, 2012 au 7200.14, un 10 000 tr/min à
+        // petits plateaux au VelociRaptor.
+        let conner = drive("Conner CFA170A")
+        #expect(SeekCharacter(geometry: conner.geometry, year: 1993).seekBels == u8.seekBels)
+        let raptor = DriveCatalog.named.first!
+        #expect(SeekCharacter(geometry: raptor.geometry, year: 2012).seekBels
+                == SeekCharacter(reference: raptor).seekBels)
+        #expect(SeekCharacter(geometry: drive("Barracuda 7200.14").geometry, year: 2012).seekBels
+                == barracuda14.seekBels)
+    }
+
     @Test("Le souffle glisse et s'éclaircit avec le régime")
     func windageFollowsSpeed() {
         let slow = SpindleCharacter(rpm: 3_600, platters: 1, year: 2003)

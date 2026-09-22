@@ -19,7 +19,7 @@ final class StreamingMixer {
     private static let block = 512
 
     private let spindle: SpindleVoice
-    private let synth = SeekSynth(sampleRate: sampleRate)
+    private let synth: SeekSynth
     private var seekCache: [Int: AVAudioPCMBuffer] = [:]
     private var tickCache: [Int: AVAudioPCMBuffer] = [:]
 
@@ -49,9 +49,10 @@ final class StreamingMixer {
 
     /// - Parameter rawPath: fichier brut où écrire le mixage, ou `nil` pour ne
     ///   rien écrire et tout confier à `onFlush`.
-    init(character: SpindleCharacter, rawPath: String?, spindleGain: Float = 0.20,
+    init(character: SpindleCharacter, seek: SeekCharacter, rawPath: String?, spindleGain: Float = 0.20,
          transientGain: Float = 1.0) {
         spindle = SpindleVoice(sampleRate: sampleRate, character: character)
+        synth = SeekSynth(sampleRate: sampleRate, headGain: seek.gain)
         self.spindleGain = spindleGain
         self.transientGain = transientGain
         if let rawPath {

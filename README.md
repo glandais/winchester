@@ -308,6 +308,30 @@ avec la vitesse de seek : seule l'excitation change. L'amplitude et le dosage de
 modes varient avec la distance parcourue — courbe réglée à l'oreille, aucune
 source ne donne de loi exploitable.
 
+**Niveau de la tête** — `SeekCharacter`. Le timbre est commun aux vingt-quatre
+disques ; le niveau, lui, vient des manuels, qui publient la puissance
+acoustique **en seek**. Le repos retranché (les puissances s'ajoutent), il
+reste ce que fait le bras seul, et il va du simple au triple :
+
+| disque | repos | seek | bras seul | à l'écoute |
+|---|---|---|---|---|
+| Seagate U8, 1999 | 3,2 B | 3,5 B | 3,20 B | 0 dB (référence) |
+| Barracuda ATA IV, 2001 | 2,1 B | 3,0 B (*performance*) | 2,94 B | −1,3 dB |
+| Barracuda 7200.7, 2003 | 2,2 B | 3,1 B (*performance*) | 3,04 B | −0,8 dB |
+| Barracuda 7200.10 SATA, 2006 | 2,8 B | 3,7 B (*performance*) | 3,64 B | +2,2 dB |
+| Barracuda 7200.10 PATA, 2006 | 2,7 B | 3,0 B (*quiet*) | 2,70 B | −2,5 dB |
+| Barracuda 7200.11, 2008 | 2,9 B | 3,2 B (*performance*) | 2,90 B | −1,5 dB |
+| Barracuda 7200.14, 2012 | 2,2 B | 2,4 B | 1,97 B | −6,2 dB |
+| VelociRaptor, 2012 | 30 dBA | 37 dBA (*performance*) | 3,60 B | +2,0 dB |
+
+Douze décibels aux manuels entre le U8 et le 7200.14 ; **six à l'écoute** — le
+même parti qu'au plateau, à moitié en décibels, sans quoi un disque de 2012
+disparaît sous sa broche. Le Conner et le Fireball ne publient rien en seek :
+les disques de 1993 et 1996 empruntent au U8, et sonnent comme avant. Ce qui
+reste commun est **dit** : aucune fiche ne publie un spectre, et l'attaque en
+bang-bang est la même de 1993 à 2012 quand un ATA IV perd 6 dB en *quiet seek*
+— la gestion acoustique n'est pas modélisée.
+
 **Trains de seeks** — deux seeks rapprochés ne relancent jamais deux one-shots.
 Ils sont fusionnés en un rendu continu passé **une seule fois** dans le banc de
 résonateurs, avec le transitoire terminal replacé en fin de train. Règle héritée

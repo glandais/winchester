@@ -29,6 +29,10 @@ nonisolated final class SeekSynth: Sendable {
 
     let sampleRate: Double
     let format: AVAudioFormat
+    /// Gain du disque courant sur tout ce que fait le bras — seeks, trains,
+    /// tics —, mais ni sur le décollement ni sur l'atterrissage, qui sont des
+    /// contacts et non l'actionneur (`SeekCharacter.gain`).
+    let headGain: Double
 
     /// Les deux modes autour de 4,5 kHz (sway S1) et 5,5 kHz (S2) sont ceux
     /// identifiés dans la littérature ; les autres complètent le spectre pour
@@ -52,8 +56,9 @@ nonisolated final class SeekSynth: Sendable {
     /// Résonance résiduelle laissée après la fin mécanique du seek.
     private let ringTail = 0.040
 
-    init(sampleRate: Double) {
+    init(sampleRate: Double, headGain: Double = 1) {
         self.sampleRate = sampleRate
+        self.headGain = headGain
         self.format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
     }
 
@@ -189,7 +194,7 @@ nonisolated final class SeekSynth: Sendable {
         var noise = NoiseSource(seed: variation &* 2_654_435_761 &+ 1)
         writeExcitation(profile: profile, travelMix: travelMix,
                         into: &excitation, at: 0, noise: &noise)
-        return makeBuffer(resonate(excitation, travelMix: travelMix))
+        return makeBuffer(resonate(excitation, travelMix: travelMix), gain: headGain)
     }
 
     /// Train de seeks rapprochés.
@@ -222,7 +227,7 @@ nonisolated final class SeekSynth: Sendable {
         }
 
         let mix = run.map(\.travelMix).reduce(0, +) / Double(run.count)
-        return makeBuffer(resonate(excitation, travelMix: mix))
+        return makeBuffer(resonate(excitation, travelMix: mix), gain: headGain)
     }
 
     typealias Tick = HeadTick
@@ -256,7 +261,7 @@ nonisolated final class SeekSynth: Sendable {
         writeTick(tick, into: &excitation, at: 0, limit: count, noise: &noise)
 
         // Timbre volontairement aigu : peu de masse en mouvement.
-        return makeBuffer(resonate(excitation, travelMix: 0.05))
+        return makeBuffer(resonate(excitation, travelMix: 0.05), gain: headGain)
     }
 
     /// Un train de micro-transitoires, d'un seul passage dans le banc.
@@ -277,7 +282,7 @@ nonisolated final class SeekSynth: Sendable {
             writeTick(tick.kind, into: &excitation, at: offset, limit: max(next - offset, 1),
                       noise: &noise)
         }
-        return makeBuffer(resonate(excitation, travelMix: 0.05))
+        return makeBuffer(resonate(excitation, travelMix: 0.05), gain: headGain)
     }
 
     /// Le décollement des têtes : le moteur donne son couple de démarrage, les
@@ -333,7 +338,7 @@ nonisolated final class SeekSynth: Sendable {
     /// Chaque canal garde son peigne, complémentaire de l'autre : c'est lui
     /// qui fait la largeur. `side` la dose, et la normalisation garde à chaque
     /// canal la puissance du signal d'origine.
-    private func makeBuffer(_ mono: [Double]) -> AVAudioPCMBuffer? {
+    private func makeBuffer(_ mono: [Double], gain: Double = 1) -> AVAudioPCMBuffer? {
         guard !mono.isEmpty,
               let buffer = AVAudioPCMBuffer(pcmFormat: format,
                                             frameCapacity: AVAudioFrameCount(mono.count)),
@@ -342,7 +347,7 @@ nonisolated final class SeekSynth: Sendable {
         buffer.frameLength = AVAudioFrameCount(mono.count)
         let delay = Int(0.00035 * sampleRate)
         let side = Self.stereoSide
-        let level = 1 / (1 + side * side).squareRoot()
+        let level = gain / (1 + side * side).squareRoot()
         let left = channels[0]
         let right = channels[1]
 
