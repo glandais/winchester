@@ -6891,3 +6891,52 @@ paiement. La ligne du chantier 35 exposait la 1.0.0 à un refus.
 - Un pourboire StoreKit (consommables) reste possible, au prix de l'accord
   Paid Applications et du statut de professionnel (DSA) dans l'UE.
 - Les notes de revue ne sont toujours pas poussées (`asc review details-update`).
+
+## Chantier 37 — les liens croisés : app, site, dépôt, App Store
+
+### Le problème
+
+L'app, le site, le dépôt et la fiche de l'App Store (`6814382619`) ne se
+citaient qu'à moitié : le site n'avait ni lien vers la fiche ni bannière Safari,
+l'accueil gardait un commentaire à la place du bouton de téléchargement, le
+README ne donnait aucune adresse en tête, et l'app n'en donnait aucune depuis
+le départ de la ligne Ko-fi (chantier 36).
+
+### Les décisions
+
+- **Une section « À propos » en bas des Réglages** (`Sources/UI/AboutLinks.swift`,
+  appelée par `SettingsScreen`) : site, assistance, confidentialité, code source
+  sur GitHub, « Noter sur l'App Store » (`?action=write-review`) et « Autres apps
+  du développeur » (page développeur `1891310404`). Les six adresses vivent
+  dans `AboutLink`, seul endroit à les porter. Ce sont des `Link` : Safari ou
+  l'App Store s'ouvrent, l'app ne fait toujours aucune requête, et une note sous
+  le panneau le dit.
+- **Toujours aucun lien de don dans l'app** (3.1.1) : Ko-fi reste sur le site et
+  dans le README.
+- **Huit clés** `settings.about.*`, en anglais et en français, par le cycle
+  habituel (`xcb.sh strings`, `i18n.py export`, remplir, `import`).
+- **Le lien vers la fiche est posé avant la publication**, par décision : il
+  répond 404 tant que l'app n'est pas en vente.
+- **Le site** : `<meta name="apple-itunes-app">` sur les quatre pages ; au pied,
+  « App Store » à côté de « Source », et une ligne vers les trois autres apps
+  (Aether, DepthWeaver, WhereIWas) et la page développeur. Sur l'accueil, le
+  commentaire du héros devient un bouton « Download on the App Store » dessiné
+  par la feuille de style (`.cta`), sans l'image d'Apple.
+- **Le README** ouvre sur une ligne de liens : App Store, site, assistance,
+  confidentialité, code source, autres apps, Ko-fi.
+- **La page confidentialité** gagne « The About links » ; sa date d'effet ne
+  bouge pas, rien de ce que l'app garde ou envoie n'ayant changé. **Les notes de
+  revue** nomment ces liens sortants.
+
+### Ce qui valide
+
+- `./scripts/i18n.py check` : aller-retour exact à l'octet.
+- `./scripts/xcb.sh build` réussit.
+- Les quatre pages portent la balise et les liens (vérifié par `grep`).
+
+### Laissé ouvert
+
+- Pas vu sur le simulateur : la section n'a pas été regardée à l'écran ni en
+  grand corps de texte.
+- Les notes de revue ne sont toujours pas poussées (`asc review details-update`),
+  et le build 4 ne porte pas la section : il faut un nouveau build.

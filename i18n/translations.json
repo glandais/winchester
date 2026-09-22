@@ -4149,6 +4149,61 @@
             "fr": "courts"
           }
         },
+        "settings.about.moreApps": {
+          "comment": "Ligne « À propos » des Réglages : la page développeur de l'App Store",
+          "translations": {
+            "en": "More apps by the developer",
+            "fr": "Autres apps du développeur"
+          }
+        },
+        "settings.about.note": {
+          "comment": "Sous les liens « À propos » des Réglages",
+          "translations": {
+            "en": "These open in Safari or the App Store. The app itself never goes online.",
+            "fr": "Ces liens s'ouvrent dans Safari ou l'App Store. L'app, elle, ne se connecte jamais."
+          }
+        },
+        "settings.about.privacy": {
+          "comment": "Ligne « À propos » des Réglages : la politique de confidentialité",
+          "translations": {
+            "en": "Privacy policy",
+            "fr": "Confidentialité"
+          }
+        },
+        "settings.about.rate": {
+          "comment": "Ligne « À propos » des Réglages : écrire un avis sur l'App Store",
+          "translations": {
+            "en": "Rate on the App Store",
+            "fr": "Noter sur l'App Store"
+          }
+        },
+        "settings.about.source": {
+          "comment": "Ligne « À propos » des Réglages : le dépôt GitHub",
+          "translations": {
+            "en": "Source code on GitHub",
+            "fr": "Code source sur GitHub"
+          }
+        },
+        "settings.about.support": {
+          "comment": "Ligne « À propos » des Réglages : la page d'assistance du site",
+          "translations": {
+            "en": "Help and support",
+            "fr": "Aide et assistance"
+          }
+        },
+        "settings.about.title": {
+          "translations": {
+            "en": "About",
+            "fr": "À propos"
+          }
+        },
+        "settings.about.website": {
+          "comment": "Ligne « À propos » des Réglages : le site de l'app",
+          "translations": {
+            "en": "Website",
+            "fr": "Site web"
+          }
+        },
         "settings.currentDisk": {
           "comment": "En-tête de section, en capitales",
           "translations": {

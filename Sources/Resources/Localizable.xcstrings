@@ -10809,6 +10809,141 @@
         }
       }
     },
+    "settings.about.moreApps" : {
+      "comment" : "Ligne « À propos » des Réglages : la page développeur de l'App Store",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More apps by the developer"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autres apps du développeur"
+          }
+        }
+      }
+    },
+    "settings.about.note" : {
+      "comment" : "Sous les liens « À propos » des Réglages",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These open in Safari or the App Store. The app itself never goes online."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces liens s'ouvrent dans Safari ou l'App Store. L'app, elle, ne se connecte jamais."
+          }
+        }
+      }
+    },
+    "settings.about.privacy" : {
+      "comment" : "Ligne « À propos » des Réglages : la politique de confidentialité",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy policy"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confidentialité"
+          }
+        }
+      }
+    },
+    "settings.about.rate" : {
+      "comment" : "Ligne « À propos » des Réglages : écrire un avis sur l'App Store",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rate on the App Store"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noter sur l'App Store"
+          }
+        }
+      }
+    },
+    "settings.about.source" : {
+      "comment" : "Ligne « À propos » des Réglages : le dépôt GitHub",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Source code on GitHub"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code source sur GitHub"
+          }
+        }
+      }
+    },
+    "settings.about.support" : {
+      "comment" : "Ligne « À propos » des Réglages : la page d'assistance du site",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help and support"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aide et assistance"
+          }
+        }
+      }
+    },
+    "settings.about.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "À propos"
+          }
+        }
+      }
+    },
+    "settings.about.website" : {
+      "comment" : "Ligne « À propos » des Réglages : le site de l'app",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Website"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Site web"
+          }
+        }
+      }
+    },
     "settings.currentDisk" : {
       "comment" : "En-tête de section, en capitales",
       "localizations" : {

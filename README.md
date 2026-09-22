@@ -1,5 +1,13 @@
 # Winchester — spike
 
+[App Store](https://apps.apple.com/app/id6814382619) ·
+[Site](https://glandais.github.io/winchester/) ·
+[Assistance](https://glandais.github.io/winchester/support/) ·
+[Confidentialité](https://glandais.github.io/winchester/privacy/) ·
+[Code source](https://github.com/glandais/winchester) ·
+[Autres apps du développeur](https://apps.apple.com/developer/id1891310404) ·
+[Ko-fi](https://ko-fi.com/gabylandais)
+
 Le nom vient de l'IBM 3340 « 30/30 », baptisé *Winchester* en 1973 — le
 premier disque à plateaux scellé avec ses têtes, l'ancêtre direct de ceux
 que cette application fait entendre.

@@ -1,7 +1,8 @@
 import SwiftUI
 import DiskCore
 
-/// Le son, l'accueil, et les fiches « Pourquoi ça sonne comme ça ? ».
+/// Le son, l'accueil, les fiches « Pourquoi ça sonne comme ça ? », et les
+/// liens « À propos ».
 ///
 /// Rien ici ne dépend de l'instant écouté : l'écran ne suit donc pas l'horloge
 /// du moteur, qui le ferait redessiner soixante fois par seconde.
@@ -27,6 +28,7 @@ struct SettingsScreen: View {
                     mixer
                     welcome
                     explanations
+                    AboutSection()
                 }
                 .padding(16)
             }
