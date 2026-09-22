@@ -1793,6 +1793,11 @@ screenshots/               cadrage Koubou, assemblage, et les cartes envoyées
                            (voir screenshots/README.md)
 ```
 
+## Soutenir
+
+Winchester est gratuit, sans achat intégré. Pour laisser un pourboire :
+[ko-fi.com/gabylandais](https://ko-fi.com/gabylandais).
+
 ## Journal de bord
 
 [`LEDGER.md`](LEDGER.md) garde la trace de ce que chaque chantier a décidé, de
