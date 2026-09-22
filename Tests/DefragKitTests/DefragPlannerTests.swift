@@ -580,7 +580,8 @@ struct WindowsXPStrategyTests {
         // Rien à réparer, personne à déloger ; le tassement vers l'avant le
         // ramène en tête, d'un seul tenant.
         #expect(plan.evacuations == 0)
-        #expect(plan.filesAlreadyInPlace == 1)
+        // Ramené : il n'est donc pas « déjà en place » (B#17).
+        #expect(plan.filesAlreadyInPlace == 0)
         #expect(plan.arrangement[0].extents.count == 1)
     }
 
@@ -687,7 +688,9 @@ struct WindowsXPStrategyTests {
         ])
         let plan = DefragPlanner.plan(volume: input)
 
-        #expect(plan.filesAlreadyInPlace == 2)
+        // L'application et le fichier système sont tassés vers l'avant : aucun
+        // des deux contigus n'est resté en place (B#17).
+        #expect(plan.filesAlreadyInPlace == 0)
         #expect(plan.before.fragmentedFiles == 1)
         #expect(plan.after.fragmentedFiles == 0)
         #expect(plan.filesMoved >= 2)
@@ -920,7 +923,10 @@ struct WindowsXPStrategyTests {
         let elapsed = Date().timeIntervalSince(start)
 
         #expect(plan.filesMoved >= 250)
-        #expect(plan.filesAlreadyInPlace == 12_000)
+        // Le tassement emmène la plupart des douze mille ; « déjà en place »
+        // ne compte que ceux qu'aucune phase n'a touchés (B#17).
+        #expect(plan.filesAlreadyInPlace == 450)
+        #expect(plan.filesMoved + plan.filesAlreadyInPlace >= 12_000)
         #expect(plan.after.fragmentedFiles == 0)
         // Deux cent cinquante fichiers de 4,8 Mo par blocs de 64 Kio, puis
         // douze mille fichiers tassés vers l'avant : des centaines de milliers

@@ -284,13 +284,30 @@ extension WindowsXPStrategy {
         var movedClusters = 0
         var filesMoved = 0
         var evacuations = 0
-        var alreadyInPlace = 0
+        /// Les fichiers qu'un déplacement a touchés, une fois chacun.
+        var moved = Set<Int>()
+        /// Les fichiers contigus au départ que l'outil avait le droit de
+        /// déplacer : ceux d'entre eux qu'aucune phase n'a touchés sont « déjà
+        /// en place ».
+        let contiguousAtStart: [Int]
 
         init(strategy: WindowsXPStrategy, volume: DefragVolume, sink: OperationSink) {
             self.strategy = strategy
             self.volume = volume
             self.sink = sink
-            alreadyInPlace = volume.files.filter { $0.isContiguous && $0.clusterCount > 0 }.count
+            contiguousAtStart = volume.files.indices.filter {
+                let file = volume.files[$0]
+                return file.isContiguous && strategy.canTouch(file, partition: volume.partition)
+            }
+        }
+
+        /// Contigus au départ, déplaçables, et jamais déplacés : ni le fichier
+        /// d'échange ni les métafichiers, que l'outil ne touche pas, ni ceux
+        /// que la consolidation ou le tassement ont emmenés ailleurs (B#17) —
+        /// comme les autres outils, qui comptent les déplaçables moins les
+        /// touchés.
+        var alreadyInPlace: Int {
+            contiguousAtStart.filter { !moved.contains($0) }.count
         }
 
         var partition: PartitionGeometry { volume.partition }
@@ -298,6 +315,17 @@ extension WindowsXPStrategy {
 
         var fragmentedCount: Int {
             volume.files.filter { !$0.isContiguous && strategy.canTouch($0, partition: partition) }.count
+        }
+
+        // MARK: L'avancement
+
+        /// Chaque phase compte son avancement sur sa propre plage, et les
+        /// phases reviennent à chaque tour : la barre retomberait à zéro.
+        /// `SendStatusData` (`dfrgntfs.cpp:981-985`) ne laisse jamais le
+        /// pourcentage envoyé descendre sous le dernier : `uLastPercentDone`
+        /// le borne. La barre de XP plafonne donc au lieu de reculer (B#16).
+        func advance(to value: Double) {
+            sink.progress = max(sink.progress, value)
         }
 
         // MARK: Les trous d'une phase
@@ -376,6 +404,7 @@ extension WindowsXPStrategy {
             checkpoints.afterCommit(&volume, sink: sink)
             movedClusters += Int(file.clusterCount)
             filesMoved += 1
+            moved.insert(position)
             sink.moves.filesMoved = filesMoved
         }
 
@@ -411,26 +440,39 @@ extension WindowsXPStrategy {
         mutating func defragmentFiles(minimumLength: inout UInt32) -> Bool {
             let candidates = volume.files.indices
                 .filter { !volume.files[$0].isContiguous && strategy.canTouch(volume.files[$0], partition: partition) }
-                .sorted { strategy.order.precedes(volume.files[$0], volume.files[$1]) }
+                .sorted {
+                    strategy.order.precedes(volume.files[$0], record: volume.mftRecord(of: $0),
+                                            volume.files[$1], record: volume.mftRecord(of: $1))
+                }
             guard !candidates.isEmpty else { return true }
 
             var bySize = holes().sorted { $0.length < $1.length }
             var remaining = 0
+            var smallestFailure: UInt32?
             for (rank, position) in candidates.enumerated() {
-                sink.progress = 0.3 * Double(rank) / Double(candidates.count)
+                advance(to: 0.3 * Double(rank) / Double(candidates.count))
                 let file = volume.files[position]
                 // Un répertoire FAT : `FSCTL_MOVE_FILE` refuse d'en déplacer
                 // le premier cluster ; il reste en morceaux.
                 guard volume.moveFileAccepts(position, fromVCN: 0) else { remaining += 1; continue }
                 guard let target = Pass.takeBestFit(file.clusterCount, from: &bySize) else {
-                    // « Sigh. No free space chunk that's big enough » : les
-                    // suivants sont plus gros, inutile de continuer.
+                    // « Sigh. No free space chunk that's big enough » : dans
+                    // l'ordre de XP, les suivants sont plus gros, inutile de
+                    // continuer. Un autre ordre, rejoué avec le même placement,
+                    // n'a pas cette garantie : il passe au suivant, et retient
+                    // le plus petit fichier resté sans trou (B#21).
+                    guard strategy.order == .sizeThenRecord else {
+                        smallestFailure = min(smallestFailure ?? .max, file.clusterCount)
+                        remaining += 1
+                        continue
+                    }
                     minimumLength = file.clusterCount
                     remaining += candidates.count - rank
                     break
                 }
                 move(position, to: target, phase: WindowsXPStrategy.defragPhase)
             }
+            if let smallestFailure { minimumLength = smallestFailure }
             return remaining == 0
         }
 
@@ -543,7 +585,7 @@ extension WindowsXPStrategy {
             var failures = 0
             var moved = 0
             for (rank, position) in order.enumerated() {
-                sink.progress = 0.3 + 0.4 * Double(rank) / Double(order.count)
+                advance(to: 0.3 + 0.4 * Double(rank) / Double(order.count))
                 guard let target = Pass.takeBestFit(volume.files[position].clusterCount, from: &bySize) else {
                     failures += 1
                     if failures > WindowsXPStrategy.consolidationFailureLimit { break }
@@ -576,7 +618,7 @@ extension WindowsXPStrategy {
             var byStart = holes()
             var maximumUseful = UInt32.max
             for (rank, position) in candidates.enumerated() {
-                sink.progress = 0.7 + 0.3 * Double(rank) / Double(candidates.count)
+                advance(to: 0.7 + 0.3 * Double(rank) / Double(candidates.count))
                 let file = volume.files[position]
                 let need = file.clusterCount
                 guard let start = file.firstCluster else { continue }
@@ -612,12 +654,21 @@ extension WindowsXPStrategy.Order {
     /// Un ordre total : chaque critère est départagé jusqu'à l'identifiant,
     /// sans quoi le tri — donc le son — dépendrait de l'implémentation de
     /// `sorted`.
-    func precedes(_ a: DefragFile, _ b: DefragFile) -> Bool {
+    ///
+    /// `record` est l'enregistrement de MFT de chaque fichier
+    /// (`DefragVolume.mftRecord(of:)`). XP départage par lui, et non par
+    /// l'identifiant du modèle (`FileEntrySizeCompareRoutine`,
+    /// `dfrgntfs.cpp:395-432`) : un répertoire, dont l'identifiant porte le
+    /// bit de poids fort, passe avant les fichiers de même taille, puisque
+    /// `MFTNumbering` numérote les répertoires d'abord (`xp-defrag-tri`).
+    func precedes(_ a: DefragFile, record ra: Int, _ b: DefragFile, record rb: Int) -> Bool {
         switch self {
         case .sizeThenRecord:
             if a.clusterCount != b.clusterCount { return a.clusterCount < b.clusterCount }
+            if ra != rb { return ra < rb }
             return a.id < b.id
         case .mftRecord:
+            if ra != rb { return ra < rb }
             return a.id < b.id
         case .mostFragmented:
             if a.fragmentCount != b.fragmentCount { return a.fragmentCount > b.fragmentCount }

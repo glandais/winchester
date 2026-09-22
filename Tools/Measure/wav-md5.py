@@ -11,6 +11,11 @@ installations, les journées du README, les passes de 1993 — et hachés : deux
 Le binaire est $MEASURE_DIR/bin-<étape>/rendertrace ; les empreintes vont dans
 $MEASURE_DIR/wav-<étape>/md5.txt (nom, md5, octets). Les WAV de moins de 80 Mo sont
 gardés pour l'écoute, les autres effacés une fois hachés.
+
+Chaque rendu part d'un environnement **propre** : `SCENARIO` et le strict
+nécessaire au processus, rien d'autre. Un `STRATEGY`, un `TRANSIENT_GAIN` ou un
+`DRIVE` resté exporté dans le shell changerait les rendus sans que `md5.txt` le
+dise. Un rendu qui échoue imprime son erreur, et le script sort en erreur.
 """
 import hashlib, os, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
@@ -34,13 +39,23 @@ scenarios += [(f"day-{d.replace(':', '_')}", f"day:{d}")
 scenarios += [(f"defrag-{p}", p) for p in PROFILES if p.endswith("1993")]
 
 
+# Ce que le processus hérite, et rien de ce que `rendertrace` lit.
+KEPT = ("PATH", "HOME", "TMPDIR", "USER")
+
+
 def render(item):
     name, scenario = item
     wav = os.path.join(OUT, name + ".wav")
-    env = dict(os.environ, SCENARIO=scenario)
+    env = {key: os.environ[key] for key in KEPT if key in os.environ}
+    env["SCENARIO"] = scenario
+    if os.path.exists(wav):
+        os.remove(wav)
     done = subprocess.run(["./rendertrace", wav], cwd=BIN, env=env,
                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     if done.returncode != 0 or not os.path.exists(wav):
+        error = done.stderr.decode(errors="replace").strip().splitlines()
+        print(f"ECHEC {name} (code {done.returncode}) : "
+              + (error[-1] if error else "pas de WAV"), file=sys.stderr)
         return name, "ECHEC", 0
     digest = hashlib.md5()
     with open(wav, "rb") as handle:
@@ -57,4 +72,6 @@ with ThreadPoolExecutor(jobs) as pool:
 with open(os.path.join(OUT, "md5.txt"), "w") as handle:
     for name, digest, size in rows:
         handle.write(f"{name}\t{digest}\t{size}\n")
-print(len(rows), "rendus,", sum(1 for r in rows if r[1] == "ECHEC"), "échecs")
+failures = sum(1 for r in rows if r[1] == "ECHEC")
+print(len(rows), "rendus,", failures, "échecs")
+sys.exit(1 if failures else 0)

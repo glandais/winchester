@@ -54,6 +54,16 @@ final class TipJar {
         }
     }
 
+    /// La feuille des pourboires vient de se fermer : ce qu'elle disait n'a
+    /// plus lieu d'être à la prochaine ouverture. Un merci déjà lu, un échec,
+    /// une attente d'approbation — qu'un refus ne viendrait jamais lever,
+    /// puisqu'il ne produit aucune transaction — reviennent au repos. Un achat
+    /// en cours garde son état : `buy` le fermera.
+    func sheetClosed() {
+        if case .purchasing = state { return }
+        state = .idle
+    }
+
     func load() async {
         guard products.isEmpty, !isLoading else { return }
         isLoading = true

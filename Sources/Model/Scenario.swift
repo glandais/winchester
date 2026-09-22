@@ -668,8 +668,14 @@ enum ScenarioBuilder {
     /// l'intérêt de l'exercice.
     static func build(generated disk: GeneratedDisk,
                       using strategy: (any DefragStrategy)? = nil) throws -> Scenario {
-        let strategy = strategy.map { prepared($0, for: disk) }
         let volume = try GeneratedVolumeBridge.volume(from: disk)
+        // Sans outil demandé, celui que la machine avait : daté comme l'écran
+        // de choix le date, par l'année du scénario — celle du logiciel. Le
+        // matériel ne s'en mêle pas : un disque nommé garde sa propre année
+        // (`DriveHardware.year`), qui n'est pas l'âge du système (B#25).
+        let strategy = prepared(strategy ?? DefragPlanner.strategy(for: volume.partition.format,
+                                                                   year: disk.spec.timeline.start.year),
+                                for: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
                                                    atLeast: volume.partition.totalSectors)
 
@@ -712,7 +718,7 @@ enum ScenarioBuilder {
     /// Rien n'est planifié ici : la stratégie tournera sur le fil producteur,
     /// sur sa propre copie du volume, et émettra ses opérations à mesure.
     private static func assembleDefrag(volume: DefragVolume,
-                                       strategy chosen: (any DefragStrategy)? = nil,
+                                       strategy: any DefragStrategy,
                                        hardware: DriveHardware,
                                        label: ScenarioLabel) -> Scenario {
         let geometry = hardware.geometry
@@ -720,8 +726,6 @@ enum ScenarioBuilder {
         let partition = volume.partition
         precondition(geometry.totalSectors >= partition.totalSectors,
                      "la partition déborde du disque qui la porte")
-
-        let strategy = chosen ?? DefragPlanner.strategy(for: partition.format, year: hardware.year)
 
         // Le plateau tourne déjà : Windows est démarré. La rampe de 0,9 s n'est
         // qu'un fondu pour que la couche de rotation s'installe.

@@ -211,7 +211,10 @@ extension ExtentIndex {
 /// gigaoctet pour la représentation par chaîne de clusters qu'elle remplace.
 struct DefragVolume {
 
-    let partition: PartitionGeometry
+    /// La partition, et ce qu'elle sait de la MFT : `mftRecordLBA` y lit les
+    /// extents de `$MFT`, si bien qu'elle suit la MFT quand une passe la
+    /// déplace (`relocateMFTTail`). Rien d'autre n'y change.
+    private(set) var partition: PartitionGeometry
     private(set) var bitmap: ClusterBitmap
     private(set) var files: [DefragFile]
     private(set) var index: ExtentIndex
@@ -410,6 +413,10 @@ struct DefragVolume {
         bitmap.allocate(extent)
         systemExtents.append(extent)
         mftExtents = [mftExtents[0], extent]
+        // Les validations qui suivent écrivent les enregistrements là où la
+        // MFT est maintenant, et non dans la queue qu'elle vient de quitter
+        // (B#15) : c'est la partition qui les situe.
+        partition.mftExtents = mftExtents
     }
 
     /// Le point de contrôle : tout ce qui était retenu redevient libre.
