@@ -120,8 +120,9 @@ Le **formatage** suit la langue de l'appareil : `Format`
 (`Sources/Model/`) pour ce que le modèle affiche lui-même. `FrenchUnits`, dans
 `DiskCore`, **reste français** : c'est lui qui écrit les tables du `README.md`
 et les bilans de `Tools/Measure`. `Format` ne lui emprunte que la conversion en
-mégaoctets — le 2²⁰ du catalogue, sans quoi un disque étiqueté « 210 Mo » ne
-retrouverait pas ses 210 à l'écran.
+mégaoctets — le 2²⁰ du système de fichiers : un disque étiqueté « 210 Mo »
+(décimaux, `DiskSpec.sizeMB`) en montre 200 une fois formaté, comme CHKDSK le
+faisait, et c'est l'étiquette que la galerie affiche.
 
 **Deux textes restent français exprès**, parce qu'ils ne vont nulle part dans
 l'app et que les outils les relisent au mot près : le rapport de cache

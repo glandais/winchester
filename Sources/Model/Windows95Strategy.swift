@@ -7,7 +7,11 @@ import DiskCore
 ///
 /// Le principe tient en une phrase : rendre chaque fichier contigu et le tasser
 /// contre le début du volume, dans l'ordre du parcours de l'arborescence — le
-/// seul ordre dont l'outil disposait. Deux conséquences qui s'entendent :
+/// seul ordre dont l'outil de 95 disposait. Celui de Windows 98 en avait un
+/// autre, « Réorganiser les fichiers programme » d'après les journaux de
+/// `TASKMON` (Resource Kit de Windows 98), que le modèle ne rejoue pas ici :
+/// `SmartDefragStrategy` en fait la mesure, et 1999 reçoit la même passe que
+/// 1996 (`LEDGER-REALISME.md`). Deux conséquences qui s'entendent :
 ///
 /// - la destination d'un fichier est presque toujours occupée par un autre, qui
 ///   doit d'abord être **évacué** vers l'espace libre de la fin du volume

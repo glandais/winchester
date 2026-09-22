@@ -513,3 +513,14 @@ plaçait en *best fit*, copiait par 64 Kio, et recollait la MFT dès XP. Les
 de XP en « hypothèse nommée » est remplacé par une description, et les douze
 colonnes du README sont refaites. Ce qui reste : l'écoute, et `smart` à
 remesurer contre le nouvel XP.
+
+### Lot H — fait (commit « Réalisme, lot H : la prose »)
+
+« Ce qui ne l'est pas » porte maintenant la liste ci-dessus ; les cinq
+affirmations du premier recoupement sont soit corrigées (XP, les 4 Mo, la
+pleine course, la zone MFT), soit dites convention (le refuge de 95).
+
+**Les huit lots sont livrés**, sur la branche `realisme`, chantiers 39 à 45
+de `LEDGER.md`. Ce qui reste ouvert est dans chacun ; les trois qui comptent :
+l'écoute de la passe XP tassée, le rangement intelligent à remesurer, et les
+trois démarrages NTFS que la disposition de la MFT a éloignés de leur cible.

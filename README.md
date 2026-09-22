@@ -1216,7 +1216,9 @@ galerie, y passe 20 min 29 — 170 Mo dont 71 % des fichiers fragmentables sont 
 morceaux, lus à 1,8 Mo/s — quand `dev-1996`, six fois plus gros, en prend 22.
 
 Ce qui la fixe, c'est le va-et-vient. L'outil évacue au **fond du volume**, sa
-zone de manœuvre, où la frontière ne repasse qu'à la fin : `dev-1999` déplace
+zone de manœuvre, où la frontière ne repasse qu'à la fin — un choix du modèle,
+calé sur les durées d'époque (chantier 24), qu'aucune source sur `DEFRAG` ne
+décrit : `dev-1999` déplace
 8 904 Mo pour un contenu de 6 Go, en 4 136 évacuations. Reposer les évacués
 juste au-dessus de la frontière, qui les rattraperait quelques fichiers plus
 loin, ferait déplacer à la passe jusqu'à seize fois son contenu. Le prix est sur
@@ -1454,6 +1456,46 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   ATA sans LBA48, 64 Ko sous XP —, et un découpage fait à l'interface du disque
   vaudrait pour tous ; les passes le paieraient d'un coût de commande par
   tranche, que la lecture anticipée et le cache d'écriture rendraient petit.
+- **La géométrie radiale est une convention.** Le rapport du rayon intérieur
+  au rayon extérieur est figé à 0,42 (`normalizedRadius`), y compris pour les
+  plateaux de 2,5 pouces du VelociRaptor, et c'est lui qui porte la course
+  du bras à l'écran et le souffle ; les seize zones de l'enregistrement
+  zoné décroissent linéairement en secteurs par piste, quand un vrai disque
+  a des zones de tailles inégales ; le décalage de piste (*skew*) est exact
+  par construction, si bien qu'aucun franchissement ne rate jamais son
+  créneau — un vrai disque le quantifie en secteurs et le cale sur le pire
+  cas, ce qui explique peut-être les 6 % de débit en trop du 7200.11 ; et
+  aucun défaut n'est géré : ni secteur réalloué, ni piste de rechange. Le
+  LBA remplit tout un cylindre avant de changer de piste, ce qui est juste
+  jusqu'au début des années 2000 ; ensuite une même tête écrit un paquet de
+  pistes avant de commuter (*serpentine*), et le 7200.10 comme le VelociRaptor
+  n'en font rien. Le 7200.14, enfin, est simulé en secteurs de 512 octets
+  quand son manuel en donne 4 096 physiques : chaque réécriture d'un
+  enregistrement de MFT — deux secteurs — lui coûterait une lecture du bloc
+  et un tour.
+- **La montée en régime est du premier ordre**, quand un moteur limité en
+  courant monte en tangente hyperbolique — la vérité est entre les deux, et
+  c'est mineur ; son enveloppe sonore suit v^1,6 quand la loi du souffle
+  (`windageBels`) pose v^2,5, et ses bandes glissent en 0,35 + 0,65·v. La voix
+  de la tête n'a rien sous 760 Hz : la cible spectrale (88 % entre 1,5 et 8 kHz)
+  est sourcée, et le grave passe par les haptiques, qui reçoivent les mêmes
+  repères.
+- **Le refuge de Windows 95 au fond du volume est un choix du modèle**, calé
+  sur les durées d'époque, pas lu dans une source ; et l'outil de 9x ne
+  **redémarre jamais sa passe** (« the disk's contents have changed.
+  Restarting… »), l'un de ses traits les plus mémorables, parce que rien
+  n'écrit sur le volume pendant qu'il tourne.
+- **Rien ne survit d'une séance à l'autre** sous NT : l'éditeur de liens relit
+  ses trois cents `.OBJ` depuis le plateau à chaque compilation d'une journée
+  de 2003, sur une machine qui les avait tous en mémoire. Un démarrage, lui,
+  ne relit jamais deux fois le même fichier.
+- **Les répertoires et les tailles de fichiers de la galerie sont des ordres
+  de grandeur d'époque**, comparés au terrain après coup : l'étude de cinq
+  ans de Microsoft (FAST'07, Agrawal et al.) donne environ 52 000 fichiers
+  et 4 000 répertoires par volume en médiane en 2004, et 42 % de
+  remplissage médian, sur des postes Microsoft.
+- **Il n'y a pas de FAT12** : la galerie commence en 1993 avec des FAT16, et
+  aucune disquette n'est simulée.
 - **NTFS sans compression, sans fichiers creux, sans flux additionnels**, et
   sans `$UsnJrnl` ni `$Secure` : les répertoires compressés de 2003, alloués par
   unités de seize clusters, fragmenteraient à coup sûr ; le journal des
