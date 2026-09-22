@@ -8,7 +8,9 @@ déjà pris ce code pour source du défragmenteur de XP, et le projet l'assume :
 ce n'est pas une source ouverte. Comme alors, rien n'est recopié ici. On ne
 cite que des noms, des constantes, une ligne au plus.
 
-Rien n'a été modifié dans le code : ce fichier ne fait que constater.
+Rien n'a été modifié dans le code : ce fichier ne fait que constater. Une
+annexe, en fin de fichier, le croise avec l'audit des lots réalisme
+([`AUDIT_REALISME.md`](AUDIT_REALISME.md)) et propose un ordre de traitement.
 
 ## Méthode
 
@@ -2205,3 +2207,314 @@ parenthèses.
 - **Vidage paresseux du registre : 5 s après une modification, CmpLazyFlush écrit les ruches et leurs .LOG, puis appelle ZwFlushBuffersFile. Le flush descend jusqu'à un FLUSH CACHE ATA sur les disques dont le cache d'écriture est actif, c'est-à-dire tous sous XP.** — `base/ntos/config/cmworker.c:41,523-535 ; base/ntos/config/cmwrapr.c:1048 ; base/ntos/config/hivesync.c:2420 ; drivers/storage/disk/disk.c:3406-3411`. L'app réécrit le registre en bloc après chaque logiciel, sans vidage du disque. Sous XP, chaque modification du registre (installation, démarrage, services) produirait une écriture de ruche et de .LOG dans les 5 s, puis un vidage forcé du cache du disque. Les longues salves d'écriture sont coupées et des pauses de vidage s'entendent. *Contre-vérification :* Le délai de 5 s est confirmé (cmworker.c:41, 523-535). Nuance : la ruche principale mappée est vidée par CcFlushCache, sans FLUSH CACHE (cmwrapr.c:1036-1040). Le FLUSH CACHE vient des .LOG et des fichiers hors cache, par ZwFlushBuffersFile (cmwrapr.c:1045-1048), et de la ruche qui grandit (hivesync.c:2419-2420). L'app réécrit le registre en bloc sans aucun vidage du disque (README.md:886-887, 1511-1516), et aucune occurrence de FLUSH CACHE modélisé dans Sources/Model. La lacune tient.
 - **Tri des requêtes en attente par LBA dans atapi (C-LOOK via KeRemoveByKeyDeviceQueue), dès que plusieurs IRP sont en vol : lecture anticipée asynchrone, lazy writer concurrent d'un programme, préchargeur qui émet ses lectures en rafale.** — `drivers/storage/ide/atapi/internal.c:3877,3959 ; drivers/storage/classpnp/xferpkt.c:406`. Si l'app modélisait un jour des E/S concurrentes (tourniquet de programmes, lazy writer asynchrone), la file devrait être triée par LBA sous XP et non FIFO. L'ordre des seeks, donc le timbre du crépitement, en dépend. *Contre-vérification :* Confirmé (internal.c:3877, 4698 ; devquobj.c:320-333). L'app est explicitement FIFO (DiskSimulator.swift:295-298, README.md:1507-1510). Je le renforce : même sans nouvelle modélisation, le lazy writer XP vide plusieurs flux en parallèle par ses threads de travail (lazyrite.c:728-742), ce qui produit déjà des E/S concurrentes.
 - **Regroupement des fautes de page des images : 8 pages (32 Ko) pour le code et 4 pages (16 Ko) pour les données des EXE et DLL sur une machine de plus de 19 Mo. Le démarrage de l'app lit tous les fichiers par requêtes de 64 Ko.** — `base/ntos/mm/mminit.c:1511-1513 ; base/ntos/mm/pagfault.c:2839-2850`. Hors préchargeur, charger une DLL de 1 Mo produit de 32 à 64 E/S, et non 16. C'est pertinent pour les lancements d'application et tout ce que le préchargeur de XP n'a pas couvert. *Contre-vérification :* Confirmé : mminit.c:1511-1512 et pagfault.c:2811, 2852-2870, soit la page fautive plus ClusterSize pages. L'app lit tout par requêtes de 128 secteurs (BootSession.swift:586, MachineWriter.swift:22) et ne modélise aucune faute de page. La lacune tient, sous réserve du préchargeur de XP (autre domaine) et de la condition de mémoire disponible.
+
+---
+
+# Annexe — croisement avec l'audit des lots réalisme
+
+Le 22 septembre 2026, un sous-agent a croisé ce fichier (A) avec l'audit en
+lecture seule de `079b244..1cd42cc`, qui couvre les lots réalisme A à H.
+Cet audit est versé dans le dépôt : **[`AUDIT_REALISME.md`](AUDIT_REALISME.md)**.
+Ses 51 constats bruts, 43 après dédoublonnage, ont chacun été vérifiés par un
+sceptique. Dans ce qui suit, **B** désigne le détail de ces constats, et
+`B#n` le constat n° n de ce fichier. **C** désigne la synthèse placée en tête
+du même fichier ; les sections citées (`C§1`…) sont ses défauts de
+comportement numérotés. Tout est vérifié à `112a9a9`. Aucun fichier n'a été
+modifié, et ni `swift test` ni aucun rendu n'a été lancé.
+
+## 1. Les affirmations de C tiennent-elles à HEAD ?
+
+Depuis `1cd42cc`, il n'y a que deux commits : `0668029` (allure d'écoute) et
+`112a9a9` (ce fichier). Aucun ne touche NTFS, XP, la MFT, les JSON ni
+`ProfileSpec`. Toutes les affirmations de C sur lesquelles repose ce
+croisement sont vraies à HEAD, aux mêmes lignes.
+
+| C | Vérifié à HEAD |
+|---|---|
+| 1. `sizeMB` de 2012 | `dev-2012.json:28` et `gamer-2012.json:25` valent `476940`. `ProfileSpec.swift:139` vaut `sizeMB * 1_000_000`. La doc à `:119` dit encore « Mio entiers ». |
+| 2. Deux plages | `NTFSAllocator.swift:418` : la boucle `for range in dataRanges` fait `place` en entier, `scatter` compris (`:460`), sur la plage avant, avant de passer à la plage arrière. `preferredRun` et `scatter` sont bornés à la plage (`:474`, `:540-555`). À `:450`, le curseur système est ramené à `frontRange.upperBound`. |
+| 3. `relocateMFTTail` | `DefragVolume.swift:214` : `let partition`. `:399-413` ne met à jour que `mftExtents` et `systemExtents`. `mftRecordLBA` lit `partition.mftExtents` (`VolumeLayout.swift:94, 210-226`), posé une seule fois à `GeneratedVolume.swift:125`. |
+| 4. Avancement | `WindowsXPStrategy.swift:420/546/579` posent des plages fixes, rappelées dans les boucles `:192-215`. |
+| 5. Analyse | `DefragStrategy.swift:145` parcourt `volume.systemExtents`, qui valent `[bootExtent] + mft.extents + [mftMirror, logFile, volumeBitmap]` (`NTFSAllocator.swift:361-363`). `scanAccesses` relit déjà `$Boot` et le dernier secteur (`VolumeLayout.swift:471-472`). |
+| Mineur | `Scenario.swift:724` prend bien `hardware.year`. `DefragToolChoice.swift:106` affiche toujours « a few seconds to 45 min ». |
+
+Seules les lignes du README ont bougé, de +1 à +13 : `:1082` devient
+`:1083`, `:1335` devient `:1337`, `:1892` devient `:1905`, `:703` devient
+`:704`.
+
+## 2. Recoupements
+
+### MFTDefrag et `relocateMFTTail`
+
+- B#15 et B#9 (la partition reste périmée) se **complètent** avec A
+  `xp-defrag-mft-condition`, `xp-defrag-mft-zone-cible` et `ntfs-alloc-18`
+  (condition `>1` et non `>2`, un trou de la taille de la MFT **entière**,
+  hors zone). Ce ne sont pas les mêmes défauts : B porte sur l'adressage
+  après le déplacement, A sur le moment du déplacement et sur sa cible.
+- A **aggrave** B. Avec la règle de XP, la queue repart à chaque passe, avant
+  et après, dès que la MFT a deux extents, et elle part loin, hors zone. Si
+  l'on applique A sans B#15, les écritures d'enregistrements visent
+  l'ancienne queue sur presque toutes les passes XP, et plus loin
+  qu'aujourd'hui.
+
+### Commentaire de `DiskGenerator.swift:339`
+
+B#10 = A `ntfs-format-06`, mot pour mot : le miroir « ramené par
+Windows 2000 ». Les deux se **renforcent** : le commentaire est faux contre le
+code de l'app comme contre celui de XP.
+
+### Disposition NTFS : `$LogFile` et `$Bitmap`
+
+B#10 (les commentaires de `VolumeLayout.swift:87-88, 314-315` sont faux)
+recoupe A `ntfs-format-03` et `ntfs-format-04`. Les deux divergent sur le sens
+de la correction (§3.1).
+
+### Deux plages, `scatter`, curseur
+
+- B#6 (`scatter` dans les 3 premiers Gio avant la plage arrière) et A
+  `ntfs-alloc-01` et `ntfs-alloc-21` se **renforcent** sur le diagnostic.
+  Chez XP, `NtfsLookupCachedLcnByLength` prend le plus petit run au moins
+  aussi long que la demande, dans tout le cache hors zone. Il ne découpe
+  (`AllowShorter`, du plus grand run au plus petit) que si **aucun** run ne
+  suffit. Le cas de B#6 ne se produit donc pas sous XP.
+- A ajoute que `scatter` lui-même est faux : il prend les morceaux dans
+  l'ordre du volume, alors que XP les prend du plus grand au plus petit
+  (`ntfs-alloc-21`).
+- B#7 (curseur système ramené à 3 Gio) et A `ntfs-alloc-02` (pas de curseur
+  pour un fichier neuf, *left-packing*) se **complètent**. Si l'on remplace
+  les curseurs par la règle de XP, B#7 disparaît.
+
+### Zone MFT renouvelée
+
+B#8 et A `ntfs-format-10`, `ntfs-alloc-08` et `ntfs-alloc-10` se
+**complètent**.
+
+- B#8 : le renouvellement Vista/7 sort le milieu du volume de `dataRanges`
+  (`NTFSAllocator.swift:374` et `:677`).
+- A : XP renouvelle aussi sa zone, au montage, quand l'espace libre repasse
+  au-dessus d'un seizième, et quand la MFT s'étend sans run contigu.
+
+L'ordre de traitement est impératif (§4).
+
+### Point de contrôle
+
+B#9 et B#15 raisonnent avec la rétention de 5 s : les clusters sont
+« libérés au point de contrôle et peuvent être réoccupés ». A
+`xp-defrag-point-de-controle` et `ntfs-alloc-15` réfutent cette rétention pour
+XP : `STATUS_DELETE_PENDING`, vidage du journal, réemploi immédiat. Le défaut
+de B tient, et il devient même plus probable sous XP.
+
+### Blocs de 64 Kio et commentaires sur l'ancien XP
+
+- B#22 (`UltraDefragStrategy.swift:121` dit « 4 Mo », et la ligne 38
+  « n'évacue personne ») est **renforcé** par A `xp-defrag-64k`,
+  `xp-defrag-boucles` et `xp-defrag-consolidation-ordre`.
+- `DefragPlannerTests:591` parle d'« une hypothèse ». A
+  `xp-defrag-zone-mft-rognee` montre que c'est un fait de la source, avec en
+  plus la zone de démarrage.
+- `:829-831` (« pas de réorganisation à chaud ») est contredit par A
+  `ntfs-alloc-18`.
+- `:1030` (« XP suit les numéros d'enregistrement ») : selon A
+  `xp-defrag-tri`, XP trie par taille, puis par numéro d'enregistrement.
+
+### Arrêt au premier fichier sans trou
+
+- B#21 et A `xp-defrag-arret-minimum` se **complètent**. A confirme le
+  `break` pour l'ordre par taille, qui est celui de XP. B montre qu'il fausse
+  les autres ordres, rejoués en mesure.
+- A `xp-defrag-tri` ajoute que `.sizeThenRecord` départage par `id` et non
+  par `mftRecord` (`WindowsXPStrategy.swift:617-621`). `.mftRecord` prend
+  aussi `a.id`.
+
+### Répertoires FAT
+
+B#30 relève que le test ne vérifie plus que les répertoires restent en place.
+A `xp-defrag-fat-repertoires` confirme la règle. A `xp-defrag-fat-moteur`
+ajoute que « XP sur FAT » ne représente aucun outil réel, puisque dfrgfat est
+un autre moteur. Le test porte donc sur un cas hors modèle.
+
+### Site et fiche de l'outil XP
+
+B#18, B#27 et B#49 (le site décrit l'ancien XP) sont **renforcés** par A
+`xp-defrag-boucles` et `xp-defrag-64k` : le nouveau libellé « 64 KB copies…
+packing » est le bon.
+
+### famille-2003
+
+B#37 relève que le README annonce 24 % alors que `CalibrationTests` attend
+moins de 16 %. A `ntfs-alloc-01` cite la même fourchette (4,6 à 21,2 %) et
+conteste les bornes qui la décident.
+
+Un lien est probable, mais n'a pas été vérifié : B#6 et la phrase « 24 % »
+arrivent dans le **même commit** (lot F, `c7cda33`, « deux plages de données,
+le vierge borné à la sienne »), et le scénario de B#6 est justement
+famille-2003.
+
+## 3. Contradictions tranchées
+
+1. **Le sens de la correction de B#10.** B veut aligner le commentaire de
+   `VolumeLayout.swift:314-315` (« derrière les 64 Mo du journal ») sur le
+   code, qui pose le journal derrière le miroir (`NTFSAllocator.swift:331`,
+   `logFile = Extent(start: mirror.end, …)`). Or A (`format.cxx:618`,
+   `logfile.cxx:231-232`) montre que, sous XP, le journal finit deux clusters
+   **avant** `$MFT`.
+   Verdict : ce commentaire est **juste pour XP**, et faux quand il dit
+   « près du début » (c'est à 3 Gio). Il faut corriger le **code** d'après A,
+   puis le commentaire, et non réécrire le commentaire dans le sens du modèle
+   actuel.
+2. **La référence de B#6.** B juge `place` d'après la règle de l'en-tête, qui
+   préfère l'espace vierge (`NTFSAllocator.swift:70-75`). A `ntfs-alloc-03`
+   réfute cette règle pour XP. Le défaut tient des deux côtés, mais la
+   correction ne doit pas « essayer le vierge arrière avant `scatter` ». Elle
+   doit faire un *best fit* global sur les deux plages hors zone, puis
+   découper du plus grand morceau au plus petit.
+3. **B#24 : « l'analyse ne devrait lire que la MFT ».** C'est trop étroit.
+   Le code de XP, relu, montre ce que dfrgntfs lit :
+   - l'attribut `$BITMAP` de la MFT, par `DasdReadClusters`
+     (`dfrgntfs.cpp:4588-4613`) ; sous XP, ce bitmap est un cluster devant
+     `$MFT` (A `ntfs-format-03`) ;
+   - la MFT, par tampons `MFT_BUFFER_SIZE`, extent par extent
+     (`:5110-5160`) ;
+   - la bitmap du volume, par `FSCTL_GET_VOLUME_BITMAP`
+     (`freespace.cpp:1345`), à chaque phase (A `xp-defrag-liste-par-phase`).
+
+   Rien ne lit `$LogFile` ni `$MFTMirr`. Verdict : B a raison pour les
+   64 Mio du journal, pour le miroir et pour `$Boot` relu. Lire `$Bitmap`
+   est légitime, même si son passage par le cache n'est pas tranché.
+4. **Monotonie de l'avancement (B#16).** B s'appuie sur le LEDGER, et XP lui
+   donne raison : `dfrgntfs.cpp:981-985`, `if (uPercentDone <
+   uLastPercentDone) uPercentDone = uLastPercentDone`. La barre de XP ne
+   recule jamais. Correction : borner la valeur de la même façon.
+5. **A `ntfs-format-17` et `VolumeLayout.swift:442`.** Pas de conflit avec B.
+   B#24 relève le `$Boot` relu, sans voir que `scanAccesses` lit aussi le
+   dernier secteur (`:472`). C'est le même aller-retour sur toute la course
+   que A réfute au montage. Il ne figure pas non plus dans la lecture de la
+   MFT par dfrgntfs. Il est donc à retirer lui aussi.
+
+En dehors du sens des corrections (points 1 et 2), il n'y a aucun cas où A
+tient pour juste ce que B déclare faux sur le même mécanisme.
+
+## 4. Interactions et ordre de traitement
+
+- **B#15 avant la correction de MFTDefrag.** A multiplie les recollages :
+  condition `>1`, deux appels par passe, cible hors zone, donc loin. Il faut
+  d'abord que `mftRecordLBA` suive `DefragVolume.mftExtents`, soit en passant
+  `partition` en `var`, soit en transmettant les extents au `commit`.
+- **Le recollage d'A suppose le point de contrôle réglé.** `relocateMFTTail`
+  retient la queue dans `heldClusters`. Si l'on remplace la rétention par
+  `DELETE_PENDING` (A), sa libération change aussi.
+- **B#8 avant le renouvellement de zone pour XP.** Étendre à XP le
+  renouvellement prouvé par A, avec la définition actuelle de `dataRanges`,
+  ferait perdre le milieu du volume aux **volumes XP de la galerie**
+  (famille-2003 et secretaire-2003, qui se remplissent). `dataRanges` doit
+  exclure la zone courante, pas tout ce qui la précède.
+- **L'allocateur avant MFTDefrag.** A `ntfs-format-10` et `ntfs-alloc-09`
+  changent le nombre d'extents de la MFT : il y en a moins, et ils sont plus
+  gros. Cela décide quels volumes déclenchent MFTDefrag et combien de lectures
+  fait l'analyse (B#24).
+- **La disposition avant B#24 et avant les commentaires.** Déplacer
+  `$LogFile` près de `$MFT` et `$Bitmap` à n/2 se fait dans le seul
+  `NTFSAllocator.layout`, que `VolumeLayout.ntfsLayout` réutilise. Tant que
+  B#24 n'est pas corrigé, l'analyse lirait toujours les 64 Mio du journal,
+  simplement plus près.
+- **B#5 (capacité 2012) et la disposition.** Les deux déplacent le miroir et
+  changent le nombre de clusters des volumes 2012. Pour Windows 7, A ne
+  vérifie rien : le miroir au LCN 2 est non vérifiable. Un seul lot de
+  rendus suffit, mais il n'y a pas de dépendance logique.
+- **Les documents en dernier.** B#19 et B#26 (durées « measured »), B#20 et
+  B#38 à B#44 (prose du README), B#18, B#27 et B#49 (site) seront à refaire
+  après chaque correction d'A qui change les passes XP. Il faut d'abord
+  corriger les **gabarits** de `readme-tables.py` (verbes et comparatifs
+  calculés), puis régénérer.
+
+Ordre proposé :
+
+1. Les corrections sans dépendance :
+   - B#16 : borner l'avancement comme XP ;
+   - B#15 : faire suivre la MFT déplacée aux lectures ;
+   - B#5 : la capacité 2012, dans un lot de rendus à part ;
+   - B#25 : dater l'outil par la chronologie du scénario.
+2. La disposition au formatage (A `ntfs-format-03`, `04`, `02`, `12`, `17`),
+   avec B#24.
+3. L'allocateur : B#8 d'abord, puis B#6, B#7, et A `ntfs-alloc-01`, `02`,
+   `03`, `05`, `09`, `21`, `ntfs-format-10`. Recaler ensuite
+   `CalibrationTests` et le README (B#37).
+4. Le moteur XP, avec B#17 et B#21 :
+   - MFTDefrag : sa condition et sa cible ;
+   - le point de contrôle et `DELETE_PENDING` ;
+   - la validation par bloc de 64 Kio ;
+   - la valeur rendue par la consolidation ;
+   - le vidage de la zone MFT, arrêté au premier échec ;
+   - la zone de démarrage.
+5. Remesurer, puis les documents :
+   - B#19 et B#26 ;
+   - les gabarits du README ;
+   - le site ;
+   - l'arborescence (B#46) ;
+   - les commentaires : B#10 dans le sens d'A, B#22, et la liste
+     « Commentaires faux » d'A.
+
+## 5. Ce qui n'est que dans l'un (par effet sur le son)
+
+**Seulement dans A**
+
+1. `$LogFile` collé devant `$MFT`, `$Bitmap` à n/2. Les trajets de chaque
+   validation sont inversés, sur les 12 volumes NTFS.
+2. Point de contrôle : réemploi immédiat des clusters, avec un vidage de
+   journal audible. Cela touche XP, JkDefrag et UltraDefrag.
+3. Validation par bloc de 64 Kio, avec la MFT et `$Bitmap` écrits par le lazy
+   writer, et non une fois par fichier (`ntfs-alloc-14`).
+4. Le montage ne va pas au dernier secteur (`ntfs-format-17`) : le modèle
+   ajoute une course complète à chaque démarrage.
+5. Allocation :
+   - un *best fit* sur le cache des runs libres ;
+   - pas de curseur ;
+   - pas de préférence pour l'espace vierge ;
+   - une surallocation de ×2 à ×16 à l'écriture.
+6. L'optimisation du démarrage ouvre la passe XP.
+7. Pile de stockage : file triée par LBA dans `atapi`, lazy writer qui vide
+   un huitième des pages sales, lecture anticipée.
+8. Démarrage : ordre de premier accès (libellé), historique de 8 démarrages,
+   date d'accès journalisée.
+9. FAT : tranches de 256 Kio pour JkDefrag et UltraDefrag.
+
+**Seulement dans B/C**
+
+1. B#24 : 64 Mio de journal lus pendant l'analyse, soit environ 3 s de son en
+   trop par passe NTFS.
+2. B#5 : volumes 2012 plus petits de 4,6 %, donc une course utile plus
+   courte.
+3. B#25 : l'outil suit l'année du disque (`rendertrace` avec `DRIVE=`,
+   mesures).
+4. B#16 : avancement (interface seulement).
+5. B#17 (compte « déjà en place »), B#23 (pluriels), B#37 (test probablement
+   rouge, non lancé).
+6. Pourboires, site et README : B#31 à B#36, B#45, et la prose de B#38 à
+   B#44.
+7. Outillage : `wav-md5.py` (B#51).
+
+## Tableau
+
+| priorité | sujet | A | B/C | action proposée |
+|---|---|---|---|---|
+| 1 | MFT déplacée, lectures à l'ancienne place | `ntfs-alloc-18` (les règles du pilote tiennent) | B#15/#9, C§3 | Faire suivre `DefragVolume.mftExtents` à `mftRecordLBA`, **avant** toute correction de MFTDefrag |
+| 1 | Place de `$LogFile` et `$Bitmap` | `ntfs-format-03`, `04`, `ntfs-alloc-19` | B#10 (commentaires) | Corriger `NTFSAllocator.layout` (journal devant la MFT, bitmap derrière le miroir), puis les commentaires dans le sens de XP |
+| 1 | Analyse NTFS | — (code XP relu : `dfrgntfs.cpp:4588-4613, 5110-5160`, `freespace.cpp:1345`) | B#24, C§5 | Lire les extents de `$MFT` et son `$BITMAP`, garder la bitmap du volume ; retirer journal, miroir, `$Boot` relu et dernier secteur |
+| 1 | Point de contrôle de 5 s | `xp-defrag-point-de-controle`, `ntfs-alloc-15` | (hypothèse sous-jacente de B#9/#15) | `DELETE_PENDING` avec vidage du journal ; revoir `relocateMFTTail` et `heldClusters` |
+| 2 | Zone MFT renouvelée | `ntfs-format-10`, `ntfs-alloc-08`, `ntfs-alloc-10` | B#8 | Corriger `dataRanges` (**d'abord**), puis étendre le renouvellement à XP |
+| 2 | Deux plages, `scatter`, curseurs | `ntfs-alloc-01`, `02`, `03`, `21`, `ntfs-format-18` | B#6, B#7, C§2 | *Best fit* global hors zone, découpage du plus grand au plus petit, pas de curseur ; remplace les deux correctifs de B |
+| 2 | MFTDefrag : condition et cible | `xp-defrag-mft-condition`, `mft-zone-cible` | — | `count > 1`, trou de la MFT entière, hors zone ; après la ligne 1 et l'allocateur |
+| 2 | famille-2003 : 24 % contre < 16 % | `ntfs-alloc-01` (bornes contestées) | B#37 | Lancer `swift test` ; recaler le test et le README après l'allocateur (probablement causé par B#6, lot F) |
+| 2 | Capacité 2012 | — | B#5, B#12, C§1 | `sizeMB: 500107` dans les deux JSON, doc de `DiskSpec(reference:)` ; lot de rendus à part |
+| 3 | Validation par fichier | `ntfs-alloc-14`, `xp-defrag-validation` | — | Commit par bloc de 64 Kio, métadonnées au lazy writer |
+| 3 | Dernier secteur à chaque montage | `ntfs-format-17` | — | Retirer de `mountAccesses` (et de `scanAccesses`) |
+| 3 | Avancement XP qui recule | — (XP le borne : `dfrgntfs.cpp:981-985`) | B#16, C§4 | Borner la valeur comme XP |
+| 3 | Consolidation, zone MFT, zone de démarrage | `xp-defrag-abandon-dix`, `zone-mft-une-fois`, `zone-mft-rognee`, `mft-avant-apres` | B#17, B#21 | Aligner la valeur rendue et l'arrêt au premier échec ; compter « déjà en place » comme les autres outils ; limiter le `break` à l'ordre par taille |
+| 3 | Départage par `id` | `xp-defrag-tri` | B#22 (test :1030) | Départager par `mftRecord` |
+| 3 | Outil daté par le disque | `xp-defrag-vista7` (non vérifiable) | B#25 | Dater par `timeline.start.year` |
+| 4 | Commentaires sur l'ancien XP et la disposition | liste « Commentaires faux » d'A | B#10, #22, #48 | Après les corrections, dans le sens d'A |
+| 4 | Durées affichées, prose du README, site | — | B#18-#20, #26, #27, #38-#44, #46, #49 | Corriger les gabarits de `readme-tables.py`, remesurer, puis les textes |
+| 4 | XP sur FAT dans les mesures | `xp-defrag-fat-moteur`, `fat-bloc` | B#30 | Marquer les 12 passes comme artefact ; test comparant les extents des répertoires avant et après |
+
+Le lien entre B#6 et les 24 % de famille-2003 reste une hypothèse : il n'a pas
+été mesuré.
