@@ -189,8 +189,11 @@ enum DayPlanner {
         var reader = DayReader(script: script, era: era, seed: replay.spec.seed &+ UInt64(day))
 
         // MARK: Le démarrage
+        // Le POST n'est pas un temps de calcul à compter ici : c'est la montée
+        // en régime du scénario (`BootScript.Era.spinUpDuration`), avant
+        // laquelle le disque ne sert rien — comme pour un démarrage seul. Le
+        // compter en plus le faisait durer deux fois.
         let boot = BootPlanner.plan(disk: disk)
-        writer.think(boot.post)
         plan.bootFiles = boot.filesRead
         for request in boot.requests {
             guard !isCancelled() else { return plan }

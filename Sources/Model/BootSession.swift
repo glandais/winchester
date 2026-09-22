@@ -469,6 +469,12 @@ extension BootScript {
             }
         }
 
+        /// La montée en régime d'une mise sous tension : le plateau est prêt
+        /// un peu avant la fin du POST, qui l'attend. Le démarrage et la
+        /// journée s'ouvrent tous deux par elle — c'est la même machine, le
+        /// même matin — et la prennent ici pour ne pas se contredire.
+        var spinUpDuration: Double { max(post - 0.6, 0.5) }
+
         private func label(_ index: Int) -> (String, String, String) { labels[index] }
 
         func acts(launching app: AppManifest?) -> [BootAct] {

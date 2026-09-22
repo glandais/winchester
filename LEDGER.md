@@ -6997,3 +6997,91 @@ offrir ce pourboire par la voie permise.
 - Pas vu : l'attente d'approbation (Ask to Buy), l'échec simulé, l'anglais,
   l'iPad et les grands corps de texte.
 - Les notes de revue ne sont toujours pas poussées (`asc review details-update`).
+
+## Chantier 39 — réalisme, lot A : le son
+
+Premier lot de `LEDGER-REALISME.md`, et celui qui pose le protocole des
+suivants : un état de référence, une prédiction écrite avant de mesurer, et la
+mesure qui la juge. Branche `realisme`.
+
+### Le problème
+
+Trois fautes du dépouillement ne touchaient que le rendu : F1 (les résonateurs
+de la broche vidés à chaque recalage), F8 (un peigne à −18 dB en mono) et F6
+(la journée sous tension en 1,2 s quand le démarrage du même disque en met 4,4
+à 7,4). Aucune n'a de test possible dans le paquet : `Sources/Audio` et
+`Scenario.swift` n'y entrent pas. La vérification est donc le rendu hors-ligne.
+
+### L'état de référence
+
+Sous `.build/measure-realisme/`, sur `079b244` : `bin-base`, les 412 bilans de
+`run.sh base full`, et — nouveau — **58 rendus sonores hachés**
+(`wav-md5.py <étape>` : les deux démos, vingt-quatre démarrages, vingt-quatre
+installations, les quatre journées du README, les quatre passes de 1993), en
+1 min 36. `readme-tables.py base --check` reproduit le README, à une durée de
+génération près (1,9 s mesurée machine chargée, pour 1,7).
+
+### Les décisions
+
+- **F1 : `Biquad.setBandpass`**, qui recale les coefficients sans toucher à
+  `z1`/`z2`. La faute était réelle et le commentaire mentait ; **son effet
+  était très en dessous de ce que le dépouillement annonçait**. Mesuré sur la
+  broche seule (`TRANSIENT_GAIN=0`, `boot:dev-1999`) : niveau identique à
+  0,1 dB près par demi-seconde, y compris sous 250 Hz, et un écart entre les
+  deux rendus 20 à 25 dB sous un signal lui-même à −58…−42 dBFS. La raison : le
+  recalage n'a lieu à chaque bloc que tant que la vitesse bouge de plus de
+  0,004 par bloc de 512, soit sous 37 % du régime (τ = rampe / 3,2), là où
+  l'enveloppe en v^1,6 est déjà presque muette ; ensuite il s'espace. « Le grave
+  ne s'établit jamais pendant la première moitié de la rampe » était un calcul
+  juste sur une prémisse fausse.
+- **F8 : un élargissement milieu/côté.** Le signal retardé de 0,33 ms est
+  ajouté à gauche et retranché à droite (`stereoSide = 0,6`, normalisé par
+  √(1 + 0,36)) au lieu d'être posé sur le seul canal droit. Le calcul avait
+  d'abord écarté l'autre piste : aucun retard ne passe entre sept modes étalés
+  de 760 à 7 200 Hz (de 16 à 3 échantillons, le pire mode perd toujours 13 à
+  18 dB ; à 2 il n'y a plus de largeur). Replié en mono, le côté s'annule.
+- **F6 : une seule rampe, `BootScript.Era.spinUpDuration`** (`post − 0,6`),
+  que prennent le démarrage et la journée. **Et la sonde a trouvé plus que la
+  faute** : `DayPlanner` comptait déjà le POST en temps de calcul
+  (`writer.think(boot.post)`), *après* le disque prêt. Avec 1,2 s de rampe la
+  première lecture tombait à `post + 1,55 s` contre `post − 0,25 s` pour le
+  démarrage seul ; aligner la rampe sans retirer ce `think` aurait compté le
+  POST deux fois (+5,2 s, vu sur la longueur du WAV avant tout bilan). Le
+  `think` est retiré : le POST *est* la montée en régime.
+- **L'exposant de l'enveloppe n'est pas touché.** v^1,6 contre les v^2,5 de
+  `windageBels` : juste pour le souffle, faux pour un roulement. La bonne
+  correction est une enveloppe par bande, et c'est une décision d'écoute —
+  avec le lot D.
+
+### Ce qui valide
+
+| prédiction, écrite avant | mesuré |
+|---|---|
+| F8 : mono(A) = gauche(base) / √1,36 | écart max **0,92 LSB** sur 2,8 M d'images ; crête 0,403 contre 0,373 |
+| F1 : la broche seule ne diffère que pendant les rampes | différences de 0,38 à 14,5 s sur 58 s, puis identique au bit |
+| les 58 `md5` changent tous (tout scénario a une rampe et des seeks) | 0 identique sur 58 |
+| seules les journées changent de durée | les quatre, de −1,78 à −1,80 s ; aucune autre |
+| 408 bilans identiques, quatre journées à −1,8 s | `compare.py base a --identical` : 408 / 4 |
+
+**La première prédiction sur F6 était fausse** (« les bilans des journées ne
+bougent pas ») : c'est elle qui a fait trouver le POST compté deux fois. Une
+journée de `famille-2003` perd aussi un repère audio sur 826 : la salve de
+recherche de la piste 0 tient maintenant dans la rampe au lieu d'être repoussée
+par sa moitié.
+
+`swift test` : 301 tests, dont `coldSpinUpFollowsThePost`. `xcb.sh build`
+passe. README : les quatre durées de la table des journées (5 min 21, 6 min 33,
+1 min 35, 1 min 58), par `readme-tables.py a --write`.
+
+### Laissé ouvert
+
+- **L'écoute.** `stereoSide = 0,6` est réglé au calcul (corrélation entre
+  canaux 0,47, contre 0,14 avant : l'image est moins large, et centrée au lieu
+  de tirer à gauche). Les paires avant/après sont dans
+  `.build/measure-realisme/ecoute/` : stéréo, mono, et la mise sous tension
+  d'une journée.
+- **Aucun test ne garde F1 ni F8** : `Sources/Audio` n'est dans aucune cible du
+  paquet. Y faire entrer `Biquad.swift` demanderait une cible de plus.
+- **Les vidéos de l'App Store** portent le son d'avant. Leur bande vient de
+  `RenderTrace` : les refaire donnerait un mono sans peigne — c'est là que F8
+  s'entendait le plus.

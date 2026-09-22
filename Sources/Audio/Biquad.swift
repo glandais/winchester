@@ -17,6 +17,16 @@ struct Biquad {
         return y
     }
 
+    /// Recale un passe-bande **sans toucher à son état** : les coefficients
+    /// changent, `z1` et `z2` restent. C'est ce qu'il faut à un filtre qui
+    /// glisse — réaffecter `Biquad.bandpass(…)` le viderait à chaque fois, et
+    /// un résonateur vidé plus vite qu'il ne s'établit ne sonne jamais.
+    mutating func setBandpass(frequency: Double, q: Double, sampleRate: Double) {
+        let tuned = Biquad.bandpass(frequency: frequency, q: q, sampleRate: sampleRate)
+        b0 = tuned.b0; b1 = tuned.b1; b2 = tuned.b2
+        a1 = tuned.a1; a2 = tuned.a2
+    }
+
     /// Passe-bande à gain crête unitaire — la brique du banc de résonateurs.
     static func bandpass(frequency: Double, q: Double, sampleRate: Double) -> Biquad {
         let w0 = 2 * Double.pi * min(frequency, sampleRate * 0.45) / sampleRate

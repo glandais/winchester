@@ -201,6 +201,18 @@ struct BootSessionTests {
         }
     }
 
+    /// Une mise sous tension à froid dure ce que dure le POST, à peu près : la
+    /// journée empruntait 1,2 s en dur, quatre à six fois moins que le
+    /// démarrage du même disque. `Scenario` est hors du paquet ; ce test garde
+    /// la valeur que ses deux constructions prennent désormais au même endroit.
+    @Test("La montée en régime à froid suit le POST, à toutes les époques")
+    func coldSpinUpFollowsThePost() {
+        for era in BootScript.Era.all {
+            #expect(era.spinUpDuration == era.post - 0.6, "\(era.os)")
+            #expect((4.4...7.4).contains(era.spinUpDuration), "\(era.os)")
+        }
+    }
+
     /// Jusqu'à XP, toute lecture réécrit la date de dernier accès du fichier ;
     /// Vista l'a désactivé par défaut. C'est l'écart d'époque qui sépare 2003
     /// de 2007 sans rien devoir au matériel, et seul ce test le retient : aucun

@@ -126,7 +126,9 @@ final class SpindleVoice {
         let deviation = Self.referenceDeviation * character.gain
         // Les tableaux ne sont refaits que quand le disque change. Pendant une
         // rampe, qui recalcule les coefficients à chaque bloc sur le fil audio,
-        // ils sont réécrits en place : aucune allocation.
+        // ils sont réécrits en place : aucune allocation. Et seuls les
+        // coefficients le sont — l'état des résonateurs survit au bloc, sans
+        // quoi le grave, qui met un bloc à s'établir, ne monterait jamais.
         if coefficientVersion != characterVersion || bands.isEmpty {
             bands = character.bands
             bankL = Array(repeating: Biquad(), count: bands.count)
@@ -140,9 +142,9 @@ final class SpindleVoice {
         // demi-seconde, et l'oreille n'y entend qu'une montée.
         for index in bands.indices {
             let band = bands[index]
-            bankL[index] = Biquad.bandpass(frequency: band.frequency * scale, q: band.q, sampleRate: sampleRate)
-            bankR[index] = Biquad.bandpass(frequency: band.frequency * scale * 1.012, q: band.q,
-                                           sampleRate: sampleRate)
+            bankL[index].setBandpass(frequency: band.frequency * scale, q: band.q, sampleRate: sampleRate)
+            bankR[index].setBandpass(frequency: band.frequency * scale * 1.012, q: band.q,
+                                     sampleRate: sampleRate)
             let variance = Self.bandVariance(frequency: band.frequency, q: band.q, sampleRate: sampleRate)
             bandGain[index] = deviation * (band.power / variance).squareRoot()
         }

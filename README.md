@@ -899,10 +899,10 @@ de 1999 durerait la nuit.
 
 | journée | activités | lu / écrit | durée |
 |---|---|---|---:|
-| `dev-1996`, jour 20 | navigation, compilation, archivage | 142 / 36 Mo | 5 min 23 |
-| `dev-1996`, jour 300 | idem | 154 / 65 Mo | 6 min 35 |
-| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 200 / 20 Mo | 1 min 36 |
-| `gamer-1999`, jour 365 | navigation, jeu | 531 / 6 Mo | 2 min 00 |
+| `dev-1996`, jour 20 | navigation, compilation, archivage | 142 / 36 Mo | 5 min 21 |
+| `dev-1996`, jour 300 | idem | 154 / 65 Mo | 6 min 33 |
+| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 200 / 20 Mo | 1 min 35 |
+| `gamer-1999`, jour 365 | navigation, jeu | 531 / 6 Mo | 1 min 58 |
 
 **L'usure s'entend.** Sur `dev-1996`, la même journée de travail passe d'un seek
 moyen de 277 cylindres au jour 20 à 427 au jour 300 : le disque fait la même
@@ -1599,6 +1599,7 @@ par étape, le jeu complet des bilans, les comparaisons — sous
 ./Tools/Measure/boots.py base m1              # les démarrages et leur cible
 ./Tools/Measure/boots.py --steps base m1 m2   # l'effet de chaque étape
 ./Tools/Measure/compare.py base m1 defrag- --identical   # ce qui n'a pas bougé
+./Tools/Measure/wav-md5.py m1                 # 58 rendus sonores hachés : ce que les bilans ne voient pas
 ./Tools/Measure/fit-think.py m1               # quelle constante de ThinkModel
 ./Tools/Measure/readme-tables.py m1 --check   # le README contre les bilans
 ./Tools/Measure/readme-tables.py m1 --write   # tables et prose, réécrites

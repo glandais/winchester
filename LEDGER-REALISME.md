@@ -404,3 +404,52 @@ docstring. Peut se faire tout de suite ; se refera de toute façon après G.
   `../disknoise.resources/evaluations/realisme-2026-09-21/` (`resultats.json`,
   sa mise à plat `constats-et-verifications.txt`, le script du workflow et son
   journal). Ce fichier en garde ce qui se décide.
+
+---
+
+## Suites
+
+### Lot A — fait (chantier 39 de `LEDGER.md`)
+
+F1, F8 et F6 sont corrigés sur la branche `realisme`. Deux choses à retenir
+ici, parce qu'elles corrigent ce fichier :
+
+- **F1 était surestimée.** La faute est réelle, l'effet mesuré est de 20 à
+  25 dB sous un signal déjà presque muet : le recalage n'a lieu à chaque bloc
+  que sous 37 % du régime. Elle ne faisait pas partie des « deux corrections
+  qui abîment le rendu ».
+- **F6 cachait une seconde faute** : la journée comptait le POST en temps de
+  calcul *après* le disque prêt. Les quatre journées du README perdent 1,8 s.
+
+Le protocole qui a servi — état de référence, prédiction écrite, 412 bilans et
+58 `md5` sonores — est décrit au chantier 39, et vaut pour les lots suivants.
+
+### Les questions « à trancher sur source » — relues le 21 septembre 2026
+
+Sept questions, un chercheur (opus) puis un sceptique par question ; les sept
+verdicts sont **« nuancé »** : aucune citation inventée cette fois, mais des
+repères faux, des conclusions trop fortes et deux erreurs de fond, toutes
+attrapées. Le détail est hors du dépôt, dans
+`../disknoise.resources/evaluations/realisme-sources-2026-09-21/`
+(`verdicts.txt`), les sources rangées dans `../disknoise.resources/manuels` et
+`sources-realisme/`.
+
+| question | ce que les sources disent | ce qui reste une hypothèse |
+|---|---|---|
+| la zone de tri de XP | `FreeSpaceErrorLevel` = 15, « sorting area », attestée pour XP par son aide produit et son Resource Kit (ch. 28). La consolidation de l'espace libre est une fonction annoncée de l'outil ; le rapport la chiffrait, et le pourcentage global en était pour moitié | **aucune source ne dit qu'il déplaçait des fichiers non fragmentés** : « il n'évacue personne » et « il évacue » sont deux hypothèses à nommer |
+| la MFT et le défragmenteur | **ce fichier se trompait** : le recollage de `$MFT` n'arrive pas avec Vista (KB 942092) mais dès XP — Resource Kit, ch. 13 et 28 : le premier fragment ne bouge pas ; à trois fragments ou plus, le reste est déplacé d'un bloc s'il existe un trou. `canTouch` est faux pour les douze NTFS. Et `avoidsMFTZone` devient un fait sourcé (« Neither Disk Defragmenter nor the defrag command moves files into this area ») | — |
+| Vista et Windows 7 | KB 942092 (**Vista**, pas « SP1 / Server 2008 ») : fragments de 64 Mo et plus laissés en place, MFT recollée. Windows 7 garde le seuil et rend d'autres métadonnées déplaçables (billet e7) | l'absence de carte de clusters sous 7 : des commentaires de lecteurs seulement |
+| `BootOptimizeFunction`, Windows 98 | `layout.ini` est nommé par Russinovich et Solomon (MSDN Magazine, décembre 2001) ; « tous les trois jours environ, au plus, à l'inactivité ». Le réordonnancement de Windows 98 (`TASKMON`, `APPLOG`) est confirmé par son Resource Kit : « 1999 seulement, pas 1996 » tient | le défaut `Enable=Y` sous XP ne vient que d'une copie tierce de `dfrg.inf` |
+| la place de `$MFT` | `.nearStart` tel qu'il est codé ne correspond à **aucune** disposition attestée. `$MFT` à 3 Gio ; `$MFTMirr` au milieu sous XP et Vista, au LCN 2 sous Windows 7 ; zone MFT de 12,5 % sous XP, **200 Mo renouvelables sous Vista et 7** (KB 961095, primaire : le point le plus solide). À choisir par le champ `os` des JSON, pas par l'année | XP et Vista reposent sur une seule page (Sedory) ; la place de `$LogFile` est inconnue ; que les données occupent les 3 premiers Gio sous XP est une inférence, que la KB 961095 contredit à la lettre |
+| 7200.10 : 8,5 ou 11,0 ms | les deux sont publiés pour les mêmes 625 142 448 secteurs : PATA « measured in quiet mode », SATA (100402371, rév. F et K, rangées) « in performance mode ». Le commentaire de la fiche est à corriger (781 kBPI, 78 Mo/s pour le seul 750 Go) | le mode n'explique pas tout : le ST3250410AS est à < 11,0 en mode performance. Le choix reste à Gabriel — et la galerie de 2007 tourne déjà à 8,5 par ses JSON |
+| U8 : 8,9 ou 10,5 ms | **10,5** : la seule des deux valeurs qui soit définie, appariée à l'écriture et à la pleine course. Aucun scénario ne lit le `seekModel` du U8 — les quatre JSON de 1999 écrivent 9,0 : les `md5` ne bougent pas | que 10,5 vaille pour le ST38410A en particulier |
+| le Conner CFA170A | **deux têtes et un plateau, 2 111 pistes** (fiche BBS Conner, TULARC), pas « 1 806 cylindres, 4 têtes » ; pleine course **25 ms** (26 sur le manuel préliminaire du CP30174, son nom d'usine). `poweruser-1993` retombe alors seul sur les 4 têtes du vrai CFA340A : **les « plateaux fantômes » sont une erreur de fiche**, pas un défaut de `bestHeadCount`, et le « facteur 1,72 » est à retirer | aucun PDF constructeur : des transcriptions recoupées |
+| une durée d'époque pour `dfrg.msc` | rien entre 40 et 320 Go. Deux chronométrages seulement : Computerworld 2005 (5 Go, 3 min 56, passe inachevée) et Hofmann 2011 (50 Go à 24 %, 13 min 47) | les durées XP du README ne sont calées sur rien, et doivent le dire. Mesurer la phase d'analyse sur `famille-2007` avant de réécrire F4 : elle croît peut-être déjà avec le nombre de répertoires |
+| FAST'07 | « environ 52 000 fichiers, environ 4 000 répertoires, 42 % » : §3.1 p. 33, §4.1 p. 37, §5.1 p. 41 — postes Microsoft, par volume | — |
+
+**Ce que cela déplace dans l'ordre des travaux.** Le lot B reçoit la fiche du
+Conner (têtes, pistes) — qui change les quatre volumes de 1993 par leur
+géométrie, donc ne va pas dans la partie « neutre ». Le lot E reçoit deux
+pleines courses publiées de plus (Conner 25 ms, U8 23 ms pour 10,5). Le lot G
+commence par la MFT recollée dès XP, qui est sourcée, avant la question de
+l'évacuation, qui ne l'est pas. Le lot F choisit la disposition NTFS par `os`.

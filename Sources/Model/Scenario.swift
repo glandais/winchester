@@ -364,7 +364,7 @@ enum ScenarioBuilder {
         let plan = BootPlanner.plan(disk: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
                                                    atLeast: plan.partition.totalSectors)
-        let spinUpDuration = max(plan.post - 0.6, 0.5)
+        let spinUpDuration = BootScript.Era.matching(disk.spec).spinUpDuration
 
         // Le témoin : le même contenu jamais fragmenté. Une seconde passe de
         // planification et de simulation, sur quelques milliers de requêtes et
@@ -589,7 +589,11 @@ enum ScenarioBuilder {
             geometry: hardware.geometry,
             seekModel: hardware.seek,
             setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
-                             spinUpAt: 0.35, spinUpDuration: 1.2,
+                             // Une mise sous tension à froid, la même que
+                             // celle du démarrage : la journée commence par
+                             // lui, et `DayPlanner` attend déjà le POST.
+                             spinUpAt: 0.35,
+                             spinUpDuration: BootScript.Era.matching(disk.spec).spinUpDuration,
                              // La machine s'allume le matin et s'éteint le
                              // soir : la journée se referme sur la coupure, le
                              // bras qui se retire et les têtes qui se posent.

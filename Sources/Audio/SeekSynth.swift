@@ -44,6 +44,11 @@ nonisolated final class SeekSynth: Sendable {
         ActuatorMode(frequency: 7_200, q: 30, shortGain: 0.56, longGain: 0.20),
     ]
 
+    /// Part du signal retardé dans chaque canal (voir `makeBuffer`). À 0,6 la
+    /// corrélation entre canaux vaut 0,47 : large, sans trou au milieu.
+    /// Réglé au calcul, pas encore à l'oreille.
+    private static let stereoSide = 0.6
+
     /// Résonance résiduelle laissée après la fin mécanique du seek.
     private let ringTail = 0.040
 
@@ -315,7 +320,19 @@ nonisolated final class SeekSynth: Sendable {
 
     // MARK: - Conversion
 
-    /// Léger décalage entre canaux pour élargir l'image sans réverbération.
+    /// Élargit l'image sans réverbération, **et sans rien coûter au mono**.
+    ///
+    /// Le signal retardé de 0,33 ms n'est pas posé sur un seul canal : il est
+    /// ajouté à gauche et retranché à droite (un élargissement milieu/côté).
+    /// Replié en mono — le haut-parleur de l'iPhone, la vidéo de la fiche du
+    /// store — le côté s'annule et il reste le signal, plat. L'ancien montage
+    /// (le droit en retard sur le gauche) y creusait un peigne de −18 dB à
+    /// 1 500, 4 500 et 7 500 Hz, sur trois des sept modes du banc ; aucun
+    /// retard ne passe entre sept modes étalés de 760 à 7 200 Hz.
+    ///
+    /// Chaque canal garde son peigne, complémentaire de l'autre : c'est lui
+    /// qui fait la largeur. `side` la dose, et la normalisation garde à chaque
+    /// canal la puissance du signal d'origine.
     private func makeBuffer(_ mono: [Double]) -> AVAudioPCMBuffer? {
         guard !mono.isEmpty,
               let buffer = AVAudioPCMBuffer(pcmFormat: format,
@@ -324,13 +341,15 @@ nonisolated final class SeekSynth: Sendable {
 
         buffer.frameLength = AVAudioFrameCount(mono.count)
         let delay = Int(0.00035 * sampleRate)
+        let side = Self.stereoSide
+        let level = 1 / (1 + side * side).squareRoot()
         let left = channels[0]
         let right = channels[1]
 
         for i in 0..<mono.count {
-            left[i] = Float(mono[i])
-            let delayed = i >= delay ? mono[i - delay] : 0
-            right[i] = Float(delayed * 0.88 + mono[i] * 0.12)
+            let delayed = i >= delay ? mono[i - delay] * side : 0
+            left[i] = Float((mono[i] + delayed) * level)
+            right[i] = Float((mono[i] - delayed) * level)
         }
         return buffer
     }
