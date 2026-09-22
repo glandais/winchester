@@ -46,6 +46,21 @@ struct ProfileIssuesTests {
         #expect(spec.issues.contains { $0.message.contains("inconnu") })
     }
 
+    /// Quatre logiciels de la galerie sont installés avant leur sortie — MS-DOS
+    /// 6.22 en avril 1993, Quake et Netscape 3 en mars 1996, Crysis en avril
+    /// 2007. Le README promet que l'anachronisme avertit : il le fait, et
+    /// il le fait donc sur ces profils-là, jusqu'à ce que leurs dates bougent.
+    @Test("Un logiciel installé avant sa sortie avertit")
+    func anachronisticSoftwareWarns() throws {
+        let spec = try ScenarioLibrary.load("gamer-1996")
+        #expect(spec.isBuildable)
+        #expect(spec.issues.contains { $0.message.contains("« Quake » ne sort que le 1996-06-22") })
+
+        var later = spec
+        later.timeline.start = CivilDate("1996-09-01")!
+        #expect(!later.issues.contains { $0.message.contains("ne sort que") })
+    }
+
     @Test("Un profil anachronique mais valide se fabrique")
     func anachronisticProfileGenerates() throws {
         var spec = try ScenarioLibrary.load("gamer-1993")

@@ -185,9 +185,9 @@ enum DefragPlanner {
     /// Rien n'interdirait de passer la stratégie de 95 sur un NTFS : cela
     /// marcherait, et ce serait un contresens de vingt-huit millions de
     /// requêtes.
-    static func strategy(for format: VolumeFormat) -> any DefragStrategy {
+    static func strategy(for format: VolumeFormat, year: Int? = nil) -> any DefragStrategy {
         switch format {
-        case .fat16, .fat32: return Windows95Strategy()
+        case .fat16, .fat32: return Windows95Strategy(year: year)
         case .ntfs:          return WindowsXPStrategy()
         }
     }

@@ -106,12 +106,13 @@ struct SpindleCharacter: Sendable, Equatable {
     }
 
     /// Roulement à billes seul, en bels : 3,6 B à deux plateaux de 1996 à 1999
-    /// (Fireball TM, U8 ramené à deux plateaux), un bel de plus en 1993
-    /// (Conner), interpolé entre les deux. La même pente que le souffle par
-    /// plateau.
+    /// (Fireball TM, U8 ramené à deux plateaux), et 1,4 B de plus en 1993 —
+    /// le Conner CFA170A publie 42 dBA ≈ 4,6 B pour **un** plateau (sa fiche
+    /// l'a longtemps donné à deux, d'où « un bel de plus » autrefois) —,
+    /// interpolé entre les deux. La même pente que le souffle par plateau.
     var bearingBels: Double {
         let era = min(max(Double(1996 - year) / 3, 0), 1)
-        return 3.6 + 0.4 * log2(Double(platters) / 2) + era
+        return 3.6 + 0.4 * log2(Double(platters) / 2) + 1.4 * era
     }
 
     /// Niveau total au repos, en bels. Un palier fluide ne s'entend pas : le

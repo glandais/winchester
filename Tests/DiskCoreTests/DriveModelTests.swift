@@ -140,6 +140,44 @@ struct DriveModelTests {
 
     /// Et à capacité d'époque, c'est la course qui explose : c'est elle qui
     /// fixe la durée des seeks, donc tout le rythme d'une passe.
+    /// Les manuels Seagate publient des « secteurs garantis » : la capacité
+    /// d'une fiche en est le produit par 512, pas le chiffre rond de
+    /// l'étiquette. Trois fiches l'ont contredit — le U8 à 8,42 Go pour
+    /// 16 841 664 secteurs, l'ATA IV à la moitié exacte du 40 Go.
+    @Test("Les capacités Seagate sont des secteurs garantis")
+    func seagateCapacitiesAreGuaranteedSectors() {
+        let guaranteed: [(String, UInt64)] = [
+            ("Seagate U8 ST38410A", 16_841_664),
+            ("Seagate Barracuda ATA IV ST320011A", 39_102_336),
+            ("Seagate Barracuda 7200.10 ST3320620A", 625_142_448),
+            ("Seagate Barracuda 7200.10 ST3320620AS", 625_142_448),
+        ]
+        for (model, sectors) in guaranteed {
+            let reference = DriveCatalog.all.first { $0.model == model }
+            #expect(reference?.capacityBytes == sectors * 512, "\(model)")
+        }
+    }
+
+    /// Le Conner de 1993 a un plateau et deux têtes (fiche BBS, manuel
+    /// 00532-001) ; sa fiche a longtemps porté la géométrie de translation,
+    /// 1 806 × 4, qui doublait les têtes de tous les volumes de 1993.
+    @Test("Le Conner CFA170A a deux têtes et 2 111 pistes")
+    func connerHasOnePlatter() {
+        let conner = DriveCatalog.anchors.first!
+        #expect(conner.year == 1993)
+        #expect(conner.heads == 2)
+        #expect(conner.tracksPerFace == 2_111)
+    }
+
+    /// À égalité d'écart, le disque déjà en vente ; et une machine de 2007
+    /// reçoit le 7200.10 SATA, daté 2007, ni le PATA de 2006 ni le 7200.11.
+    @Test("Le disque le plus proche d'une année est celui déjà en vente")
+    func nearestPrefersTheDriveAlreadySold() {
+        #expect(DriveCatalog.nearest(year: 2007).model.hasSuffix("ST3320620AS"))
+        #expect(DriveCatalog.nearest(year: 1997).year == 1996)
+        #expect(DriveCatalog.nearest(year: 2012).rpm == 7_200)
+    }
+
     @Test("La course s'allonge d'une époque à l'autre")
     func strokeGrowsWithTheYears() {
         let sizes: [(year: Int, bytes: UInt64, rpm: Int)] = [

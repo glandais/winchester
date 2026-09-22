@@ -84,6 +84,13 @@ extension ProfileSpec {
         if !unknown.isEmpty {
             warn("Logiciels inconnus, ignorés : \(unknown.joined(separator: ", ")).")
         }
+        // Tout s'installe au premier jour ; un logiciel qui n'existait pas
+        // encore ce jour-là est un anachronisme — dit, pas interdit.
+        for manifest in installs.compactMap(AppLibrary.manifest(id:)) {
+            if let released = manifest.releaseDate, released > timeline.start {
+                warn("« \(manifest.displayName) » ne sort que le \(released) : il est installé avant.")
+            }
+        }
         return issues
     }
 

@@ -255,7 +255,7 @@ extension DriveGeometry {
     ///
     /// C'est ce qui manquait au modèle précédent, qui faisait tout porter à la
     /// densité linéaire : il donnait 640 cylindres à un disque de 1993 qui en
-    /// avait 1 806, et 235 000 à un 320 Go de 2007 qui en a 160 000 — dans les
+    /// avait 2 111, et 235 000 à un 320 Go de 2007 qui en a 160 000 — dans les
     /// deux cas la course était fausse d'un facteur trois.
     ///
     /// La capacité obtenue est **au moins** celle demandée : un volume ne doit

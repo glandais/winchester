@@ -4562,6 +4562,13 @@
             "fr": "JkDefrag 3.36, tri %@"
           }
         },
+        "strategy.msdos6": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "MS-DOS 6 DEFRAG",
+            "fr": "DEFRAG de MS-DOS 6"
+          }
+        },
         "strategy.smart": {
           "translations": {
             "en": "Smart tidying",

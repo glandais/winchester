@@ -186,7 +186,7 @@ struct DefragToolChoiceScreen: View {
         self.onHandover = onHandover
         let format = GeneratedVolumeBridge.format(of: disk)
         self.format = format
-        let period = DefragPlanner.strategy(for: format).id
+        let period = DefragPlanner.strategy(for: format, year: disk.spec.timeline.start.year).id
         _selectedID = State(initialValue: period)
     }
 

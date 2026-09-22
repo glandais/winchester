@@ -11832,6 +11832,23 @@
         }
       }
     },
+    "strategy.msdos6" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MS-DOS 6 DEFRAG"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DEFRAG de MS-DOS 6"
+          }
+        }
+      }
+    },
     "strategy.smart" : {
       "localizations" : {
         "en" : {

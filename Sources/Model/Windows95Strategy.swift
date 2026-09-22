@@ -40,7 +40,17 @@ import DiskCore
 struct Windows95Strategy: DefragStrategy {
 
     let id = "windows95"
-    let label = String(localized: "strategy.windows95", defaultValue: "Windows 95 Defragmenter")
+    /// L'année du disque, quand elle est connue : elle ne change que le nom.
+    /// Avant Windows 95, l'outil s'appelait `DEFRAG.EXE` — le Speed Disk de
+    /// Symantec, sous licence dans MS-DOS 6 — et faisait la même chose, dans
+    /// le même ordre. L'algorithme est un ; le libellé est celui de l'époque.
+    var year: Int? = nil
+    var label: String {
+        if let year, year < 1995 {
+            return String(localized: "strategy.msdos6", defaultValue: "MS-DOS 6 DEFRAG")
+        }
+        return String(localized: "strategy.windows95", defaultValue: "Windows 95 Defragmenter")
+    }
 
     /// Tampon de déplacement. L'outil d'époque travaillait sur quelques
     /// centaines de kilo-octets à la fois : c'est cette taille qui fixe le

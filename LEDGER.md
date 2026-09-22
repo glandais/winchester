@@ -7085,3 +7085,93 @@ passe. README : les quatre durées de la table des journées (5 min 21, 6 min 33
 - **Les vidéos de l'App Store** portent le son d'avant. Leur bande vient de
   `RenderTrace` : les refaire donnerait un mono sans peigne — c'est là que F8
   s'entendait le plus.
+
+## Chantier 40 — réalisme, lot B : les faits du catalogue
+
+Second lot de `LEDGER-REALISME.md`, sur la branche `realisme`, après le lot A.
+Sept constats de fait (E2 à E7, F7) et la fiche du Conner, que la relecture sur
+source du 21 septembre avait ajoutée au lot.
+
+### Le problème
+
+Trois fiches contredisaient le manuel cité sur la ligne d'à côté (E2, E3, E4),
+une constante morte se donnait pour le seul paramètre libre du modèle (F7), une
+égalité d'année se tranchait par l'ordre de déclaration (E5), quatre logiciels
+s'installaient avant leur sortie sans qu'on le dise (E6), et l'outil de 1993
+portait le nom de Windows 95 (E7). Et la fiche de l'ancre de 1993 portait la
+géométrie **CHS de translation** du Conner CFA170A — 1 806 × 4 × 46 — comme si
+c'était sa mécanique : le vrai disque a un plateau, deux têtes, 2 111 pistes et
+67 à 91 secteurs par piste (fiche BBS Conner, manuel 00532-001 transcrit par
+TULARC). Les « 46 secteurs par piste de TULARC (45,96) sans y avoir été
+poussé » que ce journal comptait parmi les points justes étaient la
+reproduction exacte d'une fiction du BIOS.
+
+### Les décisions
+
+- **Le Conner à un plateau** : `heads: 2`, `tracksPerFace: 2_111`. Sa face
+  porte deux fois plus d'octets qu'avant, donc `bestHeadCount` donne aux
+  quatre volumes de 1993 la moitié de leurs têtes — `poweruser-1993` retombe
+  seul sur les 4 têtes du vrai CFA340A : les « plateaux fantômes » du
+  dépouillement étaient une erreur de fiche, pas un défaut de la déduction.
+  Le roulement de 1993 est recalé pour que le Conner à **un** plateau garde
+  ses 42 dBA ≈ 4,6 B (`1,4 × era` au lieu de `1 × era`) ; les 1993 à deux
+  plateaux sonnent 5,0 B, comme avant.
+- **E2, E3** : les capacités sont les secteurs garantis × 512 — U8
+  `8_622_931_968`, ATA IV `20_020_396_032` — et un test le garde pour les
+  fiches Seagate.
+- **E4 et E5 ensemble : une fiche SATA du 7200.10** (ST3320620AS, manuel
+  100402371 rév. F et K, rangés), même mécanique, même tampon, hôte SATA,
+  8,5 ms « in performance mode » quand la fiche PATA garde ses 11,0 « in
+  quiet mode ». Les deux sont de 2006 ; la SATA est déclarée devant, et
+  `nearest` départage désormais une égalité en faveur du disque **déjà en
+  vente** (le plus ancien) — une machine de 1998 porte un disque de 1996, pas
+  de 1999. Une machine de 2007 reçoit donc le 7200.10 SATA, ni le PATA ni le
+  7200.11. Le commentaire de la fiche PATA est corrigé (781 kBPI ; 78 Mo/s
+  pour le seul 750 Go). La question « 8,5 ou 11,0 » n'est plus à trancher :
+  chaque manuel a sa fiche, et les JSON de 2007 écrivent 8,5.
+- **E6** : `AppManifest.releaseDate`, posé sur les quatre logiciels que le
+  dépouillement nommait (MS-DOS 6.22, Quake, Netscape 3, Crysis) et sur eux
+  seuls, et un avertissement de `ProfileIssues` quand l'installation le
+  précède. **Les JSON de la galerie ne bougent pas** : quatre profils
+  avertissent, et c'est écrit dans le test. Déplacer leurs dates change les
+  volumes — lot F.
+- **E7** : `Windows95Strategy(year:)` porte `strategy.msdos6` (« MS-DOS 6
+  DEFRAG » / « DEFRAG de MS-DOS 6 ») avant 1995, `strategy.windows95` après.
+  Seul le libellé change ; l'algorithme est un. `STRATEGY=windows95` passe par
+  `chosen` et garde l'ancien nom — aucun bilan n'en dépend.
+- **F7** : `dataBandInches` supprimée, son commentaire réécrit pour dire ce
+  qu'elle était.
+
+### Ce qui valide
+
+| prédiction, écrite avant | mesuré |
+|---|---|
+| tous les bilans de 1993 et de 2007 changent, les `disk-*` jamais | oui : 60 et 68, et 24 `disk-*` identiques |
+| tous les bilans de 1999 changent (+2,4 % de secteurs par piste) | **faux** : `dev` et `famille` seulement (30 sur 61). L'ancre ne fixe que le nombre de têtes ; tant que la densité reste dans la bande de ±20 %, la géométrie d'un volume ne bouge pas |
+| 1996, 2003, 2012 et trois journées identiques | oui : 254 identiques, 158 différents |
+| 27 `md5` sonores identiques | 33 — les deux 1999 inchangés et leur journée |
+
+Les 1993 sont **plus rapides** de 8 à 20 % (dev-1993 sous l'outil de 95 :
+23 min 36 → 21 min 43), ce qui surprend pour une course allongée : `STATS=1`
+le ventile — transfert 308 → 217 s, latence 367 → 352, seek 668 → 672. Deux
+têtes et 2 111 pistes font 79 secteurs par piste au lieu de 46, dans les
+« 67-91 » de la fiche : le disque de 1993 lit 1,7 fois plus vite, et c'était
+lui le vrai. Les 2007 gagnent 1 à 13 % par l'hôte SATA (transferts), et
+« IDE » devient « SATA » sur leurs cartes.
+
+`swift test` : 301 tests. Trois suites indexaient le catalogue par rang
+(`all[7]`) et cassaient avec la fiche de plus : elles nomment maintenant la
+fiche. README : 58 lignes réécrites par `readme-tables.py b --write`, dont la
+table des plateaux (Conner : 1). Les trois durées de génération (1,7 s ; 50
+et 32 ms) sont **gardées** : le lot ne change pas la génération, et la mesure
+a été prise machine chargée — `--check` les compte en écart, comme avant.
+
+### Laissé ouvert
+
+- **Les JSON anachroniques** (E6) : les quatre profils avertissent, le README
+  promet que « ce qui est anachronique avertit », et c'est vrai — mais un
+  profil livré ne devrait pas avoir à avertir. À déplacer avec le lot F.
+- **La pleine course du Conner (25 ms) et du U8 (23 ms pour 10,5)** attendent
+  `fullStrokeMs` — lot E. Le U8 garde 8,9 jusque-là.
+- **Le commentaire du tampon du Conner** dit « adaptive, segmented » : le
+  modèle ne segmente pas.

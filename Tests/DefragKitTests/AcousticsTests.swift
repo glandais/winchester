@@ -44,23 +44,32 @@ struct AcousticsTests {
         func character(_ drive: DriveReference) -> SpindleCharacter {
             SpindleCharacter(geometry: drive.geometry, year: drive.year)
         }
-        let all = DriveCatalog.all.map(character)
+        // Par nom court, et non par rang : le catalogue porte deux fiches du
+        // 7200.10 (PATA et SATA, même plateau) et deux de l'ATA IV.
+        func drive(_ shortName: String) -> DriveReference {
+            DriveCatalog.all.first { $0.shortName == shortName }!
+        }
+        let named = ["Conner CFA170A", "Fireball 1080AT", "Seagate U8", "Barracuda ATA IV",
+                     "Barracuda 7200.7", "Barracuda 7200.10", "Barracuda 7200.11"].map(drive)
+        let all = named.map(character)
         let bels = all.map(\.idleBels)
-        // Conner, Fireball, U8, ATA IV ×2, 7200.7, 7200.10, 7200.11.
+        #expect(abs(bels[0] - 4.6) < 0.1)             // Conner, un plateau : 42 dBA ≈ 4,6 B
         #expect(abs(bels[2] - 3.2) < 0.1)             // U8 : 3,2 B
         #expect(abs(bels[3] - 2.1) < 0.1)             // ATA IV un plateau : 2,1 B
         #expect(abs(bels[1] - 3.6) < 0.1)             // Fireball : 3,6 B
-        #expect(abs(bels[6] - 2.55) < 0.3)            // 7200.10 : 2,8 B
-        #expect(bels[0] > bels[1] && bels[1] > bels[2] && bels[2] > bels[7])
-        #expect(bels[7] > bels[6] && bels[6] > bels[5])
+        #expect(abs(bels[5] - 2.55) < 0.3)            // 7200.10 : 2,8 B
+        #expect(bels[0] > bels[1] && bels[1] > bels[2] && bels[2] > bels[6])
+        #expect(bels[6] > bels[5] && bels[5] > bels[4])
         #expect(!all[2].fluidBearing && all[3].fluidBearing)
+        // Les deux fiches du 7200.10 sont le même plateau.
+        #expect(character(drive("Barracuda 7200.10 SATA")).idleBels == bels[5])
         // Le gain garde l'ordre des fiches : à moitié en décibels jusqu'au
         // coude, au quart au-delà.
         for (a, b) in zip(bels, bels.dropFirst()) where a > b {
             #expect(all[bels.firstIndex(of: a)!].gain > all[bels.firstIndex(of: b)!].gain)
         }
         let knee = SpindleCharacter.kneeBels
-        #expect(abs(20 * log10(all[7].gain / all[3].gain) - 10 * (bels[7] - bels[3]) / 2) < 1e-9)
+        #expect(abs(20 * log10(all[6].gain / all[3].gain) - 10 * (bels[6] - bels[3]) / 2) < 1e-9)
         #expect(abs(20 * log10(all[0].gain / all[3].gain)
                     - (10 * (knee - bels[3]) / 2 + 10 * (bels[0] - knee) / 4)) < 1e-9)
     }

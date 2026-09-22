@@ -112,7 +112,7 @@ struct NamedDriveTests {
         // Mais la raie de commutation suit le régime : 4 kHz.
         #expect(raptor.commutationFrequency == 4_000)
         // Un plateau de 3,5 pouces n'a pas changé.
-        let barracuda = DriveCatalog.all[7]
+        let barracuda = DriveCatalog.all.first { $0.shortName == "Barracuda 7200.11" }!
         let character = SpindleCharacter(geometry: barracuda.geometry, year: barracuda.year)
         #expect(character.speedRatio == 1)
     }

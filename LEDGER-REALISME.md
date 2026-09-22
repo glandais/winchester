@@ -453,3 +453,17 @@ géométrie, donc ne va pas dans la partie « neutre ». Le lot E reçoit deux
 pleines courses publiées de plus (Conner 25 ms, U8 23 ms pour 10,5). Le lot G
 commence par la MFT recollée dès XP, qui est sourcée, avant la question de
 l'évacuation, qui ne l'est pas. Le lot F choisit la disposition NTFS par `os`.
+
+### Lot B — fait (chantier 40 de `LEDGER.md`)
+
+E2 à E7, F7 et la fiche du Conner. Deux choses corrigent ce fichier :
+
+- **« referenceSPT de 1993 retombe sur les 46 secteurs par piste de TULARC »**
+  (dans « Ce qui est jugé juste ») était la reproduction d'une géométrie CHS de
+  translation. Le vrai disque en a 67 à 91 ; le modèle en a maintenant 79, et
+  les volumes de 1993 lisent 1,7 fois plus vite.
+- **E4 n'est plus à trancher** : les deux manuels ont chacun leur fiche, la
+  SATA sert 2007.
+
+Le lot E hérite de deux pleines courses publiées de plus ; le lot F, des dates
+des quatre JSON anachroniques.

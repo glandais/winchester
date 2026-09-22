@@ -54,12 +54,19 @@ public struct AppManifest: Sendable, Codable, Identifiable {
     /// c'est exactement ce que faisaient les installeurs de l'époque, et c'est
     /// pour cela que `\WINDOWS\SYSTEM` ne faisait que grossir.
     public var sharedLibraries: [String]
+    /// Le jour où le logiciel s'est vendu. `nil` quand la date n'est pas
+    /// connue avec certitude : `ProfileIssues` ne juge que celles-là. Un
+    /// profil qui l'installe avant reçoit un avertissement, pas un refus —
+    /// un disque anachronique est une question légitime.
+    public var releaseDate: CivilDate?
 
-    public init(id: String, displayName: String, groups: [Group], sharedLibraries: [String] = []) {
+    public init(id: String, displayName: String, groups: [Group], sharedLibraries: [String] = [],
+                releaseDate: CivilDate? = nil) {
         self.id = id
         self.displayName = displayName
         self.groups = groups
         self.sharedLibraries = sharedLibraries
+        self.releaseDate = releaseDate
     }
 
     /// Octets posés par l'application, hors bibliothèques partagées.
@@ -101,7 +108,9 @@ public enum AppLibrary {
                   fileCount: 12, medianBytes: 9_000, sigma: 0.8),
             .init(directory: "\\DOS", extension_: "HLP", category: .archive,
                   fileCount: 6, medianBytes: 180_000, sigma: 0.5),
-        ]),
+        ],
+            // MS-DOS 6.22 : juin 1994 (6.0 : mars 1993). Les profils de 1993 l'installent en avril 1993.
+            releaseDate: CivilDate("1994-06-01")!),
 
         AppManifest(id: "win31", displayName: "Windows 3.1", groups: [
             .init(directory: "\\WINDOWS", extension_: "EXE", category: .systemCore,
@@ -174,7 +183,9 @@ public enum AppLibrary {
                   fileCount: 4, medianBytes: 2_800_000, sigma: 0.4),
             .init(directory: "\\NETSCAPE", extension_: "DLL", category: .application,
                   fileCount: 20, medianBytes: 220_000, sigma: 1.0),
-        ], sharedLibraries: commonRuntime),
+        ], sharedLibraries: commonRuntime,
+            // Netscape Navigator 3.0 : 19 août 1996.
+            releaseDate: CivilDate("1996-08-19")!),
 
         AppManifest(id: "doom2", displayName: "Doom II", groups: [
             .init(directory: "\\DOOM2", extension_: "WAD", category: .gameAsset,
@@ -188,7 +199,9 @@ public enum AppLibrary {
                   fileCount: 2, medianBytes: 26_000_000, sigma: 0.3),
             .init(directory: "\\QUAKE", extension_: "EXE", category: .application,
                   fileCount: 4, medianBytes: 500_000, sigma: 0.5),
-        ]),
+        ],
+            // Quake : 22 juin 1996 (shareware). Installé en mars 1996 par les profils de 1996.
+            releaseDate: CivilDate("1996-06-22")!),
 
         // MARK: 1999 — Windows 98 SE
 
@@ -329,7 +342,9 @@ public enum AppLibrary {
             .init(directory: "\\Program Files\\Electronic Arts\\Crytek\\Crysis\\Bin32",
                   extension_: "dll", category: .application,
                   fileCount: 40, medianBytes: 900_000, sigma: 1.0),
-        ]),
+        ],
+            // Crysis : 13 novembre 2007. Les profils de 2007 l'installent en avril.
+            releaseDate: CivilDate("2007-11-13")!),
 
         AppManifest(id: "itunes7", displayName: "iTunes 7", groups: [
             .init(directory: "\\Program Files\\iTunes", extension_: "dll", category: .application,

@@ -708,7 +708,7 @@ enum ScenarioBuilder {
         precondition(geometry.totalSectors >= partition.totalSectors,
                      "la partition déborde du disque qui la porte")
 
-        let strategy = chosen ?? DefragPlanner.strategy(for: partition.format)
+        let strategy = chosen ?? DefragPlanner.strategy(for: partition.format, year: hardware.year)
 
         // Le plateau tourne déjà : Windows est démarré. La rampe de 0,9 s n'est
         // qu'un fondu pour que la couche de rotation s'installe.

@@ -259,17 +259,13 @@ public enum DriveCatalog {
     /// Largeur de la bande de données d'un plateau 3,5 pouces, en pouces.
     ///
     /// Les données n'occupent pas tout le plateau : il reste un moyeu au
-    /// centre et une garde au bord. Cette largeur est le seul paramètre du
-    /// modèle qui ne vienne pas d'une fiche — elle vaut environ 28 mm sur
-    /// toute la période, et c'est elle qui convertit une densité de pistes en
-    /// nombre de cylindres. Réglée à 1,10 pouce, elle faisait retomber le débit
-    /// externe brut du Barracuda 7200.7 et du 7200.10 sur celui de leurs
-    /// manuels à 5 % près — contre la fiche du 7200.10 d'alors, qui portait les
-    /// 78 Mo/s des 750 Go. Contre la bonne, 72 Mo/s, le brut la dépasse de
-    /// 10 % ; c'est la lecture simulée, commutations comprises, qui se compare
-    /// aux manuels (`SequentialThroughputTests`). Le débit n'entre pas dans le
-    /// calage.
-    public static let dataBandInches = 1.10
+    /// centre et une garde au bord. Elle vaut environ 28 mm sur toute la
+    /// période — mais **le modèle ne la lit pas** : le nombre de cylindres
+    /// vient des pistes par face de la fiche, pas d'une densité de pistes
+    /// multipliée par une largeur. Une constante `dataBandInches` a longtemps
+    /// traîné ici, documentée comme « le seul paramètre qui ne vienne pas
+    /// d'une fiche », sans être lue nulle part ; elle a trompé une évaluation
+    /// du réalisme sur trois constats (`LEDGER-REALISME.md`, F7).
 
     /// Rayon externe de la zone de données d'un plateau 3,5 pouces, en pouces.
     public static let outerRadiusInches = 1.831
@@ -288,16 +284,21 @@ public enum DriveCatalog {
         DriveReference(
             model: "Conner CFA170A",
             shortName: "Conner CFA170A",
-            year: 1993, capacityBytes: 170_000_000, heads: 4,
-            tracksPerFace: 1_806, rpm: 4_011,
+            year: 1993, capacityBytes: 170_000_000, heads: 2,
+            tracksPerFace: 2_111, rpm: 4_011,
             averageSeekMs: 13.0, trackToTrackMs: 3.0,
-            source: "TULARC — 1 806 cylindres natifs, 4 têtes, RLL 1/7",
+            source: "Fiche BBS Conner et transcription TULARC du manuel 00532-001 — "
+                  + "« one disk with two data surfaces, two read/write heads », 2 111 "
+                  + "cylindres, 67 à 91 secteurs par piste, RLL 1/7. La fiche portait "
+                  + "longtemps la géométrie CHS de translation (1 806 × 4), d'où deux "
+                  + "fois trop de têtes sur tous les volumes de 1993",
             buffer: DriveBuffer(
                 bufferKB: 64, readAhead: true, writeCache: false, zeroLatencyRead: false,
                 interfaceMBs: 7.0, commandOverheadMs: 0.5,
-                source: "TULARC — « 64 KB READ-AHEAD », 7,0 Mo/s externe ; aucun cache "
-                      + "d'écriture annoncé. Coût de commande : manuel Conner Cougar CP30204 "
-                      + "(1992, même constructeur), « Controller Overhead < 500 µs »")),
+                source: "Fiche BBS Conner — « 64KB, segmented, adaptive », 7,0 Mo/s "
+                      + "externe ; aucun cache d'écriture annoncé. Coût de commande : "
+                      + "manuel Conner Cougar CP30204 (1992, même constructeur), "
+                      + "« Controller Overhead < 500 µs »")),
 
         DriveReference(
             model: "Quantum Fireball 1080AT",
@@ -326,10 +327,13 @@ public enum DriveCatalog {
         DriveReference(
             model: "Seagate U8 ST38410A",
             shortName: "Seagate U8",
-            year: 1999, capacityBytes: 8_420_000_000, heads: 2,
+            year: 1999, capacityBytes: 8_622_931_968, heads: 2,
             tracksPerFace: 20_570, rpm: 5_400,
             averageSeekMs: 8.9, trackToTrackMs: 1.5,
-            source: "Manuel Seagate U8 — 18,7 kTPI, 349 kBPI, 1 plateau",
+            source: "Manuel Seagate U8 — 16 841 664 secteurs garantis (8 622 931 968 o, "
+                  + "et non les 8,4 Go de l'étiquette), 18,7 kTPI, 349 kBPI, 1 plateau. "
+                  + "Le débit interne du même manuel (285,5 Mbit/s) recoupe cette valeur "
+                  + "à 0,66, dans le rapport des autres fiches",
             buffer: DriveBuffer(
                 bufferKB: 512, readAhead: true, writeCache: true, zeroLatencyRead: true,
                 interfaceMBs: 66.6, commandOverheadMs: DriveBuffer.measuredOverheadMs,
@@ -369,7 +373,7 @@ public enum DriveCatalog {
         DriveReference(
             model: "Seagate Barracuda ATA IV ST320011A",
             shortName: "Barracuda ATA IV",
-            year: 2001, capacityBytes: 20_010_332_160, heads: 1,
+            year: 2001, capacityBytes: 20_020_396_032, heads: 1,
             tracksPerFace: 63_800, rpm: 7_200,
             averageSeekMs: 9.0, trackToTrackMs: 0.95,
             isAnchor: false,
@@ -409,6 +413,40 @@ public enum DriveCatalog {
                 source: "Manuel Seagate Barracuda 7200.7, §2.7 — « Track-to-track <1.0 / "
                       + "<1.2 », « Average 8.5 / 9.5 » (lecture / écriture)")),
 
+        // Le 7200.10 existe en deux fiches, sorties ensemble en 2006 : le
+        // même disque — 625 142 448 secteurs, 4 têtes, 16 Mo — au bout d'un
+        // câble SATA ou d'une nappe PATA. Leurs manuels ne publient pas le
+        // même seek : 8,5 ms « in performance mode » pour le SATA, 11,0 « in
+        // quiet mode » pour le PATA — deux réglages acoustiques du même bras,
+        // et non deux mécaniques (le ST3250410AS est à <11,0 en mode
+        // performance). La SATA est déclarée la première : à égalité d'année,
+        // c'est elle que `nearest` rend, donc le disque d'une machine de 2007
+        // — Vista, et les JSON de la galerie écrivent déjà 8,5. Pas une ancre :
+        // la fiche PATA porte la densité de 2006.
+        DriveReference(
+            model: "Seagate Barracuda 7200.10 ST3320620AS",
+            shortName: "Barracuda 7200.10 SATA",
+            year: 2006, capacityBytes: 320_072_933_376, heads: 4,
+            tracksPerFace: 159_500, rpm: 7_200,
+            averageSeekMs: 8.5, trackToTrackMs: 0.8,
+            sustainedOuterMBs: 72,
+            isAnchor: false,
+            source: "Manuel Seagate Barracuda 7200.10 Serial ATA (100402371, rév. F et K) "
+                  + "— ST3320620AS : « Average seek, read <8.5 msec typical », « write "
+                  + "<10.0 », « *Measured in performance mode » ; 72 Mo/s soutenus pour "
+                  + "le 320 Go",
+            buffer: DriveBuffer(
+                bufferKB: 16_384, readAhead: true, writeCache: true, zeroLatencyRead: true,
+                interfaceMBs: 300, commandOverheadMs: DriveBuffer.measuredOverheadMs,
+                source: "Manuel Seagate Barracuda 7200.10 SATA (100402371, rév. K), table 2 "
+                      + "— « Cache buffer 16 Mbytes », « I/O data-transfer rate 300 "
+                      + "Mbytes/sec max », lecture anticipée et cache d'écriture actifs"),
+            writeSeek: WriteSeek(
+                readAverageMs: 8.5, writeAverageMs: 10.0,
+                readTrackToTrackMs: 0.8, writeTrackToTrackMs: 1.0,
+                source: "Manuel Seagate Barracuda 7200.10 SATA, table 2 — « <0.8 msec "
+                      + "typical read; <1.0 msec typical write », « <8.5 / <10.0 »")),
+
         DriveReference(
             model: "Seagate Barracuda 7200.10 ST3320620A",
             shortName: "Barracuda 7200.10",
@@ -416,11 +454,13 @@ public enum DriveCatalog {
             tracksPerFace: 159_500, rpm: 7_200,
             averageSeekMs: 11.0, trackToTrackMs: 0.8,
             sustainedOuterMBs: 72,
-            source: "Manuel Seagate Barracuda 7200.10 — 145 kTPI, 813 kBPI, "
-                  + "enregistrement perpendiculaire, 2 plateaux. Seeks et débit de la "
-                  + "table 2 (400 et 320 Go) : « <0.8 (read) », « Average seek, read "
-                  + "<11.0 », 72 Mo/s soutenus — les 78 Mo/s et 8,5 ms sont ceux des "
-                  + "750 et 500 Go",
+            source: "Manuel Seagate Barracuda 7200.10 PATA (100402369, rév. F) — "
+                  + "145 kTPI, 781 kBPI (table 2 ; 813 aux tables 1 et 3), enregistrement "
+                  + "perpendiculaire, 2 plateaux. « <0.8 (read) », « Average seek, read "
+                  + "<11.0 » pour toute la gamme, « measured in quiet mode » ; 72 Mo/s "
+                  + "soutenus au §2.4 (les 78 sont ceux du seul 750 Go). Le manuel SATA "
+                  + "du même disque publie <8.5 « in performance mode » : voir la fiche "
+                  + "ST3320620AS",
             buffer: DriveBuffer(
                 bufferKB: 16_384, readAhead: true, writeCache: true, zeroLatencyRead: true,
                 interfaceMBs: 100, commandOverheadMs: DriveBuffer.measuredOverheadMs,
@@ -576,8 +616,18 @@ public enum DriveCatalog {
     }
 
     /// Le disque du catalogue le plus proche d'une année donnée.
+    ///
+    /// À égalité d'écart, **le disque déjà en vente** : une machine de 1998
+    /// peut porter un disque de 1996, pas un de 1999. Le départage était
+    /// implicite (le premier déclaré), et une machine de 2007 recevait le
+    /// 7200.10 PATA de 2006 plutôt que le 7200.11 de 2008 — la bonne année,
+    /// par hasard, et la mauvaise nappe : le 7200.10 SATA, déclaré devant,
+    /// est celui qu'elle reçoit maintenant.
     public static func nearest(year: Int) -> DriveReference {
-        all.min { abs($0.year - year) < abs($1.year - year) } ?? all[0]
+        all.min {
+            let a = abs($0.year - year), b = abs($1.year - year)
+            return a != b ? a < b : $0.year < $1.year
+        } ?? all[0]
     }
 
     /// Les seeks d'écriture d'un disque de cette année : ceux de sa fiche si
