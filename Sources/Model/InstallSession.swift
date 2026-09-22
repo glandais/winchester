@@ -643,18 +643,15 @@ enum InstallPlanner {
 
         private mutating func markDirty(_ record: FileRecord) {
             let rank = ranks[record.id] ?? 16
-            let clusters = record.extents.isEmpty ? [0] : record.extents.map { Int($0.start) }
             // Le répertoire tel qu'il est au soir de l'installation : il a pu
             // grandir depuis ce fichier, mais il n'a pas bougé.
             let directories = installed.disk.catalog.directories
             let entry = partition.entrySector(inDirectory: directories.indices.contains(Int(record.directory))
                                                   ? directories[Int(record.directory)] : nil)
-            for cluster in clusters {
-                for access in partition.commitAccesses(forCluster: cluster, fileIndex: rank,
-                                                       entrySector: entry,
-                                                       validation: nil) {
-                    dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
-                }
+            for access in partition.commitAccesses(for: record.extents, fileIndex: rank,
+                                                   entrySector: entry,
+                                                   validation: nil) {
+                dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
             }
         }
 

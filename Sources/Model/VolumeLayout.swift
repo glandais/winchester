@@ -245,8 +245,12 @@ extension PartitionGeometry {
     /// Les écritures qui valident le déplacement d'un fichier.
     ///
     /// - Parameters:
-    ///   - cluster: premier cluster de sa nouvelle position — c'est lui qui
-    ///     désigne le secteur de table à réécrire ;
+    ///   - extents: sa nouvelle position, extent par extent — ce sont eux qui
+    ///     désignent les secteurs de table à réécrire : sur FAT, la chaîne
+    ///     d'un fichier de 50 Mo en clusters de 4 Ko tient sur 100 secteurs
+    ///     par copie, et le modèle en a longtemps écrit deux quelle que soit
+    ///     la taille (`LEDGER-REALISME.md`, F3). Un fichier en miettes coûte un
+    ///     accès par extent, comme avant ;
     ///   - fileIndex: rang du fichier, qui désigne son enregistrement MFT ;
     ///   - entrySector: sur FAT, le secteur de son répertoire qui porte son
     ///     entrée, là où l'allocateur a posé ce répertoire
@@ -258,34 +262,44 @@ extension PartitionGeometry {
     ///     une sur `validationsPerLogPage` —, et `nil` laisse l'écriture du
     ///     journal à l'appelant, quand c'est un cache qui vide ses tables à
     ///     son propre rythme (`MachineWriter`).
-    func commitAccesses(forCluster cluster: Int, fileIndex: Int, entrySector: Int? = nil,
+    func commitAccesses(for extents: [Extent], fileIndex: Int, entrySector: Int? = nil,
                         validation: Int?) -> [MetadataAccess] {
+        let extents = extents.isEmpty ? [Extent(start: 0, length: 1)] : extents
+        let cluster = Int(extents[0].start)
         switch format {
         case .fat16, .fat32:
             // Les deux copies de la table, au tout début de la partition, puis
             // l'entrée de répertoire, là où vit le répertoire : dans la racine
             // pour un fichier de la racine d'un FAT16, ailleurs pour tous les
             // autres — souvent loin du bord, parfois tout près du fichier.
-            let sector = fatSector(forCluster: cluster)
+            // Chaque extent réécrit les secteurs de table que sa chaîne
+            // occupe, du premier cluster au dernier.
+            let ranges = extents.map { extent -> (first: Int, sectors: Int) in
+                let first = fatSector(forCluster: Int(extent.start))
+                let last = fatSector(forCluster: Int(extent.end) - 1)
+                return (first, last - first + 1)
+            }
             let entry = entrySector
                 ?? rootLBA + (rootSectorCount > 0 ? cluster % rootSectorCount : 0)
-            return [
-                MetadataAccess(lba: fat1LBA + sector, sectors: 2),
-                MetadataAccess(lba: fat2LBA + sector, sectors: 2),
-                MetadataAccess(lba: entry, sectors: 1),
-            ]
+            return ranges.map { MetadataAccess(lba: fat1LBA + $0.first, sectors: $0.sectors) }
+                + ranges.map { MetadataAccess(lba: fat2LBA + $0.first, sectors: $0.sectors) }
+                + [MetadataAccess(lba: entry, sectors: 1)]
         case .ntfs:
             // Un seul enregistrement MFT réécrit, et la bitmap du volume. La
             // MFT est près du début du volume, derrière les 64 Mo du journal ;
             // un enregistrement n'est pas la table entière : c'est un
             // kilo-octet. Et, une validation sur huit, la page de journal que
             // les précédentes ont remplie.
-            var accesses = [
-                MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
-                               sectors: mftRecordSectors),
-                MetadataAccess(lba: bitmapLBA + cluster / (8 * DriveGeometry.bytesPerSector),
-                               sectors: 1),
-            ]
+            // La bitmap, elle aussi, sur toute la longueur de chaque extent :
+            // un bit par cluster, 4 096 clusters par secteur.
+            let bitsPerSector = 8 * DriveGeometry.bytesPerSector
+            var accesses = [MetadataAccess(lba: mftLBA + fileIndex * mftRecordSectors,
+                                           sectors: mftRecordSectors)]
+            accesses += extents.map { extent in
+                let first = Int(extent.start) / bitsPerSector
+                let last = (Int(extent.end) - 1) / bitsPerSector
+                return MetadataAccess(lba: bitmapLBA + first, sectors: last - first + 1)
+            }
             if let validation, (validation + 1) % Self.validationsPerLogPage == 0 {
                 accesses.append(logPage(forValidation: validation))
             }
@@ -424,12 +438,12 @@ extension PartitionGeometry {
             // volume**, et non à côté de l'original : une course complète du
             // bras jusqu'au fond du disque, aller et retour.
             //
-            // La MFT se lit ensuite d'une traite : c'est elle qui décrit tout
-            // le volume, et un défragmenteur doit la connaître entière.
-            let mftSectors = max(clusterCount / 8, 1) * mftRecordSectors / 8
+            // La MFT n'est pas ici : elle se lit là où le volume l'a posée,
+            // et entière (`DefragOperations.analysis`) — le forfait de
+            // 4 096 secteurs qui la représentait n'en lisait que 0,16 % sur un
+            // 320 Go.
             return [MetadataAccess(lba: startLBA, sectors: 16),
-                    MetadataAccess(lba: startLBA + totalSectors - 1, sectors: 1),
-                    MetadataAccess(lba: mftLBA, sectors: min(mftSectors, 4_096))]
+                    MetadataAccess(lba: startLBA + totalSectors - 1, sectors: 1)]
         }
     }
 

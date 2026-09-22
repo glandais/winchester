@@ -79,9 +79,7 @@ struct SmartDefragStrategy: DefragStrategy, BootLayoutConsumer {
         let initialRuns = input.categoryRuns()
         sink.reserveCapacity(input.files.count * 4)
 
-        DefragOperations.analysis(partition: input.partition,
-                                  directoryCount: DefragOperations.directoryCount(of: input),
-                                  into: sink)
+        DefragOperations.analysis(volume: input, into: sink)
 
         let ntfs = !input.partition.format.isFAT
         var engine = FrontierCompactionStrategy()

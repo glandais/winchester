@@ -94,35 +94,82 @@ enum DefragOperations {
     /// L'analyse lit les tables d'allocation, la racine, puis chaque
     /// répertoire. Elle est étalée sur quelques secondes : à l'époque le coût
     /// dominant n'était pas le disque mais le parcours des chaînes en mémoire.
-    static func analysis(partition: PartitionGeometry,
-                         directoryCount: Int,
-                         into sink: OperationSink) {
-        sink.emit(contentsOf: analysis(partition: partition, directoryCount: directoryCount))
+    /// Ce que l'outil calcule entre deux lectures de l'analyse : après chaque
+    /// table, et après chaque répertoire — décoder les entrées, classer les
+    /// fichiers. **Une hypothèse** : aucune mesure d'époque n'a été trouvée
+    /// pour une analyse de `dfrg.msc`, ni pour celle de `DEFRAG` (la relecture
+    /// sur source de `LEDGER-REALISME.md`). Ce qui n'est pas une hypothèse,
+    /// c'est le reste de la durée, que fait le disque : la MFT entière et
+    /// chaque répertoire là où il est.
+    static let tableThinkSeconds = 0.05
+    static let directoryThinkSeconds = 0.010
+
+    static func analysis(volume: DefragVolume, into sink: OperationSink) {
+        sink.emit(contentsOf: analysis(volume: volume))
     }
 
-    static func analysis(partition: PartitionGeometry,
-                         directoryCount: Int) -> [DiskOperation] {
+    /// L'analyse : les tables, puis chaque répertoire.
+    ///
+    /// Longtemps un forfait — la MFT plafonnée à 2 Mo, les répertoires lus à
+    /// des clusters tirés au hasard, le tout minuté en dur sur 4,5 s, si bien
+    /// qu'un FAT16 de 180 Mo et un NTFS de 320 Go s'analysaient dans la même
+    /// poignée de secondes (`LEDGER-REALISME.md`, F4). Ici la MFT se lit là où
+    /// le volume l'a posée et en entier, et les répertoires à leurs extents ;
+    /// la durée est celle que le disque met à les servir, plus le calcul
+    /// ci-dessus. Un volume d'essai qui ne connaît pas ses répertoires les
+    /// tire encore au hasard, comme avant.
+    static func analysis(volume: DefragVolume) -> [DiskOperation] {
+        let partition = volume.partition
         var ops: [DiskOperation] = []
-        let span = 4.5
+        var t = 0.30
 
-        for (index, access) in partition.scanAccesses.enumerated() {
-            ops.append(DiskOperation(kind: .scan, phase: 0, lba: access.lba,
-                                     sectors: access.sectors, isWrite: false,
-                                     issueTime: 0.30 + 0.45 * Double(index),
-                                     cluster: nil))
+        func read(lba: Int, sectors: Int, cluster: Int?, think: Double) {
+            ops.append(DiskOperation(kind: .scan, phase: 0, lba: lba, sectors: sectors,
+                                     isWrite: false, issueTime: t, cluster: cluster))
+            t += think
         }
 
-        // Parcours des répertoires : leurs clusters sont dispersés dans la zone
-        // de données, chaque lecture est un seek isolé au milieu du silence.
-        var rng = SeededGenerator(seed: 0xDEF7_A61C)
-        let count = max(directoryCount, 1)
-        for index in 0..<count {
-            let t = 2.0 + span * Double(index) / Double(count) * 0.55
-            let cluster = rng.uniform(0...(partition.clusterCount - 1))
-            ops.append(DiskOperation(kind: .scan, phase: 0,
-                                     lba: partition.lba(ofCluster: cluster),
-                                     sectors: partition.clusterSectors, isWrite: false,
-                                     issueTime: t, cluster: cluster))
+        for access in partition.scanAccesses {
+            read(lba: access.lba, sectors: access.sectors, cluster: nil, think: tableThinkSeconds)
+        }
+        if partition.format == .ntfs {
+            // La MFT, sa copie et le secteur d'amorçage, tels que le volume les
+            // porte — extent par extent quand la MFT s'est fragmentée. Un
+            // volume qui ne les publie pas la lit d'un bloc à sa place
+            // d'origine, un enregistrement par fichier.
+            if volume.systemExtents.isEmpty {
+                read(lba: partition.mftLBA,
+                     sectors: (volume.files.count + 16) * partition.mftRecordSectors,
+                     cluster: Int(partition.ntfsLayout.mftStart), think: tableThinkSeconds)
+            } else {
+                for extent in volume.systemExtents where !extent.isEmpty {
+                    read(lba: partition.lba(ofCluster: Int(extent.start)),
+                         sectors: Int(extent.length) * partition.clusterSectors,
+                         cluster: Int(extent.start), think: tableThinkSeconds)
+                }
+            }
+        }
+
+        // Parcours des répertoires, là où ils sont : chaque lecture est un
+        // seek isolé au milieu du silence, et un répertoire en morceaux en
+        // coûte plusieurs.
+        let directories = volume.files.filter { $0.category == .directory }
+        if directories.isEmpty {
+            var rng = SeededGenerator(seed: 0xDEF7_A61C)
+            for _ in 0..<directoryCount(of: volume) {
+                let cluster = rng.uniform(0...(partition.clusterCount - 1))
+                read(lba: partition.lba(ofCluster: cluster), sectors: partition.clusterSectors,
+                     cluster: cluster, think: directoryThinkSeconds)
+            }
+        } else {
+            for directory in directories {
+                for extent in directory.extents where !extent.isEmpty {
+                    read(lba: partition.lba(ofCluster: Int(extent.start)),
+                         sectors: Int(extent.length) * partition.clusterSectors,
+                         cluster: Int(extent.start), think: 0)
+                }
+                t += directoryThinkSeconds
+            }
         }
         return ops
     }
@@ -453,7 +500,7 @@ enum DefragOperations {
     ///
     /// - Parameter entrySector: sur FAT, le secteur de répertoire qui porte
     ///   l'entrée du fichier (`DefragVolume.entrySector`).
-    static func commit(cluster: Int,
+    static func commit(extents: [Extent],
                        fileIndex: Int,
                        entrySector: Int? = nil,
                        phase: Int,
@@ -461,7 +508,7 @@ enum DefragOperations {
                        repaint: (extents: [Extent], category: ClusterCategory, contiguous: Bool)? = nil,
                        into sink: OperationSink) {
         var pending = repaint
-        for access in partition.commitAccesses(forCluster: cluster, fileIndex: fileIndex,
+        for access in partition.commitAccesses(for: extents, fileIndex: fileIndex,
                                                entrySector: entrySector,
                                                validation: sink.nextValidation()) {
             let first = sink.mutationMark

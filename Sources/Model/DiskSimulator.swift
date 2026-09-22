@@ -56,8 +56,15 @@ struct HeadSample {
     let endCylinder: Int32
     let head: UInt8
     let isWrite: Bool
+    /// Ce que la tête a attendu, posée sur la piste, que le premier secteur
+    /// se présente : le bras est arrivé `latency` avant `time`. `Float16`
+    /// pour tenir dans les deux octets qui restaient — quatre microsecondes
+    /// de résolution sur les huit millisecondes d'un tour de 1993.
+    let latency: Float16
 
     var endTime: Double { time + Double(duration) }
+    /// L'instant où le bras est arrivé sur la piste, avant l'attente.
+    var arrivalTime: Double { time - Double(latency) }
 }
 
 struct TraceStats {
@@ -754,7 +761,8 @@ struct DiskMechanics {
             stats.busySeconds += transfer
             samples.append(HeadSample(time: arrival, duration: Float(revolution),
                                       cylinder: Int32(headCylinder), endCylinder: Int32(headCylinder),
-                                      head: UInt8(min(headIndex, Int(UInt8.max))), isWrite: false))
+                                      head: UInt8(min(headIndex, Int(UInt8.max))), isWrite: false,
+                                      latency: 0))
             // Le début de la requête, dans l'ordre, est lu en dernier : les
             // secteurs d'avant l'arrivée de la tête.
             let late = Int(((revolution - latency) / sector).rounded(.up))
@@ -845,7 +853,8 @@ struct DiskMechanics {
                                   cylinder: Int32(sampleCylinder),
                                   endCylinder: Int32(headCylinder),
                                   head: UInt8(min(sampleHead, Int(UInt8.max))),
-                                  isWrite: isWrite))
+                                  isWrite: isWrite,
+                                  latency: Float16(latency)))
         stats.busySeconds += transferSeconds
         armFree = t
         headLBA = lba + (count - remaining)
@@ -960,7 +969,8 @@ struct DiskMechanics {
         if let began {
             samples.append(HeadSample(time: began, duration: Float(s.busyUntil - began),
                                       cylinder: Int32(startCylinder), endCylinder: Int32(headCylinder),
-                                      head: UInt8(min(startHead, Int(UInt8.max))), isWrite: false))
+                                      head: UInt8(min(startHead, Int(UInt8.max))), isWrite: false,
+                                      latency: 0))
         }
         headLBA = s.next
         armFree = max(armFree, s.busyUntil)

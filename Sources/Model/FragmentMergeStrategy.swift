@@ -111,9 +111,7 @@ struct FragmentMergeStrategy: DefragStrategy {
         let before = input.stats
         let initialRuns = input.categoryRuns()
 
-        DefragOperations.analysis(partition: input.partition,
-                                  directoryCount: DefragOperations.directoryCount(of: input),
-                                  into: sink)
+        DefragOperations.analysis(volume: input, into: sink)
 
         var pass = Pass(strategy: self, volume: input, sink: sink)
         pass.run(phase: 1)
@@ -204,7 +202,7 @@ extension FragmentMergeStrategy {
         var bySize: [Extent] = []
 
         /// Les validations depuis le dernier point de contrôle.
-        var pendingCommits: [(cluster: Int, file: Int)] = []
+        var pendingCommits: [(extents: [Extent], file: Int)] = []
         var pendingFiles = Set<Int>()
         var movesSinceCheckpoint = 0
 
@@ -594,7 +592,7 @@ extension FragmentMergeStrategy {
             DefragOperations.gatheredMove(source: source, destination: [target], category: file.category,
                                           contiguous: extents.count <= 1, phase: phase,
                                           partition: partition, bufferBytes: bufferBytes, into: sink)
-            pendingCommits.append((Int(target.start), position))
+            pendingCommits.append(([target], position))
             pendingFiles.insert(position)
             volume.relocateHoldingReleased(position, to: extents)
             touched.insert(position)
@@ -622,7 +620,7 @@ extension FragmentMergeStrategy {
             guard !pendingCommits.isEmpty else { return }
             var accesses: [MetadataAccess] = []
             for commit in pendingCommits {
-                accesses += partition.commitAccesses(forCluster: commit.cluster,
+                accesses += partition.commitAccesses(for: commit.extents,
                                                      fileIndex: volume.mftRecord(of: commit.file),
                                                      entrySector: volume.entrySector(of: commit.file),
                                                      validation: sink.nextValidation())

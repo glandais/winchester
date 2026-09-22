@@ -92,9 +92,7 @@ struct Windows95Strategy: DefragStrategy {
 
         // MARK: Phase 0 — analyse
 
-        DefragOperations.analysis(partition: partition,
-                                  directoryCount: DefragOperations.directoryCount(of: volume),
-                                  into: sink)
+        DefragOperations.analysis(volume: volume, into: sink)
 
         // MARK: Clusters intouchables
 
@@ -178,7 +176,7 @@ struct Windows95Strategy: DefragStrategy {
                                       contiguous: refuge.coalesced().count <= 1, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
                                       into: sink)
-                DefragOperations.commit(cluster: Int(refuge[0].start), fileIndex: occupantPosition,
+                DefragOperations.commit(extents: refuge, fileIndex: occupantPosition,
                                         entrySector: volume.entrySector(of: occupantPosition),
                                         phase: phase, partition: partition, into: sink)
                 relocate(occupantPosition, to: refuge)
@@ -219,7 +217,7 @@ struct Windows95Strategy: DefragStrategy {
                                   category: file.category, contiguous: true, phase: phase,
                                   partition: partition, bufferBytes: bufferBytes,
                                   into: sink)
-            DefragOperations.commit(cluster: Int(target.start), fileIndex: position,
+            DefragOperations.commit(extents: [target], fileIndex: position,
                                     entrySector: volume.entrySector(of: position),
                                     phase: phase, partition: partition, into: sink)
             relocate(position, to: [target])

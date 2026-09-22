@@ -122,7 +122,7 @@ struct DirectoryItemsTests {
                 return (first..<(first + Int(extent.length) * partition.clusterSectors)).contains(sector)
             }
             #expect(inside)
-            let accesses = partition.commitAccesses(forCluster: Int(file.extents[0].start), fileIndex: position,
+            let accesses = partition.commitAccesses(for: file.extents, fileIndex: position,
                                                     entrySector: sector, validation: 0)
             #expect(accesses.last?.lba == sector)
             #expect(sector != partition.rootLBA)

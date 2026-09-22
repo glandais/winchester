@@ -467,3 +467,12 @@ E2 à E7, F7 et la fiche du Conner. Deux choses corrigent ce fichier :
 
 Le lot E hérite de deux pleines courses publiées de plus ; le lot F, des dates
 des quatre JSON anachroniques.
+
+### Lot C — fait (chantier 41 de `LEDGER.md`)
+
+F3, F4, F5. Ce qui corrige ce fichier : l'analyse d'avant ne lisait pas
+« 1 127 répertoires au hasard » sur `famille-2007` — sur NTFS, presque tous
+sont résidents dans la MFT, et le volume n'en a que 18 hors d'elle. Et
+« une analyse de `dfrg.msc` se comptait en minutes » reste sans source : la
+phase est maintenant celle que le disque met à lire la MFT et les
+répertoires, 3 à 15 s sur les NTFS, plus un calcul assumé.

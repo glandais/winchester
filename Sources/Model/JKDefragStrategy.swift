@@ -273,9 +273,7 @@ struct JKDefragStrategy: DefragStrategy {
 
         var pass = Pass(strategy: self, volume: input, sink: sink)
 
-        DefragOperations.analysis(partition: input.partition,
-                                  directoryCount: DefragOperations.directoryCount(of: input),
-                                  into: sink)
+        DefragOperations.analysis(volume: input, into: sink)
 
         switch mode {
         case .fastOptimize:
@@ -748,7 +746,7 @@ extension JKDefragStrategy {
                                   partition: volume.partition,
                                   bufferBytes: strategy.bufferBytes,
                                   fullBlocks: strategy.fullBlocks, into: sink)
-            DefragOperations.commit(cluster: Int(lcn), fileIndex: volume.mftRecord(of: index),
+            DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: index),
                                     entrySector: volume.entrySector(of: index), phase: phase,
                                     partition: volume.partition,
                                     // Un fichier déplacé en entier est déjà tout

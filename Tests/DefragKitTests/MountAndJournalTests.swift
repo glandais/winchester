@@ -186,7 +186,8 @@ struct MountAndJournalTests {
         let sink = OperationSink()
         let validations = 100
         for index in 0..<validations {
-            DefragOperations.commit(cluster: 1_000_000 + index * 64, fileIndex: 40 + index, phase: 1,
+            DefragOperations.commit(extents: [Extent(start: UInt32(1_000_000 + index * 64), length: 1)],
+                                    fileIndex: 40 + index, phase: 1,
                                     partition: partition, into: sink)
         }
         DefragOperations.final(partition: partition, phase: 2, into: sink)
@@ -200,7 +201,7 @@ struct MountAndJournalTests {
         #expect(Set(logWrites.map(\.lba)).count == logWrites.count)
         // Et FAT n'a pas de journal : trois écritures par validation, toujours.
         let fat = try Self.partition("dev-1996")
-        #expect(fat.commitAccesses(forCluster: 100, fileIndex: 3, validation: 7).count == 3)
+        #expect(fat.commitAccesses(for: [Extent(start: 100, length: 1)], fileIndex: 3, validation: 7).count == 3)
     }
 
     /// Un cache qui vide ses tables à son rythme — installation, journée —

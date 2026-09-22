@@ -166,9 +166,7 @@ struct UltraDefragStrategy: DefragStrategy {
 
         // MARK: Phase 0 — analyse
 
-        DefragOperations.analysis(partition: partition,
-                                  directoryCount: DefragOperations.directoryCount(of: volume),
-                                  into: sink)
+        DefragOperations.analysis(volume: volume, into: sink)
 
         let candidates = volume.files.indices.filter { canDefragment(volume.files[$0], on: partition, fragmented: false) }
         let alreadyInPlace = candidates.filter { volume.files[$0].isContiguous }.count
@@ -288,7 +286,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                       category: file.category, contiguous: true, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
                                       fullBlocks: fullBlocks, into: sink)
-                DefragOperations.commit(cluster: Int(target.start), fileIndex: volume.mftRecord(of: position),
+                DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: position),
                                         entrySector: volume.entrySector(of: position),
                                         phase: phase, partition: partition, into: sink)
                 apply(position, to: [target], in: &volume)
@@ -448,7 +446,7 @@ struct UltraDefragStrategy: DefragStrategy {
                                       category: category, contiguous: contiguous, phase: phase,
                                       partition: partition, bufferBytes: bufferBytes,
                                       fullBlocks: fullBlocks, into: sink)
-                DefragOperations.commit(cluster: Int(target.start), fileIndex: volume.mftRecord(of: position),
+                DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: position),
                                         entrySector: volume.entrySector(of: position),
                                         phase: phase, partition: partition,
                                         repaint: contiguous == volume.files[position].isContiguous

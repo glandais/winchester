@@ -118,9 +118,7 @@ struct FrontierCompactionStrategy: DefragStrategy {
         let initialRuns = input.categoryRuns()
         sink.reserveCapacity(input.files.count * 4)
 
-        DefragOperations.analysis(partition: input.partition,
-                                  directoryCount: DefragOperations.directoryCount(of: input),
-                                  into: sink)
+        DefragOperations.analysis(volume: input, into: sink)
 
         var pass = Pass(strategy: self, volume: input, sink: sink)
         pass.repairInHoles(phase: 1)
@@ -244,7 +242,7 @@ extension FrontierCompactionStrategy {
         /// Les validations en attente : des déplacements faits vers des
         /// clusters qui étaient libres, dont les tables ne sont pas encore
         /// écrites. Les clusters qu'ils ont quittés restent retenus d'ici là.
-        var pendingCommits: [(cluster: Int, file: Int,
+        var pendingCommits: [(extents: [Extent], file: Int,
                               repaint: (extents: [Extent], category: ClusterCategory, contiguous: Bool)?)] = []
         /// Les fichiers qui ont un déplacement dans le lot en cours.
         var committing = Set<Int>()
@@ -854,7 +852,7 @@ extension FrontierCompactionStrategy {
                 ? nil : (extents: result, category: before.category, contiguous: contiguous)
 
             let oldKey = SizeKey(size: before.clusterCount, end: highestEnd[file], position: Int32(file))
-            pendingCommits.append((Int(destinations[0].start), file, repaint))
+            pendingCommits.append((destinations, file, repaint))
             committing.insert(file)
             volume.relocateHoldingReleased(file, to: result)
             highestEnd[file] = result.map(\.end).max() ?? 0
@@ -878,7 +876,7 @@ extension FrontierCompactionStrategy {
             guard !pendingCommits.isEmpty else { return }
             var accesses: [MetadataAccess] = []
             for commit in pendingCommits {
-                accesses += volume.partition.commitAccesses(forCluster: commit.cluster,
+                accesses += volume.partition.commitAccesses(for: commit.extents,
                                                             fileIndex: volume.mftRecord(of: commit.file),
                                                             entrySector: volume.entrySector(of: commit.file),
                                                             validation: sink.nextValidation())

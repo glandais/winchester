@@ -64,7 +64,8 @@ struct PartitionGeometryTests {
         let ntfs = PartitionGeometry(startLBA: 0, sectors: 8_000_000,
                                      clusterSectors: 8, format: .ntfs)
 
-        let fatCommit = fat.commitAccesses(forCluster: 20_000, fileIndex: 3, validation: 0)
+        let one = [Extent(start: 20_000, length: 1)]
+        let fatCommit = fat.commitAccesses(for: one, fileIndex: 3, validation: 0)
         #expect(fatCommit.count == 3)
         // Toutes au tout début de la partition, avant la zone de données.
         for access in fatCommit {
@@ -72,8 +73,72 @@ struct PartitionGeometryTests {
                     "une validation FAT ramène le bras au bord du plateau")
         }
 
-        let ntfsCommit = ntfs.commitAccesses(forCluster: 20_000, fileIndex: 3, validation: 0)
+        let ntfsCommit = ntfs.commitAccesses(for: one, fileIndex: 3, validation: 0)
         #expect(ntfsCommit.count == 2)
+    }
+
+    /// La chaîne d'un fichier occupe autant de secteurs de table que ses
+    /// clusters le demandent : 50 Mo en clusters de 4 Ko, c'est 12 800 entrées
+    /// de quatre octets en FAT32, soit 100 secteurs par copie — le modèle en
+    /// écrivait deux quelle que soit la taille. Un fichier en miettes paie un
+    /// accès par extent ; un cluster seul, un secteur.
+    @Test("Valider un fichier réécrit toute sa chaîne dans la table")
+    func commitCoversTheWholeChain() {
+        let fat32 = PartitionGeometry(startLBA: 0, sectors: 4_000_000,
+                                      clusterSectors: 8, format: .fat32)
+        let big = fat32.commitAccesses(for: [Extent(start: 4_096, length: 12_800)],
+                                       fileIndex: 3, validation: 0)
+        #expect(big.count == 3)
+        #expect(big[0].sectors == 100 && big[1].sectors == 100)
+        #expect(big[1].lba - big[0].lba == fat32.fat2LBA - fat32.fat1LBA)
+
+        let small = fat32.commitAccesses(for: [Extent(start: 4_096, length: 1)], fileIndex: 3, validation: 0)
+        #expect(small[0].sectors == 1)
+
+        let pieces = fat32.commitAccesses(for: [Extent(start: 4_096, length: 1_024),
+                                                Extent(start: 900_000, length: 1_024)],
+                                          fileIndex: 3, validation: 0)
+        #expect(pieces.count == 5)
+        #expect(pieces.prefix(4).allSatisfy { (8...9).contains($0.sectors) })  // 9 quand la chaîne chevauche un secteur
+
+        // NTFS : la bitmap sur toute la longueur, un bit par cluster.
+        let ntfs = PartitionGeometry(startLBA: 0, sectors: 8_000_000,
+                                     clusterSectors: 8, format: .ntfs)
+        let bitmap = ntfs.commitAccesses(for: [Extent(start: 0, length: 12_800)], fileIndex: 3, validation: 0)
+        #expect(bitmap[1].sectors == 4)
+    }
+
+    /// L'analyse lit les répertoires là où ils sont, et la MFT entière — un
+    /// enregistrement par fichier quand le volume ne publie pas ses extents
+    /// système —, au lieu d'un forfait de 4 096 secteurs et de clusters tirés
+    /// au hasard.
+    @Test("L'analyse lit la MFT entière et les répertoires à leur place")
+    func analysisReadsWhatIsThere() {
+        let partition = PartitionGeometry(startLBA: 0, sectors: 8_000_000,
+                                          clusterSectors: 8, format: .ntfs)
+        func file(_ id: UInt32, _ category: ClusterCategory, at start: UInt32, length: UInt32 = 1) -> DefragFile {
+            DefragFile(id: id, path: "\\d\\f\(id)", category: category, walkOrder: Int(id),
+                       extents: [Extent(start: start, length: length)], isMovable: true,
+                       createdDay: 0, modifiedDay: 0)
+        }
+        let files = [file(0, .directory, at: 700_000, length: 3)] + (1...99).map { file($0, .document, at: 100_000 + $0) }
+        let volume = DefragVolume(partition: partition, files: files)
+        let ops = DefragOperations.analysis(volume: volume)
+
+        // Les tables d'abord, dans l'ordre d'émission ; la MFT est la
+        // troisième lecture, longue de (100 + 16) enregistrements.
+        #expect(ops[2].lba == partition.mftLBA)
+        #expect(ops[2].sectors == (files.count + 16) * partition.mftRecordSectors)
+        // Le répertoire, à son extent, sur toute sa longueur.
+        let directory = ops.last!
+        #expect(directory.lba == partition.lba(ofCluster: 700_000))
+        #expect(directory.sectors == 3 * partition.clusterSectors)
+        #expect(ops.count == 4)
+        // Un volume à MFT publiée la lit là où elle est.
+        let placed = DefragVolume(partition: partition, files: files,
+                                  systemExtents: [Extent(start: 50_000, length: 64), Extent(start: 400_000, length: 64)])
+        let mft = DefragOperations.analysis(volume: placed).filter { $0.cluster == 50_000 || $0.cluster == 400_000 }
+        #expect(mft.count == 2 && mft.allSatisfy { $0.sectors == 64 * partition.clusterSectors })
     }
 
     @Test("Un cluster se traduit toujours en LBA de la zone de données")

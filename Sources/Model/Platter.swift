@@ -295,9 +295,18 @@ struct PlatterTrack {
         // calant le départ sur la durée du seek, le bras reste immobile après un
         // repos puis s'élance — au lieu d'apparaître à destination avec jusqu'à
         // vingt-huit millisecondes de retard, seek et latence confondus.
+        //
+        // Il arrive **avant** le premier secteur, pas dessus : `next.time` est
+        // daté latence purgée, et l'échantillon porte ce qu'il a attendu. Le
+        // clic se produit à l'arrivée ; le bras attend ensuite, immobile sur
+        // sa piste, que le secteur se présente — 4 ms à 7 200 tr/min, 8 sur
+        // un disque de 1993. Le dater sur `next.time` faisait partir le bras
+        // une latence après le clic qu'on entend.
+        let arrival = next.arrivalTime
         let travel = seekModel.duration(distance: distance)
-        let departure = max(sample.endTime, next.time - travel)
-        guard time >= departure, next.time > departure else { return (resting, .idle) }
+        let departure = max(sample.endTime, arrival - travel)
+        guard time >= departure, arrival > departure else { return (resting, .idle) }
+        if time >= arrival { return (Double(next.cylinder), .idle) }
 
         // `smoothstep` plutôt que les quatre phases du `SeekProfile` : le profil
         // donne des durées, pas une loi de position, et il faudrait intégrer
@@ -305,7 +314,7 @@ struct PlatterTrack {
         // 0,06 à 1,2 image. La cubique a déjà la bonne allure — vitesse nulle
         // aux deux bouts, maximale au milieu : c'est le profil speedup +
         // slowdown sans coast, celui des seeks courts, qui sont la majorité.
-        let u = (time - departure) / (next.time - departure)
+        let u = (time - departure) / (arrival - departure)
         let eased = u * u * (3 - 2 * u)
         return (lerp(resting, Double(next.cylinder), eased), .seeking)
     }

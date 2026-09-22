@@ -152,11 +152,26 @@ struct PlatterTests {
         #expect(resting.activity == .idle)
         #expect(resting.cylinder == Double(first.endCylinder))
 
-        // Juste avant le second accès, il est en route.
-        let travelling = track.frame(at: second.time - 0.005)
+        // Juste avant que le bras n'arrive, il est en route.
+        let travelling = track.frame(at: second.arrivalTime - 0.005)
         #expect(travelling.activity == .seeking)
         #expect(travelling.cylinder > Double(first.endCylinder))
         #expect(travelling.cylinder < Double(second.cylinder))
+
+        // Arrivé, il attend le secteur sur place : l'accès est daté latence
+        // purgée, et le bras était là une latence plus tôt — celle du clic.
+        #expect(second.latency > 0)
+        #expect(second.arrivalTime < second.time)
+        let waiting = track.frame(at: (second.arrivalTime + second.time) / 2)
+        #expect(waiting.activity == .idle)
+        #expect(waiting.cylinder == Double(second.cylinder))
+    }
+
+    /// Une passe d'époque aligne des millions d'échantillons : la structure
+    /// tient dans vingt-quatre octets, latence comprise.
+    @Test("Un échantillon de tête tient dans vingt-quatre octets")
+    func headSampleStaysCompact() {
+        #expect(MemoryLayout<HeadSample>.stride == 24)
     }
 
     // MARK: - Rotation

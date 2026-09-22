@@ -162,13 +162,10 @@ struct MachineWriter {
             ranks[record.id] = rank
             return rank
         }()
-        let clusters = record.extents.isEmpty ? [0] : record.extents.map { Int($0.start) }
-        for cluster in clusters {
-            for access in partition.commitAccesses(forCluster: cluster, fileIndex: rank,
-                                                   entrySector: partition.entrySector(inDirectory: directory),
-                                                   validation: nil) {
-                dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
-            }
+        for access in partition.commitAccesses(for: record.extents, fileIndex: rank,
+                                               entrySector: partition.entrySector(inDirectory: directory),
+                                               validation: nil) {
+            dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
         }
     }
 

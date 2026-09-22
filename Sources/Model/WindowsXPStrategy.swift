@@ -26,7 +26,7 @@ import DiskCore
 ///   c'est réécrire un enregistrement de MFT — un kilo-octet, là où il a été
 ///   alloué — et un secteur de `$Bitmap`. Ni table à mettre à jour en double,
 ///   ni entrée de répertoire au bord du plateau. C'est
-///   `PartitionGeometry.commitAccesses(forCluster:fileIndex:)` qui porte cette
+///   `PartitionGeometry.commitAccesses(for:fileIndex:)` qui porte cette
 ///   différence, et elle suffit à changer la couleur de la passe ;
 /// - **la granularité du déplacement n'est pas celle d'un tampon utilisateur.**
 ///   `FSCTL_MOVE_FILE` confie la copie au système de fichiers, qui travaille
@@ -168,9 +168,7 @@ struct WindowsXPStrategy: DefragStrategy {
 
         // MARK: Phase 0 — analyse
 
-        DefragOperations.analysis(partition: partition,
-                                  directoryCount: DefragOperations.directoryCount(of: volume),
-                                  into: sink)
+        DefragOperations.analysis(volume: volume, into: sink)
 
         // MARK: Phase 1 — les fichiers cassés, et eux seuls
 
@@ -217,7 +215,7 @@ struct WindowsXPStrategy: DefragStrategy {
                                   category: file.category, contiguous: true, phase: 1,
                                   partition: partition, bufferBytes: bufferBytes,
                                   fullBlocks: fullBlocks, into: sink)
-            DefragOperations.commit(cluster: Int(target.start), fileIndex: volume.mftRecord(of: position),
+            DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: position),
                                     entrySector: volume.entrySector(of: position),
                                     phase: 1, partition: partition, into: sink)
             // Ce que le fichier quitte n'est libre qu'au point de contrôle

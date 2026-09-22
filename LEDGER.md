@@ -7175,3 +7175,84 @@ a été prise machine chargée — `--check` les compte en écart, comme avant.
   `fullStrokeMs` — lot E. Le U8 garde 8,9 jusque-là.
 - **Le commentaire du tampon du Conner** dit « adaptive, segmented » : le
   modèle ne segmente pas.
+
+## Chantier 41 — réalisme, lot C : les fautes de métadonnées
+
+Troisième lot de `LEDGER-REALISME.md`, branche `realisme`, après A et B : F3,
+F4 et F5, trois endroits où le code ne faisait pas ce que son commentaire
+annonçait.
+
+### Le problème
+
+- **F3** — une validation FAT écrivait deux secteurs de table par copie, quel
+  que soit le fichier : la chaîne d'un fichier contigu de 50 Mo en clusters
+  de 4 Ko en occupe 100.
+- **F4** — l'analyse d'une passe lisait la MFT « d'une traite » puis la
+  plafonnait à 4 096 secteurs (0,16 % sur un 320 Go), lisait les répertoires
+  à des clusters **tirés au hasard** alors que le volume connaît leurs
+  extents, et minutait le tout en dur : 4,4 à 4,8 s sur tous les volumes, du
+  FAT16 de 210 Mo au NTFS de 1 To (mesuré sur `b` avant d'écrire).
+- **F5** — `HeadSample.time` est daté latence purgée, et `Platter`
+  reconstruisait le départ du bras à rebours depuis cette date : le bras
+  partait à l'écran une latence rotationnelle **après** le clic qu'on entend
+  (4,2 ms à 7 200 tr/min, 8 sur un disque de 1993).
+
+### Les décisions
+
+- **F3 : `commitAccesses(for extents:)`.** La validation reçoit les extents
+  de la nouvelle position, plus un cluster ; sur FAT, chaque extent réécrit
+  les secteurs de table de son premier à son dernier cluster (un cluster
+  seul : un secteur, plus deux), et l'entrée une fois ; sur NTFS, la bitmap
+  aussi sur toute la longueur. Les huit stratégies, `MachineWriter` et
+  `InstallSession` passent ce qu'elles savent — `[target]`, le refuge, les
+  destinations, les extents du fichier. Un fichier en miettes coûte un accès
+  par extent, comme avant.
+- **F4 : `analysis(volume:)`.** La MFT se lit là où le volume la porte
+  (`systemExtents`, extent par extent — 26 sur `famille-2007`), entière ; un
+  volume d'essai qui ne la publie pas la lit d'un bloc, un enregistrement par
+  fichier. Les répertoires se lisent à leurs extents, tous. Entre deux
+  lectures, un calcul **nommé comme hypothèse** : 50 ms après une table, 10 ms
+  après un répertoire — aucune durée d'analyse d'époque n'existe dans les
+  sources relues. Le forfait de 4 096 secteurs sort de `scanAccesses`.
+  Découverte en passant : sur NTFS, presque tous les répertoires sont
+  **résidents** dans leur enregistrement de MFT — `famille-2007` n'en a que
+  18 hors MFT, en 830 extents (le pire en 426), pour 1 127 au catalogue. Les
+  1 127 lectures au hasard d'avant lisaient donc surtout des répertoires que
+  la MFT contenait déjà.
+- **F5 : `HeadSample.latency`**, un `Float16` dans les deux octets qui
+  restaient du pas de 24 (un test le garde), et `arrivalTime = time −
+  latency`. `Platter` fait arriver le bras à `arrivalTime`, puis l'y laisse
+  immobile jusqu'à `time` : le clic se produit à l'arrivée, et l'attente du
+  secteur se voit — sur un disque de 1993, 8 ms, un quart d'image.
+
+### Ce qui valide
+
+| prédiction, écrite avant | mesuré |
+|---|---|
+| toutes les passes (312 + 24 `full-*`) changent par F4 | oui |
+| les 24 installations changent (F3, tables sales) | oui — durées identiques au dixième : les tables sales se fusionnent |
+| les 4 journées changent | **3** : `famille-2003_400` n'écrit aucun fichier de plus de 4 096 clusters, la bitmap ne bouge pas |
+| démarrages et `disk-*` identiques | oui : 49 identiques, 363 différents |
+| 25 `md5` sonores identiques | 26 (la même journée) |
+
+La phase d'analyse est maintenant faite par le disque : `secretaire-2003`
+3,3 s pour 80 Mo de MFT, `famille-2007` 7,0 s pour 100 Mo et 854 lectures,
+`famille-2012` 15,3 s pour 134 Mo ; `dev-1993` 1,6 s et `dev-1996` 1,4 s au
+lieu de 4,4. F3 pèse peu sur les passes (`dev-1999` : +12 s sur 59 min) : ce
+sont les seeks qui les font, pas les secteurs de table. Effet de bord
+légitime : une analyse plus longue déplace l'horloge des points de contrôle
+NTFS, et XP répare 112 fichiers sur `dev-2003` au lieu de 115.
+
+`swift test` : 304 tests, dont la chaîne FAT (100 secteurs pour 50 Mo, 9 quand
+elle chevauche un secteur), l'analyse à sa place, le bras qui attend, le pas
+de 24 octets. `xcb.sh build` passe. README : 88 lignes réécrites, générations
+gardées.
+
+### Laissé ouvert
+
+- **Les 50 et 10 ms de calcul** de l'analyse sont une hypothèse à régler à
+  l'oreille — c'est le seul temps de la phase 0 qui ne vienne pas du disque.
+- **Regarder le bras** dans le simulateur sur un démarrage de 1993 (F5).
+- **La MFT lue ici est celle du formatage plus les extents publiés** ; F2
+  (les enregistrements adressés comme si `$MFT` était d'un seul tenant) reste
+  au lot F.
