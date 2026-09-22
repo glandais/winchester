@@ -171,7 +171,7 @@
               </thead>
               <tbody>
                 <tr><th scope="row">Windows 95/98 Defragmenter</th><td class="origin">1995 · FAT only</td><td>Packs everything to the start of the disk, in tree order, evicting whatever is in the way.</td></tr>
-                <tr><th scope="row">Windows XP Defragmenter</th><td class="origin">2001 · NTFS only</td><td>Only repairs files in pieces, by copying them into a hole that is already free.</td></tr>
+                <tr><th scope="row">Windows XP Defragmenter</th><td class="origin">2001 · NTFS only</td><td>Repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start.</td></tr>
                 <tr><th scope="row">JkDefrag 3.36</th><td class="origin">2008</td><td>Tidies the volume by zones and fills the holes, never evicting. Seven other modes under <span class="ui">Advanced options</span>.</td></tr>
                 <tr><th scope="row">UltraDefrag 7.1.1</th><td class="origin">2018 · all formats</td><td>Merges the small splinters without moving the big blocks, and evicts nobody.</td></tr>
                 <tr><th scope="row">Frontier compaction</th><td class="origin">Winchester · FAT only</td><td>Packs the volume in the order it is in; no write ever lands on data that is still referenced.</td></tr>

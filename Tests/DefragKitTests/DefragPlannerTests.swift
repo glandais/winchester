@@ -577,8 +577,11 @@ struct WindowsXPStrategyTests {
         let plan = DefragPlanner.plan(volume: input)
 
         #expect(plan.before.fragmentedFiles == 0)
-        #expect(plan.filesMoved == 0)
+        // Rien à réparer, personne à déloger ; le tassement vers l'avant le
+        // ramène en tête, d'un seul tenant.
+        #expect(plan.evacuations == 0)
         #expect(plan.filesAlreadyInPlace == 1)
+        #expect(plan.arrangement[0].extents.count == 1)
     }
 
     /// La zone MFT est libre dans la bitmap, et c'est le piège : sur un volume
@@ -610,23 +613,23 @@ struct WindowsXPStrategyTests {
     /// rien n'est interdit : le même fichier part dans le premier trou venu.
     @Test("Sans zone MFT déclarée, le placement reste libre")
     func withoutAnMftZoneNothingIsReserved() {
+        // Le seul trou qui tienne les 80 clusters du document est 100..<400 :
+        // libre, il le reçoit ; réservé à la MFT, il ne le reçoit pas.
         let files = [
-            TestFile(category: .system, extents: [Extent(start: 0, length: 100)]),
-            TestFile(category: .application, extents: [Extent(start: 400, length: 480)]),
+            TestFile(category: .system, extents: [Extent(start: 0, length: 100)], movable: false),
+            TestFile(category: .application, extents: [Extent(start: 400, length: 480)], movable: false),
             TestFile(category: .document,
-                     extents: [Extent(start: 880, length: 5), Extent(start: 900, length: 5)]),
+                     extents: [Extent(start: 880, length: 40), Extent(start: 940, length: 40)]),
         ]
         let free = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 1_000, files: files))
         let fenced = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 1_000, files: files,
                                                            mftZone: 100..<400))
-        // Les deux réparent le fichier, mais pas au même endroit.
-        #expect(free.filesMoved == 1)
-        #expect(fenced.filesMoved == 1)
         let destination = { (plan: DefragPlan) in
             plan.mutations.first { $0.category == .document }?.start
         }
+        #expect(free.after.fragmentedFiles == 0)
         #expect(destination(free) == 100)
-        #expect(destination(fenced) != destination(free))
+        #expect(destination(fenced) != 100)
     }
 
     /// L'écran affichait une phrase codée en dur pour la stratégie de 1995 :
@@ -645,8 +648,7 @@ struct WindowsXPStrategyTests {
 
         // Hors de l'app, `String(localized:)` retombe sur la langue source.
         #expect(plan.strategy.label == "Windows XP Defragmenter")
-        #expect(plan.evacuations == 0)
-        #expect(text.contains("evicts nobody"))
+        #expect(text.contains("repairs 1 files out of 1"))
         #expect(!text.contains("presque toujours occupée"),
                 "la phrase de 1995 a resurgi sur une passe qui n'évacue rien")
         // Tout est réparé : l'écran n'a pas à parler de ce qui resterait.
@@ -673,11 +675,10 @@ struct WindowsXPStrategyTests {
         #expect(DefragPlanner.strategy(for: .fat32).id == "windows95")
     }
 
-    /// Le point de départ : un fichier contigu n'est pas touché, même s'il est
-    /// loin du début du volume. Sur `famille-2007` cela fait 11 976 fichiers
-    /// qui ne coûtent pas une requête.
-    @Test("Seuls les fichiers fragmentés sont touchés")
-    func onlyFragmentedFilesMove() {
+    /// Les fichiers cassés sont réparés d'abord ; puis `MoveFilesForward`
+    /// ramène vers le début tout fichier contigu qui a un trou devant lui.
+    @Test("Les fichiers cassés sont réparés, puis le volume tassé vers l'avant")
+    func brokenFilesFirstThenPacking() {
         let input = ntfsVolume(clusterCount: 2_000, files: [
             TestFile(category: .application, extents: [Extent(start: 900, length: 40)]),
             TestFile(category: .document,
@@ -686,31 +687,35 @@ struct WindowsXPStrategyTests {
         ])
         let plan = DefragPlanner.plan(volume: input)
 
-        #expect(plan.filesMoved == 1)
         #expect(plan.filesAlreadyInPlace == 2)
         #expect(plan.before.fragmentedFiles == 1)
         #expect(plan.after.fragmentedFiles == 0)
+        #expect(plan.filesMoved >= 2)
+        #expect(plan.arrangement[0].extents[0].start < 900, "l'application a été ramenée vers le début")
     }
 
-    /// Ce qui distinguait l'outil de 2003 de celui de 1995, en un compteur :
-    /// il n'a jamais délogé personne pour se faire de la place.
-    @Test("La passe n'évacue personne")
-    func noEvacuation() {
-        let files: [TestFile] = (0..<30).map { (index: Int) -> TestFile in
-            TestFile(category: .document,
-                     extents: [Extent(start: UInt32(index) * 20 + 3, length: 4),
-                               Extent(start: 1_000 + UInt32(index) * 20, length: 3)])
+    /// Ce que le modèle a longtemps nié : quand aucun trou ne tient un fichier
+    /// cassé, l'outil vide une région — la plus longue suite de trous et de
+    /// fichiers contigus, occupée à moins de 75 % — pour en ouvrir un.
+    @Test("La passe évacue pour ouvrir un trou assez grand")
+    func consolidationEvicts() {
+        // Un fichier de 300 clusters en deux morceaux ; entre les deux, une
+        // alternance de trous de 30 et de fichiers de 20 ; et 200 clusters
+        // libres au fond, où les délogés peuvent aller.
+        var files = [TestFile(category: .document,
+                              extents: [Extent(start: 0, length: 150), Extent(start: 950, length: 150)])]
+        for start in stride(from: 180, to: 950, by: 50) {
+            files.append(TestFile(category: .application, extents: [Extent(start: UInt32(start), length: 20)]))
         }
-        let plan = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 3_000, files: files))
-        #expect(plan.evacuations == 0)
-        #expect(plan.after.fragmentedFiles == 0)
+        let plan = DefragPlanner.plan(volume: ntfsVolume(clusterCount: 1_300, files: files))
+        #expect(plan.evacuations > 0)
     }
 
-    /// Le contre-exemple de la stratégie de 1995 : ce qui était déjà contigu
-    /// reste exactement où il était, y compris à l'autre bout du volume. C'est
-    /// pour cela qu'il n'y a pas trois cents gigaoctets à recopier.
-    @Test("Un fichier contigu en fin de volume n'est pas ramené vers le début")
-    func nothingIsPacked() {
+    /// Le contre-exemple de la stratégie de 1995 n'en est plus un : un fichier
+    /// contigu au fond du volume est ramené vers le début si un trou l'y
+    /// attend — sans que ce soit une évacuation.
+    @Test("Un fichier contigu en fin de volume est ramené vers le début")
+    func contiguousFilesArePackedForward() {
         let far = Extent(start: 1_800, length: 50)
         let input = ntfsVolume(clusterCount: 2_000, files: [
             TestFile(category: .application, extents: [far]),
@@ -718,14 +723,12 @@ struct WindowsXPStrategyTests {
                      extents: [Extent(start: 10, length: 4), Extent(start: 500, length: 4)]),
         ])
         let plan = DefragPlanner.plan(volume: input)
-        let partition = plan.partition
-        let start = partition.lba(ofCluster: Int(far.start))
-        let end = partition.lba(ofCluster: Int(far.end))
-
-        for operation in plan.operations where operation.kind != .scan {
-            #expect(!(operation.lba < end && operation.lba + operation.sectors > start),
-                    "la passe a touché un fichier déjà contigu")
-        }
+        // Le document réparé prend le petit trou de tête (0..<10, le plus
+        // petit qui le tient) ; l'application part au premier trou devant elle
+        // qui la tient, juste derrière.
+        let placed = plan.arrangement[0].extents
+        #expect(placed.count == 1 && placed[0].start < far.start, "\(placed)")
+        #expect(plan.evacuations == 0)
     }
 
     /// La signature sonore, vérifiée là où elle se décide : une validation NTFS
@@ -739,9 +742,10 @@ struct WindowsXPStrategyTests {
                                Extent(start: 180_000, length: 8)]),
         ])
         let plan = DefragPlanner.plan(volume: input)
-        let commits = plan.operations.filter { $0.kind == .metadata && $0.phase == 1 }
+        let commits = plan.operations.filter { $0.kind == .metadata && (1...3).contains($0.phase) }
 
-        // Deux écritures par déplacement, et aucune dans le boot.
+        // Deux écritures par déplacement — réparation ou tassement —, et
+        // aucune dans le boot.
         #expect(commits.count == 2 * plan.filesMoved)
         for commit in commits {
             #expect(commit.lba >= plan.partition.dataStartLBA)
@@ -780,8 +784,10 @@ struct WindowsXPStrategyTests {
                                Extent(start: 60_000, length: 4_000)]),
         ])
         // 8 000 clusters de 4 Ko, soit 32 Mo, en deux extents de 4 000 : huit
-        // blocs de 4 Mo (1 024 clusters), cent vingt-six de 256 Ko (64
-        // clusters) — un bloc ne chevauche jamais deux extents de la source.
+        // blocs de 4 Mo (1 024 clusters) contre cent vingt-six de 256 Ko (64
+        // clusters) pour la réparation — un bloc ne chevauche jamais deux
+        // extents de la source —, et autant, à un près, quand le tassement
+        // ramène le fichier réparé vers le début.
         var big = WindowsXPStrategy()
         big.bufferBytes = 4 * 1024 * 1024
         var small = WindowsXPStrategy()
@@ -790,8 +796,11 @@ struct WindowsXPStrategyTests {
         let writes = { (plan: DefragPlan) in
             plan.operations.filter { $0.kind == .writeExtent }.count
         }
-        #expect(writes(big.plan(volume: input)) == 8)
-        #expect(writes(small.plan(volume: input)) == 126)
+        let bigWrites = writes(big.plan(volume: input))
+        let smallWrites = writes(small.plan(volume: input))
+        #expect(bigWrites >= 8 && bigWrites <= 16, "\(bigWrites)")
+        #expect(smallWrites >= 126 && smallWrites <= 252, "\(smallWrites)")
+        #expect(smallWrites > 12 * bigWrites)
     }
 
     /// Le comportement qui a fait écrire « prévoyez 15 % d'espace libre » dans
@@ -810,10 +819,9 @@ struct WindowsXPStrategyTests {
             TestFile(category: .document,
                      extents: [Extent(start: 2, length: 1), Extent(start: 6, length: 1)]),
         ])
-        // Le fichier système est lui aussi fragmenté, mais bien trop gros pour
-        // le moindre trou : personne ne bouge pour lui faire de la place.
+        // Le fichier système est lui aussi fragmenté, bien trop gros pour le
+        // moindre trou, et aucune région ne se vide : tout est fragmenté.
         let plan = DefragPlanner.plan(volume: input)
-        #expect(plan.evacuations == 0)
         #expect(plan.after.fragmentedFiles >= 1)
         #expect(plan.filesMoved < plan.before.fragmentedFiles)
     }
@@ -911,12 +919,13 @@ struct WindowsXPStrategyTests {
         let plan = DefragPlanner.plan(volume: input)
         let elapsed = Date().timeIntervalSince(start)
 
-        #expect(plan.filesMoved == 250)
+        #expect(plan.filesMoved >= 250)
         #expect(plan.filesAlreadyInPlace == 12_000)
         #expect(plan.after.fragmentedFiles == 0)
-        // Deux cent cinquante fichiers de 4,8 Mo par blocs de 4 Mo : quelques
-        // milliers de requêtes, contre vingt-huit millions pour un tassage.
-        #expect(plan.operations.count < 20_000, "\(plan.operations.count) opérations")
+        // Deux cent cinquante fichiers de 4,8 Mo par blocs de 64 Kio, puis
+        // douze mille fichiers tassés vers l'avant : des centaines de milliers
+        // de requêtes, contre vingt-huit millions pour un tassage complet.
+        #expect(plan.operations.count < 2_000_000, "\(plan.operations.count) opérations")
         #expect(elapsed < 60, "\(elapsed) s")
     }
 }
@@ -1055,9 +1064,9 @@ struct UltraDefragStrategyTests {
         #expect(firstServed(ultra)?.0 == 34)
         #expect(firstServed(ultra)?.1 == .document)
 
-        // XP sert celui que la MFT présente en premier, qui n'en a que deux.
+        // XP sert le plus petit d'abord : les cinq clusters de l'application.
         let xp = DefragPlanner.plan(volume: volume, using: WindowsXPStrategy())
-        #expect(firstServed(xp)?.1 == .archive)
+        #expect(firstServed(xp)?.1 == .application)
 
         // Et la même passe XP, rejouée dans l'ordre d'UltraDefrag, sert le
         // même fichier que lui : c'est l'ordre qui décide ici, pas le placement.

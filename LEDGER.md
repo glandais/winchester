@@ -7495,3 +7495,113 @@ pendant que `snapshot.sh` compilait a donné un binaire qui plantait
 - `GalleryAllocationAudit` en release, sur les deux plages de données, a
   passé (21 min) : l'invariant d'allocation tient sur les vingt-quatre
   volumes.
+
+## Chantier 45 — réalisme, lot G : le défragmenteur de XP, d'après son code
+
+Septième lot de `LEDGER-REALISME.md`, branche `realisme`, après F. Le seul qui
+repose sur une source que le projet n'avait jamais utilisée : **le code de
+Windows XP SP1** tel qu'il a circulé en 2020, ici `Source/XPSP1/NT/base/fs/`
+(`utils/dfrg/dfrgntfs/dfrgntfs.cpp`, `mftdefrag.cpp`, `bootoptimizentfs.cpp`,
+`utils/dfrg/fssubs.cpp`, `freespace.cpp`, `movefile.cpp`, `ntfs/deviosup.c`,
+`ntfsdata.h`). Gabriel l'a décidé, et l'assume : ce n'est pas une source
+ouverte comme JkDefrag ou UltraDefrag ; le README le dit là où il décrit
+l'outil, et ce fichier ici. Le code n'est pas recopié — ce qui suit reconstitue
+un comportement — et les extraits rangés hors du dépôt
+(`../disknoise.resources/sources-realisme/xpsp1-*.txt`, avec la synthèse
+`xp-dfrg-evacuation-synthese-xpsp1.md`) ont été relus contre l'arborescence
+avant d'écrire une ligne : `DefragNtfs` aux lignes 4189-4299,
+`FreeSpaceErrorLevel = 15` à `fssubs.cpp:1239`, `LARGE_BUFFER_SIZE` à
+`ntfsdata.h:345`, « Sigh. No free space chunk » à 3334, le tri « in REVERSE
+order » à 478, `PartialDefragNtfs` à 4371 sans appelant. Une broutille dans la
+synthèse : la ligne 4287 lit `25 / (uMoveFilesCount * 2)`, sans `++`.
+
+### Le problème
+
+Le README disait de l'outil de XP qu'il « n'évacue personne », sur douze
+colonnes ; c'était une hypothèse énoncée comme un fait, et le dépouillement
+l'avait relevée. La documentation ouverte (Windows Server 2003, le Resource
+Kit de XP) disait déjà que l'outil consolidait l'espace libre et recollait la
+MFT dès XP ; elle ne disait pas comment. Le code le dit.
+
+### Les décisions
+
+- **`WindowsXPStrategy` réécrite d'après `DefragNtfs`**, phase par phase :
+  la MFT recollée avant et après (`MFTDefrag` : sa queue en plus d'un morceau
+  part d'un bloc vers le premier trou qui la tient — `DefragVolume` porte
+  maintenant `mftExtents` et `relocateMFTTail`) ; les fichiers cassés par
+  taille croissante puis numéro d'enregistrement, chacun entier dans **le plus
+  petit trou qui le tient** (*best fit* sur une liste triée par taille, bâtie
+  une fois par phase et consommée — l'outil relisait la bitmap entre deux
+  phases), arrêt au premier sans trou (`MinimumLength`) ; **la consolidation
+  d'une région** — la plus longue suite de trous et de fichiers contigus
+  adjacents, d'au moins `MinimumLength`, plus longue que le plus grand trou,
+  occupée à moins de 75 %, vidée de la fin vers le début, chaque fichier vers
+  le plus petit trou hors d'elle, abandonnée après dix échecs ; **la zone MFT
+  vidée** une fois ; **le tassement vers l'avant** — les fichiers contigus par
+  LCN décroissant, chacun vers le trou de plus petit numéro qui le tient devant
+  lui, les fichiers au moins aussi gros que le dernier échec sautés, arrêt
+  quand un fichier d'un cluster ne trouve plus rien. Les boucles sont celles
+  de la source, plafonnées par le modèle (32 tours) là où elle ne l'est pas.
+- **64 Kio par bloc** (`LARGE_BUFFER_SIZE`, une lecture puis une écriture par
+  bloc dans `NtfsDefragFile`), au lieu des 4 Mo empruntés à UltraDefrag.
+- **La zone MFT respectée** n'est plus une hypothèse : `BuildFreeSpaceList` en
+  rogne les trous. Les 15 % de `FreeSpaceErrorLevel` ne sont qu'un seuil
+  d'avertissement ; le moteur ne change rien en dessous, le modèle non plus.
+- **Vista et Windows 7** : le même moteur, daté par `WindowsXPStrategy.dated`
+  (`year`, comme l'outil de 95), avec le seuil de 64 Mo de KB 942092 — un
+  fichier dont le plus petit fragment atteint 64 Mo reste en place, une
+  approximation dite (l'outil ne recollait que les petits morceaux). Les
+  cartes et la passe le nomment « Windows Vista Defragmenter », « Windows 7
+  Defragmenter » (`strategy.vista`, `strategy.win7`, `tool.vista.*`,
+  `tool.win7.*`) ; les phases « Consolidating free space » et « Moving files
+  forward » portent les noms du journal de l'outil.
+- **Ce que la source donne et que le modèle ne fait pas**, dit dans le
+  docstring : la zone d'optimisation du démarrage (`layout.ini`, 32 Mo par
+  fichier), que `BootLayout` traite à part ; le point de contrôle de
+  transaction par bloc de 64 Kio, dont on ne sait pas s'il force une écriture
+  du journal.
+
+### Ce qui valide
+
+| prédiction, écrite avant | mesuré |
+|---|---|
+| les 12 passes XP et les 12 `full-*-windowsXP` changent, le reste non | **36** : les 12 passes XP sur FAT aussi, oubliées de la prédiction — l'outil s'y demande par `STRATEGY` |
+| 58 rendus identiques (aucun ne joue une passe XP) | 58 |
+| les durées XP montent d'un ordre de grandeur | de 2 à 3 fois : `secretaire-2007` 28 → 55 min, `gamer-2007` 49 min → 2 h 19, `dev-2007` 53 min → 2 h 41, `famille-2012` 37 min → 2 h 11. Les requêtes, de 7 à 60 fois (`dev-2007` : 245 298 → 6 175 438) |
+| le temps de planification explose | **non** : les 412 bilans en 5 min, comme avant |
+
+Ce que les douze passes disent maintenant : `dev-2003` répare 185 fichiers
+sur 192 au lieu de 170, en 1 959 évacuations et 14 Go déplacés au lieu de 5 ;
+les trous restants tombent de 2 700 à 381 sur `dev-2003`, de 9 705 à 1 935
+sur `dev-2007`, de 21 114 à 8 043 sur `famille-2012` — sans jamais tomber à
+zéro, parce que le tassement est en *first fit* et laisse les petits trous,
+comme la source le laisse prévoir. Un volume que l'outil nettoyait
+entièrement (`secretaire-2007`, `dev-2012`) en garde un ou deux fichiers : le
+*best fit* et la région vidée ne rendent pas le même volume que le premier
+trou qui tient. Les écritures partent en salves de 97 par vidage sur
+`dev-2007`, contre 6 : des blocs de 64 Kio arrivent plus vite que le disque
+ne les pose.
+
+`swift test` : 306 tests. Les tests qui vérifiaient une **absence** (« n'évacue
+personne », « n'est pas ramené vers le début », « seuls les fragmentés sont
+touchés ») sont retournés en leur contraire, avec un volume où la région se
+vide et un où le tassement ramène un fichier ; les comptes de requêtes suivent
+les 64 Kio. `xcb.sh build` passe ; 925 clés, quatorze neuves ou réécrites
+(`summary.windowsXP` dit maintenant ce qu'il déloge et ce qu'il tasse) ; le
+site suit l'unité `en` de `tool.windowsXP.principle`. README : 75 lignes, la
+description de l'outil, « ne déloge personne » retiré, « respecte la zone »
+sourcé, « 64 Kio » dans « Ce qui ne l'est pas ».
+
+### Laissé ouvert
+
+- **L'écoute** : le tassement vers l'avant est un long balayage que la passe
+  de XP n'avait pas ; `SCENARIO=dev-2007 STRATEGY=windowsXP` contre `f`.
+- **Vista et 7** ne recollent que les petits morceaux ; le modèle déplace le
+  fichier entier ou pas du tout. Le point de contrôle par bloc, le délai entre
+  deux fichiers, le cache : non sourcés, comme avant.
+- **La zone d'optimisation du démarrage** : `BootLayout` la range à sa façon
+  (chantier 28), pas à celle de `ProcessBootOptimise` (32 Mo par fichier,
+  zone déplacée sous 90 %) — à rapprocher.
+- **Le rangement intelligent** (`smart`) mesurait son gain contre un XP qui
+  n'évacuait pas ; sa table du README n'a pas été refaite (les douze
+  « non vérifiées » de `--check`).

@@ -3581,6 +3581,20 @@
             "fr": "La queue du volume remplie, puis le reste tassé derrière le bloc"
           }
         },
+        "phase.consolidate": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "Consolidating free space",
+            "fr": "Consolidation de l’espace libre"
+          }
+        },
+        "phase.consolidate.detail": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "A region is emptied, file by file, to open one hole big enough",
+            "fr": "Une région est vidée, fichier par fichier, pour ouvrir un trou assez grand"
+          }
+        },
         "phase.copyOf": {
           "translations": {
             "en": "Copying %@",
@@ -3606,9 +3620,17 @@
           }
         },
         "phase.defragFiles.detail": {
+          "extractionState": "stale",
           "translations": {
             "en": "Every broken file read end to end, written back in one piece",
             "fr": "Chaque fichier cassé relu d'un bout à l'autre, réécrit d'un seul tenant"
+          }
+        },
+        "phase.defragFiles.xp.detail": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "Every broken file, smallest first, copied whole into the smallest hole that fits",
+            "fr": "Chaque fichier cassé, du plus petit au plus gros, recopié entier dans le plus petit trou qui le tient"
           }
         },
         "phase.defragPartial": {
@@ -3705,6 +3727,20 @@
           "translations": {
             "en": "Every hole filled by the end of the highest fragment of the volume",
             "fr": "Chaque trou rempli par la fin du fragment le plus haut du volume"
+          }
+        },
+        "phase.forward": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "Moving files forward",
+            "fr": "Tassement vers l’avant"
+          }
+        },
+        "phase.forward.detail": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "From the end of the volume, every file that fits in a hole before it moves there",
+            "fr": "Depuis la fin du volume, chaque fichier qui tient dans un trou devant lui y part"
           }
         },
         "phase.installOf": {
@@ -4580,6 +4616,20 @@
             "fr": "UltraDefrag"
           }
         },
+        "strategy.vista": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "Windows Vista Defragmenter",
+            "fr": "Défragmenteur de Windows Vista"
+          }
+        },
+        "strategy.win7": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "Windows 7 Defragmenter",
+            "fr": "Défragmenteur de Windows 7"
+          }
+        },
         "strategy.windows95": {
           "translations": {
             "en": "Windows 95 Defragmenter",
@@ -4667,8 +4717,8 @@
         },
         "summary.windowsXP": {
           "translations": {
-            "en": "The pass repairs %1$lld files out of %2$lld and evicts nobody: each is copied into a hole that is already free, never at a neighbour's expense.",
-            "fr": "La passe répare %1$lld fichiers sur %2$lld et n'évacue personne : chacun est recopié dans un trou déjà libre, jamais aux dépens d'un voisin."
+            "en": "The pass repairs %1$lld files out of %2$lld, each copied whole into the smallest hole that fits, evicts %3$lld files to open a hole big enough, and packs the rest towards the start of the volume — %4$lld files moved in all.",
+            "fr": "La passe répare %1$lld fichiers sur %2$lld, chacun recopié entier dans le plus petit trou qui le tient, en déloge %3$lld pour ouvrir un trou assez grand, et tasse le reste vers le début du volume — %4$lld fichiers déplacés en tout."
           }
         },
         "summary.windowsXP.remaining": {
@@ -5119,14 +5169,12 @@
           }
         },
         "tool.msdos6.name": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "MS-DOS 6 DEFRAG",
             "fr": "DEFRAG de MS-DOS 6"
           }
         },
         "tool.msdos6.origin": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "1993 · FAT only · same engine as Windows 95",
             "fr": "1993 · FAT seulement · le même moteur que Windows 95"
@@ -5239,6 +5287,34 @@
             "fr": "Beaucoup de requêtes courtes ; bien moins de morceaux à la fin."
           }
         },
+        "tool.vista.name": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "Windows Vista Defragmenter",
+            "fr": "Défragmenteur de Windows Vista"
+          }
+        },
+        "tool.vista.origin": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "2007 · NTFS only · same engine as XP, fragments under 64 MB",
+            "fr": "2007 · NTFS seulement · le moteur de XP, morceaux de moins de 64 Mo"
+          }
+        },
+        "tool.win7.name": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "Windows 7 Defragmenter",
+            "fr": "Défragmenteur de Windows 7"
+          }
+        },
+        "tool.win7.origin": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "2009 · NTFS only · same engine as XP, fragments under 64 MB",
+            "fr": "2009 · NTFS seulement · le moteur de XP, morceaux de moins de 64 Mo"
+          }
+        },
         "tool.windows95.fat.measured": {
           "comment": "Fourchette mesurée sur les vingt disques de la galerie",
           "translations": {
@@ -5291,14 +5367,14 @@
         },
         "tool.windowsXP.principle": {
           "translations": {
-            "en": "Only repairs files in pieces, by copying them into a hole that is already free.",
-            "fr": "Ne répare que les fichiers en morceaux, en les recopiant dans un trou déjà libre."
+            "en": "Repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start.",
+            "fr": "Répare les fichiers en morceaux, du plus petit au plus gros, dans le plus petit trou qui les tient ; vide une région quand aucun ne convient ; puis tasse tout vers le début."
           }
         },
         "tool.windowsXP.sound": {
           "translations": {
-            "en": "Short and calm; it gives up when no hole is the right size.",
-            "fr": "Court et calme ; il échoue quand aucun trou n'est à la taille."
+            "en": "Bursts of small 64 KB copies, a quiet stretch, then the long sweep of the packing.",
+            "fr": "Des rafales de petites copies de 64 Ko, un temps calme, puis le long balayage du tassement."
           }
         },
         "transport.pause": {

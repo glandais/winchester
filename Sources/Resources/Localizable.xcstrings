@@ -9321,6 +9321,40 @@
         }
       }
     },
+    "phase.consolidate" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consolidating free space"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consolidation de l’espace libre"
+          }
+        }
+      }
+    },
+    "phase.consolidate.detail" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A region is emptied, file by file, to open one hole big enough"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une région est vidée, fichier par fichier, pour ouvrir un trou assez grand"
+          }
+        }
+      }
+    },
     "phase.copyOf" : {
       "localizations" : {
         "en" : {
@@ -9386,6 +9420,7 @@
       }
     },
     "phase.defragFiles.detail" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9397,6 +9432,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chaque fichier cassé relu d'un bout à l'autre, réécrit d'un seul tenant"
+          }
+        }
+      }
+    },
+    "phase.defragFiles.xp.detail" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every broken file, smallest first, copied whole into the smallest hole that fits"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque fichier cassé, du plus petit au plus gros, recopié entier dans le plus petit trou qui le tient"
           }
         }
       }
@@ -9653,6 +9705,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chaque trou rempli par la fin du fragment le plus haut du volume"
+          }
+        }
+      }
+    },
+    "phase.forward" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moving files forward"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tassement vers l’avant"
+          }
+        }
+      }
+    },
+    "phase.forward.detail" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From the end of the volume, every file that fits in a hole before it moves there"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depuis la fin du volume, chaque fichier qui tient dans un trou devant lui y part"
           }
         }
       }
@@ -11880,6 +11966,40 @@
         }
       }
     },
+    "strategy.vista" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows Vista Defragmenter"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Défragmenteur de Windows Vista"
+          }
+        }
+      }
+    },
+    "strategy.win7" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows 7 Defragmenter"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Défragmenteur de Windows 7"
+          }
+        }
+      }
+    },
     "strategy.windows95" : {
       "localizations" : {
         "en" : {
@@ -12110,13 +12230,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The pass repairs %1$lld files out of %2$lld and evicts nobody: each is copied into a hole that is already free, never at a neighbour's expense."
+            "value" : "The pass repairs %1$lld files out of %2$lld, each copied whole into the smallest hole that fits, evicts %3$lld files to open a hole big enough, and packs the rest towards the start of the volume — %4$lld files moved in all."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La passe répare %1$lld fichiers sur %2$lld et n'évacue personne : chacun est recopié dans un trou déjà libre, jamais aux dépens d'un voisin."
+            "value" : "La passe répare %1$lld fichiers sur %2$lld, chacun recopié entier dans le plus petit trou qui le tient, en déloge %3$lld pour ouvrir un trou assez grand, et tasse le reste vers le début du volume — %4$lld fichiers déplacés en tout."
           }
         }
       }
@@ -13279,7 +13399,6 @@
       }
     },
     "tool.msdos6.name" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -13296,7 +13415,6 @@
       }
     },
     "tool.msdos6.origin" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -13589,6 +13707,74 @@
         }
       }
     },
+    "tool.vista.name" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows Vista Defragmenter"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Défragmenteur de Windows Vista"
+          }
+        }
+      }
+    },
+    "tool.vista.origin" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2007 · NTFS only · same engine as XP, fragments under 64 MB"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2007 · NTFS seulement · le moteur de XP, morceaux de moins de 64 Mo"
+          }
+        }
+      }
+    },
+    "tool.win7.name" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows 7 Defragmenter"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Défragmenteur de Windows 7"
+          }
+        }
+      }
+    },
+    "tool.win7.origin" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2009 · NTFS only · same engine as XP, fragments under 64 MB"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2009 · NTFS seulement · le moteur de XP, morceaux de moins de 64 Mo"
+          }
+        }
+      }
+    },
     "tool.windows95.fat.measured" : {
       "comment" : "Fourchette mesurée sur les vingt disques de la galerie",
       "localizations" : {
@@ -13724,13 +13910,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Only repairs files in pieces, by copying them into a hole that is already free."
+            "value" : "Repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ne répare que les fichiers en morceaux, en les recopiant dans un trou déjà libre."
+            "value" : "Répare les fichiers en morceaux, du plus petit au plus gros, dans le plus petit trou qui les tient ; vide une région quand aucun ne convient ; puis tasse tout vers le début."
           }
         }
       }
@@ -13740,13 +13926,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Short and calm; it gives up when no hole is the right size."
+            "value" : "Bursts of small 64 KB copies, a quiet stretch, then the long sweep of the packing."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Court et calme ; il échoue quand aucun trou n'est à la taille."
+            "value" : "Des rafales de petites copies de 64 Ko, un temps calme, puis le long balayage du tassement."
           }
         }
       }

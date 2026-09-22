@@ -196,7 +196,8 @@ enum GeneratedVolumeBridge {
         // vieillissement, pas une reconstitution.
         return DefragVolume(partition: partition, files: files,
                             mftZone: disk.mftZone,
-                            systemExtents: disk.systemExtents)
+                            systemExtents: disk.systemExtents,
+                            mftExtents: disk.mftFileExtents)
     }
 }
 

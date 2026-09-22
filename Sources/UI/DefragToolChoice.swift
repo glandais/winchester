@@ -60,6 +60,8 @@ struct DefragTool: Identifiable {
     /// algorithme (`Windows95Strategy.year`).
     static func all(year: Int? = nil) -> [DefragTool] {
         let dos = year.map { $0 < 1995 } ?? false
+        let vista = year.map { $0 >= 2007 && $0 < 2009 } ?? false
+        let seven = year.map { $0 >= 2009 } ?? false
         func strategy(_ id: String) -> any DefragStrategy {
             guard let found = DefragPlanner.strategy(named: id) else {
                 preconditionFailure("stratégie inconnue : \(id)")
@@ -88,10 +90,18 @@ struct DefragTool: Identifiable {
                        periodFormats: [.fat], onlyOn: .fat, isAdvanced: false,
                        measured: [.fat: String(localized: "tool.windows95.fat.measured", defaultValue: "6 min to 1 h")]),
             DefragTool(strategy: strategy("windowsXP"),
-                       name: String(localized: "tool.windowsXP.name", defaultValue: "Windows XP Defragmenter"),
-                       origin: String(localized: "tool.windowsXP.origin", defaultValue: "2001 · NTFS only"),
-                       principle: String(localized: "tool.windowsXP.principle", defaultValue: "Only repairs files in pieces, by copying them into a hole that is already free."),
-                       sound: String(localized: "tool.windowsXP.sound", defaultValue: "Short and calm; it gives up when no hole is the right size."),
+                       name: seven
+                           ? String(localized: "tool.win7.name", defaultValue: "Windows 7 Defragmenter")
+                           : vista
+                           ? String(localized: "tool.vista.name", defaultValue: "Windows Vista Defragmenter")
+                           : String(localized: "tool.windowsXP.name", defaultValue: "Windows XP Defragmenter"),
+                       origin: seven
+                           ? String(localized: "tool.win7.origin", defaultValue: "2009 · NTFS only · same engine as XP, fragments under 64 MB")
+                           : vista
+                           ? String(localized: "tool.vista.origin", defaultValue: "2007 · NTFS only · same engine as XP, fragments under 64 MB")
+                           : String(localized: "tool.windowsXP.origin", defaultValue: "2001 · NTFS only"),
+                       principle: String(localized: "tool.windowsXP.principle", defaultValue: "Repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start."),
+                       sound: String(localized: "tool.windowsXP.sound", defaultValue: "Bursts of small 64 KB copies, a quiet stretch, then the long sweep of the packing."),
                        periodFormats: [.ntfs], onlyOn: .ntfs, isAdvanced: false,
                        measured: [.ntfs: String(localized: "tool.windowsXP.ntfs.measured", defaultValue: "a few seconds to 45 min")]),
             DefragTool(strategy: strategy("ultraDefrag"),

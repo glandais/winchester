@@ -697,6 +697,12 @@ enum ScenarioBuilder {
             dated.year = disk.spec.timeline.start.year
             return dated
         }
+        if var dated = strategy as? WindowsXPStrategy, dated.year == nil {
+            let year = disk.spec.timeline.start.year
+            dated.year = year
+            if year >= 2007 { dated.fragmentCeilingBytes = WindowsXPStrategy.vistaFragmentCeilingBytes }
+            return dated
+        }
         guard let consumer = strategy as? any BootLayoutConsumer else { return strategy }
         return consumer.informed(by: BootLayout(disk: disk))
     }

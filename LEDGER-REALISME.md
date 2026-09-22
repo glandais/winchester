@@ -502,3 +502,14 @@ ne vaut plus que pour NT et XP — Vista et 7 réservent 200 Mo renouvelables
 (KB 961095) ; et `MFTNumbering` **ne change pas**, l'autre approximation
 ayant été essayée et écartée pour ce qu'elle défait à l'écoute. Trois
 démarrages NTFS sont loin de leur cible, et c'est la cible qui est en cause.
+
+### Lot G — fait (chantier 45 de `LEDGER.md`)
+
+La question « que faisait `dfrg.msc` de sa zone de tri » est tranchée par le
+code de XP SP1, que Gabriel a décidé de prendre pour source et d'assumer : il
+évacuait (une région vidée, la zone MFT vidée, un tassement vers l'avant),
+plaçait en *best fit*, copiait par 64 Kio, et recollait la MFT dès XP. Les
+15 % sont un seuil d'avertissement. Tout ce que ce fichier disait de l'outil
+de XP en « hypothèse nommée » est remplacé par une description, et les douze
+colonnes du README sont refaites. Ce qui reste : l'écoute, et `smart` à
+remesurer contre le nouvel XP.

@@ -236,7 +236,13 @@ struct DefragVolume {
     /// taille d'origine, elle recouvrait la MFT et le cachait. Depuis qu'elle
     /// rétrécit, une MFT hors zone paraissait libre, et un défragmenteur
     /// pouvait écrire dessus.
-    let systemExtents: [Extent]
+    private(set) var systemExtents: [Extent]
+
+    /// Les extents de `$MFT` elle-même, parmi `systemExtents`, dans l'ordre
+    /// des enregistrements — ce qu'un défragmenteur qui sait la recoller
+    /// regarde (`WindowsXPStrategy`, `MFTDefrag`). Vide quand le volume ne
+    /// les publie pas.
+    private(set) var mftExtents: [Extent]
 
     /// Le secteur qui porte l'entrée de répertoire du fichier `position`, là
     /// où son répertoire est **en ce moment** — il a pu être déplacé plus tôt
@@ -269,11 +275,13 @@ struct DefragVolume {
     }
 
     init(partition: PartitionGeometry, files: [DefragFile],
-         mftZone: Range<UInt32>? = nil, systemExtents: [Extent] = []) {
+         mftZone: Range<UInt32>? = nil, systemExtents: [Extent] = [],
+         mftExtents: [Extent] = []) {
         self.partition = partition
         self.files = files
         self.mftZone = mftZone
         self.systemExtents = systemExtents
+        self.mftExtents = mftExtents
         var bitmap = ClusterBitmap(clusterCount: UInt32(partition.clusterCount))
         for extent in systemExtents where !extent.isEmpty && extent.end <= UInt32(partition.clusterCount) {
             bitmap.allocate(extent)
@@ -385,6 +393,25 @@ struct DefragVolume {
         }
     }
 
+    /// Déplace la queue de `$MFT` — tout sauf son premier extent — vers une
+    /// place neuve, comme le fait `MFTDefrag` de XP. Ce qu'elle quitte attend
+    /// le point de contrôle, comme pour un fichier.
+    mutating func relocateMFTTail(to extent: Extent) {
+        guard mftExtents.count > 1 else { return }
+        let tail = Array(mftExtents.dropFirst())
+        for old in tail {
+            bitmap.free(old)
+            if let at = systemExtents.firstIndex(of: old) { systemExtents.remove(at: at) }
+        }
+        for old in tail where !old.isEmpty {
+            bitmap.allocate(old)
+            heldClusters.append(old)
+        }
+        bitmap.allocate(extent)
+        systemExtents.append(extent)
+        mftExtents = [mftExtents[0], extent]
+    }
+
     /// Le point de contrôle : tout ce qui était retenu redevient libre.
     mutating func releaseHeldClusters() {
         releaseHeldClusters(first: heldClusters.count)
@@ -462,7 +489,7 @@ struct DefragVolume {
             return copy
         }
         return DefragVolume(partition: partition, files: moved, mftZone: mftZone,
-                            systemExtents: systemExtents)
+                            systemExtents: systemExtents, mftExtents: mftExtents)
     }
 
     var stats: VolumeStats {

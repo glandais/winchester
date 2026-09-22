@@ -82,7 +82,7 @@ struct DirectoryItemsTests {
         let volume = Self.brokenDirectories(format: .fat16)
         let plan = try #require(DefragPlanner.strategy(named: strategyID)).plan(volume: volume)
         #expect(plan.after.fragmentedFiles == 30)
-        #expect(plan.filesMoved == 1)
+        #expect(plan.arrangement.filter { $0.extents.count > 1 }.count == 30)
     }
 
     /// Le pont adopte chaque répertoire qui a des clusters, avant ce qu'il

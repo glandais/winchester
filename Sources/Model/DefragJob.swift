@@ -188,7 +188,7 @@ enum DefragPlanner {
     static func strategy(for format: VolumeFormat, year: Int? = nil) -> any DefragStrategy {
         switch format {
         case .fat16, .fat32: return Windows95Strategy(year: year)
-        case .ntfs:          return WindowsXPStrategy()
+        case .ntfs:          return WindowsXPStrategy.dated(year)
         }
     }
 
