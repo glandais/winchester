@@ -11833,7 +11833,6 @@
       }
     },
     "strategy.msdos6" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -13275,6 +13274,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mesuré sur la galerie : %@"
+          }
+        }
+      }
+    },
+    "tool.msdos6.name" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MS-DOS 6 DEFRAG"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DEFRAG de MS-DOS 6"
+          }
+        }
+      }
+    },
+    "tool.msdos6.origin" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1993 · FAT only · same engine as Windows 95"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1993 · FAT seulement · le même moteur que Windows 95"
           }
         }
       }

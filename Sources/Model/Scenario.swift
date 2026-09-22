@@ -690,6 +690,12 @@ enum ScenarioBuilder {
     /// L'outil, muni de ce que le système lui confie : `Layout.ini` pour qui
     /// sait le lire (`BootLayoutConsumer`).
     static func prepared(_ strategy: any DefragStrategy, for disk: GeneratedDisk) -> any DefragStrategy {
+        // L'outil de 95 prend l'année du disque : avant 1995 il s'appelle
+        // `DEFRAG`, et c'est ce nom que la passe affiche.
+        if var dated = strategy as? Windows95Strategy {
+            dated.year = disk.spec.timeline.start.year
+            return dated
+        }
         guard let consumer = strategy as? any BootLayoutConsumer else { return strategy }
         return consumer.informed(by: BootLayout(disk: disk))
     }

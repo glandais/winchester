@@ -55,7 +55,11 @@ struct DefragTool: Identifiable {
         periodFormats.contains(FormatFamily(format))
     }
 
-    static func all() -> [DefragTool] {
+    /// La liste, pour un disque d'une année donnée : l'outil de 95 y porte le
+    /// nom qu'il avait cette année-là — `DEFRAG` sous MS-DOS 6, le même
+    /// algorithme (`Windows95Strategy.year`).
+    static func all(year: Int? = nil) -> [DefragTool] {
+        let dos = year.map { $0 < 1995 } ?? false
         func strategy(_ id: String) -> any DefragStrategy {
             guard let found = DefragPlanner.strategy(named: id) else {
                 preconditionFailure("stratégie inconnue : \(id)")
@@ -73,8 +77,12 @@ struct DefragTool: Identifiable {
         }
         return [
             DefragTool(strategy: strategy("windows95"),
-                       name: String(localized: "tool.windows95.name", defaultValue: "Windows 95/98 Defragmenter"),
-                       origin: String(localized: "tool.windows95.origin", defaultValue: "1995 · FAT only"),
+                       name: dos
+                           ? String(localized: "tool.msdos6.name", defaultValue: "MS-DOS 6 DEFRAG")
+                           : String(localized: "tool.windows95.name", defaultValue: "Windows 95/98 Defragmenter"),
+                       origin: dos
+                           ? String(localized: "tool.msdos6.origin", defaultValue: "1993 · FAT only · same engine as Windows 95")
+                           : String(localized: "tool.windows95.origin", defaultValue: "1995 · FAT only"),
                        principle: String(localized: "tool.windows95.principle", defaultValue: "Packs everything to the start of the disk, in tree order, evicting whatever is in the way."),
                        sound: String(localized: "tool.windows95.sound", defaultValue: "Constant back-and-forth, and a “clack” at the edge of the platter for every file."),
                        periodFormats: [.fat], onlyOn: .fat, isAdvanced: false,
@@ -178,7 +186,7 @@ struct DefragToolChoiceScreen: View {
     @State private var fullBlocks = false
     @State private var failure: String?
 
-    private let tools = DefragTool.all()
+    private var tools: [DefragTool] { DefragTool.all(year: disk.spec.timeline.start.year) }
     private let format: VolumeFormat
 
     init(disk: GeneratedDisk, onHandover: @escaping DiskHandover) {
