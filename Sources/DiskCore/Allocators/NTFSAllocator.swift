@@ -148,6 +148,9 @@ public struct NTFSAllocator: Allocator {
     /// La zone a-t-elle déjà cédé de la place aux données ?
     public var mftZoneBreached: Bool { mftZoneHalvings > 0 }
 
+    /// Ce que voit un défragmenteur : la zone courante, telle quelle.
+    public var defragmentExcludedZone: Range<UInt32>? { mftZone.isEmpty ? nil : mftZone }
+
     /// Plus haut cluster jamais alloué, plus un : la frontière de l'espace
     /// vierge.
     public internal(set) var highWater: UInt32

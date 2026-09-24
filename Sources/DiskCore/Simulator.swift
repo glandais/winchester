@@ -951,6 +951,15 @@ public struct Simulator<A: Allocator> {
             allocator.release(file: &entry)
         }
 
+        // La zone MFT reste vide : le défragmenteur de XP la rogne de toutes
+        // ses listes de trous (`BuildFreeSpaceList`, `freespace.cpp:305-318`),
+        // JkDefrag aussi (`MftExcludes`). Tassés à travers elle, les fichiers
+        // y prenaient la place de la MFT, qui ne pouvait plus grandir sur
+        // place : XP lui ouvrait alors une zone neuve loin derrière les
+        // données (`bitmpsup.c:1263-1287`, `NtfsInitializeMftZone`,
+        // `8491-8660`). La zone est celle que publie le pilote à cet instant ;
+        // sous Vista et 7, c'est celle du modèle, sans source.
+        let zone = allocator.defragmentExcludedZone
         var cursor: UInt32 = 0
         for var record in movable {
             let isDirectory = record.category == .directory
@@ -961,7 +970,13 @@ public struct Simulator<A: Allocator> {
             var remaining = needed
 
             while remaining > 0, cursor < allocator.bitmap.clusterCount {
-                guard let run = allocator.bitmap.nextFreeRun(from: cursor, limit: remaining) else { break }
+                guard var run = allocator.bitmap.nextFreeRun(from: cursor, limit: remaining) else { break }
+                if let zone, run.start < zone.upperBound, run.end > zone.lowerBound {
+                    // Un trou dans la zone : la recherche reprend derrière
+                    // elle. Un trou qui y entre : sa partie d'avant seule.
+                    guard run.start < zone.lowerBound else { cursor = zone.upperBound; continue }
+                    run = Extent(start: run.start, length: zone.lowerBound - run.start)
+                }
                 let take = min(run.length, remaining)
                 let extent = Extent(start: run.start, length: take)
                 guard allocator.claim(extent) else { break }

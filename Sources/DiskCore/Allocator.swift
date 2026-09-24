@@ -166,6 +166,13 @@ public protocol Allocator {
     /// répertoire.
     var formattedRootIndex: Extent? { get }
 
+    /// La plage qu'un défragmenteur laisse vide : la zone MFT de NTFS, telle
+    /// que le pilote la publie à l'instant (`FSCTL_GET_NTFS_VOLUME_DATA`,
+    /// `MftZoneStart` et `MftZoneEnd`). `nil` sur FAT, ou quand la zone est
+    /// vide. Seule la défragmentation de l'histoire la lit
+    /// (`Simulator.defragment`) ; l'allocateur, lui, la gère.
+    var defragmentExcludedZone: Range<UInt32>? { get }
+
     /// Le volume est monté : la machine a démarré. Le simulateur l'annonce au
     /// premier événement de chaque journée. Sans effet hors NTFS de XP, dont
     /// le pilote rebâtit alors son cache de runs libres.
@@ -194,6 +201,7 @@ extension Allocator {
     public mutating func noteFileDeleted() {}
     public var metadataExtents: [Extent] { [] }
     public var formattedRootIndex: Extent? { nil }
+    public var defragmentExcludedZone: Range<UInt32>? { nil }
 
     /// Place un fichier entier et renseigne son entrée. La résidence est
     /// décidée ici : un fichier résident ne passe jamais par l'allocateur.

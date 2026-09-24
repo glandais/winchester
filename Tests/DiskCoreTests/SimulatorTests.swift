@@ -280,6 +280,50 @@ struct SimulatorTests {
         #expect(after.failedWrites == before.failedWrites)
     }
 
+    /// La défragmentation de l'histoire tasse depuis le début, mais laisse la
+    /// zone MFT vide : le défragmenteur de XP la rogne de toutes ses listes de
+    /// trous (`BuildFreeSpaceList`, `freespace.cpp:305-318`). Tassés à travers
+    /// elle, les fichiers y prenaient la place de la MFT, et XP lui ouvrait
+    /// une zone neuve loin derrière (chantier 50, 50a).
+    @Test("La défragmentation de l'histoire laisse la zone MFT vide")
+    func defragmentationSkipsTheMFTZone() throws {
+        var rng = SeededGenerator(seed: 2_003)
+        var timeline = EventTimeline()
+        var ids: [UInt32] = []
+        for index in 1...900 {
+            let id = UInt32(index)
+            timeline.append(.create(FileSpec(id: id, name: "F\(index).DAT", directory: 0,
+                                             category: .document,
+                                             bytes: ByteCount(max(20_000, rng.logNormal(median: 150_000, sigma: 0.8))))),
+                            on: 1)
+            ids.append(id)
+        }
+        for (index, id) in ids.enumerated() where index % 3 == 0 {
+            timeline.append(.delete(id: id), on: 2)
+        }
+        timeline.sortByDay()
+
+        var simulator = Simulator(allocator: Self.ntfsVolume(megabytes: 256), concurrent: false)
+        _ = try simulator.run(timeline)
+        let zone = try #require(simulator.allocator.defragmentExcludedZone)
+        let used = simulator.allocator.bitmap.clusterCount - simulator.allocator.bitmap.freeCount
+        // Assez de données pour que le tassage atteigne la zone.
+        #expect(used > zone.lowerBound)
+
+        var afterTimeline = EventTimeline()
+        afterTimeline.append(.defragment, on: 3)
+        let after = try simulator.run(afterTimeline)
+
+        #expect(after.defragRuns == 1)
+        #expect(after.failedWrites == 0)
+        let intruders = after.catalog.files.filter { record in
+            record.extents.contains { $0.start < zone.upperBound && $0.end > zone.lowerBound }
+        }
+        #expect(intruders.isEmpty, "\(intruders.count) fichiers tassés dans la zone \(zone)")
+        // La MFT peut encore grandir sur place : elle reste d'un seul tenant.
+        #expect(simulator.allocator.mft.extents.count == 1)
+    }
+
     // MARK: - Déterminisme, annulation, progression
 
     /// La propriété qui porte tout le reste : même graine, même disque.

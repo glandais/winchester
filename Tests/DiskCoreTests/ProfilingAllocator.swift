@@ -78,6 +78,7 @@ struct ProfilingAllocator<Wrapped: Allocator>: Allocator {
 
     var metadataExtents: [Extent] { wrapped.metadataExtents }
     var formattedRootIndex: Extent? { wrapped.formattedRootIndex }
+    var defragmentExcludedZone: Range<UInt32>? { wrapped.defragmentExcludedZone }
 
     var report: String {
         String(format: "allocate %.2f s (%d appels) · extend %.2f s · free %.2f s · MFT %.2f s (%d appels)",
