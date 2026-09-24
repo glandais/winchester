@@ -857,6 +857,10 @@ public struct NTFSAllocator: Allocator {
         return xpStream(file: &file, clusters: count)
     }
 
+    public func streamedFileBytes(_ bytes: UInt64, growth: StreamedGrowth) -> UInt64 {
+        followsXP ? growth.fileBytes(holding: bytes) : bytes
+    }
+
     /// Sous XP, le plus petit enregistrement libre à partir du seizième
     /// (`FIRST_USER_FILE_NUMBER`) : `RtlFindClearBits` depuis `StartingHint`,
     /// que chaque libération ramène vers le bas (`bitmpsup.c:5339, 5777,

@@ -552,12 +552,15 @@ public struct ScenarioCompiler {
         // `index.dat` est créé au premier jour de navigation, puis grossit
         // indéfiniment. Un seul fichier, mais l'un des plus fragmentés du
         // volume. Il vit au-dessus des quatre dossiers qu'il indexe.
+        // `wininet` le tient projeté en mémoire et l'étend par 16 Ko
+        // (`StreamedGrowth.urlCacheIndex`).
         if day == 1 {
             let cache = catalog.makeDirectory(path: cacheIndexPath)
             writer.write(FileSpec(id: newID(), name: "index.dat", directory: cache,
                                   category: .cache,
                                   pattern: .append(growthPerEvent: 24_000),
-                                  bytes: 32_000, sizeKnownInAdvance: false),
+                                  bytes: 32_000, sizeKnownInAdvance: false,
+                                  growth: .urlCacheIndex),
                          from: 1, to: dayCount, touches: Int(dayCount / 3), rng: &rng)
         }
     }

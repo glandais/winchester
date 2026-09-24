@@ -99,13 +99,37 @@ public enum StreamedGrowth: UInt8, Sendable, Hashable, Codable {
     /// écritures de Word (`LEDGER.md`, chantier 49, reprise de 49c).
     case compoundFile
 
+    /// `index.dat`, l'index du cache d'Internet Explorer, que `wininet` tient
+    /// **projeté en mémoire** et fait grandir par `SetEndOfFile` de 16 Ko
+    /// (`GlobalMapFileGrowSize` = `PAGE_SIZE × ALLOC_PAGES`,
+    /// `inetcore/wininet/urlcache/global.h:51`, `cachedef.h:40-41`) : créé à
+    /// 16 Ko (`MEMMAP_FILE::Init`, `urlcache/filemap.cxx:1186-1211`), étendu
+    /// de 16 Ko chaque fois que la carte de ses blocs est pleine
+    /// (`AllocateEntry`, `filemap.cxx:1455-1459` ; `GrowMapFile`,
+    /// `filemap.cxx:671-750`), une entrée de plus de 16 Ko l'étendant d'un
+    /// multiple de 16 Ko en un seul appel. Sa taille reste donc un multiple
+    /// de 16 Ko (`filemap.cxx:1172`), et n'est jamais ramenée. Les
+    /// allocations sont exactes (`NtfsSetEndOfFileInfo`, comme
+    /// `compoundFile`). Attesté par le code de XP SP1, pour l'Internet
+    /// Explorer 6 qu'il porte.
+    case urlCacheIndex
+
     /// Le pas d'un fichier projeté, en octets ; `nil` pour une écriture par
     /// `WriteFile`.
     public var mappedStepBytes: UInt64? {
         switch self {
         case .buffered: nil
-        case .compoundFile: 16 * 1_024
+        case .compoundFile, .urlCacheIndex: 16 * 1_024
         }
+    }
+
+    /// La taille du fichier quand son programme veut y mettre `bytes` :
+    /// arrondie au pas pour `index.dat`, dont `wininet` ne donne jamais au
+    /// fichier une taille qui n'en soit pas un multiple ; inchangée
+    /// ailleurs.
+    public func fileBytes(holding bytes: UInt64) -> UInt64 {
+        guard self == .urlCacheIndex, let step = mappedStepBytes, bytes > 0 else { return bytes }
+        return (bytes + step - 1) / step * step
     }
 
     /// La taille que le programme donne au fichier à sa création, avant toute
@@ -116,7 +140,7 @@ public enum StreamedGrowth: UInt8, Sendable, Hashable, Codable {
     /// `allocsup.c:1036-1056`), comme à un fichier neuf.
     public var stubBytes: UInt64 {
         switch self {
-        case .buffered: 0
+        case .buffered, .urlCacheIndex: 0
         case .compoundFile: 512
         }
     }

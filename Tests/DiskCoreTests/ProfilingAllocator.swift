@@ -72,6 +72,10 @@ struct ProfilingAllocator<Wrapped: Allocator>: Allocator {
         return wrapped.stream(file: &file, clusters: count, growth: growth)
     }
 
+    func streamedFileBytes(_ bytes: UInt64, growth: StreamedGrowth) -> UInt64 {
+        wrapped.streamedFileBytes(bytes, growth: growth)
+    }
+
     var metadataExtents: [Extent] { wrapped.metadataExtents }
     var formattedRootIndex: Extent? { wrapped.formattedRootIndex }
 

@@ -116,6 +116,11 @@ public protocol Allocator {
     @discardableResult
     mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool
 
+    /// La taille que prend un fichier écrit ainsi quand son programme veut y
+    /// mettre `bytes` : `bytes`, sauf sous XP pour `index.dat`, que `wininet`
+    /// tient à un multiple de 16 Ko (`StreamedGrowth.fileBytes`).
+    func streamedFileBytes(_ bytes: UInt64, growth: StreamedGrowth) -> UInt64
+
     /// Prend `count` clusters dans l'ordre exact où `count` paquets d'un
     /// cluster, demandés l'un après l'autre par des fichiers différents, les
     /// auraient pris — ou rien, et `nil`, si ce format ne le garantit pas.
@@ -241,6 +246,8 @@ extension Allocator {
         streamByPackets(file: &file, clusters: count)
     }
 
+    public func streamedFileBytes(_ bytes: UInt64, growth: StreamedGrowth) -> UInt64 { bytes }
+
     /// `stream` d'un programme qui écrit par `WriteFile` (`.buffered`).
     @discardableResult
     public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
@@ -286,6 +293,7 @@ extension Allocator {
     /// se décide comme pour `place` — sur la taille à laquelle il arrive.
     /// - Returns: `false` si la place manquait ; rien n'est alors pris.
     public mutating func placeStreamed(file: inout FileEntry, growth: StreamedGrowth = .buffered) -> Bool {
+        file.logicalSize = streamedFileBytes(file.logicalSize, growth: growth)
         if profile.isResident(bytes: file.logicalSize) {
             place(file: &file)
             return true
@@ -302,6 +310,7 @@ extension Allocator {
     /// paquets.
     public mutating func growStreamed(file: inout FileEntry, toLogicalSize bytes: UInt64,
                                       growth: StreamedGrowth = .buffered) {
+        let bytes = streamedFileBytes(bytes, growth: growth)
         guard bytes > file.logicalSize else { return }
         if file.isResident, !profile.isResident(bytes: bytes) {
             var moved = file

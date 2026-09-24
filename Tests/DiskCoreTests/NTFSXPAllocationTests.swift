@@ -192,6 +192,31 @@ struct NTFSXPAllocationTests {
         #expect(reused == [Extent(start: large.start + 10, length: 30)])
     }
 
+    /// `index.dat` sous XP (`StreamedGrowth.urlCacheIndex`) : `wininet` le
+    /// crée à 16 Ko, l'étend par 16 Ko exacts, et sa taille reste un multiple
+    /// de 16 Ko (`urlcache/filemap.cxx:671-750, 1186-1211`).
+    @Test("index.dat : créé à 16 Ko, étendu par 16 Ko, sa taille au multiple de 16 Ko")
+    func urlCacheIndexGrowsBySixteenKilobytes() {
+        var (ntfs, room) = Self.fullXPVolume()
+        let four = Extent(start: room.start + 100, length: 4)
+        let large = Extent(start: room.start + 200, length: 40)
+        ntfs.free([four, large])
+        ntfs.checkpoint()
+        var file = FileEntry(id: 1, logicalSize: 32_000)
+        #expect(ntfs.placeStreamed(file: &file, growth: .urlCacheIndex))
+        #expect(file.logicalSize == 32_768)
+        // Le premier pas au plus petit trou qui suffit, le second derrière lui
+        // s'il y a place, sinon au suivant.
+        #expect(file.extents == [four, Extent(start: large.start, length: 4)])
+        ntfs.checkpoint()
+        ntfs.growStreamed(file: &file, toLogicalSize: 56_000, growth: .urlCacheIndex)
+        #expect(file.logicalSize == 65_536)
+        #expect(file.extents == [four, Extent(start: large.start, length: 12)])
+        // Hors de XP, la taille est celle que le programme demande.
+        let vista = NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: 100_000, formatting: .vista)
+        #expect(vista.streamedFileBytes(32_000, growth: .urlCacheIndex) == 32_000)
+    }
+
     /// `$MFT` grandit par 16 enregistrements, 4 clusters à 4 Ko
     /// (`MFT_EXTEND_GRANULARITY`), dans sa zone (`ntfs-alloc-09`).
     @Test("La MFT grandit par seize enregistrements")

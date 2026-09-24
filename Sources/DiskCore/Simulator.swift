@@ -453,22 +453,25 @@ public struct Simulator<A: Allocator> {
         let profile = allocator.profile
         switch timed.event {
         case let .create(spec):
-            guard !spec.sizeKnownInAdvance, spec.bytes > 0, !profile.isResident(bytes: spec.bytes) else { return nil }
+            let bytes = allocator.streamedFileBytes(spec.bytes, growth: spec.growth)
+            guard !spec.sizeKnownInAdvance, bytes > 0, !profile.isResident(bytes: bytes) else { return nil }
             catalog.reserve(id: spec.id)
             // Le fichier est créé — son entrée écrite dans son répertoire —
             // avant qu'un octet de données ne le soit.
             addEntry(named: spec.name, to: spec.directory)
             return Stream(kind: .create(spec),
-                          entry: FileEntry(id: spec.id, logicalSize: spec.bytes, hint: spec.resolvedHint),
-                          remaining: profile.clusters(forBytes: spec.bytes),
+                          entry: FileEntry(id: spec.id, logicalSize: bytes, hint: spec.resolvedHint),
+                          remaining: profile.clusters(forBytes: bytes),
                           growth: spec.growth)
 
-        case let .append(id, bytes):
+        case let .append(id, wanted):
             // Un journal qui grossit est écrit par le programme qui l'alimente,
             // au fil de ce qu'il reçoit : personne ne déclare la taille d'un
             // ajout. Seul le fichier d'échange fait exception — le gestionnaire
             // de mémoire décide d'une taille, et la demande.
-            guard let record = catalog[id], case .append = record.pattern,
+            guard let record = catalog[id] else { return nil }
+            let bytes = allocator.streamedFileBytes(wanted, growth: record.growth)
+            guard case .append = record.pattern,
                   bytes > record.logicalSize, !profile.isResident(bytes: bytes) else { return nil }
             var entry = record.entry
             let before = entry.isResident ? 0 : profile.clusters(forBytes: entry.logicalSize)
@@ -507,7 +510,7 @@ public struct Simulator<A: Allocator> {
         switch stream.kind {
         case let .create(spec):
             if written {
-                allocator.noteFileCreated(logicalSize: spec.bytes)
+                allocator.noteFileCreated(logicalSize: entry.logicalSize)
                 var record = FileRecord(entry: entry, name: spec.name, directory: spec.directory,
                                         category: spec.category, pattern: spec.pattern, createdDay: day,
                                         growth: spec.growth)
@@ -518,7 +521,7 @@ public struct Simulator<A: Allocator> {
                 result.allocated = entry.extents
             } else {
                 allocator.free(entry.extents)
-                allocator.noteFileCreated(logicalSize: spec.bytes)
+                allocator.noteFileCreated(logicalSize: entry.logicalSize)
                 removeEntry(named: spec.name, from: spec.directory)
                 failedWrites += 1
                 result.failed = true
