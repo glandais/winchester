@@ -39,7 +39,8 @@ autre appareil.
 
 L'appareil est `iPhone 17 Pro Max` (iOS 26.5), déclaré une seule fois dans
 `scripts/sim-config.sh`. Un `iPhone 18 Pro Max` (iOS 27.0) existe aussi sur
-cette machine : `WINCHESTER_SIM_DEVICE` bascule dessus pour une session entière
+cette machine, mais il y fonctionne mal : ne pas s'en servir.
+`WINCHESTER_SIM_DEVICE` bascule d'appareil pour une session entière
 — exporté dans l'environnement, pas préfixé sur une commande, sinon le hook ne
 le voit pas. `WINCHESTER_DERIVED_DATA` déplace le dossier de construction.
 

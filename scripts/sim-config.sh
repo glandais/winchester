@@ -10,7 +10,7 @@
 # `iPhone 17 Pro Max` (iOS 26.5) est celui de `~/.claude/CLAUDE.md`, donc celui
 # qui est déjà démarré sur cette machine. C'est aussi un grand iPhone, la taille
 # que réclament les captures de l'App Store. Un `iPhone 18 Pro Max` (iOS 27.0)
-# existe aussi ; en préférer un des deux, jamais les deux à la fois —
+# existe aussi, mais il fonctionne mal sur ce Mac : ne pas s'en servir.
 # `WINCHESTER_SIM_DEVICE` permet de basculer pour une session entière.
 #
 # On le source, on ne l'exécute pas :  source "$(dirname "$0")/sim-config.sh"
