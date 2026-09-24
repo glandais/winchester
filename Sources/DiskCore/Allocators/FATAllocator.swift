@@ -175,9 +175,9 @@ public struct FATAllocator: Allocator {
     /// deux ne diffèrent que si un autre programme prend un cluster entre deux
     /// paquets — c'est l'entrelacement, et il se joue au-dessus
     /// (`Simulator`). D'où un seul appel, qui évite des millions de parcours
-    /// de bitmap d'un cluster.
+    /// de bitmap d'un cluster. Le programme n'y change rien (`growth`).
     @discardableResult
-    public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+    public mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool {
         extend(file: &file, byClusters: count)
     }
 

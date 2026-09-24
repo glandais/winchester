@@ -60,3 +60,64 @@ extension WritePattern {
         return false
     }
 }
+
+/// Comment le programme fait grandir un fichier dont il ne connaît pas la
+/// taille — ce que voit le pilote NTFS de XP, seul à en tenir compte
+/// (`NTFSAllocator.stream`). FAT, NT 4, Vista et 7 écrivent tous ces
+/// fichiers de la même façon, par paquets (`Allocator.streamByPackets`).
+///
+/// C'est une question de fait sur un programme, comme
+/// `FileSpec.sizeKnownInAdvance` : la réponse vient de son code quand on l'a,
+/// et le cas par défaut est dit comme une hypothèse.
+public enum StreamedGrowth: UInt8, Sendable, Hashable, Codable {
+
+    /// `WriteFile` au-delà de la fin, par écritures de 4 Ko : le tampon de la
+    /// bibliothèque C (`_INTERNAL_BUFSIZ`, `base/crts/crtw32/h/stdio.h:265`),
+    /// que `NtfsCommonWrite` étend avec sa surallocation
+    /// (`NTFSAllocator.xpStream`). **Une hypothèse** pour tout programme dont
+    /// le code n'est pas lu — compilateur, navigateur qui écrit son cache,
+    /// encodeur, jeu, et le `.pst` d'Outlook (voir `ScenarioCompiler`).
+    case buffered
+
+    /// Un fichier composé d'ole32 en mode direct, écrit par Word dans son
+    /// `~wrdxxxx.tmp` puis renommé. ole32 le **projette en mémoire**
+    /// (`USE_FILEMAPPING`, `com/ole32/stg/h/filest.hxx:79-81` ;
+    /// `exp/filest32.cxx:285-296`) : il naît à 512 octets (`MakeFileStub`,
+    /// `filest32.cxx:1199-1222`), et chaque page touchée au-delà est engagée
+    /// par blocs de 16 Ko (`COMMIT_BLOCK`, `h/filest.hxx:394`,
+    /// `filest32.cxx:1492-1580`) — la section étendue, le fichier porté par
+    /// `SetEndOfFile` au multiple de 16 Ko (`mm/allocvm.c:1193-1231`,
+    /// `mm/extsect.c:470-481`), que NTFS alloue **exactement**, sans
+    /// surallocation (`NtfsSetEndOfFileInfo`, `AskForMore = FALSE`,
+    /// `ntfs/fileinfo.c:8017-8023`). La fermeture ramène le fichier à sa
+    /// taille (`TurnOffMapping`, `filest32.cxx:1316-1415`).
+    ///
+    /// Que Word passe par ole32 est **déduit** (les `~dftxxxx.tmp` des KB
+    /// sont le préfixe d'ole32, `h/filest.hxx:398`), et le pas de 16 Ko est
+    /// un **minimum** : une grosse écriture étend le flux d'un coup
+    /// (`msf/sstream.cxx:490`), et aucune source ne dit la taille des
+    /// écritures de Word (`LEDGER.md`, chantier 49, reprise de 49c).
+    case compoundFile
+
+    /// Le pas d'un fichier projeté, en octets ; `nil` pour une écriture par
+    /// `WriteFile`.
+    public var mappedStepBytes: UInt64? {
+        switch self {
+        case .buffered: nil
+        case .compoundFile: 16 * 1_024
+        }
+    }
+
+    /// La taille que le programme donne au fichier à sa création, avant toute
+    /// donnée : 512 octets pour ole32 (`MakeFileStub`). Un attribut résident,
+    /// que la première extension convertit en non résident en lui donnant
+    /// d'abord la place de ces octets (`NtfsConvertToNonresident`,
+    /// `ntfs/attrsup.c:4554-4560`, `NtfsAllocateAttribute`,
+    /// `allocsup.c:1036-1056`), comme à un fichier neuf.
+    public var stubBytes: UInt64 {
+        switch self {
+        case .buffered: 0
+        case .compoundFile: 512
+        }
+    }
+}

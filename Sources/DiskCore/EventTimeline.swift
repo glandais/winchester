@@ -23,6 +23,10 @@ public struct FileSpec: Sendable {
     /// premiers obtiennent leur place en une fois, les seconds par paquets
     /// (`Allocator.stream`). Aucun taux de fragmentation n'entre ici.
     public var sizeKnownInAdvance: Bool
+    /// Comment il grandit quand sa taille n'est pas connue : ce que le pilote
+    /// NTFS de XP distingue (`StreamedGrowth`). Sans effet si
+    /// `sizeKnownInAdvance`.
+    public var growth: StreamedGrowth
 
     public init(id: UInt32,
                 name: String,
@@ -31,7 +35,8 @@ public struct FileSpec: Sendable {
                 pattern: WritePattern = .createOnce,
                 bytes: ByteCount,
                 hint: AllocationHint? = nil,
-                sizeKnownInAdvance: Bool = true) {
+                sizeKnownInAdvance: Bool = true,
+                growth: StreamedGrowth = .buffered) {
         self.id = id
         self.name = name
         self.directory = directory
@@ -40,6 +45,7 @@ public struct FileSpec: Sendable {
         self.bytes = bytes
         self.hint = hint
         self.sizeKnownInAdvance = sizeKnownInAdvance
+        self.growth = growth
     }
 
     public var resolvedHint: AllocationHint { hint ?? category.hint }

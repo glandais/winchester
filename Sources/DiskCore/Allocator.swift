@@ -109,9 +109,12 @@ public protocol Allocator {
     ///
     /// Tout ou rien, comme `extend` : si un paquet ne trouve pas de place, ce
     /// que les précédents ont pris est rendu et le fichier ressort inchangé.
+    ///
+    /// `growth` dit comment le programme fait grandir le fichier ; seul le
+    /// NTFS de XP le distingue (`NTFSAllocator.stream`).
     /// - Returns: `false` si la place manquait.
     @discardableResult
-    mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool
+    mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool
 
     /// Prend `count` clusters dans l'ordre exact où `count` paquets d'un
     /// cluster, demandés l'un après l'autre par des fichiers différents, les
@@ -234,8 +237,14 @@ extension Allocator {
 
     public mutating func takeInWritingOrder(_ count: UInt32, hints: [AllocationHint]) -> [Extent]? { nil }
 
-    public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+    public mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool {
         streamByPackets(file: &file, clusters: count)
+    }
+
+    /// `stream` d'un programme qui écrit par `WriteFile` (`.buffered`).
+    @discardableResult
+    public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+        stream(file: &file, clusters: count, growth: .buffered)
     }
 
     /// `stream` par paquets fixes de `profile.writePacketClusters`, chacun un
@@ -276,14 +285,14 @@ extension Allocator {
     /// naît vide et grandit par paquets jusqu'à sa taille finale. La résidence
     /// se décide comme pour `place` — sur la taille à laquelle il arrive.
     /// - Returns: `false` si la place manquait ; rien n'est alors pris.
-    public mutating func placeStreamed(file: inout FileEntry) -> Bool {
+    public mutating func placeStreamed(file: inout FileEntry, growth: StreamedGrowth = .buffered) -> Bool {
         if profile.isResident(bytes: file.logicalSize) {
             place(file: &file)
             return true
         }
         file.isResident = false
         file.extents = []
-        let written = stream(file: &file, clusters: profile.clusters(forBytes: file.logicalSize))
+        let written = stream(file: &file, clusters: profile.clusters(forBytes: file.logicalSize), growth: growth)
         noteFileCreated(logicalSize: file.logicalSize)
         return written
     }
@@ -291,12 +300,13 @@ extension Allocator {
     /// `grow` pour un fichier qu'on allonge sans en connaître la fin : un
     /// journal, `index.dat`, le `.pst` d'Outlook. Le complément arrive par
     /// paquets.
-    public mutating func growStreamed(file: inout FileEntry, toLogicalSize bytes: UInt64) {
+    public mutating func growStreamed(file: inout FileEntry, toLogicalSize bytes: UInt64,
+                                      growth: StreamedGrowth = .buffered) {
         guard bytes > file.logicalSize else { return }
         if file.isResident, !profile.isResident(bytes: bytes) {
             var moved = file
             moved.extents = []
-            guard stream(file: &moved, clusters: profile.clusters(forBytes: bytes)) else { return }
+            guard stream(file: &moved, clusters: profile.clusters(forBytes: bytes), growth: growth) else { return }
             file.isResident = false
             file.logicalSize = bytes
             file.extents = moved.extents
@@ -309,7 +319,7 @@ extension Allocator {
         let before = profile.clusters(forBytes: file.logicalSize)
         let after = profile.clusters(forBytes: bytes)
         if after > before {
-            guard stream(file: &file, clusters: after - before) else { return }
+            guard stream(file: &file, clusters: after - before, growth: growth) else { return }
         }
         file.logicalSize = bytes
     }

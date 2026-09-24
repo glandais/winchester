@@ -533,9 +533,13 @@ extension NTFSAllocator {
 
     // MARK: - Écrire sans connaître la taille
 
-    /// Ce qu'un programme écrit d'un coup : le tampon de sa bibliothèque C,
-    /// 4 Ko (`_INTERNAL_BUFSIZ`, `base/crts/crtw32/h/stdio.h:265`), la même
-    /// hypothèse que pour FAT (`FAT16Profile.writePacketBytes`).
+    /// Ce qu'un programme écrit d'un coup par `WriteFile` : le tampon de sa
+    /// bibliothèque C, 4 Ko (`_INTERNAL_BUFSIZ`,
+    /// `base/crts/crtw32/h/stdio.h:265`), la même hypothèse que pour FAT
+    /// (`FAT16Profile.writePacketBytes`). **Une hypothèse** pour chaque
+    /// programme qui s'en sert (`StreamedGrowth.buffered`) : leur code n'est
+    /// pas dans celui de XP. Word et `index.dat` ne passent pas par là
+    /// (`xpStreamMapped`).
     static let userWriteBytes: UInt64 = 4_096
 
     /// `WriteExtendCount` plafonne à 4 (`allocsup.c:1384-1387`) : l'extension
@@ -619,6 +623,62 @@ extension NTFSAllocator {
             }
         }
         // La fermeture rend le surplus.
+        releaseTail(of: &file, keeping: target)
+        return true
+    }
+
+    /// Un fichier **projeté en mémoire** que son programme fait grandir par
+    /// `SetEndOfFile` au multiple de `stepBytes` (`StreamedGrowth`) : chaque
+    /// extension est une allocation exacte — `NtfsSetEndOfFileInfo` appelle
+    /// `NtfsAddAllocation` avec `AskForMore = FALSE`
+    /// (`fileinfo.c:8017-8023`), sans la surallocation de `NtfsCommonWrite` —,
+    /// placée par `NtfsAllocateClusters` comme toute autre : le run qui suit
+    /// le fichier, sinon le plus petit qui suffit (`xpAllocateClusters`).
+    ///
+    /// Un fichier qui naît à `stubBytes` (le `MakeFileStub` d'ole32, 512
+    /// octets) est résident ; la première extension le convertit, et la
+    /// conversion prend d'abord la place de ces octets, comme pour un fichier
+    /// neuf (`fileinfo.c:7893-7902`, `attrsup.c:4554-4560`,
+    /// `allocsup.c:1036-1056`), puis le reste jusqu'au premier pas
+    /// (`fileinfo.c:8017`). Un fichier qui naît sans donnée (`stubBytes` nul)
+    /// prend son premier pas d'un coup.
+    ///
+    /// Le fichier s'arrête au pas qui couvre sa fin, puis la fermeture le
+    /// ramène à sa taille (`SetEndOfFile`, `TRUNCATE_ON_CLOSE`) : ce qui
+    /// dépasse est rendu. Un appel est un *handle*, comme pour `xpStream`.
+    mutating func xpStreamMapped(file: inout FileEntry, clusters count: UInt32,
+                                 stepBytes: UInt64, stubBytes: UInt64) -> Bool {
+        guard count > 0 else { return true }
+        let before = file.clusterCount
+        let target = before + count
+        let step = max(profile.clusters(forBytes: stepBytes), 1)
+        var allocated = before
+        if before == 0, stubBytes > 0 {
+            // La conversion de l'attribut résident : un fichier neuf, à la
+            // taille de ce qu'il porte.
+            let stub = min(max(profile.clusters(forBytes: stubBytes), 1), step)
+            guard let added = xpAllocateClusters(core: stub, desired: stub, preceding: nil, paging: false)
+            else { return false }
+            for extent in added { file.extents.appendRun(start: extent.start, length: extent.length) }
+            allocated += stub
+        }
+        while allocated < target {
+            // Le fichier est porté au multiple suivant du pas, compté depuis
+            // son début : `SetEndOfFile(k × pas)`.
+            let next = (allocated / step + 1) * step
+            let needed = next - allocated
+            guard let added = xpAllocateClusters(core: needed, desired: needed,
+                                                 preceding: file.extents.last.map { $0.end - 1 },
+                                                 paging: false)
+            else {
+                // Le volume est plein : ce que ce *handle* a pris est rendu.
+                releaseTail(of: &file, keeping: before)
+                return false
+            }
+            for extent in added { file.extents.appendRun(start: extent.start, length: extent.length) }
+            allocated = next
+        }
+        // La fermeture ramène le fichier à sa taille.
         releaseTail(of: &file, keeping: target)
         return true
     }

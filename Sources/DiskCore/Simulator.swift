@@ -216,6 +216,8 @@ public struct Simulator<A: Allocator> {
         var kind: Kind
         var entry: FileEntry
         var remaining: UInt32
+        /// Comment son programme le fait grandir.
+        var growth: StreamedGrowth = .buffered
         /// Le fichier avant l'écriture, pour le compte rendu.
         var before: FileRecord?
     }
@@ -432,7 +434,7 @@ public struct Simulator<A: Allocator> {
 
         let packet = alone ? stream.remaining : min(stream.remaining, packetClusters)
         let metadataBefore = reporting ? allocator.metadataExtents : []
-        let written = allocator.stream(file: &stream.entry, clusters: packet)
+        let written = allocator.stream(file: &stream.entry, clusters: packet, growth: stream.growth)
         if written { stream.remaining -= packet }
         guard !written || stream.remaining == 0 else {
             queues[index].stream = stream
@@ -458,7 +460,8 @@ public struct Simulator<A: Allocator> {
             addEntry(named: spec.name, to: spec.directory)
             return Stream(kind: .create(spec),
                           entry: FileEntry(id: spec.id, logicalSize: spec.bytes, hint: spec.resolvedHint),
-                          remaining: profile.clusters(forBytes: spec.bytes))
+                          remaining: profile.clusters(forBytes: spec.bytes),
+                          growth: spec.growth)
 
         case let .append(id, bytes):
             // Un journal qui grossit est écrit par le programme qui l'alimente,
@@ -474,6 +477,7 @@ public struct Simulator<A: Allocator> {
             guard after > before else { return nil }
             return Stream(kind: .append(toBytes: bytes, clustersBefore: before, wasResident: record.isResident),
                           entry: entry, remaining: after - before,
+                          growth: record.growth,
                           before: reporting ? record : nil)
 
         case let .replaceViaTemporary(id, newBytes):
@@ -485,6 +489,7 @@ public struct Simulator<A: Allocator> {
             return Stream(kind: .replace(newBytes: newBytes),
                           entry: FileEntry(id: id, logicalSize: newBytes, hint: record.entry.hint),
                           remaining: profile.clusters(forBytes: newBytes),
+                          growth: record.growth,
                           before: reporting ? record : nil)
 
         default:
@@ -504,7 +509,8 @@ public struct Simulator<A: Allocator> {
             if written {
                 allocator.noteFileCreated(logicalSize: spec.bytes)
                 var record = FileRecord(entry: entry, name: spec.name, directory: spec.directory,
-                                        category: spec.category, pattern: spec.pattern, createdDay: day)
+                                        category: spec.category, pattern: spec.pattern, createdDay: day,
+                                        growth: spec.growth)
                 record.mftRecord = allocator.takeRecord()
                 catalog.insert(record)
                 result.after = record
@@ -685,7 +691,7 @@ public struct Simulator<A: Allocator> {
             // ajout. Seul le fichier d'échange fait exception — le gestionnaire
             // de mémoire décide d'une taille, et la demande.
             if case .append = record.pattern {
-                allocator.growStreamed(file: &record.entry, toLogicalSize: bytes)
+                allocator.growStreamed(file: &record.entry, toLogicalSize: bytes, growth: record.growth)
             } else {
                 allocator.grow(file: &record.entry, toLogicalSize: bytes)
             }
@@ -730,7 +736,7 @@ public struct Simulator<A: Allocator> {
         if spec.sizeKnownInAdvance {
             allocator.place(file: &entry)
         } else {
-            _ = allocator.placeStreamed(file: &entry)
+            _ = allocator.placeStreamed(file: &entry, growth: spec.growth)
         }
         guard !entry.extents.isEmpty || entry.isResident || spec.bytes == 0 else {
             removeEntry(named: spec.name, from: spec.directory)
@@ -742,7 +748,8 @@ public struct Simulator<A: Allocator> {
                                 directory: spec.directory,
                                 category: spec.category,
                                 pattern: spec.pattern,
-                                createdDay: day)
+                                createdDay: day,
+                                growth: spec.growth)
         record.mftRecord = allocator.takeRecord()
         catalog.insert(record)
     }
@@ -762,7 +769,7 @@ public struct Simulator<A: Allocator> {
         addEntry(named: Self.temporaryName, to: record.directory)
         defer { removeEntry(named: Self.temporaryName, from: record.directory) }
         var replacement = FileEntry(id: id, logicalSize: newBytes, hint: old.hint)
-        _ = allocator.placeStreamed(file: &replacement)
+        _ = allocator.placeStreamed(file: &replacement, growth: record.growth)
         guard !replacement.extents.isEmpty || replacement.isResident else {
             failedWrites += 1
             return

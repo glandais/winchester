@@ -844,11 +844,17 @@ public struct NTFSAllocator: Allocator {
     }
 
     /// Un fichier que son programme écrit sans en connaître la taille : sous
-    /// XP, l'extension à l'écriture et le surplus rendu à la fermeture
-    /// (`xpStream`) ; ailleurs, les paquets de 64 Ko du modèle d'avant.
+    /// XP, selon le programme, l'extension à l'écriture et le surplus rendu à
+    /// la fermeture (`xpStream`), ou les `SetEndOfFile` exacts d'un fichier
+    /// projeté (`xpStreamMapped`) ; ailleurs, les paquets de 64 Ko du modèle
+    /// d'avant, quel que soit le programme.
     @discardableResult
-    public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
-        followsXP ? xpStream(file: &file, clusters: count) : streamByPackets(file: &file, clusters: count)
+    public mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool {
+        guard followsXP else { return streamByPackets(file: &file, clusters: count) }
+        if let step = growth.mappedStepBytes {
+            return xpStreamMapped(file: &file, clusters: count, stepBytes: step, stubBytes: growth.stubBytes)
+        }
+        return xpStream(file: &file, clusters: count)
     }
 
     /// Sous XP, le plus petit enregistrement libre à partir du seizième

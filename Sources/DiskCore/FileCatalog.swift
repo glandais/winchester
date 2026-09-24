@@ -55,6 +55,9 @@ public struct FileRecord: Sendable, Identifiable {
     /// désigne (NTFS de XP : `Allocator.takeRecord`) ; `nil` ailleurs, où le
     /// rang de création en tient lieu.
     public var mftRecord: UInt32?
+    /// Comment son programme le fait grandir (`FileSpec.growth`) : un ajout,
+    /// un réenregistrement le reprennent.
+    public var growth: StreamedGrowth
 
     public var id: UInt32 { entry.id }
     public var logicalSize: UInt64 { entry.logicalSize }
@@ -67,13 +70,15 @@ public struct FileRecord: Sendable, Identifiable {
                 directory: UInt32,
                 category: FileCategory,
                 pattern: WritePattern = .createOnce,
-                createdDay: UInt32 = 0) {
+                createdDay: UInt32 = 0,
+                growth: StreamedGrowth = .buffered) {
         self.entry = entry
         self.name = name
         self.directory = directory
         self.category = category
         self.pattern = pattern
         self.createdDay = createdDay
+        self.growth = growth
         self.modifiedDay = createdDay
     }
 }

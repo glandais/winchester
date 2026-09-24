@@ -167,6 +167,31 @@ struct NTFSXPAllocationTests {
         #expect(reused == [Extent(start: holes[2].start + 8, length: 8)])
     }
 
+    /// Un document de Word écrit par ole32 (`StreamedGrowth.compoundFile`) :
+    /// 512 octets résidents, convertis en un cluster pris comme par un
+    /// fichier neuf, puis des `SetEndOfFile` exacts au multiple de 16 Ko —
+    /// 3 clusters, puis 4, puis 4 —, sans surallocation, chacun placé par
+    /// `NtfsAllocateClusters` ; la fermeture rend ce qui dépasse la taille.
+    @Test("Un fichier composé d'ole32 : 1, 3, puis 4 clusters exacts, et la fin rendue")
+    func compoundFileGrowsBySixteenKilobytes() {
+        var (ntfs, room) = Self.fullXPVolume()
+        let one = Extent(start: room.start + 100, length: 1)
+        let three = Extent(start: room.start + 200, length: 3)
+        let four = Extent(start: room.start + 300, length: 4)
+        let large = Extent(start: room.start + 400, length: 40)
+        ntfs.free([one, three, four, large])
+        ntfs.checkpoint()
+        var file = FileEntry(id: 1, logicalSize: 0)
+        let written = ntfs.stream(file: &file, clusters: 18, growth: .compoundFile)
+        #expect(written)
+        // 1 au plus petit trou, 3 au plus petit qui suffit, 4 au suivant, puis
+        // 4, 4, 4 bout à bout dans le grand ; 20 pris, 2 rendus à la fermeture.
+        #expect(file.extents == [one, three, four, Extent(start: large.start, length: 10)])
+        ntfs.checkpoint()
+        let reused = ntfs.allocate(clusterCount: 30, hint: .normal)
+        #expect(reused == [Extent(start: large.start + 10, length: 30)])
+    }
+
     /// `$MFT` grandit par 16 enregistrements, 4 clusters à 4 Ko
     /// (`MFT_EXTEND_GRANULARITY`), dans sa zone (`ntfs-alloc-09`).
     @Test("La MFT grandit par seize enregistrements")

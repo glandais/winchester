@@ -607,11 +607,15 @@ public struct ScenarioCompiler {
             let bytes = SizeModel.document(forYear: epochYear).sample(&rng)
             // Word sérialise son document composé à mesure qu'il l'écrit : ni
             // le premier enregistrement ni les suivants ne connaissent leur
-            // taille d'avance (`Simulator.replaceViaTemporary`).
+            // taille d'avance (`Simulator.replaceViaTemporary`). Il l'écrit
+            // par ole32, dans un fichier projeté qui grandit par 16 Ko
+            // (`StreamedGrowth.compoundFile`) — le seul programme d'Office du
+            // catalogue : les documents sont tous de Word.
             writer.write(FileSpec(id: id, name: "DOC\(id).DOC", directory: directory,
                                   category: .document,
                                   pattern: .writeTempThenRename,
-                                  bytes: bytes, sizeKnownInAdvance: false),
+                                  bytes: bytes, sizeKnownInAdvance: false,
+                                  growth: .compoundFile),
                          from: day, to: day + activeDays, touches: saves, rng: &rng)
             documents.append(id)
             // Un document de travail n'est pas ce qu'on efface pour faire de la
@@ -620,7 +624,12 @@ public struct ScenarioCompiler {
         }
 
         // La boîte aux lettres, qui ne fait que grossir sur trois ans. C'est
-        // la messagerie qui l'écrit, pas le traitement de texte.
+        // la messagerie qui l'écrit, pas le traitement de texte. Comment
+        // Outlook l'étend n'est pas sourcé : le format veut qu'il grandisse
+        // par multiples de ce que couvre une page AMap, environ 248 Ko
+        // ([MS-PST], « Growing the PST File »), sans dire par quel appel.
+        // Faute de mieux, **l'hypothèse** de tout programme qui écrit par
+        // `WriteFile` (`StreamedGrowth.buffered`).
         if day == 1, epochYear >= 2003 {
             writer.program = .mail
             writer.write(FileSpec(id: newID(), name: "Outlook.pst", directory: directory,

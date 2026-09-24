@@ -66,10 +66,10 @@ struct ProfilingAllocator<Wrapped: Allocator>: Allocator {
     mutating func checkpoint() { wrapped.checkpoint() }
 
     @discardableResult
-    mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+    mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool {
         let start = Date()
         defer { extendTime += Date().timeIntervalSince(start) }
-        return wrapped.stream(file: &file, clusters: count)
+        return wrapped.stream(file: &file, clusters: count, growth: growth)
     }
 
     var metadataExtents: [Extent] { wrapped.metadataExtents }
