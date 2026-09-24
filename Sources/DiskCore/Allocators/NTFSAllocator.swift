@@ -125,7 +125,7 @@ public struct NTFSAllocator: Allocator {
 
     public let ntfs: NTFSProfile
     public var profile: any FileSystemProfile { ntfs }
-    public private(set) var bitmap: ClusterBitmap
+    public internal(set) var bitmap: ClusterBitmap
 
     /// `$MFT` vu comme ce qu'il est : un fichier, qui grandit et qui peut se
     /// fragmenter.
@@ -156,7 +156,7 @@ public struct NTFSAllocator: Allocator {
     /// Plage réservée à la croissance de la MFT, juste derrière celle-ci — la
     /// zone **courante**, celle que renverrait `FSCTL_GET_NTFS_VOLUME_DATA`.
     /// Elle ne fait que rétrécir.
-    public private(set) var mftZone: Range<UInt32>
+    public internal(set) var mftZone: Range<UInt32>
     /// Combien de fois la zone a cédé la moitié de sa queue libre.
     public private(set) var mftZoneHalvings = 0
     /// La zone a-t-elle déjà cédé de la place aux données ?
@@ -164,7 +164,7 @@ public struct NTFSAllocator: Allocator {
 
     /// Plus haut cluster jamais alloué, plus un : la frontière de l'espace
     /// vierge.
-    public private(set) var highWater: UInt32
+    public internal(set) var highWater: UInt32
 
     /// Les bornes de la recherche de trous : quatre constantes introduites pour
     /// le coût de calcul, qui règlent aussi la fragmentation (voir l'en-tête).
@@ -236,6 +236,23 @@ public struct NTFSAllocator: Allocator {
     /// celui du défragmenteur, qui repasse plus tard avec `Layout.ini` en main.
     private var systemCursor: UInt32 = 0
 
+    // MARK: - L'état du pilote de XP (`NTFSAllocator+XP.swift`)
+
+    /// Le volume est-il servi par l'allocateur de XP ? Les autres systèmes
+    /// gardent le modèle d'avant.
+    public let followsXP: Bool
+    /// Le cache des runs libres (`NTFS_CACHED_RUNS`).
+    var cache = NTFSFreeRunCache()
+    /// Les clusters libérés depuis le dernier point de contrôle, masqués aux
+    /// recherches (`DeallocatedClusterListHead`).
+    var pending: [Extent] = []
+    var pendingClusters: UInt32 = 0
+    /// Où commence le dernier recours pour un fichier neuf
+    /// (`Vcb->LastBitmapHint`).
+    var lastBitmapHint: UInt32 = 0
+    /// Ce qu'il a fait depuis le formatage.
+    public internal(set) var xpCounters = NTFSXPCounters()
+
     public init(profile: NTFSProfile = NTFSProfile(),
                 clusterCount: UInt32,
                 initialMFTRecords: UInt64? = nil,
@@ -287,6 +304,9 @@ public struct NTFSAllocator: Allocator {
         self.highWater = layout.dataFront.isEmpty
             ? max(zoneStart, self.mftMirror.end, self.logFile.end, layout.bitmap.end)
             : layout.dataFront.lowerBound
+        self.followsXP = formatting == .xp
+        // Le volume est monté dès qu'il est formaté.
+        if followsXP { xpMount() }
     }
 
     /// La zone MFT renouvelable de Vista et de Windows 7, en clusters ; 0 pour
@@ -560,7 +580,7 @@ public struct NTFSAllocator: Allocator {
     /// ce qui lui reste, pas tout.
     ///
     /// - Returns: `false` si la zone n'a plus rien à rendre.
-    private mutating func yieldMFTZone() -> Bool {
+    mutating func yieldMFTZone() -> Bool {
         let mftEnd = mft.extents.map(\.end).filter { mftZone.contains($0) }.max()
             ?? mftZone.lowerBound
         let tailStart = max(mftZone.lowerBound, mftEnd)
@@ -581,6 +601,14 @@ public struct NTFSAllocator: Allocator {
 
     public mutating func allocate(clusterCount count: UInt32, hint: AllocationHint) -> [Extent] {
         guard count > 0, count <= bitmap.freeCount else { return [] }
+        if followsXP {
+            // Un fichier neuf, de taille connue : exactement ce qu'il faut.
+            // XP n'a pas d'indice « système » ; seul le fichier d'échange a
+            // sa règle (`.reservedContiguous`, que seul `pagefile.sys` porte
+            // sur un volume de XP).
+            return xpAllocateClusters(core: count, desired: count, preceding: nil,
+                                      paging: hint == .reservedContiguous) ?? []
+        }
         // Tant que la place manque hors de la zone, la zone cède de moitié. Un
         // échec de placement hors zone n'arrive que si le reste du volume n'a
         // plus assez de clusters libres : `scatter` prend n'importe quels
@@ -743,6 +771,17 @@ public struct NTFSAllocator: Allocator {
     @discardableResult
     public mutating func extend(file: inout FileEntry, byClusters count: UInt32) -> Bool {
         guard count > 0 else { return true }
+        if followsXP {
+            // `PrecedingLcn` : le dernier cluster du fichier. Le prolongement
+            // n'est pas une étape à part : c'est le run du cache qui commence
+            // juste derrière lui, s'il y est.
+            guard let added = xpAllocateClusters(core: count, desired: count,
+                                                 preceding: file.extents.last.map { $0.end - 1 },
+                                                 paging: file.hint == .reservedContiguous)
+            else { return false }
+            for extent in added { file.extents.appendRun(start: extent.start, length: extent.length) }
+            return true
+        }
         var remaining = count
         var prolonged: Extent?
 
@@ -784,8 +823,28 @@ public struct NTFSAllocator: Allocator {
     /// n'est pas repris à l'écriture suivante, il attend que le parcours
     /// repasse devant. D'où ces trous qui persistent au milieu d'un volume par
     /// ailleurs contigu, et qu'aucun FAT ne produit jamais.
+    ///
+    /// Sous XP, la libération est immédiate dans la bitmap, mais les clusters
+    /// restent masqués jusqu'au point de contrôle (`NtfsDeallocateClusters`,
+    /// `bitmpsup.c:1750-1798`).
     public mutating func free(_ extents: [Extent]) {
+        if followsXP {
+            xpRelease(extents)
+            return
+        }
         bitmap.free(extents)
+    }
+
+    /// Le volume est monté : sous XP, le cache des runs libres est rebâti de
+    /// la bitmap (`NTFSAllocator+XP.swift`).
+    public mutating func mount() {
+        if followsXP { xpMount() }
+    }
+
+    /// Un point de contrôle du journal : sous XP, les clusters libérés depuis
+    /// le précédent entrent dans le cache.
+    public mutating func checkpoint() {
+        if followsXP { xpCheckpoint() }
     }
 
     /// L'enregistrement du fichier disparu retourne au pot commun.
@@ -797,6 +856,17 @@ public struct NTFSAllocator: Allocator {
     @discardableResult
     public mutating func claim(_ extent: Extent) -> Bool {
         guard bitmap.isFree(extent) else { return false }
+        if followsXP {
+            // Un `FSCTL_MOVE_FILE` vers des clusters tout juste libérés lève
+            // `STATUS_DELETE_PENDING` ; le pilote vide alors le journal, rend
+            // tous les clusters retenus et recommence (`bitmpsup.c:9046-9067`,
+            // `deviosup.c:10360-10390`).
+            if pending.contains(where: { $0.start < extent.end && extent.start < $0.end }) {
+                xpCheckpoint()
+            }
+            xpTake(extent)
+            return true
+        }
         bitmap.allocate(extent)
         highWater = max(highWater, extent.end)
         return true
@@ -825,7 +895,7 @@ public struct NTFSAllocator: Allocator {
             let room = min(bitmap.freeRunLength(at: last.end, limit: remaining), remaining)
             if room > 0 {
                 let run = Extent(start: last.end, length: room)
-                bitmap.allocate(run)
+                takeForMFT(run)
                 highWater = max(highWater, run.end)
                 mft.extents.appendRun(start: run.start, length: run.length)
                 remaining -= room
@@ -842,7 +912,7 @@ public struct NTFSAllocator: Allocator {
                                         from: max(highWater, mftZone.upperBound)),
            run.end <= bitmap.clusterCount {
             let taken = Extent(start: run.start, length: min(remaining, run.length))
-            bitmap.allocate(taken)
+            takeForMFT(taken)
             highWater = max(highWater, run.end)
             mft.extents.appendRun(start: taken.start, length: taken.length)
             mftZone = taken.end..<run.end
@@ -894,11 +964,21 @@ public struct NTFSAllocator: Allocator {
             let take = min(run.length, block)
             guard take > 0 else { break }
             let extent = Extent(start: run.start, length: take)
-            bitmap.allocate(extent)
+            takeForMFT(extent)
             highWater = max(highWater, extent.end)
             mft.extents.appendRun(start: extent.start, length: extent.length)
             remaining -= min(take, remaining)
         }
         mft.extents = mft.extents.coalesced()
+    }
+
+    /// Les clusters que `$MFT` prend : la bitmap, et sous XP le cache des
+    /// runs libres, qui ne doit plus les offrir.
+    private mutating func takeForMFT(_ extent: Extent) {
+        bitmap.allocate(extent)
+        if followsXP {
+            cache.remove(extent)
+            unpend(extent)
+        }
     }
 }

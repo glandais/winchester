@@ -157,10 +157,22 @@ public protocol Allocator {
     /// partout ailleurs, où la racine prend ses clusters comme tout
     /// répertoire.
     var formattedRootIndex: Extent? { get }
+
+    /// Le volume est monté : la machine a démarré. Le simulateur l'annonce au
+    /// premier événement de chaque journée. Sans effet hors NTFS de XP, dont
+    /// le pilote rebâtit alors son cache de runs libres.
+    mutating func mount()
+
+    /// Un point de contrôle du journal. Le simulateur l'annonce entre deux
+    /// événements. Sans effet hors NTFS de XP, qui masque les clusters
+    /// libérés jusque-là.
+    mutating func checkpoint()
 }
 
 extension Allocator {
 
+    public mutating func mount() {}
+    public mutating func checkpoint() {}
     public mutating func noteFileCreated(logicalSize: UInt64) {}
     public mutating func noteFileDeleted() {}
     public var metadataExtents: [Extent] { [] }

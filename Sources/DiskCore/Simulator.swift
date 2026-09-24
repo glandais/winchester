@@ -320,6 +320,7 @@ public struct Simulator<A: Allocator> {
         // `growStreamed`) et le volume est le même.
         if !sequential.isEmpty {
             let timed = events[sequential.lowerBound]
+            begin(timed)
             sequential = sequential.dropFirst()
             if sequential.isEmpty { busyQueues = 0 }
             return (timed, perform(timed, reporting: reporting))
@@ -395,6 +396,22 @@ public struct Simulator<A: Allocator> {
                               metadataBefore: metadataBefore, reporting: reporting))
     }
 
+    /// Le jour du dernier montage du volume.
+    private var mountedDay: UInt32?
+
+    /// Un événement commence : le premier de sa journée trouve un volume qui
+    /// vient d'être monté — la machine a été éteinte la nuit —, les suivants
+    /// un volume dont le journal a fait un point de contrôle depuis
+    /// l'événement d'avant (`Allocator.mount`, `Allocator.checkpoint`).
+    private mutating func begin(_ timed: TimedEvent) {
+        if timed.day != mountedDay {
+            mountedDay = timed.day
+            allocator.mount()
+        } else {
+            allocator.checkpoint()
+        }
+    }
+
     /// Un tour d'un programme.
     private mutating func play(queue index: Int, alone: Bool,
                                reporting: Bool) -> (timed: TimedEvent, step: SimulationStep?)? {
@@ -405,6 +422,7 @@ public struct Simulator<A: Allocator> {
             stream = current
         } else {
             let timed = events[queues[index].events[queues[index].head]]
+            begin(timed)
             guard let started = startStream(timed, reporting: reporting) else {
                 queues[index].head += 1
                 return (timed, perform(timed, reporting: reporting))
