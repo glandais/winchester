@@ -187,17 +187,16 @@ public struct NTFSProfile: FileSystemProfile {
     public var residentThresholdBytes: UInt64 { 700 }
     public var directoryEntryBytes: UInt64 { 1_024 }
 
-    /// 64 Ko. NTFS ne prend pas ses clusters à chaque écriture du programme :
-    /// les écritures tombent dans le cache, et c'est le *lazy writer* du
-    /// gestionnaire de cache qui les vide, par paquets de 64 Ko au plus, en
-    /// étendant l'allocation du fichier à chaque vidage. Un fichier dont
-    /// personne n'a déclaré la taille (`SetEndOfFile`) grandit donc de 64 Ko
-    /// en 64 Ko.
+    /// 64 Ko, pour NT 4, Vista et 7 : une **estimation du modèle d'avant**,
+    /// que le code de XP ne permet pas de vérifier pour eux.
     ///
-    /// **Une estimation** : le mécanisme est celui du gestionnaire de cache,
-    /// la taille du paquet n'est tirée d'aucune source citée ici. Elle décide
-    /// pourtant de la traîne de fichiers en deux à seize morceaux des NTFS de
-    /// la galerie.
+    /// Ce n'est pas le *lazy writer* qui alloue : sous XP, c'est
+    /// `NtfsCommonWrite`, à chaque écriture du programme qui dépasse
+    /// l'allocation du fichier, et le lazy writer en est exclu
+    /// (`write.c:1914`, `!IRP_CONTEXT_STATE_LAZY_WRITE`). Un volume de XP ne
+    /// passe donc pas par ce paquet : il étend le fichier à l'écriture de
+    /// 4 Ko du programme, avec le surplus croissant de `WriteExtendCount`,
+    /// rendu à la fermeture (`NTFSAllocator.xpStream`).
     public var writePacketBytes: UInt64 { 64 * 1_024 }
 
     /// Part du volume que NTFS réserve à la croissance de la MFT et tient à

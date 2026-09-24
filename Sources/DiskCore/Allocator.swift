@@ -226,6 +226,12 @@ extension Allocator {
     public mutating func takeInWritingOrder(_ count: UInt32, hints: [AllocationHint]) -> [Extent]? { nil }
 
     public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+        streamByPackets(file: &file, clusters: count)
+    }
+
+    /// `stream` par paquets fixes de `profile.writePacketClusters`, chacun un
+    /// `extend` : ce que fait tout allocateur qui n'a pas sa propre règle.
+    public mutating func streamByPackets(file: inout FileEntry, clusters count: UInt32) -> Bool {
         let packet = profile.writePacketClusters
         // Ce qui a été ajouté, et non une copie des extents d'avant : gardée,
         // elle ferait recopier le tableau à chaque paquet.

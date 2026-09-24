@@ -835,6 +835,14 @@ public struct NTFSAllocator: Allocator {
         bitmap.free(extents)
     }
 
+    /// Un fichier que son programme écrit sans en connaître la taille : sous
+    /// XP, l'extension à l'écriture et le surplus rendu à la fermeture
+    /// (`xpStream`) ; ailleurs, les paquets de 64 Ko du modèle d'avant.
+    @discardableResult
+    public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+        followsXP ? xpStream(file: &file, clusters: count) : streamByPackets(file: &file, clusters: count)
+    }
+
     /// Le volume est monté : sous XP, le cache des runs libres est rebâti de
     /// la bitmap (`NTFSAllocator+XP.swift`).
     public mutating func mount() {

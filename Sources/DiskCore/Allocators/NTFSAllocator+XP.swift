@@ -453,6 +453,127 @@ extension NTFSAllocator {
         return taken
     }
 
+    // MARK: - Écrire sans connaître la taille
+
+    /// Ce qu'un programme écrit d'un coup : le tampon de sa bibliothèque C,
+    /// 4 Ko (`_INTERNAL_BUFSIZ`, `base/crts/crtw32/h/stdio.h:265`), la même
+    /// hypothèse que pour FAT (`FAT16Profile.writePacketBytes`).
+    static let userWriteBytes: UInt64 = 4_096
+
+    /// `WriteExtendCount` plafonne à 4 (`allocsup.c:1384-1387`) : l'extension
+    /// voulue va jusqu'à seize fois l'écriture.
+    static let maximumWriteExtendCount: UInt32 = 4
+
+    /// Un fichier que son programme écrit sans en connaître la taille, sous
+    /// XP : ce que fait `NtfsCommonWrite` à chaque écriture qui dépasse
+    /// l'allocation (`write.c:2059-2163`), le lazy writer mis à part
+    /// (`write.c:1914`, `!IRP_CONTEXT_STATE_LAZY_WRITE`).
+    ///
+    /// L'écriture demande ce qu'il lui manque (`ClusterCount`) et, par
+    /// `AskForMore`, **plus** : `ClusterCount << WriteExtendCount`, arrondi
+    /// au multiple de 2^n clusters du fichier, le compteur passant de 0 à 4 au
+    /// fil des extensions du même *handle* (`allocsup.c:1321-1387`) — la
+    /// première exacte, puis ×2, ×4, ×8 et ×16. Le surplus est borné à un
+    /// millième de l'espace libre plus la demande (`allocsup.c:1392-1403`),
+    /// et il n'est pris que tant que le cache répond
+    /// (`NtfsAllocateClusters`, `bitmpsup.c:1165-1178`). À la fermeture, ce
+    /// qui dépasse la fin du fichier est rendu (`SCB_STATE_TRUNCATE_ON_CLOSE`,
+    /// `write.c:2163`, `cleanup.c:2038`).
+    ///
+    /// Un appel est un *handle* : ouvert, écrit de bout en bout, fermé — un
+    /// fichier créé, ou un ajout (`Allocator.placeStreamed`,
+    /// `growStreamed`). L'entrelacement du `Simulator`, qu'aucun volume de la
+    /// galerie n'emploie, l'appelle paquet par paquet : chaque paquet y serait
+    /// un *handle*, sans surplus.
+    mutating func xpStream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+        guard count > 0 else { return true }
+        let before = file.clusterCount
+        let target = before + count
+        let write = max(profile.clusters(forBytes: Self.userWriteBytes), 1)
+        var allocated = before
+        var dataEnd = before
+        var extendCount: UInt32 = 0
+        while dataEnd < target {
+            let writeEnd = min(dataEnd + write, target)
+            // Régime établi : chaque extension demande `write << 4`, alignée,
+            // et le run du cache qui suit le fichier la sert en entier. Tant
+            // qu'il le peut, les extensions à venir sont prises d'un coup :
+            // mêmes clusters, même cache, un seul appel (`fastExtensions`).
+            if extendCount == Self.maximumWriteExtendCount, writeEnd > allocated,
+               dataEnd == allocated, writeEnd - allocated == write,
+               let taken = fastExtensions(file: &file, allocated: allocated, target: target, write: write) {
+                allocated += taken
+                dataEnd = min(target, allocated)
+                continue
+            }
+            if writeEnd > allocated {
+                let needed = writeEnd - allocated
+                var desired = needed
+                if extendCount > 0 {
+                    // `allocsup.c:1336-1360` : décalé, arrondi au multiple de
+                    // 2^n clusters du fichier, et jamais moins que la demande.
+                    let mask = (UInt64(1) << UInt64(extendCount)) - 1
+                    let shifted = UInt64(needed) << UInt64(extendCount)
+                    let rounded = (shifted + UInt64(allocated) + mask) & ~mask
+                    if rounded >= UInt64(allocated), rounded - UInt64(allocated) >= UInt64(needed) {
+                        desired = UInt32(min(rounded - UInt64(allocated), UInt64(UInt32.max)))
+                    }
+                }
+                extendCount = min(extendCount + 1, Self.maximumWriteExtendCount)
+                let ceiling = UInt64(bitmap.freeCount >> 10) + UInt64(needed)
+                desired = UInt32(min(UInt64(desired), ceiling))
+                guard let added = xpAllocateClusters(core: needed, desired: desired,
+                                                     preceding: file.extents.last.map { $0.end - 1 },
+                                                     paging: false)
+                else {
+                    // Le volume est plein : ce que ce *handle* a pris est rendu.
+                    releaseTail(of: &file, keeping: before)
+                    return false
+                }
+                for extent in added { file.extents.appendRun(start: extent.start, length: extent.length) }
+                allocated += added.clusterCount
+            }
+            // Les écritures qui tombent dans l'allocation ne demandent rien.
+            dataEnd = writeEnd
+            if allocated > dataEnd {
+                let inside = (allocated - dataEnd) / write * write
+                dataEnd = min(target, dataEnd + inside)
+            }
+        }
+        // La fermeture rend le surplus.
+        releaseTail(of: &file, keeping: target)
+        return true
+    }
+
+    /// Plusieurs extensions de régime établi d'un coup, quand le résultat est
+    /// exactement celui qu'elles auraient eu une à une : chacune demande
+    /// `step = write << 4` clusters (`allocated` en est un multiple), le run
+    /// du cache qui commence derrière le fichier les sert toutes, et le
+    /// plafond d'un millième de l'espace libre ne mord sur aucune. Aucune ne
+    /// lit la bitmap ni ne prend plus d'un run : pas de lecture anticipée
+    /// (`bitmpsup.c:1455-1460`).
+    ///
+    /// - Returns: les clusters pris, `nil` si ce raccourci ne s'applique pas
+    ///   (moins de deux extensions à prendre ainsi).
+    private mutating func fastExtensions(file: inout FileEntry, allocated: UInt32,
+                                         target: UInt32, write: UInt32) -> UInt32? {
+        let step = write << Self.maximumWriteExtendCount
+        guard allocated % step == 0, let last = file.extents.last, last.end < bitmap.clusterCount,
+              let run = cache.run(containing: last.end) else { return nil }
+        let needed = (target - allocated + step - 1) / step
+        var count = min(needed, (run.end - last.end) / step)
+        // Le plafond est relu à chaque extension : la dernière a le moins de
+        // place libre.
+        while count >= 2, (bitmap.freeCount - count * step) >> 10 + write < step { count -= 1 }
+        guard count >= 2 else { return nil }
+        let extent = Extent(start: last.end, length: count * step)
+        xpTake(extent)
+        file.extents.appendRun(start: extent.start, length: extent.length)
+        xpCounters.prolongations += Int(count)
+        xpCounters.cacheHits += Int(count)
+        return extent.length
+    }
+
     /// Une transaction annulée : les clusters pris retournent à la bitmap et
     /// au cache, d'où ils venaient.
     private mutating func xpUndo(_ taken: [Extent]) {

@@ -146,6 +146,27 @@ struct NTFSXPAllocationTests {
         #expect(file.extents.last == spacer[0])
     }
 
+    /// Un fichier écrit par un programme qui n'en connaît pas la taille :
+    /// écritures de 4 Ko, extension exacte d'abord, puis ×2, ×4, ×8, ×16 au
+    /// multiple de 2^n clusters (`allocsup.c:1321-1387`), et le surplus rendu
+    /// à la fermeture (`SCB_STATE_TRUNCATE_ON_CLOSE`).
+    @Test("Écrire sans connaître la taille : 1, 3, 4, 8, puis 16 clusters, et la fin rendue")
+    func writeExtendCount() {
+        var (ntfs, room) = Self.fullXPVolume()
+        let holes = (0..<5).map { Extent(start: room.start + 100 + UInt32($0) * 100, length: 16) }
+        ntfs.free(holes)
+        ntfs.checkpoint()
+        var file = FileEntry(id: 1, logicalSize: 0)
+        let written = ntfs.stream(file: &file, clusters: 40)
+        #expect(written)
+        // 1 + 3 + 4 + 8 dans le premier trou, 16 dans le deuxième, 16 dans le
+        // troisième ; la fermeture rend les 8 de trop.
+        #expect(file.extents == [holes[0], holes[1], Extent(start: holes[2].start, length: 8)])
+        ntfs.checkpoint()
+        let reused = ntfs.allocate(clusterCount: 8, hint: .normal)
+        #expect(reused == [Extent(start: holes[2].start + 8, length: 8)])
+    }
+
     /// Un défragmenteur qui vise des clusters tout juste libérés ne les voit
     /// pas refusés : `STATUS_DELETE_PENDING`, le journal vidé, les clusters
     /// rendus, puis le déplacement réussit (`ntfs-alloc-15`).
