@@ -526,11 +526,24 @@ public struct NTFSAllocator: Allocator {
     public var mftZoneIsProtected: Bool { !mftZoneBreached }
 
     /// Plages dans lesquelles les données ordinaires ont le droit d'aller :
-    /// devant `$MFT` d'abord (les 3 premiers Gio, depuis XP), puis tout ce
-    /// qui suit la zone courante. Entre les deux, `$MFT` et sa réserve.
+    /// tout le volume **sauf la zone courante** — ce qui la précède d'abord
+    /// (les 3 premiers Gio et `$MFT` depuis XP), puis ce qui la suit.
+    ///
+    /// La plage de devant finit au début de la zone courante, et non au début
+    /// de `$MFT` (B#8, `AUDIT_REALISME.md`) : quand Vista ou 7 réservent une
+    /// tranche neuve derrière le vierge, tout le milieu du volume, entre
+    /// l'ancienne zone et la nouvelle, reste de l'espace de données. XP ne
+    /// réserve que `MftZoneStart..MftZoneEnd` (`bitmpsup.c:3872-3905`).
     private var dataRanges: [Range<UInt32>] {
-        let back = mftZone.isEmpty ? 0..<bitmap.clusterCount : mftZone.upperBound..<bitmap.clusterCount
-        return frontRange.isEmpty ? [back] : [frontRange, back]
+        let end = bitmap.clusterCount
+        guard !mftZone.isEmpty else {
+            return frontRange.isEmpty ? [0..<end] : [frontRange, 0..<end]
+        }
+        let back = mftZone.upperBound..<end
+        // Sous NT, `$MFT` est en tête : rien de libre devant la zone qu'elle
+        // n'ait déjà pris.
+        let start = frontRange.isEmpty ? mft.extents[0].end : frontRange.lowerBound
+        return mftZone.lowerBound > start ? [start..<mftZone.lowerBound, back] : [back]
     }
 
     /// Le reste du volume est plein : la zone rend la moitié de sa queue.
