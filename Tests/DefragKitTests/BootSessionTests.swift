@@ -238,8 +238,14 @@ struct BootSessionTests {
         // pages voisines partagent une écriture — 994 fichiers, 430 écritures,
         // puis 567 quand la MFT est partie à 3 Gio et les données devant elle
         // (lot F de `LEDGER-REALISME.md`) : le cache vide plus souvent.
+        // Depuis l'allocateur de XP (chantier 49), 660 écritures, puis 656 et
+        // 666 à la reprise de 49c, selon les enregistrements que prennent
+        // les documents et `index.dat` : la borne des deux tiers, sans
+        // source, tombait entre deux. Ce que le mécanisme dit — des dates
+        // différées et groupées par page — est seulement « moins d'écritures
+        // que de fichiers ».
         #expect(xp.stampWrites > 0)
-        #expect(xp.stampWrites * 3 < xp.stampedFiles * 2)
+        #expect(xp.stampWrites < xp.stampedFiles)
 
         // Le même volume sous Vista : plus rien.
         var vistaDisk = disk

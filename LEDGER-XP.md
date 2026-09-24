@@ -166,6 +166,15 @@ remplacées, avec leur source.
    bornée à `FreeClusters/1024 + demande`, et rendue à la fermeture
    (`ntfs-alloc-05`, `io-cache-06`). La doc de `FileSystemProfile` et le
    README cessent de l'attribuer au lazy writer.
+   *Repris le 25 septembre 2026 (`LEDGER.md`, chantier 49, « Reprise de
+   49c ») : l'écriture de 4 Ko n'est plus celle de tous. Word écrit par
+   ole32, un fichier projeté étendu par `SetEndOfFile` exacts au multiple
+   de 16 Ko (lien Word → ole32 déduit, pas de 16 Ko un minimum) ;
+   `index.dat` par `wininet`, 16 Ko exacts (attesté) ; le `.pst` et les
+   autres gardent 4 Ko et la surallocation, en hypothèse. secretaire-2003
+   reste à 64,0 % — le cluster du stub d'ole32 va, comme la première
+   écriture de 4 Ko, au plus petit trou —, ses documents en plus de
+   morceaux ; `index.dat` en deux à trois fois moins.*
 - [x] 6. **Zone MFT** recalculée au montage, regonflée au-dessus d'un seizième
    d'espace libre, reposée ailleurs quand la MFT ne peut plus s'étendre
    d'un seul tenant (`ntfs-format-10`, `ntfs-alloc-08`, `10`). Le registre

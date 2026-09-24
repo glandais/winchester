@@ -8262,3 +8262,183 @@ de `dev-2007` rendue (1,7 s) ; `--check` : un seul écart, celui-là.
   `SCENARIO=dev-2003 STRATEGY=windowsXP`.
 - Le reste de la prose du README (tables du rangement intelligent,
   argumentaires) : chantier 52.
+
+### Reprise de 49c — l'écriture par programme
+
+**Fait** le 25 septembre 2026 · branche `xp`, partie de `572e37c` · étapes
+`49f` (`5a19c62`) et `49g` (`4702214`).
+
+**Le problème.** 49c faisait écrire tout programme de taille inconnue par
+`WriteFile` de 4 Ko, avec la surallocation de `NtfsCommonWrite`. C'est ce
+qui portait `secretaire-2003` de 25,0 à 64,0 % : ses 5 317 documents Word,
+réenregistrés, sortaient tous en morceaux (1, 3, 4, 8 clusters), et le
+`.pst` (223 → 679 extents) et `index.dat` (361 → 835) suivaient. Les sondes
+de l'enquête : écritures de 64 Ko, 31,3 % ; Word à taille connue, 6,3 % ;
+sans point de contrôle entre événements, inchangé ; sans le raccourci
+`fastExtensions`, identique. Or l'écriture de 4 Ko n'est sourcée pour aucun
+programme : elle vient de la bibliothèque C, qu'on ne sait pas être celle de
+Word.
+
+**Les sources** (`.build/measure-xp/source-word-ole32.md`) :
+
+- **Word — attesté** (KB Q89247, Word 97 ; KB 211632 rév. 8, Word 2000 à
+  2010) : un enregistrement complet écrit `~wrdxxxx.tmp` dans le dossier du
+  document, en fichier composé **direct**, supprime l'original et renomme ;
+  l'enregistrement rapide est décoché par défaut depuis Word 97 SR-1/SR-2
+  (KB Q192480, point 7). Pour 2002/2003, pas de KB : déduit.
+- **Word → ole32 — déduit, forte présomption** : les `~dftxxxx.tmp` des KB
+  portent le préfixe d'ole32 (`com/ole32/stg/h/filest.hxx:398`,
+  `exp/filest32.cxx:342-378`) ; aucune trace publiée ne montre Word appeler
+  `StgCreateDocfile`. Excel y passe (Wine, bogue 13822, commentaires 12 et
+  17-21), mais le catalogue n'a pas d'Excel : les documents sont tous de
+  Word.
+- **ole32 de XP SP1 — attesté par le code** : fichier projeté
+  (`USE_FILEMAPPING`, `h/filest.hxx:79-81` ; `filest32.cxx:285-296`), créé à
+  512 octets (`MakeFileStub`, `1199-1222`), engagé par blocs de 16 Ko
+  (`COMMIT_BLOCK`, `h/filest.hxx:394`, `filest32.cxx:1492-1580`), d'où
+  `MmExtendSection` → `FsRtlSetFileSize` → `SetEndOfFile` au multiple de
+  16 Ko (`mm/allocvm.c:1193-1231`, `mm/extsect.c:470-481`,
+  `fsrtl/fastio.c:4199-4203`) ; ramené à la taille à la fermeture
+  (`TurnOffMapping`, `filest32.cxx:1316-1415`).
+- **NTFS — attesté** : `NtfsSetEndOfFileInfo` alloue exactement
+  (`NtfsAddAllocation`, `AskForMore = FALSE`, `fileinfo.c:8017-8023`), sans
+  la surallocation réservée au chemin d'écriture (`allocsup.c:1321-1403`,
+  `write.c:2148`). La première extension convertit l'attribut résident de
+  512 octets : le fichier étant projeté, `NtfsConvertToNonresident` garde la
+  valeur résidente (`attrsup.c:4554-4560`) et `NtfsAllocateAttribute` lui
+  donne **un cluster, comme à un fichier neuf** (`allocsup.c:1036-1056`),
+  avant d'ajouter le reste du premier pas (`fileinfo.c:7893-7902, 8017`).
+  Relu pour cette reprise.
+- **`index.dat` — attesté par le code** (`inetcore/wininet/urlcache`) :
+  `GlobalMapFileGrowSize` = `PAGE_SIZE × ALLOC_PAGES` = 16 Ko
+  (`global.h:51`, `cachedef.h:40-41`) ; créé à 16 Ko par `SetFilePointer` +
+  `SetEndOfFile` (`filemap.cxx:1186-1211`), étendu de 16 Ko quand la carte
+  des blocs est pleine (`AllocateEntry`, `1455-1459` ; `GrowMapFile`,
+  `671-750`), une entrée de plus de 16 Ko l'étendant d'un multiple ; sa
+  taille reste un multiple de 16 Ko (`1172`), jamais ramenée.
+- **`.pst` — hypothèse** : Office n'est pas dans le code de XP. [MS-PST],
+  « Growing the PST File », veut qu'il grandisse par multiples de ce que
+  couvre une page AMap (environ 248 Ko), sans dire par quel appel. Gardé à
+  4 Ko avec surallocation, dit comme tel dans `ScenarioCompiler`.
+
+**Les décisions.**
+
+- `StreamedGrowth` (`WritePattern.swift`), porté par `FileSpec` et
+  `FileRecord`, passé à `Allocator.stream`, `placeStreamed`,
+  `growStreamed` : `.buffered` (4 Ko et surallocation, le défaut, une
+  hypothèse), `.compoundFile` (Word), `.urlCacheIndex` (`index.dat`). Seul
+  le NTFS de XP le lit ; FAT, NT 4, Vista et 7 l'ignorent.
+- **49f** — `xpStreamMapped` : un cluster pour le stub, placé comme un
+  fichier neuf, puis des extensions exactes jusqu'au multiple suivant de
+  16 Ko, chacune derrière le fichier si le cache y a un run, sinon au plus
+  petit run qui suffit ; la fermeture rend ce qui dépasse la taille.
+- **49g** — `index.dat` : même chemin sans stub, et sa taille arrondie au
+  multiple de 16 Ko sous XP (`Allocator.streamedFileBytes`) — l'histoire
+  garde ses ajouts d'environ 24 Ko, `wininet` les range par pas.
+- Tous les autres programmes, les tailles connues et les installations :
+  inchangés.
+
+Tests neufs (`NTFSXPAllocationTests`) : le fichier composé (1, 3, puis 4
+clusters exacts, la fin rendue) et `index.dat` (16 Ko, multiples, rien hors
+de XP).
+
+**Ce qui valide.** Référence `bin-49` : reconstruit depuis `572e37c`,
+identique octet pour octet (binaire et ressources). Prédictions écrites
+avant chaque mesure (`prediction-49f.md`).
+
+| étape | prédit | mesuré |
+|---|---|---|
+| 49f | 35 changent (famille et secretaire 2003 hors installation, la journée), 55 md5 ; part inchangée, morceaux en hausse | **35 / 365**, **55 md5** ; secretaire 64,0 → 64,0 %, documents 23 289 → 29 556 extents : conforme |
+| 49g | 52 changent (dev, famille, secretaire 2003), 54 md5 ; `index.dat` en baisse (dev 50-120, famille et secretaire 300-600) | **52 / 348**, **54 md5** ; `index.dat` 150 → 84, 852 → 418, 786 → 316 : conforme |
+| contre 49 | — | 348 identiques, 52 changent ; 54 md5 identiques |
+
+**Les volumes de XP, 48 → 49 → reprise** (fragmentés parmi les
+fragmentables, pire fichier, trous libres, MFT) :
+
+| volume | 48 | 49 | reprise (49g) |
+|---|---|---|---|
+| `dev-2003` | 2,0 %, 465, 2 048, 6 | 7,6 %, 169, 1 607, 3 | 7,6 %, 175, 1 595, 3 |
+| `famille-2003` | 24,4 %, 3 888, 3 570, 38 | 16,2 %, 2 448, 3 414, 2 | 16,2 %, 2 426, 3 552, 3 |
+| `gamer-2003` | 0,0 %, 4, 10, 1 | 0,2 %, 7, 6, 1 | identique à 49 |
+| `secretaire-2003` | 31,8 %, 865, 652, 1 | 64,0 %, 1 267, 2 315, 1 | 64,0 %, 1 048, 2 089, 1 |
+| Vista, 7, FAT | — | — | identiques à 49 |
+
+Par fichier (sonde `DUMP`, jetable), documents Word / `.pst` /
+`index.dat` : `secretaire-2003` 49 : 23 289 / 695 / 829 extents ;
+reprise : 29 610 / 425 / 316 ; `famille-2003` 49 : 2 316 / 708 / 864 ;
+reprise : 3 243 / 658 / 418 ; `dev-2003` `index.dat` 150 → 84.
+
+**Ce que dit la reprise.** Les 64,0 % de `secretaire-2003` ne venaient pas
+de l'écriture de 4 Ko mais de son **début** : un cluster d'abord, au plus
+petit trou qui suffit — souvent un trou d'un cluster —, puis le reste
+ailleurs. ole32 commence de la même façon, par le cluster de ses 512 octets
+résidents, et 5 316 documents sur 5 317 restent en morceaux ; ils en ont
+plus (29 610 extents au lieu de 23 289), parce que chaque pas de 16 Ko est
+une demande de 4 clusters au lieu de 8 et 16. `index.dat`, étendu par
+16 Ko exacts derrière lui, tombe à un tiers ou à la moitié de ses
+morceaux ; la part des fichiers fragmentés n'en bouge pas.
+
+**La sonde de 64 Ko** (Word par pas de 64 Ko, binaire jetable
+`bin-sonde-ole64`, non commité) : `secretaire-2003` 64,0 %, documents
+**14 104** extents (2 morceaux pour 3 333 d'entre eux) ; `famille-2003`
+16,2 %, 1 426. La part non sourcée — la taille des écritures de Word —
+décide du nombre de morceaux, du simple au double, pas de la part des
+fichiers fragmentés, que le stub fixe.
+
+**Passes et son.** Démarrages à ±0,2 s ; la journée `famille-2003:400`
+97,6 → 97,4 s. Passes XP : `dev-2003` 2 109 → 2 175 s, `famille-2003` 372 →
+340 s, `secretaire-2003` 1 036 → 1 096 s ; UltraDefrag sur
+`secretaire-2003` 1 374 → 1 414 s. Rien n'a été écouté.
+
+**Durées de génération** (release, `run.sh 49g disks`, puis rejoué au
+calme avec le même binaire, bilans identiques hors durée) : `dev-2003`
+3,25 → 3,44 puis 3,20 s, `famille-2003` 1,64 → 1,75 puis 1,61 s,
+`secretaire-2003` 0,49 → 0,58 puis 0,54 s ; les autres à la mesure près.
+Pas d'explosion.
+
+**Tests.** `swift test` : 176 + 320, verts, après un recalage :
+« 2003 horodate ses accès, 2007 non » bornait les écritures de dates à deux
+tiers des fichiers lus ; sur son `secretaire-2003` réduit, 660 écritures
+pour 994 fichiers à 49, 656 à 49f, **666 à 49g** — la borne (662) tombait
+entre deux, selon les enregistrements que prennent documents et
+`index.dat`. Les deux tiers n'avaient pas de source ; la borne redevient ce
+que dit le mécanisme, moins d'écritures que de fichiers (décision 1).
+Calibration en Release (`calibration-49g.log`) : **15 tests, verts, les
+mêmes 4 known issues**, la table des bornes de recherche identique (16,2 et
+64,0 %), `famille-2003` toujours à 88,7 %. `GalleryAllocationAudit` en
+Release (19 min 17) : **propre sur les vingt-quatre volumes**. Binaire
+reconstruit après la dernière retouche (un commentaire) : identique à
+`bin-49g`.
+
+**README** : l'écriture sans taille connue par programme (Word, `index.dat`,
+les autres en hypothèse), la première place d'un fichier, « Ce qui ne l'est
+pas » (les 4 Ko des programmes non lus, le `.pst` compris, et le pas de Word)
+; `readme-tables.py 49g --write`, la durée de `dev-2007` rendue (1,7 s ;
+2,1 mesurés, machine chargée) : `--check`, un seul écart, celui-là, comme
+au chantier 49. Les tables des passes de 2003 bougent (XP sur
+`secretaire-2003` 17 min 16 → 18 min 16, morceaux restants 7 110 → 4 787).
+
+### Laissé ouvert, après la reprise
+
+- **Le pas de Word** : 16 Ko est le minimum d'ole32 ; la taille réelle des
+  écritures de Word n'est dite nulle part. Elle décide du nombre de morceaux
+  (÷2 à 64 Ko), pas de la part des fichiers fragmentés.
+- **Le lien Word → ole32** reste déduit. Une trace d'époque (FileMon sur
+  Word 2002/2003) le trancherait.
+- **Le premier cluster** fixe la part : ole32 comme `WriteFile` commencent
+  par un cluster placé au plus petit trou, et `secretaire-2003` reste à
+  64 %. C'est ce que dit le code de NTFS lu ici ; qu'un vrai XP ait eu autant
+  de runs d'un cluster dans son cache n'est pas vérifié.
+- **L'enregistrement rapide** : le modèle réenregistre chaque document par
+  temporaire (`writeTempThenRename`), avec le gonflement d'un *fast save* ;
+  décoché par défaut depuis Word 97 SR-1 (KB Q192480), il fusionnerait en
+  place. À revoir avec la prose (chantier 52).
+- **Le `.pst`** : [MS-PST] donne le grain (une page AMap, environ 248 Ko),
+  pas l'appel ; 4 Ko et surallocation en hypothèse.
+- **Les autres programmes** (compilateur, cache du navigateur, encodeur,
+  jeu, téléchargement) gardent l'hypothèse de 4 Ko ; aucun code lu.
+- **L'entrelacement** (inutilisé par la galerie) appelle `stream` paquet par
+  paquet : chaque paquet d'un fichier projeté y serait un *handle*, arrondi
+  au pas puis ramené.
+- Vista et 7 : inchangés, paquets de 64 Ko pour tous, sans source.
+

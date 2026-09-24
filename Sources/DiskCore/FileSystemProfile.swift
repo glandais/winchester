@@ -194,9 +194,11 @@ public struct NTFSProfile: FileSystemProfile {
     /// `NtfsCommonWrite`, à chaque écriture du programme qui dépasse
     /// l'allocation du fichier, et le lazy writer en est exclu
     /// (`write.c:1914`, `!IRP_CONTEXT_STATE_LAZY_WRITE`). Un volume de XP ne
-    /// passe donc pas par ce paquet : il étend le fichier à l'écriture de
-    /// 4 Ko du programme, avec le surplus croissant de `WriteExtendCount`,
-    /// rendu à la fermeture (`NTFSAllocator.xpStream`).
+    /// passe donc pas par ce paquet : selon le programme (`StreamedGrowth`),
+    /// il étend le fichier à l'écriture de 4 Ko, avec le surplus croissant
+    /// de `WriteExtendCount` rendu à la fermeture (`NTFSAllocator.xpStream`),
+    /// ou par les `SetEndOfFile` exacts de 16 Ko d'un fichier projeté — Word
+    /// par ole32, `index.dat` par `wininet` (`NTFSAllocator.xpStreamMapped`).
     public var writePacketBytes: UInt64 { 64 * 1_024 }
 
     /// Part du volume que NTFS réserve à la croissance de la MFT et tient à
