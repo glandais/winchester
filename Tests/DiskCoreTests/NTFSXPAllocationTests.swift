@@ -167,6 +167,66 @@ struct NTFSXPAllocationTests {
         #expect(reused == [Extent(start: holes[2].start + 8, length: 8)])
     }
 
+    /// `$MFT` grandit par 16 enregistrements, 4 clusters à 4 Ko
+    /// (`MFT_EXTEND_GRANULARITY`), dans sa zone (`ntfs-alloc-09`).
+    @Test("La MFT grandit par seize enregistrements")
+    func mftGrowsBySixteenRecords() {
+        var ntfs = NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: 2_000_000,
+                                 formatting: .xp)
+        #expect(ntfs.mft.clusterCount == 4)
+        ntfs.noteFileCreated(logicalSize: 0)
+        #expect(ntfs.mft.clusterCount == 8)
+        for _ in 0..<15 { ntfs.noteFileCreated(logicalSize: 0) }
+        #expect(ntfs.mft.clusterCount == 8)
+        ntfs.noteFileCreated(logicalSize: 0)
+        #expect(ntfs.mft.clusterCount == 12 && ntfs.mft.extents.count == 1)
+    }
+
+    /// Quand la place qui suit `$MFT` est prise, XP relit la bitmap et pose une
+    /// zone neuve, où la MFT continue d'un seul tenant (`ntfs-alloc-10`,
+    /// `bitmpsup.c:1263-1287`).
+    @Test("Une MFT qui ne peut plus grandir sur place ouvre une zone neuve")
+    func mftOpensANewZone() {
+        var ntfs = NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: 2_000_000,
+                                 formatting: .xp)
+        let mftEnd = ntfs.mft.extents[0].end
+        // Un défragmenteur pose un fichier juste derrière la MFT.
+        let blocker = Extent(start: mftEnd, length: 100)
+        let claimed = ntfs.claim(blocker)
+        #expect(claimed)
+        ntfs.noteFileCreated(logicalSize: 0)
+        #expect(ntfs.xpCounters.newZones == 1)
+        #expect(ntfs.mft.extents.count == 2)
+        // La MFT continue au début de la zone neuve, et y grandit ensuite.
+        let second = ntfs.mft.extents[1]
+        #expect(second.start >= ntfs.mftZone.lowerBound && second.start < ntfs.mftZone.lowerBound + 32)
+        for _ in 0..<16 { ntfs.noteFileCreated(logicalSize: 0) }
+        #expect(ntfs.mft.extents.count == 2)
+        // La zone neuve fait un huitième du volume moins la MFT, arrondi.
+        #expect(ntfs.mftZone.count >= 2_000_000 / 8 - 64)
+    }
+
+    /// Plein hors de sa zone, le volume la voit céder la moitié de ses
+    /// clusters libres, la moitié éloignée ; au montage suivant, la zone est
+    /// recalculée derrière la MFT (`ntfs-alloc-07`, `ntfs-alloc-08`).
+    @Test("La zone cède la moitié de ses clusters libres, et le montage la recalcule")
+    func zoneReducesThenRemounts() {
+        var (ntfs, _) = Self.fullXPVolume()
+        let zone = ntfs.mftZone
+        let placed = ntfs.allocate(clusterCount: 50, hint: .normal)
+        #expect(placed.count == 1)
+        #expect(ntfs.mftZoneBreached)
+        let half = zone.count / 2
+        #expect(ntfs.mftZone.lowerBound == zone.lowerBound)
+        #expect(ntfs.mftZone.count >= half && ntfs.mftZone.count <= half + 64)
+        #expect(placed[0].start >= ntfs.mftZone.upperBound && placed[0].end <= zone.upperBound)
+        // Au montage suivant, la zone repart du cluster qui suit la MFT, sur
+        // le run libre qui l'y attend.
+        ntfs.mount()
+        #expect(ntfs.mftZone.lowerBound == zone.lowerBound)
+        #expect(ntfs.mftZone.upperBound <= placed[0].start + 31)
+    }
+
     /// Un défragmenteur qui vise des clusters tout juste libérés ne les voit
     /// pas refusés : `STATUS_DELETE_PENDING`, le journal vidé, les clusters
     /// rendus, puis le déplacement réussit (`ntfs-alloc-15`).

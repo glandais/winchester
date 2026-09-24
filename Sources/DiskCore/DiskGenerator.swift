@@ -413,7 +413,12 @@ extension FATAllocator: GeneratorAllocator {
 }
 
 extension NTFSAllocator: GeneratorAllocator {
+    /// La zone est celle que verra un défragmenteur : sous XP, celle que
+    /// recalcule le montage qui précède sa passe (`NtfsInitializeMftZone`),
+    /// et non celle que la dernière écriture a laissée.
     var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent], file: [Extent]) {
-        (mft.clusterCount, mft.extents.count, mftZone, systemExtents, mft.extents)
+        var mounted = self
+        mounted.mount()
+        return (mft.clusterCount, mft.extents.count, mounted.mftZone, systemExtents, mft.extents)
     }
 }

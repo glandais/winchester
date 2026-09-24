@@ -197,8 +197,11 @@ struct NTFSMetafileTests {
             #expect(ntfs.systemExtents.contains(extent))
         }
         #expect(!ntfs.systemExtents.contains(layout.rootIndex!), "l'index racine est à la racine")
-        // La zone MFT n'a pas bougé : 12,5 % depuis la MFT.
-        #expect(ntfs.mftZone.upperBound == 786_432 + UInt32(Double(clusterCount) * 0.125))
+        // La zone MFT, calculée au montage (`NtfsInitializeMftZone`,
+        // `bitmpsup.c:8542-8641`) : un huitième du volume moins la MFT, à partir
+        // du cluster qui la suit, aligné sur 32 clusters.
+        let zoneEnd = (786_436 + (clusterCount >> 3) - 4 + 31) & ~UInt32(31)
+        #expect(ntfs.mftZone == 786_432..<zoneEnd)
         // Un premier fichier se pose devant le journal, en tête.
         var copy = ntfs
         #expect(copy.allocate(clusterCount: 8, hint: .normal).first?.start == ntfs.bootExtent.end)

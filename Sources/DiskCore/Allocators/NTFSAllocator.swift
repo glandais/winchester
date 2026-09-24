@@ -129,7 +129,7 @@ public struct NTFSAllocator: Allocator {
 
     /// `$MFT` vu comme ce qu'il est : un fichier, qui grandit et qui peut se
     /// fragmenter.
-    public private(set) var mft: FileEntry
+    public internal(set) var mft: FileEntry
     public private(set) var mftMirror: Extent
     /// `$LogFile` : le journal, de taille fixe et immobile.
     public private(set) var logFile: Extent
@@ -158,7 +158,7 @@ public struct NTFSAllocator: Allocator {
     /// Elle ne fait que rétrécir.
     public internal(set) var mftZone: Range<UInt32>
     /// Combien de fois la zone a cédé la moitié de sa queue libre.
-    public private(set) var mftZoneHalvings = 0
+    public internal(set) var mftZoneHalvings = 0
     /// La zone a-t-elle déjà cédé de la place aux données ?
     public var mftZoneBreached: Bool { mftZoneHalvings > 0 }
 
@@ -252,6 +252,13 @@ public struct NTFSAllocator: Allocator {
     var lastBitmapHint: UInt32 = 0
     /// Ce qu'il a fait depuis le formatage.
     public internal(set) var xpCounters = NTFSXPCounters()
+    /// La zone a été réduite sous un seizième d'espace libre
+    /// (`VCB_STATE_REDUCED_MFT`).
+    var reducedMFT = false
+    /// Clusters libérés, et le plus long run libéré, depuis le dernier
+    /// balayage de la bitmap (`ClustersRecentlyFreed`, `LongestFreedRun`).
+    var recentlyFreedClusters: UInt32 = 0
+    var longestFreedRun: UInt32 = 0
 
     public init(profile: NTFSProfile = NTFSProfile(),
                 clusterCount: UInt32,
@@ -891,6 +898,14 @@ public struct NTFSAllocator: Allocator {
         guard mftRecordCount > mftPeakRecords else { return }
         mftPeakRecords = mftRecordCount
 
+        if followsXP {
+            let granularity = mftGranularityRecords
+            let records = (mftPeakRecords + granularity - 1) / granularity * granularity
+            let needed = ntfs.clusters(forBytes: records * ntfs.directoryEntryBytes)
+            mft.logicalSize = mftPeakRecords * ntfs.directoryEntryBytes
+            if needed > mft.clusterCount { xpExtendMFT(byClusters: needed - mft.clusterCount) }
+            return
+        }
         let needed = ntfs.clusters(forBytes: mftPeakRecords * ntfs.directoryEntryBytes)
         let owned = mft.clusterCount
         mft.logicalSize = mftPeakRecords * ntfs.directoryEntryBytes

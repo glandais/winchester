@@ -72,7 +72,7 @@ extension NTFSAllocator {
         pendingClusters = 0
         scanEntireBitmap()
         lastBitmapHint = cache.first?.start ?? 0
-        cache.remove(mftZone)
+        _ = xpInitializeMftZone()
     }
 
     /// Point de contrôle : les runs libérés depuis le précédent entrent dans
@@ -88,6 +88,8 @@ extension NTFSAllocator {
 
     /// `NtfsScanEntireBitmap` : les 64 plus longs runs de chaque page.
     mutating func scanEntireBitmap() {
+        recentlyFreedClusters = 0
+        longestFreedRun = 0
         cache.removeAll()
         var runs: [Extent] = []
         var page: UInt32 = 0
@@ -333,12 +335,75 @@ extension NTFSAllocator {
 
     /// Des clusters rendus : libres dans la bitmap, retenus jusqu'au point de
     /// contrôle.
+    ///
+    /// Une zone réduite est regonflée dès que l'espace libre repasse au-dessus
+    /// d'un seizième du volume (`VCB_STATE_REDUCED_MFT`,
+    /// `bitmpsup.c:1851-1868`).
     mutating func xpRelease(_ extents: [Extent]) {
         for extent in extents where extent.length > 0 {
             bitmap.free(extent)
             pending.append(extent)
             pendingClusters += extent.length
+            recentlyFreedClusters &+= extent.length
+            longestFreedRun = max(longestFreedRun, extent.length)
+            if reducedMFT, bitmap.clusterCount >> 4 < bitmap.freeCount {
+                rescanCachedRunsOnly()
+                _ = xpInitializeMftZone()
+                xpCounters.zoneRegrowths += 1
+            }
         }
+    }
+
+    /// `NtfsScanEntireBitmap(…, TRUE)` (`bitmpsup.c:2057-2100`) : peu de
+    /// clusters libérés depuis le dernier balayage (moins de 1 024), et un run
+    /// en cache au moins aussi long que le plus long libéré : le cache reste
+    /// tel quel. Sinon, il est rebâti.
+    mutating func rescanCachedRunsOnly() {
+        if recentlyFreedClusters < 0x400, cache.hasRun(atLeast: longestFreedRun) { return }
+        scanEntireBitmap()
+    }
+
+    /// `NtfsInitializeMftZone` (`bitmpsup.c:8491-8660`), au montage, quand
+    /// une zone réduite regonfle, et quand la MFT ne peut plus grandir d'un
+    /// seul tenant.
+    ///
+    /// La zone vaut un huitième du volume (fois le multiplicateur du
+    /// registre, 1 par défaut) moins la MFT, au moins un seizième. Elle
+    /// commence au run libre qui suit la MFT, quelle que soit sa longueur ; à
+    /// défaut, au plus petit run du cache qui atteint la taille voulue (le plus
+    /// long s'il n'y en a pas), n'importe où. Alignée sur 32 clusters, elle
+    /// sort du cache.
+    ///
+    /// - Returns: le premier cluster du run choisi.
+    mutating func xpInitializeMftZone() -> UInt32 {
+        let total = bitmap.clusterCount
+        let minimum = total >> 4
+        let multiplier = UInt32(min(max((ntfs.mftZoneShare * 8).rounded(), 1), 4))
+        var size = (total >> 3) * multiplier
+        let mftClusters = mft.clusterCount
+        size = size > mftClusters + minimum ? size - mftClusters : minimum
+        let lcn = mft.extents.last!.end
+        var start = lcn
+        var count = size
+        if let run = cache.run(containing: lcn) {
+            start = run.start
+            count = run.length
+        } else if !cache.isEmpty {
+            let found = xpFindFreeBitmapRun(size, hint: lcn, anyLength: true, ignoreZone: true).run
+            if let found, found.start == lcn {
+                count = found.length
+            } else if let run = cache.lookup(length: size, allowShorter: true, hint: lcn) {
+                start = run.start
+                count = run.length
+            }
+        }
+        count = min(count, size)
+        let zoneStart = start & ~0x1F
+        let zoneEnd = min((UInt64(start) + UInt64(count) + 0x1F) & ~0x1F, UInt64(total))
+        mftZone = zoneStart..<UInt32(zoneEnd)
+        reducedMFT = false
+        cache.remove(mftZone)
+        return start
     }
 
     /// `NtfsAllocateClusters` pour un fichier de données.
@@ -586,9 +651,85 @@ extension NTFSAllocator {
     /// La zone cède, quand la bitmap n'a plus rien hors d'elle.
     ///
     /// - Returns: `true` si elle a rendu de la place.
+    ///
+    /// `NtfsReduceMftZone` (`bitmpsup.c:8674-8872`) : rien sous 64 clusters
+    /// libres, dans le volume ou dans la zone (`4 × MFT_EXTEND_GRANULARITY`) ;
+    /// sinon la zone garde la première moitié de ses clusters libres, comptés
+    /// depuis son début, et finit au cluster libre qui atteint ce compte,
+    /// arrondi à 32. Sous un seizième d'espace libre, elle est marquée réduite
+    /// (`VCB_STATE_REDUCED_MFT`).
     mutating func xpReduceZone() -> Bool {
+        let floor: UInt32 = 4 * 16
+        guard bitmap.freeCount >= floor else { return false }
+        let total = bitmap.clusterCount
+        let final = min(mftZone.upperBound, total)
+        var runs: [Extent] = []
+        var free: UInt32 = 0
+        bitmap.forEachFreeRun(from: mftZone.lowerBound) { run in
+            guard run.start < final else { return false }
+            let clipped = Extent(start: run.start, length: min(run.end, final) - run.start)
+            runs.append(clipped)
+            free += clipped.length
+            return true
+        }
+        guard free >= floor else { return false }
+        let target = free >> 1
+        var counted: UInt32 = 0
+        var split = mftZone.lowerBound
+        for run in runs {
+            if counted + run.length >= target {
+                split = run.start + (target - counted - 1)
+                break
+            }
+            counted += run.length
+        }
+        let end = min((UInt64(split) + 0x1F) & ~0x1F, UInt64(total))
+        mftZone = mftZone.lowerBound..<max(UInt32(end), mftZone.lowerBound)
+        mftZoneHalvings += 1
         xpCounters.zoneReductions += 1
-        return yieldMFTZone()
+        if total >> 4 > bitmap.freeCount { reducedMFT = true }
+        return true
+    }
+
+    // MARK: - La MFT
+
+    /// `$MFT` grandit par `MFT_EXTEND_GRANULARITY`, 16 enregistrements
+    /// (`ntfs.h:415`), relevé à un cluster entier (`fsctrl.c:2534-2538`),
+    /// dans la zone comme ailleurs : l'allocation va au multiple de 16
+    /// enregistrements qui suit (`bitmpsup.c:6405-6422`).
+    var mftGranularityRecords: UInt64 {
+        max(16, UInt64(ntfs.clusterBytes) / ntfs.directoryEntryBytes)
+    }
+
+    /// L'extension de `$MFT` (`ExtendingMft`, `bitmpsup.c:1034-1058, 1180-1287`) :
+    /// le run qui la suit s'il est en cache ; sinon la bitmap, à partir du
+    /// cluster qui la suit, quelle que soit la longueur trouvée là. Si la
+    /// place qui suit est prise, le cache est relu, une **zone neuve** est
+    /// posée (`xpInitializeMftZone`), et la MFT continue à son début. Jamais
+    /// de recherche par longueur, jamais de réduction de zone.
+    mutating func xpExtendMFT(byClusters count: UInt32) {
+        var remaining = count
+        while remaining > 0 {
+            let lcn = mft.extents.last!.end
+            var found: Extent?
+            if let run = cache.run(containing: lcn) {
+                found = Extent(start: lcn, length: run.end - lcn)
+            } else {
+                var run = xpFindFreeBitmapRun(remaining, hint: lcn, anyLength: true, ignoreZone: true).run
+                if let candidate = run, candidate.start != lcn {
+                    rescanCachedRunsOnly()
+                    let start = xpInitializeMftZone()
+                    xpCounters.newZones += 1
+                    run = xpFindFreeBitmapRun(remaining, hint: start, anyLength: true, ignoreZone: true).run
+                }
+                found = run
+            }
+            guard let found, found.length > 0 else { return }
+            let extent = Extent(start: found.start, length: min(found.length, remaining))
+            xpTake(extent)
+            mft.extents.appendRun(start: extent.start, length: extent.length)
+            remaining -= extent.length
+        }
     }
 }
 
@@ -601,5 +742,9 @@ public struct NTFSXPCounters: Sendable, Equatable {
     /// Pages de bitmap lues faute de réponse du cache.
     public var bitmapReads = 0
     public var zoneReductions = 0
+    /// Zones regonflées au-dessus d'un seizième libre, et zones neuves posées
+    /// quand la MFT ne pouvait plus grandir sur place.
+    public var zoneRegrowths = 0
+    public var newZones = 0
     public init() {}
 }
