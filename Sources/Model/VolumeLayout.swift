@@ -446,16 +446,24 @@ extension PartitionGeometry {
             // Trois zones : le début, la MFT à 3 Gio avec le journal devant
             // elle, et le milieu du volume, où sont le miroir, `$UpCase` et la
             // bitmap. Plus de course jusqu'au fond du disque.
+            //
+            // `$UpCase` et `$Bitmap` passent par le cache, qui les lit par
+            // vues de 64 Ko : autant de requêtes, et aucune ne dépasse une
+            // commande ATA (1,2 Mo de bitmap sur 40 Go).
             let layout = ntfsLayout
+            func cached(_ extent: Extent) -> [MetadataAccess] {
+                let first = lba(ofCluster: Int(extent.start))
+                let total = Int(extent.length) * clusterSectors
+                return stride(from: 0, to: total, by: 128).map {
+                    MetadataAccess(lba: first + $0, sectors: min(128, total - $0))
+                }
+            }
             return [MetadataAccess(lba: startLBA, sectors: 16),
                     MetadataAccess(lba: mftLBA, sectors: 16 * mftRecordSectors),
                     MetadataAccess(lba: lba(ofCluster: Int(layout.mirror.start)),
                                    sectors: 4 * mftRecordSectors),
-                    MetadataAccess(lba: logFileLBA, sectors: 2 * Self.logPageSectors),
-                    MetadataAccess(lba: lba(ofCluster: Int(layout.upCase.start)),
-                                   sectors: Int(layout.upCase.length) * clusterSectors),
-                    MetadataAccess(lba: bitmapLBA,
-                                   sectors: Int(layout.bitmap.length) * clusterSectors)]
+                    MetadataAccess(lba: logFileLBA, sectors: 2 * Self.logPageSectors)]
+                + cached(layout.upCase) + cached(layout.bitmap)
         case .ntfs:
             // NT, Vista et 7 : le modèle d'avant le chantier 48, que le code
             // de XP ne peut ni confirmer ni réfuter. Monter un NTFS, ce n'est

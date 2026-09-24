@@ -114,10 +114,14 @@ struct MountAndJournalTests {
         let end = partition.startLBA + partition.totalSectors
         #expect(!mount.contains { $0.lba + $0.sectors >= end - 1 }, "\(id) lit le dernier secteur")
         let layout = partition.ntfsLayout
-        #expect(mount.contains { $0.lba == partition.bitmapLBA
-                    && $0.sectors == Int(layout.bitmap.length) * partition.clusterSectors })
-        #expect(mount.contains { $0.lba == partition.lba(ofCluster: Int(layout.upCase.start))
-                    && $0.sectors * DriveGeometry.bytesPerSector == 128 * 1_024 })
+        // `$Bitmap` et `$UpCase` entières, par vues de 64 Ko du cache.
+        func read(_ extent: Extent) -> Int {
+            let range = partition.lba(ofCluster: Int(extent.start))..<partition.lba(ofCluster: Int(extent.end))
+            return mount.filter { range.contains($0.lba) }.reduce(0) { $0 + $1.sectors }
+        }
+        #expect(read(layout.bitmap) == Int(layout.bitmap.length) * partition.clusterSectors)
+        #expect(read(layout.upCase) * DriveGeometry.bytesPerSector == 128 * 1_024)
+        #expect(mount.allSatisfy { $0.sectors <= 128 })
         let span = partition.totalSectors / 100
         var zones: [Int] = []
         for lba in mount.map(\.lba).sorted() {
