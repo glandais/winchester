@@ -125,20 +125,58 @@ struct PartitionGeometryTests {
         let volume = DefragVolume(partition: partition, files: files)
         let ops = DefragOperations.analysis(volume: volume)
 
-        // Les tables d'abord, dans l'ordre d'émission ; la MFT est la
-        // troisième lecture, longue de (100 + 16) enregistrements.
-        #expect(ops[2].lba == partition.mftLBA)
-        #expect(ops[2].sectors == (files.count + 16) * partition.mftRecordSectors)
+        // Les tables d'abord, dans l'ordre de `dfrgntfs` : la bitmap de la MFT
+        // (la partition de XP la pose devant elle), la bitmap du volume, puis
+        // la MFT, longue de (100 + 16) enregistrements.
+        let layout = partition.ntfsLayout
+        let tables = [layout.mftBitmap, layout.bitmap].filter { !$0.isEmpty }
+        for (op, table) in zip(ops, tables) {
+            #expect(op.lba == partition.lba(ofCluster: Int(table.start)))
+            #expect(op.sectors == Int(table.length) * partition.clusterSectors)
+        }
+        #expect(ops[tables.count - 1].lba == partition.bitmapLBA)
+        #expect(ops[tables.count].lba == partition.mftLBA)
+        #expect(ops[tables.count].sectors == (files.count + 16) * partition.mftRecordSectors)
         // Le répertoire, à son extent, sur toute sa longueur.
         let directory = ops.last!
         #expect(directory.lba == partition.lba(ofCluster: 700_000))
         #expect(directory.sectors == 3 * partition.clusterSectors)
-        #expect(ops.count == 4)
+        #expect(ops.count == tables.count + 2)
         // Un volume à MFT publiée la lit là où elle est.
         let placed = DefragVolume(partition: partition, files: files,
-                                  systemExtents: [Extent(start: 50_000, length: 64), Extent(start: 400_000, length: 64)])
+                                  systemExtents: [Extent(start: 50_000, length: 64), Extent(start: 400_000, length: 64)],
+                                  mftExtents: [Extent(start: 50_000, length: 64), Extent(start: 400_000, length: 64)])
         let mft = DefragOperations.analysis(volume: placed).filter { $0.cluster == 50_000 || $0.cluster == 400_000 }
         #expect(mft.count == 2 && mft.allSatisfy { $0.sectors == 64 * partition.clusterSectors })
+    }
+
+    /// B#24 : l'analyse de `dfrgntfs` lit la bitmap de la MFT, celle du
+    /// volume et la MFT (`dfrgntfs.cpp:4588-4613, 5110-5160`,
+    /// `freespace.cpp:1345`). Ni les 64 Mio de `$LogFile`, ni `$MFTMirr`,
+    /// ni `$Boot`, ni le dernier secteur — que le modèle lisait tous.
+    @Test("L'analyse NTFS ne lit ni le journal, ni le miroir, ni $Boot")
+    func ntfsAnalysisSkipsTheJournal() throws {
+        let spec = try ScenarioLibrary.load("secretaire-2003")
+        var partition = PartitionGeometry(startLBA: 0, clusterCount: Int(spec.clusterCount),
+                                          clusterSectors: 8, format: .ntfs)
+        partition.ntfsFormatting = DiskGenerator.formatting(for: spec)
+        let layout = partition.ntfsLayout
+        let mft = Extent(start: layout.mftStart, length: 4_000)
+        let system = [Extent(start: 0, length: 2), mft, layout.mirror, layout.logFile, layout.bitmap]
+        let volume = DefragVolume(partition: partition, files: [],
+                                  systemExtents: system, mftExtents: [mft])
+        let ops = DefragOperations.analysis(volume: volume)
+        func touches(_ extent: Extent) -> Bool {
+            let sectors = partition.lba(ofCluster: Int(extent.start))
+                ..< partition.lba(ofCluster: Int(extent.end))
+            return ops.contains { sectors.overlaps($0.lba..<($0.lba + $0.sectors)) }
+        }
+        #expect(!touches(layout.logFile))
+        #expect(!touches(layout.mirror))
+        #expect(!touches(Extent(start: 0, length: 2)))
+        #expect(!ops.contains { $0.lba + $0.sectors >= partition.startLBA + partition.totalSectors })
+        #expect(touches(mft) && touches(layout.bitmap))
+        #expect(partition.scanAccesses.isEmpty)
     }
 
     @Test("Un cluster se traduit toujours en LBA de la zone de données")

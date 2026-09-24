@@ -460,16 +460,15 @@ extension PartitionGeometry {
             }
             return accesses
         case .ntfs:
-            // `$Boot`, puis sa copie — qui est au **tout dernier secteur du
-            // volume**, et non à côté de l'original : une course complète du
-            // bras jusqu'au fond du disque, aller et retour.
-            //
-            // La MFT n'est pas ici : elle se lit là où le volume l'a posée,
-            // et entière (`DefragOperations.analysis`) — le forfait de
-            // 4 096 secteurs qui la représentait n'en lisait que 0,16 % sur un
-            // 320 Go.
-            return [MetadataAccess(lba: startLBA, sectors: 16),
-                    MetadataAccess(lba: startLBA + totalSectors - 1, sectors: 1)]
+            // Rien avant les tables. `dfrgntfs` ne lit ni `$Boot` ni sa copie
+            // au dernier secteur : la géométrie du volume lui vient de
+            // `FSCTL_GET_NTFS_VOLUME_DATA` (`ntfssubs.cpp:2296`), que le
+            // pilote sert de mémoire, et ses seules lectures du disque sont
+            // celles de `DefragOperations.analysis` (B#24). Le modèle lisait
+            // ici `$Boot`, que l'analyse relisait ensuite, puis le dernier
+            // secteur : une course complète du bras, aller et retour, que
+            // l'outil de XP ne fait pas (`ntfs-format-17`).
+            return []
         }
     }
 

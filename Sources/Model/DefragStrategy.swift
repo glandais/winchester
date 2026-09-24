@@ -108,7 +108,8 @@ enum DefragOperations {
         sink.emit(contentsOf: analysis(volume: volume))
     }
 
-    /// L'analyse : les tables, puis chaque répertoire.
+    /// L'analyse : les tables — sur NTFS, la bitmap de la MFT, celle du
+    /// volume et la MFT —, puis chaque répertoire.
     ///
     /// Longtemps un forfait — la MFT plafonnée à 2 Mo, les répertoires lus à
     /// des clusters tirés au hasard, le tout minuté en dur sur 4,5 s, si bien
@@ -133,16 +134,32 @@ enum DefragOperations {
             read(lba: access.lba, sectors: access.sectors, cluster: nil, think: tableThinkSeconds)
         }
         if partition.format == .ntfs {
-            // La MFT, sa copie et le secteur d'amorçage, tels que le volume les
-            // porte — extent par extent quand la MFT s'est fragmentée. Un
-            // volume qui ne les publie pas la lit d'un bloc à sa place
-            // d'origine, un enregistrement par fichier.
-            if volume.systemExtents.isEmpty {
+            // Ce que lit `dfrgntfs` de XP, dans son ordre (B#24) : l'attribut
+            // `$BITMAP` de la MFT, par `DasdReadClusters` (`GetMftBitmap`,
+            // `dfrgntfs.cpp:4588-4613`, appelé à la ligne 1780) ; la bitmap du
+            // volume, par `FSCTL_GET_VOLUME_BITMAP` (`GetVolumeBitmap`,
+            // `freespace.cpp:1345`, ligne 1832) ; puis la MFT, tampon par
+            // tampon, extent après extent (`ScanNtfs`, `dfrgntfs.cpp:5110-5160`).
+            // Ni `$LogFile`, ni `$MFTMirr`, ni `$Boot` : l'outil ne lit que ce
+            // qui décrit les fichiers et l'espace libre, et apprend le reste
+            // du volume par `FSCTL_GET_NTFS_VOLUME_DATA`, que le pilote sert
+            // de mémoire. Le modèle lisait jusqu'ici tous les extents système,
+            // dont les 64 Mio du journal à chaque passe.
+            let layout = partition.ntfsLayout
+            for extent in [layout.mftBitmap, layout.bitmap] where !extent.isEmpty {
+                read(lba: partition.lba(ofCluster: Int(extent.start)),
+                     sectors: Int(extent.length) * partition.clusterSectors,
+                     cluster: Int(extent.start), think: tableThinkSeconds)
+            }
+            // La MFT là où le volume la porte — extent par extent quand elle
+            // s'est fragmentée. Un volume qui ne publie pas ses extents la lit
+            // d'un bloc à sa place d'origine, un enregistrement par fichier.
+            if volume.mftExtents.isEmpty {
                 read(lba: partition.mftLBA,
                      sectors: (volume.files.count + 16) * partition.mftRecordSectors,
-                     cluster: Int(partition.ntfsLayout.mftStart), think: tableThinkSeconds)
+                     cluster: Int(layout.mftStart), think: tableThinkSeconds)
             } else {
-                for extent in volume.systemExtents where !extent.isEmpty {
+                for extent in volume.mftExtents where !extent.isEmpty {
                     read(lba: partition.lba(ofCluster: Int(extent.start)),
                          sectors: Int(extent.length) * partition.clusterSectors,
                          cluster: Int(extent.start), think: tableThinkSeconds)

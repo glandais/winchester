@@ -232,7 +232,10 @@ struct DefragVolume {
     let mftZone: Range<UInt32>?
 
     /// Ce que le système de fichiers occupe sans qu'aucun fichier ne le
-    /// décrive : la MFT, sa copie, le secteur d'amorçage.
+    /// décrive : les métafichiers de NTFS — `$Boot`, la MFT, son miroir, le
+    /// journal, `$Bitmap` et ceux que `FORMAT` pose avec eux. Des obstacles,
+    /// pas ce que lit l'analyse : elle ne lit que la MFT et les deux bitmaps
+    /// (`DefragOperations.analysis`).
     ///
     /// Occupé dans la bitmap, donc jamais proposé comme trou ; absent de
     /// `files`, donc jamais déplacé ni compté. Tant que la zone MFT gardait sa

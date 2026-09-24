@@ -278,6 +278,10 @@ public struct NTFSAllocator: Allocator {
         public let mirror: Extent
         /// `$LogFile` : le journal des métadonnées.
         public let logFile: Extent
+        /// L'attribut `$BITMAP` de `$MFT` : un bit par enregistrement, que
+        /// l'analyse de `dfrgntfs` lit avant la MFT. Vide là où le modèle ne
+        /// le pose pas.
+        public let mftBitmap: Extent
         /// Premier cluster de `$MFT`.
         public let mftStart: UInt32
         /// Taille initiale de `$MFT`, en clusters.
@@ -348,7 +352,8 @@ public struct NTFSAllocator: Allocator {
         // et le journal occupent en tête, et la MFT. Vide sous NT.
         let front = head..<mftStart
         return Layout(boot: Extent(start: 0, length: bootClusters),
-                      mirror: mirror, logFile: logFile, mftStart: mftStart,
+                      mirror: mirror, logFile: logFile,
+                      mftBitmap: Extent(start: mftStart, length: 0), mftStart: mftStart,
                       mftClusters: mftClusters, mftZoneEnd: zoneEnd,
                       bitmap: Extent(start: bitmapStart, length: bitmapClusters),
                       dataFront: front)
