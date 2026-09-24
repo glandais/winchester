@@ -8015,3 +8015,250 @@ lit la racine, `$UpCase` et la bitmap au milieu (33 seeks de plus,
   rend les plans sensibles à l'horloge : chantier 50.
 - **Le « 4 tests » de Calibration** dans `LEDGER-XP.md` : à recompter au
   chantier 49, qui recale ces cibles.
+
+## Chantier 49 — XP à la lettre : l'allocateur NTFS de XP
+
+**Fait** · branche `xp`, partie de `452c0ff` (chantier 48) · plan : `LEDGER-XP.md`
+
+### Le problème
+
+L'allocateur NTFS du modèle n'avait aucune source pour ses décisions : une
+préférence pour l'espace jamais servi (un trou n'était repris qu'à deux fois
+le besoin au plus), quatre bornes de recherche qui réglaient la
+fragmentation (de 4,6 à 21,2 % sur `famille-2003` selon l'horizon), un
+curseur pour les fichiers neufs, un curseur système, un prolongement « près
+du fichier » pris au pilote de Linux, des paquets d'écriture de 64 Ko
+attribués au lazy writer, une zone MFT qui ne faisait que rétrécir et une
+MFT qui grandissait par huit clusters hors zone. `WINDOWS_CHECK.md` les
+contredit tous contre le code de XP SP1 (`ntfs-alloc-01` à `05`, `08` à
+`10`, `12`, `21`, `ntfs-format-10`, `11`, `io-cache-06`) ; l'audit y ajoute
+B#6, B#7 et B#8, et B#37 (le README à 24 % contre un test à 16 %). La suite
+`Calibration` était rouge en Release : trois tests, huit constats dont trois
+connus.
+
+### Les décisions
+
+Chaque référence a été relue dans `base/fs/ntfs` (et `base/crts/crtw32`
+pour l'écriture de 4 Ko). La décision 1 de `LEDGER-XP.md` s'applique :
+`Formatting.xp` suit XP à la lettre ; NT 4, Vista et 7 gardent le modèle
+d'avant, dit comme tel. B#8 vaut pour tous.
+
+- **49a — B#8** : les plages de données excluent la zone **courante**, et non
+  tout ce qui précède `$MFT` (`bitmpsup.c:3872-3905`). **La galerie est
+  touchée**, contrairement à ce que disait l'audit : sur les quatre volumes de
+  Vista et 7 dont l'histoire contient des défragmentations (`dev-2007`,
+  `secretaire-2007`, `dev-2012`, `secretaire-2012`), la passe de l'histoire
+  tasse des fichiers dans la zone, la MFT ne peut plus y grandir, et la
+  tranche de 200 Mo est renouvelée (sonde : zone finale à 56 M clusters sur
+  `secretaire-2007`, deux renouvellements sur `dev-2012`).
+- **49b — l'allocateur de `NtfsAllocateClusters`**
+  (`NTFSAllocator+XP.swift`) :
+  - un **cache des runs libres** (`NTFSFreeRunCache`, `NTFS_CACHED_RUNS`) :
+    9 000 runs au plus (`bitmpsup.c:9143`), et plein, un run neuf n'entre
+    qu'en chassant un run plus court d'une longueur de 1 à 32 tenue à plus de
+    100 exemplaires, sinon il est ignoré (`10562-10636`) ; rebâti au montage
+    des **64 plus longs runs de chaque page** de 32 768 clusters (`2143`),
+    nourri ensuite des 16 plus longs de chaque page lue (`3662, 3789, 4125,
+    4926`) et des runs libérés au point de contrôle ; fondu à chaque ajout
+    avec ce qu'il touche (`NtfsInsertCachedLcn`), coupé à chaque retrait ;
+  - pour chaque trou : le run qui commence derrière le dernier cluster du
+    fichier (`1029-1059`) ; sinon le **plus petit run au moins aussi long que
+    la demande**, à longueur égale le plus proche du fichier, et pour un
+    fichier neuf le plus petit LCN (« maximum left-packing »,
+    `13133-13540`) ; d'une longueur supérieure, son plus petit LCN (le
+    commentaire « ENHANCEMENT ») ; faute de run assez long, **le plus long**,
+    et le reste au trou suivant (`AllowShorter`, `9652-9661`), 128 runs par
+    appel (`ntfsdata.h:393`) ;
+  - un run qui chevauche la zone en fait retirer la zone (`1085-1100`) ; le
+    cache vide, la **bitmap page par page** depuis `LastBitmapHint` — le
+    premier trou venu, la zone en dernier —, puis la zone qui cède
+    (`NtfsFindFreeBitmapRun`, `NtfsScanBitmapRange`, `3450-4150`) ; la
+    lecture anticipée derrière une allocation en plusieurs runs
+    (`4851-4975`) ; la règle du fichier d'échange (`1110-1133`) ;
+  - pas de curseur, pas de préférence pour le vierge, pas de bornes : B#6 et
+    B#7 disparaissent avec le mécanisme qu'ils corrigeaient ;
+  - **les clusters libérés sont masqués jusqu'au point de contrôle**, puis
+    versés au cache par ordre de LCN, jusqu'à ce qu'il soit plein
+    (`logsup.c:4500-4533`) ; un déplacement de défragmenteur vers eux les rend
+    tous (`DELETE_PENDING`, `deviosup.c:10360-10390`) ; faute de place hors
+    d'eux, l'allocateur force le point de contrôle (`STATUS_LOG_FILE_FULL`).
+- **La traduction du temps**, faute d'horloge plus fine que l'événement :
+  le simulateur annonce un **montage au premier événement de chaque
+  journée** (la machine éteinte la nuit : le cache rebâti, la zone
+  recalculée) et **un point de contrôle entre deux événements** — ce qu'un
+  événement libère, le suivant peut le prendre, lui seul ne le peut pas
+  (`Allocator.mount`, `Allocator.checkpoint`). XP en fait un toutes les cinq
+  secondes : une installation de quarante fichiers par seconde en ferait bien
+  moins que le modèle. C'est la seule traduction du chantier qui ne vienne
+  pas du code, et le README la range dans « Ce qui ne l'est pas ».
+- **49c — la surallocation de `NtfsCommonWrite`** : un fichier écrit sans
+  taille connue est étendu à chaque écriture du programme qui dépasse son
+  allocation — pas par le lazy writer, exclu par `write.c:1914` —, par
+  écritures de 4 Ko (`_INTERNAL_BUFSIZ`, `crtw32/h/stdio.h:265`, la même
+  hypothèse que pour FAT) : la première exacte, puis `ClusterCount <<
+  WriteExtendCount` arrondi à 2ⁿ clusters, le compteur plafonné à 4 par
+  handle (`allocsup.c:1321-1387`), borné à un millième de l'espace libre plus
+  la demande (`1392-1403`), pris tant que le cache répond (`bitmpsup.c:1165-
+  1178`), **rendu à la fermeture** (`SCB_STATE_TRUNCATE_ON_CLOSE`,
+  `write.c:2163`). Un appel de `stream` est un handle ; l'entrelacement, qui
+  ne sert à aucun volume de la galerie, ouvrirait un handle par paquet. Les
+  extensions de régime établi que le run suivant sert en entier sont prises
+  d'un coup (`fastExtensions`) : empreintes identiques avec et sans, et
+  `famille-2003` se génère en 1,7 s au lieu de 13,9. Vista et 7 gardent les
+  paquets de 64 Ko, que la doc de `NTFSProfile` n'attribue plus au lazy
+  writer.
+- **49d — la zone et la croissance de la MFT** :
+  `NtfsInitializeMftZone` au montage, quand une zone réduite regonfle et
+  quand la MFT ne peut plus grandir sur place — un huitième du volume moins
+  la MFT, au moins un seizième, sur le run qui suit la MFT, sinon sur le
+  plus petit run du cache qui atteint cette taille, aligné sur 32
+  (`8491-8660`) ; `NtfsReduceMftZone`, la moitié des clusters libres de la
+  zone comptés depuis son début, rien sous 64, `REDUCED_MFT` sous un
+  seizième libre (`8674-8872`), regonflée au-dessus (`1851-1868`) ; `$MFT`
+  par 16 enregistrements (`ntfs.h:415`, `6405-6422`), le run qui la suit ou
+  une zone neuve (`1263-1287`). Le disque généré rapporte la zone qu'un
+  montage recalculerait : celle que voit un défragmenteur. Le registre
+  `NtfsMftZoneReservation` n'est gardé que par `mftZoneShare`, dont aucun
+  profil ne se sert (le multiplicateur en est déduit).
+- **49e — les enregistrements repris par le bas** (`ntfs-alloc-12`) :
+  `NtfsAllocateRecord` rejoué, le plus petit libre à partir du seizième,
+  l'indice ramené vers le bas à chaque libération (`5339, 5777,
+  7819-7822`), la racine en 5 ; `FileRecord.mftRecord` et
+  `DirectoryRecord.mftRecord` le portent, `MFTNumbering` et `MachineWriter`
+  s'en servent sous XP. Le déclencheur de `NtfsCreateMftHole`
+  (enregistrements libres au-delà d'un huitième de l'espace libre,
+  `mftsup.c:1610-1640`) est compté : **jamais rempli** sur la galerie ; le
+  perçage n'est pas modélisé.
+
+Tests neufs (`NTFSXPAllocationTests`, `NTFSFreeRunCacheTests`) : B#8, la
+fusion et le découpage du cache, la recherche par longueur, le cache plein,
+le best fit à gauche, pas de préférence pour le vierge, le découpage du plus
+grand au plus petit, l'extension par le cache, la surallocation (1, 3, 4, 8,
+16, la fin rendue), la MFT par 16 enregistrements et sa zone neuve, la zone
+réduite puis recalculée au montage, les enregistrements repris par le bas,
+le déplacement vers des clusters retenus. `ProfilingAllocator` relaie les
+nouveaux points d'entrée, et le rejeu des tests d'allocateur fait un point de
+contrôle par événement, comme le simulateur.
+
+### Ce qui valide
+
+Mesures sous `.build/measure-xp` (dépôt principal) ; `bin-48` reconstruit
+depuis `452c0ff` : identique, binaire et ressources. Prédictions écrites
+avant chaque mesure dans `prediction-49.md` (sauf les chiffres de volume de
+49c, qu'une sonde d'équivalence avait imprimés avant : dit dans le fichier).
+
+| étape | prédit | mesuré |
+|---|---|---|
+| 49a | 400 identiques, 58 md5 | **faux** : 68 changent (4 volumes Vista/7 à défragmentations d'histoire), 54 md5 (leurs démarrages) |
+| 49b | 73 changent (les 2003), 49 md5 | **73 / 327**, **49 md5** ; fragmentation en hausse prédite, **en baisse** sur famille (24,4 → 4,3 %) et secretaire (31,8 → 25,0 %) |
+| 49c | 73 changent, 49 md5 (volumes vus avant) | 68 : les installations n'écrivent que des tailles connues ; 54 md5 ; passes de secretaire plus longues : conforme |
+| 49d | 73 changent, 49 md5 ; MFT en moins d'extents ; famille en hausse | 70 (trois passes de gamer intactes) ; 49 md5 ; MFT famille 45 → 2, dev 6 → 3 : conforme ; famille 16,2 → 16,2 % : **faux** |
+| 49e | volumes identiques, 69 changent, 49 md5 | volumes identiques ; 65 (la passe de Windows 95, qui adresse par position) ; 49 md5 |
+| 49 | identique à 49e | **400 / 400**, md5 identiques |
+| contre 48 | — | 259 identiques, 141 changent ; 45 md5 identiques |
+
+**Les volumes NTFS, 48 → 49** (fragmentés parmi les fragmentables, MFT,
+trous libres, pire fichier) :
+
+| volume | 48 | 49 |
+|---|---|---|
+| `dev-2003` | 2,0 %, 6 extents, 2 048, 465 | 7,6 %, 3 extents, 1 607, 169 |
+| `famille-2003` | 24,4 %, 38 extents, 3 570, 3 888 | 16,2 %, 2 extents, 3 414, 2 448 |
+| `gamer-2003` | 0,0 %, 1 extent, 10, 4 | 0,2 %, 1 extent, 6, 7 |
+| `secretaire-2003` | 31,8 %, 1 extent, 652, 865 | 64,0 %, 1 extent, 2 315, 1 267 |
+| `dev-2007` | 9,1 %, 28 extents, 2 418, 2 225 | 9,2 %, 25 extents, 1 753, 2 616 |
+| `secretaire-2007` | 5,0 %, 29 extents, 743, 844 | 3,5 %, 3 extents, 756, 1 216 |
+| `dev-2012` | 5,8 %, 15 extents, 5 391, 8 384 | 7,2 %, 3 extents, 4 425, 2 462 |
+| `secretaire-2012` | 5,0 %, 9 extents, 970, 2 036 | 1,7 %, 6 extents, 1 527, 1 562 |
+| les quatre autres | inchangés | inchangés |
+
+**Ce qui fait bouger les volumes de XP.** Le best fit sans préférence pour
+le vierge reprend les trous dès le point de contrôle suivant, et le
+découpage prend les grands morceaux d'abord : `famille-2003` tombe de 24,4 à
+4,3 % (49b). La surallocation le fait remonter à 16,2 % (49c) : la première
+écriture de 4 Ko d'un fichier va dans le plus petit trou qui lui suffit, un
+cluster s'il le faut, et la deuxième, faute de place derrière, dans le trou
+de trois clusters le plus proche. C'est ce qui porte `secretaire-2003`, dont
+les documents Word sont réenregistrés sans taille connue, de 25,0 à 64,0 %.
+Les sauvegardes de `gamer-2003` y passent aussi (six fichiers, sept morceaux
+au plus) ; son installation, en tailles connues, reste d'un seul tenant. La
+MFT, qui ouvre une zone neuve plutôt que de s'éparpiller par huit clusters,
+tombe à 2 et 3 extents.
+
+**Les passes et le son.** Démarrages et installations des 2003 à ±0,3 s ; la
+journée `famille-2003:400` 94,2 → 97,6 s. Les passes suivent les volumes :
+`secretaire-2003` XP 929 → 1 036 s, JkDefrag 980 → 1 595 s, UltraDefrag
+629 → 1 374 s ; `famille-2003` XP 520 → 372 s, JkDefrag 982 → 1 190 s ;
+`dev-2003` XP **1 323 → 2 109 s** : à 49d, sa phase « Moving files forward »
+passe de 604 à 1 796 s et de 12 à 40 Go lus et écrits. La zone qu'un montage
+recalcule suit le dernier extent de la MFT, qui est depuis 49d dans une zone
+neuve vers 94 % du volume (sonde : 9 232 288 à 9 498 816) ; c'est
+l'explication probable, **non isolée**. Rien n'a été écouté.
+
+**Durées de génération.** Les volumes de XP coûtent plus : `dev-2003` 1,3 →
+3,2 s, `secretaire-2003` 0,2 → 0,5 s, `gamer-2003` 2 → 5 ms ; `famille-2003`
+1,8 → 1,6 s grâce au raccourci de régime établi (13,9 s sans). Vista et 7 à
+±12 % (`dev-2012` 2,6 → 2,9 s, son volume a changé à 49a). Pas d'explosion ; `dev-2003` est désormais le plus lent des 2003.
+
+**Calibration en Release** (`calibration-49e.log` avant recalage,
+`calibration-49.log` après) :
+
+| cible | 48 | 49, avant recalage | après recalage, et pourquoi |
+|---|---|---|---|
+| famille-2003 remplissage > 90 % | 88,7 %, rouge | 88,7 %, rouge | **known issue** : la fin du cycle de rangement du profil (`tidiesUpAt` 0,99), les mêmes 161 écritures refusées ; pas l'allocateur, hors du chantier |
+| famille-2003 40 à 60 % (known issue) | 24,4 % | 16,2 % | **retirée** : cible du cahier des charges ; XP à la lettre en produit 16 %, et rien dans son code ne dit 40 |
+| famille-2003 de 4 à 16 % | 24,4 %, rouge | 16,2 %, rouge | **retirée** : une fourchette qui suivait la mesure, sans mécanisme |
+| famille-2003 pire fichier > 500 | 3 888 | 2 448 | **gardée** : `AllowShorter`, 128 runs par appel, autant d'appels qu'il faut (`bitmpsup.c:9652-9661`, `allocsup.c:1475-1600`) |
+| FAT32 > 2 × NTFS | 16,4 contre 24,4, rouge | 16,4 contre 16,2, rouge | **retirée** : la première écriture de 4 Ko de XP va au plus petit trou ; aucun mécanisme ne fixe le rapport ; le remplissage NTFS en known issue |
+| gamer-2003 < 5 % | 0,0 % | 0,2 % | gardée |
+| gamer-2003 pire fichier = 1 | 4, rouge | 7, rouge | **remplacée** : « l'installation d'un seul tenant » (`NtfsLookupCachedLcnByLength` ne découpe que si aucun run ne suffit) ; les sauvegardes, par 4 Ko dans les trous, peuvent se découper |
+| bornes de recherche | table sur famille-2003 | horizon non décisif sur XP | **refaite** : XP n'en dépend pas (vérifié), sur Vista l'horizon décide le plus |
+
+Résultat : **15 tests, verts, 4 known issues** (les deux cibles FAT d'avant,
+le remplissage de `famille-2003` deux fois). `swift test` : 174 + 320 tests,
+verts. `GalleryAllocationAudit` en Release (19 min 25) : **propre sur les
+vingt-quatre volumes**.
+
+README : l'exception des bornes (hors XP), l'écriture sans taille connue, la
+stratégie NTFS (cache, best fit, point de contrôle, zone de XP), `gamer-2003`,
+les cibles (B#37 : `famille-2003` retirée, la phrase « NTFS place encore bien
+à 95 % » supprimée), le coût, la zone des passes, « Ce qui ne l'est pas » (le
+point de contrôle et le montage du modèle) ; la table des trois allocateurs
+refaite (`AllocatorComparison` : NTFS 1,4 %, pire fichier 4, 78 trous) ;
+`readme-tables.py 49 --write`, deux gabarits réécrits, la durée de génération
+de `dev-2007` rendue (1,7 s) ; `--check` : un seul écart, celui-là.
+
+### Laissé ouvert
+
+- **Le temps du modèle** : un point de contrôle entre deux événements, un
+  montage par journée. XP en fait un toutes les cinq secondes ; une
+  installation de quarante fichiers par seconde en ferait bien moins. Une
+  heure dans la journée (chantier 51 et suivants) permettrait de les placer.
+- **L'écriture de 4 Ko** vaut pour tout programme qui ne connaît pas sa
+  taille ; un programme qui écrit par 64 Ko étendrait par 16, puis jusqu'à
+  256 clusters. Le catalogue ne le distingue pas.
+- **`dev-2003` : la passe XP de 1 323 à 2 109 s**, par la phase de
+  tassement à 49d ; l'explication par la zone recalculée derrière la MFT
+  déplacée n'est pas isolée.
+- **`NtfsCreateMftHole`** n'est pas modélisé (condition jamais remplie) ;
+  la croissance de la bitmap de la MFT (`BITMAP_EXTEND_GRANULARITY`) non
+  plus ; un index de répertoire n'a pas `AllowShorter`, ce qui ne change rien
+  tant qu'il grandit d'un cluster.
+- **La défragmentation de l'histoire** (`Simulator.defragment`) tasse dans
+  la zone MFT ; c'est elle qui déclenche les renouvellements de Vista et 7
+  (49a). Elle n'imite aucun outil daté ; à revoir avec le moteur (chantier 50).
+- **Les défragmenteurs** gardent leur rétention de 5 s (`heldClusters`) :
+  l'allocateur de XP applique déjà `DELETE_PENDING` à la défragmentation de
+  l'histoire, pas aux stratégies (chantier 50).
+- **Le remplissage de `famille-2003`** (88,7 % pour plus de 90 %) : une
+  question de profil, en known issue.
+- **Vista et 7** gardent un modèle sans source : bornes de recherche,
+  préférence pour le vierge, paquets de 64 Ko, MFT par huit clusters.
+- **Durées de génération** : `dev-2003` passe à 3,2 s en release ; sur un
+  téléphone, à mesurer. La durée de `dev-2012` (2,9 s) est celle d'un volume
+  changé à 49a ; celle de `dev-2007` reste hors de `--check`.
+- **Écoute proposée, non faite** : `boot:secretaire-2003` et
+  `SCENARIO=secretaire-2003 STRATEGY=ultraDefrag` (deux fois plus long), et
+  `SCENARIO=dev-2003 STRATEGY=windowsXP`.
+- Le reste de la prose du README (tables du rangement intelligent,
+  argumentaires) : chantier 52.

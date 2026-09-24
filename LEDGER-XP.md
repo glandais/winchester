@@ -11,8 +11,9 @@ range en chantiers trois retours du 22 septembre 2026, pris sur `develop` à
   identifiants sont du type `ntfs-format-03`. Son annexe croise les deux
   documents ;
 - **la suite `Calibration`**, sautée en Debug et **rouge en Release**
-  (`swift test -c release --filter CalibrationTests`). Quatre tests y
-  échouent, sur huit anomalies relevées dont trois déjà connues :
+  (`swift test -c release --filter CalibrationTests`). Trois tests y
+  échouent (le « quatre » d'abord écrit ici comptait mal : recompté aux
+  chantiers 48 et 49), sur huit anomalies relevées dont trois déjà connues :
   - famille-2003 : remplissage de 88 % pour une exigence de plus de 90 %,
     et 23,5 % de fichiers fragmentés pour un plafond de 16 % ;
   - le rapport FAT32/NTFS s'inverse (16,4 % contre 23,5 %) ;
@@ -137,32 +138,47 @@ lancé en Release.
 
 ## Chantier 49 : l'allocateur NTFS de XP
 
-1. **B#8** : `dataRanges` exclut la zone MFT courante, et non tout ce qui la
+**Fait** le 24 septembre 2026, branche `xp` (`LEDGER.md`, chantier 49).
+Tout ce qui suit est livré, pour `Formatting.xp` seul (NT 4, Vista et 7
+gardent le modèle d'avant ; B#8 vaut pour tous). Écarts au plan : B#8 touche
+la galerie (quatre volumes de Vista et 7, dont la zone est renouvelée après
+une défragmentation d'histoire) ; le temps est traduit par un montage au
+premier événement de chaque journée et un point de contrôle entre deux
+événements ; l'écriture du programme est de 4 Ko (`stdio.h:265`) ; le
+perçage de la MFT n'est pas modélisé, sa condition n'étant jamais remplie
+sur la galerie. famille-2003 finit à 16,2 %, secretaire-2003 à 64,0 %.
+Calibration en Release : verte, 4 known issues ; trois cibles retirées ou
+remplacées, avec leur source.
+
+- [x] 1. **B#8** : `dataRanges` exclut la zone MFT courante, et non tout ce qui la
    précède.
-2. **Best fit global hors zone** : le plus petit run au moins aussi long que
+- [x] 2. **Best fit global hors zone** : le plus petit run au moins aussi long que
    la demande, dans le cache des runs libres, au plus petit LCN. Il n'y a
    pas de curseur pour un fichier neuf, et l'extension part de
    `PrecedingLcn + 1` (`ntfs-alloc-01`, `02`, `04`). Cela remplace B#6 et
    B#7, qu'il ne faut pas appliquer tels quels.
-3. **Découpage** du plus grand run au plus petit (`AllowShorter`), seulement
+- [x] 3. **Découpage** du plus grand run au plus petit (`AllowShorter`), seulement
    si aucun run ne suffit (`ntfs-alloc-21`).
-4. **Pas de préférence pour l'espace vierge.** Les clusters libérés restent
+- [x] 4. **Pas de préférence pour l'espace vierge.** Les clusters libérés restent
    masqués jusqu'au point de contrôle, puis entrent dans le cache
    (`ntfs-alloc-03`).
-5. **Surallocation** à l'écriture : exacte d'abord, puis ×2, ×4, ×8 et ×16,
+- [x] 5. **Surallocation** à l'écriture : exacte d'abord, puis ×2, ×4, ×8 et ×16,
    bornée à `FreeClusters/1024 + demande`, et rendue à la fermeture
    (`ntfs-alloc-05`, `io-cache-06`). La doc de `FileSystemProfile` et le
    README cessent de l'attribuer au lazy writer.
-6. **Zone MFT** recalculée au montage, regonflée au-dessus d'un seizième
+- [x] 6. **Zone MFT** recalculée au montage, regonflée au-dessus d'un seizième
    d'espace libre, reposée ailleurs quand la MFT ne peut plus s'étendre
    d'un seul tenant (`ntfs-format-10`, `ntfs-alloc-08`, `10`). Le registre
    `NtfsMftZoneReservation` n'est gardé que si un profil s'en sert.
-7. **Croissance de la MFT** par 16 enregistrements, dans la zone comme
+   *Fait : aucun profil ne s'en sert ; `mftZoneShare` reste, et le
+   multiplicateur de XP en est déduit.*
+- [x] 7. **Croissance de la MFT** par 16 enregistrements, dans la zone comme
    ailleurs (`ntfs-alloc-09`). Les enregistrements libérés sont réutilisés
    par le bas (`ntfs-alloc-12`). La MFT est trouée quand les
    enregistrements libres dépassent un huitième de l'espace libre (lacune
-   `NtfsCreateMftHole`).
-8. **Recaler `CalibrationTests`** selon la décision 1, avec la source de
+   `NtfsCreateMftHole`). *Fait, sauf le perçage : sa condition est comptée à
+   chaque point de contrôle, et n'est jamais remplie sur la galerie.*
+- [x] 8. **Recaler `CalibrationTests`** selon la décision 1, avec la source de
    chaque borne, puis corriger le README (B#37).
 
 ## Chantier 50 : le moteur de XP

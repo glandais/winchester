@@ -285,21 +285,21 @@ prose("Aucun démarrage n'en contient (le plus long dure {longest} s)",
       longest=str(rounded(max(b["duration"] for b in boots.values()))))
 
 # Les disques d'époque.
-prose("en 2 à 16 morceaux passe de 1,9 à {pct} % des fichiers fragmentables sur `secretaire-2003`",
+prose("en 2 à 16 morceaux atteint {pct} % des fichiers fragmentables sur `secretaire-2003`",
       pct=trail("secretaire-2003"))
 prose("(de 0,5 à {pct} % des fichiers fragmentables sur `dev-2007`)", pct=trail("dev-2007"))
 prose("Un poste DOS de 1993 après deux ans en a {pct} %.", pct=str(rounded(disks["secretaire-1993"]["ratio"])))
-prose("`dev-1996` donne {a} % de fichiers fragmentés au lieu des 35 à 50 % visés, `secretaire-1999` {b} % au "
-      "lieu de 15 à 25 %, et `famille-2003` {c} % au lieu de 40 à 60 %",
-      a=str(rounded(disks["dev-1996"]["ratio"])), b=str(rounded(disks["secretaire-1999"]["ratio"])),
-      c=str(rounded(disks["famille-2003"]["ratio"])))
+prose("`dev-1996` donne {a} % de fichiers fragmentés au lieu des 35 à 50 % visés, et `secretaire-1999` {b} % "
+      "au lieu de 15 à 25 %",
+      a=str(rounded(disks["dev-1996"]["ratio"])), b=str(rounded(disks["secretaire-1999"]["ratio"])))
+prose("l'allocateur de XP, suivi à la lettre, en produit {c} %", c=str(rounded(disks["famille-2003"]["ratio"])))
 prose("se génère en {dev} s en release", dev=Timing(decimal, disks["dev-2007"]["generationMs"] / 1000))
 prose("les plus lourds de 2012, un Windows 7 de 500 Go et un de 1 To, en {dev} et {fam} s",
       dev=Timing(decimal, disks["dev-2012"]["generationMs"] / 1000),
       fam=Timing(decimal, disks["famille-2012"]["generationMs"] / 1000))
 prose("Les deux disques des démos, fabriqués au lancement, prennent {a} et {b} ms.",
       a=Timing(str, disks["dev-1993"]["generationMs"]), b=Timing(str, disks["secretaire-1999"]["generationMs"]))
-prose("`famille-2003` en prend {s} s, trois fois et demie",
+prose("`famille-2003` en prend {s} s, parce",
       s=Timing(decimal, disks["famille-2003"]["generationMs"] / 1000))
 
 # Démarrer un disque généré.
