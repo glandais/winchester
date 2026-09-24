@@ -167,12 +167,21 @@ public protocol Allocator {
     /// événements. Sans effet hors NTFS de XP, qui masque les clusters
     /// libérés jusque-là.
     mutating func checkpoint()
+
+    /// Donne un enregistrement de métadonnées à un fichier ou un répertoire
+    /// qui naît, et le reprend quand il disparaît. `nil` quand le format ne
+    /// les désigne pas — tout sauf le NTFS de XP, où le plus petit libre est
+    /// repris (`NtfsAllocateRecord`).
+    mutating func takeRecord() -> UInt32?
+    mutating func releaseRecord(_ record: UInt32)
 }
 
 extension Allocator {
 
     public mutating func mount() {}
     public mutating func checkpoint() {}
+    public mutating func takeRecord() -> UInt32? { nil }
+    public mutating func releaseRecord(_ record: UInt32) {}
     public mutating func noteFileCreated(logicalSize: UInt64) {}
     public mutating func noteFileDeleted() {}
     public var metadataExtents: [Extent] { [] }

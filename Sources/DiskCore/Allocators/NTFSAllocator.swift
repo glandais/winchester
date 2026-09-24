@@ -259,6 +259,13 @@ public struct NTFSAllocator: Allocator {
     /// balayage de la bitmap (`ClustersRecentlyFreed`, `LongestFreedRun`).
     var recentlyFreedClusters: UInt32 = 0
     var longestFreedRun: UInt32 = 0
+    /// La bitmap de la MFT (son attribut `$BITMAP`) : un bit par
+    /// enregistrement en service, les seize du système compris.
+    var recordBits: [UInt64] = [0xFFFF]
+    /// Le plus petit enregistrement peut-être libre
+    /// (`RecordAllocationContext.StartingHint`).
+    var recordHint: UInt32 = 16
+    var recordsInUse: UInt32 = 16
 
     public init(profile: NTFSProfile = NTFSProfile(),
                 clusterCount: UInt32,
@@ -848,6 +855,42 @@ public struct NTFSAllocator: Allocator {
     @discardableResult
     public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
         followsXP ? xpStream(file: &file, clusters: count) : streamByPackets(file: &file, clusters: count)
+    }
+
+    /// Sous XP, le plus petit enregistrement libre à partir du seizième
+    /// (`FIRST_USER_FILE_NUMBER`) : `RtlFindClearBits` depuis `StartingHint`,
+    /// que chaque libération ramène vers le bas (`bitmpsup.c:5339, 5777,
+    /// 7819-7822`). Un fichier créé après une suppression prend la place du
+    /// disparu (`ntfs-alloc-12`).
+    public mutating func takeRecord() -> UInt32? {
+        guard followsXP else { return nil }
+        var word = Int(recordHint >> 6)
+        while word < recordBits.count, recordBits[word] == ~0 { word += 1 }
+        if word == recordBits.count { recordBits.append(0) }
+        let masked = recordBits[word] | (word == Int(recordHint >> 6) ? (UInt64(1) << UInt64(recordHint & 63)) &- 1 : 0)
+        var bit = (~masked).trailingZeroBitCount
+        if bit == 64 {
+            // Les bits sous l'indice étaient libres mais masqués : le mot est
+            // plein au-delà, le suivant a la place.
+            word += 1
+            while word < recordBits.count, recordBits[word] == ~0 { word += 1 }
+            if word == recordBits.count { recordBits.append(0) }
+            bit = (~recordBits[word]).trailingZeroBitCount
+        }
+        recordBits[word] |= UInt64(1) << UInt64(bit)
+        recordsInUse += 1
+        let record = UInt32(word << 6 + bit)
+        recordHint = record + 1
+        return record
+    }
+
+    public mutating func releaseRecord(_ record: UInt32) {
+        guard followsXP, record >= 16, Int(record >> 6) < recordBits.count else { return }
+        let mask = UInt64(1) << UInt64(record & 63)
+        guard recordBits[Int(record >> 6)] & mask != 0 else { return }
+        recordBits[Int(record >> 6)] &= ~mask
+        recordsInUse -= 1
+        recordHint = min(recordHint, record)
     }
 
     /// Le volume est monté : sous XP, le cache des runs libres est rebâti de

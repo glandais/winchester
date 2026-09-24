@@ -79,11 +79,24 @@ extension NTFSAllocator {
     /// le cache, dans l'ordre des LCN ; plein, le cache n'en prend plus
     /// (`logsup.c:4513-4533`).
     mutating func xpCheckpoint() {
+        noteMFTHoleCondition()
         guard !pending.isEmpty else { return }
         pending.sort { $0.start < $1.start }
         for run in pending where !cache.insert(run) { break }
         pending.removeAll(keepingCapacity: true)
         pendingClusters = 0
+    }
+
+    /// Le déclencheur de `NtfsCreateMftHole` (`mftsup.c:1610-1640`) : les
+    /// enregistrements libres de la MFT, comptés en clusters, dépassent un
+    /// huitième de l'espace libre (`MFT_DEFRAG_UPPER_THRESHOLD`,
+    /// `ntfs.h:421`). Le perçage lui-même n'est pas modélisé : ce compteur dit
+    /// s'il aurait eu lieu.
+    mutating func noteMFTHoleCondition() {
+        let allocated = UInt64(mft.clusterCount) * UInt64(ntfs.clusterBytes) / ntfs.directoryEntryBytes
+        guard allocated > UInt64(recordsInUse) else { return }
+        let freeClusters = (allocated - UInt64(recordsInUse)) * ntfs.directoryEntryBytes / UInt64(ntfs.clusterBytes)
+        if freeClusters > UInt64(bitmap.freeCount >> 3) { xpCounters.mftHoleConditions += 1 }
     }
 
     /// `NtfsScanEntireBitmap` : les 64 plus longs runs de chaque page.
@@ -746,5 +759,7 @@ public struct NTFSXPCounters: Sendable, Equatable {
     /// quand la MFT ne pouvait plus grandir sur place.
     public var zoneRegrowths = 0
     public var newZones = 0
+    /// Points de contrôle où la MFT aurait été trouée (`NtfsCreateMftHole`).
+    public var mftHoleConditions = 0
     public init() {}
 }

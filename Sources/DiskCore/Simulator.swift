@@ -503,8 +503,9 @@ public struct Simulator<A: Allocator> {
         case let .create(spec):
             if written {
                 allocator.noteFileCreated(logicalSize: spec.bytes)
-                let record = FileRecord(entry: entry, name: spec.name, directory: spec.directory,
+                var record = FileRecord(entry: entry, name: spec.name, directory: spec.directory,
                                         category: spec.category, pattern: spec.pattern, createdDay: day)
+                record.mftRecord = allocator.takeRecord()
                 catalog.insert(record)
                 result.after = record
                 result.written = entry.extents
@@ -547,11 +548,14 @@ public struct Simulator<A: Allocator> {
             // rende les siennes — l'ordre de `placeStreamed`.
             if written {
                 allocator.noteFileCreated(logicalSize: entry.logicalSize)
+                let number = allocator.takeRecord()
                 var previous = record.entry
                 allocator.release(file: &previous)
                 // Le temporaire a consommé un enregistrement de métadonnées en
                 // naissant ; l'original rend le sien en disparaissant.
                 allocator.noteFileDeleted()
+                if let old = record.mftRecord { allocator.releaseRecord(old) }
+                record.mftRecord = number
                 record.entry = entry
                 record.modifiedDay = day
                 catalog[entry.id] = record
@@ -708,6 +712,7 @@ public struct Simulator<A: Allocator> {
             guard var record = catalog.remove(id) else { return }
             allocator.release(file: &record.entry)
             allocator.noteFileDeleted()
+            if let number = record.mftRecord { allocator.releaseRecord(number) }
             removeEntry(named: record.name, from: record.directory)
 
         case .defragment:
@@ -732,12 +737,14 @@ public struct Simulator<A: Allocator> {
             failedWrites += 1
             return
         }
-        catalog.insert(FileRecord(entry: entry,
-                                  name: spec.name,
-                                  directory: spec.directory,
-                                  category: spec.category,
-                                  pattern: spec.pattern,
-                                  createdDay: day))
+        var record = FileRecord(entry: entry,
+                                name: spec.name,
+                                directory: spec.directory,
+                                category: spec.category,
+                                pattern: spec.pattern,
+                                createdDay: day)
+        record.mftRecord = allocator.takeRecord()
+        catalog.insert(record)
     }
 
     /// Le motif de Word : le temporaire est écrit **pendant que l'original
@@ -761,6 +768,9 @@ public struct Simulator<A: Allocator> {
             return
         }
 
+        // Le temporaire a son enregistrement ; renommé, il devient le fichier,
+        // et l'original rend le sien.
+        let number = allocator.takeRecord()
         var previous = old
         allocator.release(file: &previous)
         // Le temporaire a consommé un enregistrement de métadonnées en
@@ -768,6 +778,8 @@ public struct Simulator<A: Allocator> {
         // décompte, un document enregistré deux cents fois gonflerait la MFT de
         // deux cents entrées fantômes.
         allocator.noteFileDeleted()
+        if let old = record.mftRecord { allocator.releaseRecord(old) }
+        record.mftRecord = number
 
         record.entry = replacement
         record.modifiedDay = day
@@ -846,7 +858,19 @@ public struct Simulator<A: Allocator> {
             }
             if reportsDirectoryGrowth { directoryGrowth.append(root) }
         }
-        if case .ntfs = format.kind { allocator.noteFileCreated(logicalSize: 0) }
+        if case .ntfs = format.kind {
+            allocator.noteFileCreated(logicalSize: 0)
+            // La racine est l'enregistrement 5, que le formatage a posé ;
+            // les autres prennent le plus petit libre.
+            if record.parent == nil {
+                if let probe = allocator.takeRecord() {
+                    allocator.releaseRecord(probe)
+                    catalog.updateDirectory(directory) { $0.mftRecord = 5 }
+                }
+            } else if let number = allocator.takeRecord() {
+                catalog.updateDirectory(directory) { $0.mftRecord = number }
+            }
+        }
         fit(directory, format: format)
     }
 

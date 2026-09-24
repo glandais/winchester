@@ -227,6 +227,25 @@ struct NTFSXPAllocationTests {
         #expect(ntfs.mftZone.upperBound <= placed[0].start + 31)
     }
 
+    /// `NtfsAllocateRecord` prend le plus petit enregistrement libre à partir
+    /// du seizième, et une suppression ramène l'indice vers le bas
+    /// (`ntfs-alloc-12`) ; hors XP, le format ne désigne rien.
+    @Test("Les enregistrements libérés sont repris par le bas")
+    func recordsAreReusedFromTheBottom() {
+        var ntfs = NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: 2_000_000,
+                                 formatting: .xp)
+        let first = (0..<70).compactMap { _ in ntfs.takeRecord() }
+        #expect(first == Array(16..<86))
+        ntfs.releaseRecord(20)
+        ntfs.releaseRecord(80)
+        let a = ntfs.takeRecord(), b = ntfs.takeRecord(), c = ntfs.takeRecord()
+        #expect([a, b, c] == [20, 80, 86])
+        var vista = NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: 2_000_000,
+                                  formatting: .vista)
+        let none = vista.takeRecord()
+        #expect(none == nil)
+    }
+
     /// Un défragmenteur qui vise des clusters tout juste libérés ne les voit
     /// pas refusés : `STATUS_DELETE_PENDING`, le journal vidé, les clusters
     /// rendus, puis le déplacement réussit (`ntfs-alloc-15`).

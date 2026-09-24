@@ -51,6 +51,10 @@ public struct FileRecord: Sendable, Identifiable {
     /// Jour de création, compté depuis le début du scénario.
     public var createdDay: UInt32
     public var modifiedDay: UInt32
+    /// Son enregistrement dans la MFT, quand le système de fichiers le
+    /// désigne (NTFS de XP : `Allocator.takeRecord`) ; `nil` ailleurs, où le
+    /// rang de création en tient lieu.
+    public var mftRecord: UInt32?
 
     public var id: UInt32 { entry.id }
     public var logicalSize: UInt64 { entry.logicalSize }
@@ -110,6 +114,8 @@ public struct DirectoryRecord: Sendable, Identifiable {
     /// reçoit son premier enfant — c'est là qu'un installeur ou un programme
     /// fait son `mkdir`.
     public var exists = false
+    /// Son enregistrement dans la MFT, comme `FileRecord.mftRecord`.
+    public var mftRecord: UInt32?
 
     public init(id: UInt32, name: String, parent: UInt32?, sequence: UInt32) {
         self.id = id

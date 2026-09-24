@@ -61,11 +61,29 @@ extension ClusterCategory {
 /// voisins, qui partagent leur page de 4 Ko quand le système les horodate
 /// (`BootSessionTests`, « 2003 horodate ses accès »). La première a été
 /// essayée et écartée au lot F de `LEDGER-REALISME.md` pour cette raison.
+///
+/// Sous XP, le catalogue garde le vrai numéro : le générateur rejoue
+/// `NtfsAllocateRecord`, le plus petit libre (`FileRecord.mftRecord`,
+/// `ntfs-alloc-12`), et c'est lui que la numérotation rend.
 struct MFTNumbering {
     let files: [UInt32: Int]
     let directories: [UInt32: Int]
 
     init(disk: GeneratedDisk) {
+        if disk.catalog.files.contains(where: { $0.mftRecord != nil }) {
+            var directories: [UInt32: Int] = [:]
+            for directory in disk.catalog.directories where directory.exists {
+                if let number = directory.mftRecord { directories[directory.id] = Int(number) }
+            }
+            var files: [UInt32: Int] = [:]
+            files.reserveCapacity(disk.catalog.liveCount)
+            for record in disk.catalog.files {
+                if let number = record.mftRecord { files[record.id] = Int(number) }
+            }
+            self.files = files
+            self.directories = directories
+            return
+        }
         var directories: [UInt32: Int] = [:]
         var next = 16
         for directory in disk.catalog.directories where directory.exists {

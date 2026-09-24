@@ -157,7 +157,9 @@ struct MachineWriter {
     /// - Parameter directory: son répertoire, pour que l'entrée soit écrite là
     ///   où il est.
     mutating func markDirty(_ record: FileRecord, directory: DirectoryRecord? = nil) {
-        let rank = ranks[record.id] ?? {
+        // Sous XP, le numéro que le générateur a donné ; ailleurs, le rang
+        // de création dans la session.
+        let rank = record.mftRecord.map(Int.init) ?? ranks[record.id] ?? {
             let rank = 16 + ranks.count
             ranks[record.id] = rank
             return rank
