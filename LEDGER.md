@@ -7827,3 +7827,191 @@ Les durées de génération ont été restaurées comme d'habitude.
 - **B#15 aggravé plus tard** : avec la condition de XP (chantier 50,
   `> 1` extent, avant et après), la queue repartira plus souvent. La
   correction d'aujourd'hui l'y attend.
+
+## Chantier 48 — XP à la lettre : la disposition NTFS au formatage
+
+**Fait** · branche `xp`, partie de `831fcd5` (chantier 47) · plan : `LEDGER-XP.md`
+
+### Le problème
+
+Le modèle posait un NTFS de XP comme `mkntfs` : `$LogFile` derrière le
+miroir au milieu du volume, `$Bitmap` derrière la zone MFT, la MFT au
+huitième d'un volume de moins de 24 Gio, 32 enregistrements. Le code de
+`FORMAT` de XP SP1 dit autre chose (`WINDOWS_CHECK.md`, `ntfs-format-02`,
+`03`, `04`, `07`, `12`, `ntfs-alloc-19`, la lacune « métafichiers ») : les
+deux trajets d'une validation étaient à l'envers. Le montage allait lire le
+dernier secteur (`ntfs-format-17`), et l'analyse de tout défragmenteur
+lisait les 64 Mio du journal, le miroir et `$Boot` une seconde fois (B#24).
+Les commentaires de `VolumeLayout` et de `DiskGenerator` (B#10) décrivaient
+un XP qui n'a pas existé.
+
+### Les décisions
+
+Chaque référence a été relue dans `base/fs/utils/untfs`, `base/fs/ntfs` et
+`base/fs/utils/dfrg`.
+
+- **B#24, pour tous les NTFS et tous les outils** (étape `48a`) : l'analyse
+  lit la bitmap de la MFT, la bitmap du volume, puis les extents de `$MFT`,
+  dans l'ordre de `dfrgntfs` (`GetMftBitmap`, `dfrgntfs.cpp:4588-4613`,
+  appelé ligne 1780 ; `GetVolumeBitmap`, `freespace.cpp:1345`, ligne 1832 ;
+  `ScanNtfs`, `dfrgntfs.cpp:5110-5160`, ligne 2500). `scanAccesses` ne lit
+  plus rien sur NTFS : la géométrie vient de `FSCTL_GET_NTFS_VOLUME_DATA`
+  (`ntfssubs.cpp:2296`), servie de mémoire. L'analyse est commune aux
+  stratégies, et aucun outil ne lit le journal : la correction ne se limite
+  pas à `Formatting.xp`, et c'est la seule.
+- **La disposition de `FORMAT`, `Formatting.xp` seulement**
+  (`NTFSAllocator.xpLayout`, `LOGFILE_PLACEMENT_V1`, `format.cxx:62`) :
+  `$MFT` à 3 Gio, à 1 Gio de 2 à 6 Gio, au tiers en dessous
+  (`format.cxx:585-593`), 16 enregistrements (`FIRST_USER_FILE_NUMBER`,
+  `format.cxx:552, 685`, `ntfs.h:406`) ; sa bitmap, un cluster, juste devant
+  (`mftfile.cxx:289-293`) ; `$LogFile` qui finit à `MftLcn` moins les 8 Ko
+  réservés (`format.cxx:617-618`, `logfile.cxx:223-233`), un cluster libre
+  entre les deux à 4 Ko ; sa taille selon la rampe (`logfile.cxx:48-56,
+  869-888`, 64 Mio sur toute la galerie) ; `$MFTMirr` au milieu
+  (`mftref.cxx:177-182`), puis `$AttrDef` (2 560 octets), `$Bitmap`,
+  `$UpCase` (128 Ko) et l'allocation de l'index racine (4 Ko), que
+  `_NextAlloc` pose à la suite (`format.cxx:329-341, 904, 991, 1131, 1175` ;
+  `ntfsbit.cxx:452-460, 585`). **L'ordre du plan était faux** : la racine
+  vient en dernier, quand l'index est sauvé, pas avant `$Bitmap`.
+- **La racine reprend son tampon d'index** : l'allocateur le prend au
+  formatage (`formattedRootIndex`, nouvelle exigence d'`Allocator`, `nil`
+  hors XP), le simulateur le donne à la racine quand elle naît et le
+  rapporte comme croissance de répertoire, pour que le journal d'une
+  installation et le rejeu d'une vie retrouvent la bitmap au cluster près.
+  La racine grandit ensuite derrière lui.
+- **Le montage de XP** (`NtfsMountVolume`) : secteur 0 (la copie n'est lue
+  que si celui-ci est illisible, `fsctrl.c:5015-5046`), MFT et miroir
+  (`fsctrl.c:1561-1587`), zone de redémarrage du journal (1718-1801),
+  `$UpCase` entière (2384-2412 ; `$AttrDef` n'est plus lue, 2330-2370 en
+  commentaire), `$Bitmap` entière (`NtfsInitializeClusterAllocation`,
+  `fsctrl.c:2475`, `bitmpsup.c:655, 2006-2121`). Ces deux-là, par vues de
+  64 Ko : lue d'un trait, la bitmap d'un 40 Go faisait une requête de 2 400
+  secteurs, ce que `InstallSessionTests` a refusé (commit à part). NT,
+  Vista et 7 gardent l'ancien montage, dernier secteur compris.
+- **Le reste de l'allocateur ne bouge pas** (chantier 49) : la zone MFT
+  reste 12,5 % comptés depuis `$MFT`, les deux plages de données aussi. La
+  plage de devant va de `$Boot` à `$MFT` et contient donc le journal et la
+  bitmap de la MFT, occupés dans la bitmap comme n'importe quel fichier ; le
+  cluster libre entre eux est de l'espace ordinaire, comme chez XP. Deux
+  bords que seul un disque personnalisé atteint : entre 6 et 8 Gio, la zone
+  recouvre le milieu (XP la borne au premier cluster occupé, le modèle
+  non) ; à 2 ou 6 Gio tout juste, le milieu tombe sur la MFT, et la suite
+  saute derrière elle comme l'allocateur de `FORMAT` cherche vers l'avant.
+- **B#10** : `VolumeLayout` (l'en-tête, `ntfsFormatting`, la validation,
+  `bitmapLBA`, le montage) et `DiskGenerator.formatting(for:)` disent la
+  disposition de XP ; celle de Vista et 7 est dite « le modèle d'avant ».
+
+Tests neufs : les paliers de la MFT, la disposition de XP cluster par
+cluster, la rampe du journal, le montage de XP (trois zones, pas de dernier
+secteur, bitmap et `$UpCase` entières, aucune requête de plus de 128
+secteurs), l'analyse qui ne lit ni journal, ni miroir, ni `$Boot`, la
+racine qui reprend le tampon de `FORMAT`. Refaits en citant la source :
+la MFT au huitième (maintenant Vista seulement), `$Bitmap` derrière la zone
+(Vista), le montage à quatre ou cinq zones (Vista).
+
+### Ce qui valide
+
+Mesures sous `.build/measure-xp` (dépôt principal) ; `bin-47` reconstruit
+depuis `831fcd5` : identique octet pour octet. Prédiction écrite avant dans
+`prediction-48.md`.
+
+| prédiction, écrite avant | mesuré |
+|---|---|
+| 48a : les 180 passes NTFS changent, 220 identiques | **180 / 220** |
+| 48a : l'analyse perd 64 Mio partout, 1 à 2 s | 66,5 à 67,4 Mo (64 Mio = 67,1 Mo), 0,4 à 1,8 s |
+| 48a : plans identiques | **faux** : 105 plans changent (voir plus bas) |
+| 48a : 58 md5 identiques | 58 |
+| 48 contre 48a : 73 changent, 327 identiques (FAT, Vista, 7 en entier) | **73 / 327**, tous sur les quatre volumes de 2003 |
+| volumes : remplissage au point près, famille-2003 bouge le plus | remplissage inchangé ; famille-2003 23,5 → 24,4 %, secretaire 31,7 → 31,8 %, dev 2,1 → 2,0 %, gamer 0,1 → 0,0 % ; **MFT de dev-2003 : 57 → 6 extents** |
+| démarrages : moins d'une seconde | 0,0 à +0,3 s |
+| installations et journée : ±5 %, plutôt en baisse | installations **à ±0,1 s**, journée +0,5 s |
+| passes : plus longues sur les 40 Go, nettement sur gamer-2003 | gamer-2003 **+34 %** (XP), +16 % (UltraDefrag) ; sur les 40 Go, **pas plus longues** : médianes −4,6 % (dev), −3,1 % (famille), +1,2 % (secretaire) |
+| 49 md5 identiques ; changent boot, install ×4 et la journée | 49, exactement ceux-là |
+| contre 47 : 207 identiques | **207** ; 193 changent |
+
+**Les plans de 48a.** L'analyse ne décide rien, mais elle avance
+l'horloge : `NTFSCheckpoints` libère les clusters retenus sur une grille de
+5 s de temps planifié (`plannedSeconds`). Deux secondes d'analyse en moins
+décalent la grille, et le plan d'un outil qui la suit diverge. Touchés :
+XP (16 sur 24), JkDefrag et ses modes (82 sur 84), Windows 95 sur NTFS (7
+sur 12) ; intacts, ceux qui ont leur comptabilité : UltraDefrag, tassage à
+la frontière, recollage économe, JkDefrag en remplissage forcé. L'écart
+peut être grand : `gamer-2012` XP passe de 2 h 24 à 2 h 54,
+`secretaire-2007` au tri par nom perd 42 min. Preuve par deux binaires
+jetables, 47 et 48a avec `NTFSCheckpoints.interval` à 10¹² (plus aucun
+point de contrôle) : sur les six passes qui bougeaient le plus, **plans
+identiques**. C'est la rétention de 5 s que le chantier 50 retire.
+
+**Les passes des 40 Go.** Le seek moyen s'allonge comme prévu (dev-2003 XP
+22 546 → 24 777 cylindres, famille-2003 7 481 → 9 188), mais la durée suit
+surtout la quantité déplacée, qui change avec le volume : dev-2003 XP
+déplace 13 455 → 12 789 Mo (−5 %) pour −7 % de durée, secretaire-2003
+6 456 → 6 376 Mo pour −0,6 %. Le coût par mégaoctet bouge à peine :
+l'aller vers la bitmap est une écriture différée, que le cache du disque
+pose par salves dans l'ordre de l'ascenseur. C'est une explication, pas
+une mesure : l'effet n'a pas été isolé. gamer-2003, lui, a ses données dans
+les 13 premiers Gio et sa bitmap à 37 Gio (12,3 Gio avant) : +34 %.
+
+**La MFT de dev-2003** : 57 extents, puis 6. Les trois cents clusters de
+`$Bitmap` posés à la fin de la zone MFT étaient un mur : la MFT qui débordait
+de sa zone repartait par paquets de huit clusters ailleurs. Le mur parti,
+elle continue d'un tenant derrière la zone. Son analyse passe de 3,5 à
+1,7 s, et XP n'y laisse plus un seul morceau en trop (119 à 47).
+
+**Installations** : leur durée est celle de la source (CD) ; le disque
+suit. Les seeks baissent de 29 à 42 par installation.
+
+`swift test` : 160 + 320 tests, verts (le premier passage a trouvé la
+requête de 2 400 secteurs du montage ; les bilans de 48 sont ceux du binaire
+corrigé). Calibration en Release, lancée sur
+`831fcd5` et sur 48 : **3 tests en échec et 8 constats dont 3 connus, aux
+deux étapes** (le « 4 tests » de `LEDGER-XP.md` compte autrement ; la
+structure est la même). Chiffres : famille-2003, remplissage 88,71 % aux
+deux, fragmentés 23,5 → **24,4 %** ; le rapport FAT32/NTFS 16,4 contre
+23,5 → 16,4 contre **24,4 %** ; gamer-2003 garde son fichier en 4 morceaux ;
+les autres aux mêmes chiffres. Rien n'est recalé (chantier 49).
+`GalleryAllocationAudit` en Release (21 min) : **20 volumes propres, 4 en
+échec** — `dev-2007`, `secretaire-2007`, `dev-2012`, `secretaire-2012`, la
+passe de XP seule (848, 595, 905 et 772 clusters « posés sur un extent
+système », aucune écriture sur une donnée vivante, aucun cluster en double).
+**Déjà là à 47** : l'audit relancé sur `831fcd5` donne les mêmes chiffres.
+Ce sont les quatre volumes où `MFTDefrag` déplace une queue de MFT qui porte
+des enregistrements (chantier 47), et l'audit jugeait l'arrivée sur les
+extents système **de départ** : un fichier rangé là où était l'ancienne
+queue, libérée, comptait comme posé sur le système. L'audit prend désormais
+la MFT d'arrivée (`plan.partition.mftExtents`) ; relancé sur les quatre, il
+est propre. Les vingt autres l'étaient sous l'ancienne règle, plus sévère.
+
+README : la disposition de XP (paragraphe de l'allocateur, carte, tables
+de l'installation et de la validation), le montage et l'analyse ; tables et
+prose de `readme-tables.py 48 --write`, les durées de génération rendues
+(1,7 s ; 2,5 et 2,2 s ; 1,8 s pour `famille-2003`, dont le volume a changé
+mais que la machine chargée ne permet pas de mesurer). `--check`, les
+volumes remesurés machine au repos : un seul écart, `dev-2007` (1,7 s au
+README, 2,3 s mesurés), comme au chantier 47 — son volume n'a pas bougé. « Ce qui ne l'est
+pas » ne citait rien de ce que ce chantier source.
+
+**Écoute proposée, non faite.** `dev-2007` (celui du plan) est formaté
+Vista : il ne change qu'à l'analyse. Les volumes à écouter sont ceux de
+2003 : `SCENARIO=gamer-2003 STRATEGY=windowsXP`, où chaque validation va
+chercher la bitmap à 37 Gio (seek moyen 3 539 → 7 774 cylindres, 10 → 14 s),
+et `boot:famille-2003`, dont le montage ne va plus au fond du disque mais
+lit la racine, `$UpCase` et la bitmap au milieu (33 seeks de plus,
++0,3 s). Rien n'a été écouté.
+
+### Laissé ouvert
+
+- **Les répertoires à l'analyse** : `dfrgntfs` ne semble lire que la MFT
+  (ses seules lectures directes sont celles de B#24 et des listes
+  d'attributs, `ntfssubs.cpp:1472`) ; le modèle lit encore chaque
+  répertoire sur NTFS. Non tranché ici.
+- **`$Secure`, `$Extend` et les fichiers que le pilote crée au premier
+  montage** ne sont pas posés : `FORMAT` de XP ne les crée pas
+  (`format.cxx`), et le code du pilote qui le fait n'a pas été suivi.
+- **Les entrées de métafichiers dans l'index racine** (onze noms) ne sont
+  pas comptées : la racine naît vide dans son tampon de 4 Ko.
+- **La zone MFT de XP** (bornée au premier cluster occupé, recalculée au
+  montage) et tout l'allocateur : chantier 49. **La rétention de 5 s**, qui
+  rend les plans sensibles à l'horloge : chantier 50.
+- **Le « 4 tests » de Calibration** dans `LEDGER-XP.md` : à recompter au
+  chantier 49, qui recale ces cibles.

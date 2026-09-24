@@ -99,22 +99,36 @@ Prédiction attendue : seules les passes XP et les volumes 2012 bougent.
 
 ## Chantier 48 : la disposition NTFS au formatage, `Formatting.xp` seul
 
-- `$LogFile` finit deux clusters avant `$MFT`, avec le bitmap de la MFT
+**Fait** le 24 septembre 2026, branche `xp` (`LEDGER.md`, chantier 48). Tout
+ce qui suit est livré. Écarts au plan : B#24 vaut pour tous les NTFS (l'analyse
+est commune aux outils) ; l'index racine vient **après** `$UpCase`
+(`format.cxx:1175`), pas avant `$Bitmap` ; le montage de XP lit aussi
+`$UpCase` et `$Bitmap` entières (`fsctrl.c:2384-2412`, `bitmpsup.c:655`) ;
+`dev-2007` est formaté Vista et ne bouge qu'à l'analyse, l'écoute est sur les
+volumes de 2003. Prédiction : les comptes tiennent au bilan près (48a :
+180/220 ; 48 : 73/327 ; 49 md5 sur 58), mais les plans de 48a bougent par la
+grille de 5 s des points de contrôle (prouvé par binaires jetables), et les
+passes des 40 Go ne s'allongent pas. Calibration en Release : mêmes échecs,
+famille-2003 à 24,4 % au lieu de 23,5. `GalleryAllocationAudit` : propre sur
+les vingt-quatre, une fois l'audit corrigé pour la queue de MFT que
+`MFTDefrag` quitte (faux positif présent dès le chantier 47).
+
+- [x] `$LogFile` finit deux clusters avant `$MFT`, avec le bitmap de la MFT
   juste devant elle (`ntfs-format-03`).
-- `$MFTMirr` est à n/2, suivi de `$AttrDef`, de l'index de la racine, de
+- [x] `$MFTMirr` est à n/2, suivi de `$AttrDef`, de l'index de la racine, de
   `$Bitmap` et de `$UpCase` (`ntfs-format-04`, lacune « métafichiers »).
-- `$MFT` au tiers du volume sous 2 Gio, à 1 Gio de 2 à 6 Gio, à 3 Gio
+- [x] `$MFT` au tiers du volume sous 2 Gio, à 1 Gio de 2 à 6 Gio, à 3 Gio
   au-delà (`ntfs-format-02`). Une MFT neuve compte 16 enregistrements
   (`ntfs-format-12`).
-- La taille de `$LogFile` suit la rampe de XP (`ntfs-format-07`). Cela ne
+- [x] La taille de `$LogFile` suit la rampe de XP (`ntfs-format-07`). Cela ne
   change rien pour la galerie, seulement pour les disques personnalisés.
-- Le montage ne lit plus le dernier secteur (`ntfs-format-17`). La copie du
+- [x] Le montage ne lit plus le dernier secteur (`ntfs-format-17`). La copie du
   secteur d'amorçage n'est lue que si la lecture de `$Boot` échoue.
-- **B#24** : l'analyse lit les extents de `$MFT`, son `$BITMAP` et la bitmap
+- [x] **B#24** : l'analyse lit les extents de `$MFT`, son `$BITMAP` et la bitmap
   du volume. Elle ne lit plus `$LogFile`, `$MFTMirr`, ni `$Boot` une
   seconde fois (`dfrgntfs.cpp:4588-4613, 5110-5160`,
   `freespace.cpp:1345`).
-- **B#10** : les commentaires de `VolumeLayout` et de `DiskGenerator` sont
+- [x] **B#10** : les commentaires de `VolumeLayout` et de `DiskGenerator` sont
   corrigés **dans le sens de XP**.
 
 À écouter : `dev-2007`, dont chaque validation va maintenant vers une bitmap
