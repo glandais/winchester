@@ -73,14 +73,14 @@ struct MountAndJournalTests {
         #expect(!mount.contains { $0.lba == partition.fat2LBA })
     }
 
-    /// `$Boot` en tête ; les seize premiers enregistrements de la MFT à 3 Gio
-    /// et `$Bitmap` derrière sa zone — la même zone à 1 % près sur un 320 Go,
-    /// deux sur un 40 Go où la zone fait 12,5 % ; `$MFTMirr` et la zone de
-    /// redémarrage du journal au milieu du volume (XP, Vista) ; la copie du
+    /// Vista et 7 gardent le montage du modèle : `$Boot` en tête ; les seize
+    /// premiers enregistrements de la MFT à 3 Gio et `$Bitmap` derrière sa
+    /// zone — la même zone à 1 % près sur un 320 Go ; `$MFTMirr` et la zone
+    /// de redémarrage du journal au milieu du volume (Vista) ; la copie du
     /// secteur d'amorçage au fond du disque. Quelques dizaines de kilo-octets
     /// en quatre ou cinq endroits, là où le modèle lisait 2 Mo d'un trait.
-    @Test("Monter un NTFS touche quatre ou cinq zones du volume, pas une plage de 2 Mo",
-          arguments: ["dev-2003", "famille-2007"])
+    @Test("Monter un NTFS Vista touche quatre ou cinq zones du volume, pas une plage de 2 Mo",
+          arguments: ["famille-2007", "dev-2007"])
     func ntfsMount(id: String) throws {
         let partition = try Self.partition(id)
         let mount = partition.mountAccesses
@@ -97,6 +97,33 @@ struct MountAndJournalTests {
         }
         #expect((4...5).contains(zones.count), "\(id) : zones \(zones)")
         #expect(mount.contains { $0.lba == partition.startLBA + partition.totalSectors - 1 })
+    }
+
+    /// Le montage du pilote de XP (`NtfsMountVolume`) : le secteur 0 — sa
+    /// copie n'est lue que s'il est illisible (`fsctrl.c:5015-5046`) —, la
+    /// MFT et son miroir, la zone de redémarrage du journal, `$UpCase`
+    /// entière (`fsctrl.c:2384-2412`) et `$Bitmap` entière, que
+    /// `NtfsScanEntireBitmap` parcourt (`bitmpsup.c:655`). Trois zones : le
+    /// début, la MFT avec le journal devant elle, et le milieu du volume.
+    @Test("Monter un NTFS de XP ne va pas au fond du disque",
+          arguments: ["dev-2003", "famille-2003", "gamer-2003", "secretaire-2003"])
+    func xpMount(id: String) throws {
+        let partition = try Self.partition(id)
+        #expect(partition.ntfsFormatting == .xp)
+        let mount = partition.mountAccesses
+        let end = partition.startLBA + partition.totalSectors
+        #expect(!mount.contains { $0.lba + $0.sectors >= end - 1 }, "\(id) lit le dernier secteur")
+        let layout = partition.ntfsLayout
+        #expect(mount.contains { $0.lba == partition.bitmapLBA
+                    && $0.sectors == Int(layout.bitmap.length) * partition.clusterSectors })
+        #expect(mount.contains { $0.lba == partition.lba(ofCluster: Int(layout.upCase.start))
+                    && $0.sectors * DriveGeometry.bytesPerSector == 128 * 1_024 })
+        let span = partition.totalSectors / 100
+        var zones: [Int] = []
+        for lba in mount.map(\.lba).sorted() {
+            if let last = zones.last, lba - last < span { zones[zones.count - 1] = lba } else { zones.append(lba) }
+        }
+        #expect(zones.count == 3, "\(id) : zones \(zones)")
     }
 
     /// Le modèle de volume et le générateur appliquent la même règle : le
@@ -118,8 +145,14 @@ struct MountAndJournalTests {
         }, "un fichier est posé sur le journal")
         #expect(partition.logFileLBA == partition.lba(ofCluster: Int(layout.logFile.start)))
         #expect(partition.mftLBA == partition.lba(ofCluster: Int(layout.mftStart)))
-        // 2 Go : sous les 12 Gio au-delà desquels le journal fait 64 Mio.
-        #expect(Int(layout.logFile.length) * partition.clusterBytes == 4 << 20)
+        // 2 Go : sous les 12 Gio au-delà desquels le journal fait 64 Mio. XP
+        // lui donne environ 12 Mo (sa rampe), et le pose devant la MFT.
+        #expect(UInt64(layout.logFile.length) * UInt64(partition.clusterBytes)
+                == NTFSAllocator.xpLogFileBytes(volumeBytes: UInt64(disk.clusterCount) * UInt64(disk.clusterBytes)))
+        #expect(layout.logFile.end + 2 == layout.mftStart)
+        // L'index racine de `FORMAT` est au répertoire racine, au milieu.
+        let root = try #require(disk.catalog.directories.first { $0.parent == nil })
+        #expect(root.extents.first == layout.rootIndex)
 
         // `$Bitmap`, que la validation d'un déplacement réécrit : posée par le
         // générateur, lue au même endroit, et aucun fichier dessus.

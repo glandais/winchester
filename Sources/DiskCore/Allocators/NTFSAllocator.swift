@@ -79,35 +79,48 @@ public struct NTFSAllocator: Allocator {
     ///
     /// Quatre dispositions, et ce que chacune doit à une source :
     ///
+    /// - **XP et Server 2003**, d'après le code de `FORMAT` de XP SP1
+    ///   (`base/fs/utils/untfs`, `LOGFILE_PLACEMENT_V1` défini à
+    ///   `format.cxx:62`), qui fait foi (`LEDGER-XP.md`, décision 1) :
+    ///   `$MFT` à **3 Gio** du début (LCN 786 432 en clusters de 4 Ko), à
+    ///   1 Gio pour un volume de 2 à 6 Gio, au tiers sous 2 Gio
+    ///   (`format.cxx:585-593`) ; la bitmap de la MFT juste devant elle
+    ///   (`mftfile.cxx:289-293`) ; `$LogFile` qui finit deux clusters avant
+    ///   (`format.cxx:617-618`, `logfile.cxx:223-233`) ; `$MFTMirr` au
+    ///   **milieu** du volume (`mftref.cxx:177-182`), suivi de `$AttrDef`,
+    ///   `$Bitmap`, `$UpCase` et de l'allocation de l'index racine, que
+    ///   l'allocateur de `FORMAT` pose l'un derrière l'autre
+    ///   (`format.cxx:337-341, 904-1175`, `ntfsbit.cxx:452-460, 585`). La
+    ///   zone de 12,5 % est celle du pilote (`bitmpsup.c:42, 8542-8551`) ;
     /// - **NT 4 et 2000** (`mkntfs.c`, qui reproduit `FORMAT` de l'époque) :
     ///   `$MFT` en tête derrière `$Boot`, `$MFTMirr` au **milieu** du volume,
     ///   `$LogFile` juste derrière lui, zone MFT de 12,5 % du volume ;
-    /// - **XP et Server 2003** : `$MFT` à **3 Gio** du début (LCN 786 432 en
-    ///   clusters de 4 Ko — Sedory, relevés ; une seule source, secondaire),
-    ///   `$MFTMirr` au milieu, zone de 12,5 % (KB 961095) ;
-    /// - **Vista** : comme XP, mais la zone fait **200 Mo**, renouvelés par
-    ///   tranches de 200 Mo quand la MFT la remplit (KB 961095, primaire) ;
+    /// - **Vista** : `$MFT` à 3 Gio (au huitième d'un volume plus petit, une
+    ///   règle du modèle), `$MFTMirr` au milieu, `$LogFile` derrière lui comme
+    ///   le pose `mkntfs`, `$Bitmap` derrière la zone ; la zone fait
+    ///   **200 Mo**, renouvelés par tranches de 200 Mo quand la MFT la remplit
+    ///   (KB 961095, primaire) ;
     /// - **Windows 7** : comme Vista, `$MFTMirr` ramené au **LCN 2**.
     ///
-    /// Ce que les sources ne disent pas, et que le modèle pose : la place de
-    /// `$LogFile` sous XP, Vista et 7 (ici derrière le miroir, comme
-    /// `mkntfs`) ; ce que fait un volume de moins de 3 Gio (ici la MFT au
-    /// huitième du volume) ; et que les données ordinaires se posent
-    /// **devant** `$MFT`, dans les 3 premiers Gio — ce que montre un `fsutil`
-    /// moderne (la zone commence à la MFT), mais que la KB 961095 contredit à
-    /// la lettre pour les anciennes versions. Le modèle a longtemps mis
-    /// `$MFT` derrière le journal, vers le cluster 16 400, et interdit toute
-    /// donnée avant 12,5 % du volume : cela ne correspondait à aucune
-    /// disposition attestée (`LEDGER-REALISME.md`, la place de `$MFT`).
+    /// Vista et 7 gardent le modèle d'avant le chantier 48 : leur `FORMAT`
+    /// n'est pas dans le code consulté, et ce que XP fait ne les engage pas.
+    /// Pour les trois, les données ordinaires se posent **devant** `$MFT`,
+    /// dans les premiers gigaoctets : c'est ce que fait le pilote de XP, qui
+    /// ne réserve que la zone (`bitmpsup.c:3872-3905`), et ce que montre un
+    /// `fsutil` moderne.
     public enum Formatting: Sendable {
         case nt, xp, vista, win7
 
         /// Le miroir au milieu du volume, ou près du début.
         var mirrorInTheMiddle: Bool { self != .win7 }
-        /// `$MFT` à 3 Gio, ou en tête.
+        /// `$MFT` loin du début (à 3 Gio sur un grand volume), ou en tête.
         var mftAtThreeGibibytes: Bool { self != .nt }
         /// La zone MFT : une part du volume, ou 200 Mo renouvelables.
         var renewableZoneBytes: UInt64? { self == .vista || self == .win7 ? 200 << 20 : nil }
+        /// Enregistrements d'une MFT neuve : `FIRST_USER_FILE_NUMBER`, 16,
+        /// sous XP (`format.cxx:552, 685`, `ntfs.h:406`) ; 32 ailleurs, une
+        /// valeur du modèle.
+        public var initialMFTRecords: UInt64 { self == .xp ? 16 : 32 }
     }
 
     public let ntfs: NTFSProfile
@@ -120,9 +133,17 @@ public struct NTFSAllocator: Allocator {
     public private(set) var mftMirror: Extent
     /// `$LogFile` : le journal, de taille fixe et immobile.
     public private(set) var logFile: Extent
-    /// `$Bitmap` : la table d'occupation, un bit par cluster, posée derrière
-    /// la zone MFT.
+    /// `$Bitmap` : la table d'occupation, un bit par cluster — au milieu du
+    /// volume sous XP, derrière la zone MFT ailleurs (`Layout.bitmap`).
     public private(set) var volumeBitmap: Extent
+    /// Les métafichiers que seul `FORMAT` de XP pose ici : la bitmap de la
+    /// MFT, `$AttrDef` et `$UpCase`. Vide ailleurs.
+    public let formatExtras: [Extent]
+    /// L'allocation de l'index de la racine que `FORMAT` de XP a posée au
+    /// milieu du volume : elle appartient au répertoire racine, que le
+    /// simulateur crée plus tard (`Allocator.formattedRootIndex`). `nil`
+    /// ailleurs, où la racine prend ses clusters comme tout répertoire.
+    public let formattedRootIndex: Extent?
     /// `$Boot` : les huit premiers kilo-octets du volume.
     public private(set) var bootExtent: Extent
     /// Enregistrements en service — ceux des fichiers vivants.
@@ -217,10 +238,11 @@ public struct NTFSAllocator: Allocator {
 
     public init(profile: NTFSProfile = NTFSProfile(),
                 clusterCount: UInt32,
-                initialMFTRecords: UInt64 = 32,
+                initialMFTRecords: UInt64? = nil,
                 formatting: Formatting = .xp,
                 search: SearchBounds = .standard) {
         precondition(profile.supports(clusterCount: clusterCount))
+        let initialMFTRecords = initialMFTRecords ?? formatting.initialMFTRecords
         self.ntfs = profile
         self.search = search
         self.bitmap = ClusterBitmap(clusterCount: clusterCount)
@@ -251,6 +273,15 @@ public struct NTFSAllocator: Allocator {
         self.mftZone = zoneStart..<max(layout.mftZoneEnd, zoneStart)
         self.volumeBitmap = layout.bitmap
         bitmap.allocate(layout.bitmap)
+        let extras = [layout.mftBitmap, layout.attrDef, layout.upCase].filter { !$0.isEmpty }
+        for extent in extras { bitmap.allocate(extent) }
+        self.formatExtras = extras
+        if let root = layout.rootIndex, !root.isEmpty {
+            bitmap.allocate(root)
+            self.formattedRootIndex = root
+        } else {
+            self.formattedRootIndex = nil
+        }
         // Le premier vierge est devant la MFT quand `FORMAT` l'a posée à
         // 3 Gio : c'est là que les données commencent.
         self.highWater = layout.dataFront.isEmpty
@@ -279,8 +310,8 @@ public struct NTFSAllocator: Allocator {
         /// `$LogFile` : le journal des métadonnées.
         public let logFile: Extent
         /// L'attribut `$BITMAP` de `$MFT` : un bit par enregistrement, que
-        /// l'analyse de `dfrgntfs` lit avant la MFT. Vide là où le modèle ne
-        /// le pose pas.
+        /// l'analyse de `dfrgntfs` lit avant la MFT. Sous XP, le cluster qui
+        /// précède `$MFT` ; vide ailleurs, où le modèle ne le pose pas.
         public let mftBitmap: Extent
         /// Premier cluster de `$MFT`.
         public let mftStart: UInt32
@@ -288,45 +319,65 @@ public struct NTFSAllocator: Allocator {
         public let mftClusters: UInt32
         /// Fin de la zone MFT d'origine, la place qu'elle réserve comprise.
         public let mftZoneEnd: UInt32
-        /// `$Bitmap` : un bit par cluster, arrondi à huit octets comme le pose
-        /// `mkntfs`, et **derrière la zone MFT** — la première place libre qui
-        /// ne soit pas réservée à la MFT. C'est là que `mkntfs` pose ses
-        /// métafichiers non résidents (`allocate_scattered_clusters`, qui part
-        /// de `g_mft_zone_end`), et là que le simulateur lit et écrit la
-        /// table.
+        /// `$Bitmap` : un bit par cluster, arrondi à huit octets
+        /// (`bitfrs.cxx:185-199`). Sous XP, **au milieu du volume**, derrière
+        /// `$MFTMirr` et `$AttrDef` : `FORMAT` la crée sans place imposée,
+        /// et son allocateur la pose là où il en est (`format.cxx:991`,
+        /// `ntfsbit.cxx:452-460, 585`). Ailleurs, derrière la zone MFT, là
+        /// où `mkntfs` pose ses métafichiers non résidents
+        /// (`allocate_scattered_clusters`, qui part de `g_mft_zone_end`).
+        /// C'est là que le simulateur lit et écrit la table.
         public let bitmap: Extent
+        /// `$AttrDef` (2 560 octets, `attrdef.cxx:451`) et `$UpCase`
+        /// (128 Ko, `upcase.hxx:248, 272`), posés par `FORMAT` de XP autour
+        /// de `$Bitmap`. Vides ailleurs.
+        public let attrDef: Extent
+        public let upCase: Extent
+        /// L'allocation de l'index racine (un tampon de 4 Ko,
+        /// `SMALL_INDEX_BUFFER_SIZE`), la dernière chose que `FORMAT` de XP
+        /// pose au milieu (`format.cxx:1175`). `nil` ailleurs.
+        public let rootIndex: Extent?
         /// Les clusters devant `$MFT` où les données ordinaires se posent :
-        /// les 3 premiers Gio d'un volume XP, rien sous NT.
+        /// les premiers gigaoctets d'un volume XP, Vista ou 7, le journal et
+        /// la bitmap de la MFT compris sous XP ; rien sous NT.
         public let dataFront: Range<UInt32>
     }
 
     public static func layout(profile: NTFSProfile, clusterCount: UInt32,
                               formatting: Formatting,
-                              initialMFTRecords: UInt64 = 32) -> Layout {
+                              initialMFTRecords: UInt64? = nil) -> Layout {
+        let initialMFTRecords = initialMFTRecords ?? formatting.initialMFTRecords
         // $Boot occupe les huit premiers kilo-octets du volume — deux clusters
-        // à 4 Ko, et non un. La copie du secteur d'amorçage, elle, est au tout
-        // dernier secteur du volume : elle ne coûte aucun cluster ici,
-        // seulement un accès isolé au fond du disque au montage
-        // (`PartitionGeometry.mountAccesses`).
+        // à 4 Ko, et non un (`BYTES_IN_BOOT_AREA`, `untfs.hxx:67`). La copie
+        // du secteur d'amorçage, au tout dernier secteur du volume, ne coûte
+        // aucun cluster, et le pilote ne la lit que si le secteur 0 est
+        // illisible (`fsctrl.c:5015-5046`).
         let bootClusters = max(profile.clusters(forBytes: 8 * 1_024), 1)
+        let mftClusters = max(profile.clusters(forBytes: initialMFTRecords * 1_024), 1)
+        let zoneClusters = formatting.renewableZoneBytes.map { profile.clusters(forBytes: $0) }
+            ?? UInt32(Double(clusterCount) * profile.mftZoneShare)
 
         // $MFTMirr : la copie des **quatre premiers enregistrements** de la
         // MFT, soit 4 Ko, soit un cluster à 4 Ko — et non quatre. Au milieu du
         // volume de NT 4 à Vista, au LCN 2 depuis Windows 7 (Sedory).
         let mirrorClusters = max(profile.clusters(forBytes: 4 * 1_024), 1)
+
+        if formatting == .xp {
+            return xpLayout(profile: profile, clusterCount: clusterCount,
+                            bootClusters: bootClusters, mftClusters: mftClusters,
+                            zoneClusters: zoneClusters, mirrorClusters: mirrorClusters)
+        }
+
         let mirrorStart: UInt32 = formatting.mirrorInTheMiddle
             ? clusterCount / 2
             : min(2, clusterCount - mirrorClusters)
         let mirror = Extent(start: max(mirrorStart, bootClusters), length: mirrorClusters)
 
-        // $LogFile suit le miroir, comme le pose `mkntfs` : c'est un choix du
-        // modèle pour XP, Vista et 7, dont aucune source ne place le journal.
-        // Sa taille est fixée au formatage et ne change plus — 64 Mio à
-        // partir de 12 Gio de volume, ce que tous les NTFS de la galerie
-        // dépassent. En dessous, `mkntfs` le réduit, et le modèle prend sa
-        // valeur (4 Mio, 2 Mio sous 200 Mio) ; le plafond au seizième du
-        // volume ne sert qu'aux volumes d'essai de quelques centaines de
-        // clusters.
+        // Hors XP, le modèle d'avant le chantier 48 : $LogFile suit le miroir,
+        // comme le pose `mkntfs`, et sa taille suit les paliers de `mkntfs`
+        // — 64 Mio à partir de 12 Gio de volume, 4 Mio en dessous, 2 Mio sous
+        // 200 Mio ; le plafond au seizième du volume ne sert qu'aux volumes
+        // d'essai de quelques centaines de clusters.
         let volumeBytes = UInt64(clusterCount) * UInt64(profile.clusterBytes)
         let logBytes: UInt64 = volumeBytes >= 12 << 30 ? 64 << 20
             : volumeBytes >= 200 << 20 ? 4 << 20
@@ -334,37 +385,139 @@ public struct NTFSAllocator: Allocator {
         let logClusters = max(min(profile.clusters(forBytes: logBytes), clusterCount / 16), 1)
         let logFile = Extent(start: mirror.end, length: logClusters)
 
-        // $MFT : à 3 Gio depuis XP — au huitième du volume quand il fait
-        // moins, une règle du modèle —, et en tête sous NT. Ce qui précède
-        // (le journal en tête sous Windows 7) la repousse d'autant.
-        let mftClusters = max(profile.clusters(forBytes: initialMFTRecords * 1_024), 1)
+        // $MFT : à 3 Gio sous Vista et 7 — au huitième du volume quand il
+        // fait moins, une règle du modèle —, et en tête sous NT. Ce qui
+        // précède (le journal en tête sous Windows 7) la repousse d'autant.
         let head = formatting.mirrorInTheMiddle ? bootClusters : max(logFile.end, bootClusters)
         let threeGibibytes = UInt32(min(UInt64(3) << 30 / UInt64(profile.clusterBytes),
                                         UInt64(clusterCount / 8)))
         let mftStart = formatting.mftAtThreeGibibytes ? max(head, threeGibibytes) : head
-        let zoneClusters = formatting.renewableZoneBytes.map { profile.clusters(forBytes: $0) }
-            ?? UInt32(Double(clusterCount) * profile.mftZoneShare)
         let zoneEnd = min(clusterCount, mftStart + max(zoneClusters, mftClusters))
-        let bitmapBytes = ((UInt64(clusterCount) + 7) / 8 + 7) / 8 * 8
-        let bitmapClusters = max(profile.clusters(forBytes: bitmapBytes), 1)
+        let bitmapClusters = volumeBitmapClusters(profile: profile, clusterCount: clusterCount)
         let bitmapStart = min(zoneEnd, clusterCount - min(bitmapClusters, clusterCount))
         // Les clusters libres devant la MFT : entre ce que `$Boot`, le miroir
         // et le journal occupent en tête, et la MFT. Vide sous NT.
         let front = head..<mftStart
+        let none = Extent(start: mftStart, length: 0)
         return Layout(boot: Extent(start: 0, length: bootClusters),
                       mirror: mirror, logFile: logFile,
-                      mftBitmap: Extent(start: mftStart, length: 0), mftStart: mftStart,
+                      mftBitmap: none, mftStart: mftStart,
                       mftClusters: mftClusters, mftZoneEnd: zoneEnd,
                       bitmap: Extent(start: bitmapStart, length: bitmapClusters),
+                      attrDef: none, upCase: none, rootIndex: nil,
                       dataFront: front)
+    }
+
+    /// `$Bitmap` : ceil(clusters/8) octets, arrondis à huit, puis au cluster
+    /// (`bitfrs.cxx:185-199`).
+    private static func volumeBitmapClusters(profile: NTFSProfile, clusterCount: UInt32) -> UInt32 {
+        let bytes = ((UInt64(clusterCount) + 7) / 8 + 7) / 8 * 8
+        return max(profile.clusters(forBytes: bytes), 1)
+    }
+
+    /// La taille de `$LogFile` que choisit `FORMAT` de XP
+    /// (`NTFS_LOG_FILE::QueryDefaultSize`, `logfile.cxx:48-56, 869-888`) :
+    /// 1 % du volume jusqu'à 400 Mo, au moins 2 Mo ; au-delà, 4 Mo plus un
+    /// deux-centième de ce qui dépasse 400 Mo, plafonné à 64 Mo ; arrondi à
+    /// 16 Ko. Une rampe, pas des paliers : 12 Mo sur 2 Go, 43 Mo sur 8 Go,
+    /// le plafond vers 12,1 Gio. Au-delà de 2³² secteurs, 64 Mo d'office.
+    public static func xpLogFileBytes(volumeBytes: UInt64) -> UInt64 {
+        let maximum: UInt64 = 0x400_0000, minimum: UInt64 = 0x20_0000
+        let slowdown: UInt64 = 400 * 1_024 * 1_024
+        guard volumeBytes / 512 < 1 << 32 else { return maximum }
+        var size: UInt64
+        if volumeBytes <= slowdown {
+            size = max(volumeBytes / 100, minimum)
+        } else {
+            size = min((volumeBytes - slowdown) / 200 + slowdown / 100, maximum)
+        }
+        return (size + 0x3FFF) & ~UInt64(0x3FFF)
+    }
+
+    /// La disposition de `FORMAT` sous XP SP1, dans l'ordre où il alloue
+    /// (`NTFS_SA::Create`, `format.cxx:490-1175`). Son allocateur
+    /// (`NTFS_BITMAP::AllocateClusters`) cherche vers l'avant à partir de
+    /// la place qu'on lui donne, ou de `_NextAlloc`, qui avance derrière
+    /// chaque allocation (`ntfsbit.cxx:452-460, 585`) :
+    ///
+    /// 1. `$Boot`, les huit premiers kilo-octets ;
+    /// 2. `$MFT`, 16 enregistrements (`FIRST_USER_FILE_NUMBER`), à 3 Gio
+    ///    sur un volume d'au moins 6 Gio, à 1 Gio de 2 à 6 Gio, au tiers
+    ///    en dessous (`format.cxx:585-593`) ;
+    /// 3. la bitmap de la MFT, un cluster juste devant elle
+    ///    (`_FirstLcn - ClustersInMftBitmap`, `mftfile.cxx:289-293`) ;
+    /// 4. `$LogFile`, qui finit à `MftLcn` moins les 8 Ko réservés à la
+    ///    bitmap de la MFT (`LogFileNearLcn`, `format.cxx:617-618`) :
+    ///    `SetNextAlloc(NearLcn - ClustersInData)` le pose là
+    ///    (`logfile.cxx:223-233`). À 4 Ko, un cluster libre le sépare de la
+    ///    bitmap de la MFT ;
+    /// 5. `$MFTMirr` au milieu (`(secteurs/2)/facteur`, `mftref.cxx:177-182`) ;
+    /// 6. sans place imposée, donc derrière lui : `$AttrDef` (904),
+    ///    `$Bitmap` (991), `$UpCase` (1131), puis l'allocation de l'index
+    ///    racine quand l'index est sauvé (1175). Le schéma en tête de la
+    ///    fonction dit le même ordre (`format.cxx:329-341`).
+    ///
+    /// Le secteur des paliers est celui du volume, `clusterCount ×` secteurs
+    /// par cluster, à un cluster près. Ce que le modèle ajoute : le plafond
+    /// du journal au seizième du volume, pour les volumes d'essai de
+    /// quelques centaines de clusters, et le saut par-dessus la MFT quand le
+    /// milieu tombe dessus (un volume de 2 ou de 6 Gio tout juste), que
+    /// l'allocateur de `FORMAT` fait en cherchant vers l'avant.
+    private static func xpLayout(profile: NTFSProfile, clusterCount: UInt32,
+                                 bootClusters: UInt32, mftClusters: UInt32,
+                                 zoneClusters: UInt32, mirrorClusters: UInt32) -> Layout {
+        let clusterBytes = UInt64(profile.clusterBytes)
+        let clusterSectors = max(clusterBytes / 512, 1)
+        let volumeSectors = UInt64(clusterCount) * clusterSectors + 1
+        let oneGibibyte: UInt64 = 1 << 30
+        let lcn: UInt64
+        if volumeSectors < 2 * oneGibibyte / 512 {
+            lcn = volumeSectors / 3 / clusterSectors
+        } else if volumeSectors < 6 * oneGibibyte / 512 {
+            lcn = oneGibibyte / clusterBytes
+        } else {
+            lcn = 3 * oneGibibyte / clusterBytes
+        }
+        let volumeBytes = UInt64(clusterCount) * clusterBytes
+        let logClusters = max(min(profile.clusters(forBytes: xpLogFileBytes(volumeBytes: volumeBytes)),
+                                  clusterCount / 16), 1)
+        let reserved = max(profile.clusters(forBytes: 8 * 1_024), 1)   // MFT_BITMAP_INITIAL_SIZE
+        let mftStart = max(UInt32(min(lcn, UInt64(clusterCount / 2))),
+                           bootClusters + logClusters + reserved)
+        let mftBitmap = Extent(start: mftStart - 1, length: 1)
+        let logFile = Extent(start: mftStart - reserved - logClusters, length: logClusters)
+
+        // Le milieu, puis ce que `_NextAlloc` pose derrière lui.
+        let mftEnd = mftStart + mftClusters
+        var next = clusterCount / 2
+        func take(_ length: UInt32) -> Extent {
+            if next < mftEnd, next + length > mftBitmap.start { next = mftEnd }
+            defer { next += length }
+            return Extent(start: next, length: length)
+        }
+        let mirror = take(mirrorClusters)
+        let attrDef = take(max(profile.clusters(forBytes: 2_560), 1))
+        let bitmap = take(volumeBitmapClusters(profile: profile, clusterCount: clusterCount))
+        let upCase = take(max(profile.clusters(forBytes: 0x10000 * 2), 1))
+        let rootIndex = take(max(profile.clusters(forBytes: 4_096), 1))
+
+        let zoneEnd = min(clusterCount, mftStart + max(zoneClusters, mftClusters))
+        return Layout(boot: Extent(start: 0, length: bootClusters),
+                      mirror: mirror, logFile: logFile,
+                      mftBitmap: mftBitmap, mftStart: mftStart,
+                      mftClusters: mftClusters, mftZoneEnd: zoneEnd,
+                      bitmap: bitmap, attrDef: attrDef, upCase: upCase,
+                      rootIndex: rootIndex,
+                      dataFront: bootClusters..<mftStart)
     }
 
     // MARK: - Zones
 
-    /// `$Boot`, la MFT, `$MFTMirr`, `$LogFile` et `$Bitmap` : tout ce que le
-    /// volume occupe sans qu'aucun fichier du catalogue ne le décrive.
+    /// `$Boot`, la MFT, `$MFTMirr`, `$LogFile` et `$Bitmap` — et, sous XP, la
+    /// bitmap de la MFT, `$AttrDef` et `$UpCase` : tout ce que le volume
+    /// occupe sans qu'aucun fichier du catalogue ne le décrive.
     public var systemExtents: [Extent] {
-        [bootExtent] + mft.extents + [mftMirror, logFile, volumeBitmap]
+        [bootExtent] + mft.extents + [mftMirror, logFile, volumeBitmap] + formatExtras
     }
 
     public var metadataExtents: [Extent] { systemExtents }

@@ -814,6 +814,20 @@ public struct Simulator<A: Allocator> {
             $0.peakEntryBytes = initial
             $0.capacityBytes = capacity
         }
+        // La racine d'un NTFS formaté par XP a déjà son tampon d'index, au
+        // milieu du volume : `FORMAT` l'y a posé (`format.cxx:1175`). Elle le
+        // reprend, et grandira derrière lui. Le cluster est pris depuis le
+        // formatage ; il est rapporté ici, à la création de la racine, pour
+        // que qui rejoue le journal sache à qui il est.
+        if record.parent == nil, case .ntfs = format.kind, let root = allocator.formattedRootIndex {
+            let bytes = UInt64(root.length) * UInt64(allocator.profile.clusterBytes)
+            catalog.updateDirectory(directory) {
+                $0.entry.extents = [root]
+                $0.entry.logicalSize = bytes
+                $0.capacityBytes = bytes
+            }
+            if reportsDirectoryGrowth { directoryGrowth.append(root) }
+        }
         if case .ntfs = format.kind { allocator.noteFileCreated(logicalSize: 0) }
         fit(directory, format: format)
     }

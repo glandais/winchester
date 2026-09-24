@@ -150,6 +150,13 @@ public protocol Allocator {
     /// du catalogue : `$Boot`, la MFT et sa copie sur NTFS. Vide sur FAT, dont
     /// les tables vivent avant la zone de données.
     var metadataExtents: [Extent] { get }
+
+    /// Les clusters que le formatage a déjà donnés à l'index du répertoire
+    /// racine, et que la racine reprend à sa création : l'allocation de
+    /// l'index racine que `FORMAT` de XP pose au milieu du volume. `nil`
+    /// partout ailleurs, où la racine prend ses clusters comme tout
+    /// répertoire.
+    var formattedRootIndex: Extent? { get }
 }
 
 extension Allocator {
@@ -157,6 +164,7 @@ extension Allocator {
     public mutating func noteFileCreated(logicalSize: UInt64) {}
     public mutating func noteFileDeleted() {}
     public var metadataExtents: [Extent] { [] }
+    public var formattedRootIndex: Extent? { nil }
 
     /// Place un fichier entier et renseigne son entrée. La résidence est
     /// décidée ici : un fichier résident ne passe jamais par l'allocateur.
