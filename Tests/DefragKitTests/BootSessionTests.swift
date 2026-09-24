@@ -121,7 +121,10 @@ struct BootSessionTests {
         let numbering = MFTNumbering(disk: disk)
         let records = Array(numbering.files.values) + Array(numbering.directories.values)
         #expect(Set(records).count == records.count)
-        #expect(records.allSatisfy { $0 >= 16 })
+        #expect(numbering.files.values.allSatisfy { $0 >= 16 })
+        // Sous XP, le générateur donne les vrais numéros : la racine est
+        // l'enregistrement 5, que le formatage a posé (chantier 49).
+        #expect(numbering.directories.values.allSatisfy { $0 >= 16 || $0 == 5 })
 
         let volume = try GeneratedVolumeBridge.volume(from: disk)
         for (position, file) in volume.files.enumerated() where file.category != .directory {

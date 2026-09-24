@@ -18,10 +18,13 @@ import Foundation
 /// une non-régression.
 ///
 /// `famille-2003` et `famille-2007` ont changé de liste au lot 4 : leurs
-/// médias et leurs téléchargements, écrits par paquets de 64 Ko, prennent
-/// chacun le trou le plus juste pour un paquet plutôt que pour tout le
-/// fichier, et remplissent le reste du volume jusqu'à entamer la zone. La MFT
-/// en sort en une vingtaine ou une trentaine de morceaux.
+/// médias et leurs téléchargements remplissent le reste du volume jusqu'à
+/// entamer la zone.
+///
+/// Sous XP (chantier 49), la MFT qui ne peut plus grandir sur place ouvre une
+/// zone neuve et y continue d'un seul tenant (`bitmpsup.c:1263-1287`) :
+/// `dev-2003` et `famille-2003` finissent en 3 et 2 extents, loin sous les
+/// plafonds, qui restent ceux du modèle d'avant pour Vista.
 @Suite("Croissance de la MFT")
 struct MFTGrowthTests {
 

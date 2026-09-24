@@ -2,77 +2,61 @@ import Foundation
 
 /// Allocateur NTFS.
 ///
-/// Trois mécanismes le séparent de FAT, et ce sont eux qui donnent aux volumes
-/// de 2003 et 2007 leur allure bien plus propre :
+/// **Deux allocateurs sous un même nom**, depuis le chantier 49 :
 ///
-/// - **best-fit** plutôt que premier trou venu : un fichier va dans le trou qui
-///   lui convient, pas dans le premier rencontré ;
-/// - **zone MFT**, 12,5 % du volume tenus à l'écart des données ordinaires. Tant
-///   qu'il reste de la place ailleurs, l'allocateur n'y touche pas. Quand le
-///   reste du volume est plein, NTFS **rend la moitié de ce qui reste libre de
-///   la zone**, et recommence à chaque fois que le reste se remplit à nouveau.
-///   La MFT, dont la réserve fond, finit par se fragmenter à son tour ;
-/// - **prolongement en place** : agrandir un fichier, c'est d'abord essayer les
-///   clusters qui suivent immédiatement son dernier extent. Un `.doc`
-///   réenregistré reste contigu là où FAT en aurait fait trois morceaux. Et
-///   quand la place derrière lui est prise, le complément est cherché **à
-///   partir de lui**, pas à la position courante de l'allocateur : c'est ce
-///   que fait le pilote NTFS de Linux (`ntfs_attr_extend_allocation`, « we
-///   want to begin allocating clusters starting at the last allocated cluster
-///   to reduce fragmentation »), qui ne prend la position courante que pour un
-///   fichier qui n'a encore rien.
+/// - **XP** (`Formatting.xp`) : celui du pilote de XP SP1, suivi à la lettre
+///   (`NTFSAllocator+XP.swift`) — un cache des runs libres borné, un *best
+///   fit* par longueur sans curseur ni préférence pour le vierge, le
+///   découpage du plus grand morceau au plus petit, les clusters libérés
+///   rendus au point de contrôle, la surallocation de `NtfsCommonWrite`, une
+///   zone MFT recalculée à chaque montage, une MFT qui grandit par seize
+///   enregistrements. Aucune borne sans source ;
+/// - **NT 4, Vista et 7** : le modèle d'avant, que le code de XP ne permet
+///   pas de vérifier pour eux, et qui est décrit ci-dessous tel qu'il est.
 ///
-/// **Quatre bornes de recherche règlent la fragmentation** (`SearchBounds`),
-/// et c'est la seule entorse du noyau au principe qu'elle n'est jamais un
-/// paramètre. Elles existent pour le coût de calcul ; chacune se défend — voir
-/// leurs commentaires —, et **aucune ne vient d'une source** : ni la
-/// documentation de NTFS, ni le pilote de Linux, ni `mkntfs` ne disent jusqu'où
-/// Windows cherche un trou. Ce qu'elles pèsent est mesuré, une à la fois, en
+/// Le modèle d'avant tient en trois mécanismes :
+///
+/// - **best-fit** plutôt que premier trou venu, **mais** un trou n'est repris
+///   que s'il fait au plus deux fois le besoin : au-delà, l'allocateur préfère
+///   l'espace jamais servi ;
+/// - **zone MFT** — 12,5 % du volume sous NT, 200 Mo renouvelables sous
+///   Vista et 7 (KB 961095) —, tenue à l'écart des données ; quand le reste
+///   du volume est plein, elle **rend la moitié de ce qui lui reste libre**,
+///   et recommence à chaque remplissage ;
+/// - **prolongement en place**, et un complément cherché **à partir du
+///   fichier**, comme le fait le pilote NTFS de Linux
+///   (`ntfs_attr_extend_allocation`). XP, lui, prend le run du cache qui suit
+///   le fichier, sinon le trou le plus juste, où qu'il soit (`ntfs-alloc-04`).
+///
+/// **Quatre bornes de recherche** (`SearchBounds`) règlent la fragmentation de
+/// ce modèle, et **aucune ne vient d'une source**. Ce qu'elles pèsent, en
 /// fichiers fragmentés parmi les fragmentables — la table que régénère
-/// `CalibrationTests.ntfsSearchBoundsWeighOnFragmentation` :
+/// `CalibrationTests.ntfsSearchBoundsWeighOnFragmentation` ; les deux volumes
+/// de XP n'y bougent pas, par construction :
 ///
 /// | réglage                      | `famille-2003` | `secretaire-2003` | `dev-2007` | `famille-2007` |
 /// |------------------------------|-------:|-------:|------:|-------:|
-/// | tel quel (2, 64, 65 536)      | 7,6 %  | 13,6 % | 9,1 % | 21,1 % |
-/// | `reuseTolerance` = 4          | 9,4 %  | 12,4 % | 9,2 % | 20,2 % |
-/// | `reuseTolerance` = `.max`     | 5,8 %  | 13,1 % | 8,1 % | 16,5 % |
-/// | `window` = 16                 | 12,8 % | 13,6 % | 7,6 % | 18,3 % |
-/// | `window` = 256                | 11,1 % | 14,2 % | 8,6 % | 19,8 % |
-/// | `horizon` = 16 384            | 21,2 % | 14,7 % | 6,9 % | 21,6 % |
-/// | `horizon` = 262 144           | 4,6 %  | 12,6 % | 7,2 % | 12,9 % |
+/// | tel quel (2, 64, 65 536)     | 16,2 % | 64,0 % | 9,2 % | 22,5 % |
+/// | `reuseTolerance` = 4         | 16,2 % | 64,0 % | 9,2 % | 22,4 % |
+/// | `reuseTolerance` = `.max`    | 16,2 % | 64,0 % | 8,3 % | 21,0 % |
+/// | `window` = 16                | 16,2 % | 64,0 % | 8,6 % | 22,7 % |
+/// | `window` = 256               | 16,2 % | 64,0 % | 9,2 % | 22,3 % |
+/// | `horizon` = 16 384           | 16,2 % | 64,0 % | 12,7 % | 35,0 % |
+/// | `horizon` = 262 144          | 16,2 % | 64,0 % | 6,5 % | 22,3 % |
 ///
-/// La quatrième, les seize fenêtres du dernier recours (`fallbackWindows`),
-/// n'est pas dans la table : elle ne joue que sur un volume sans espace vierge.
+/// Sur les volumes de Vista, **l'horizon décide le plus** : de 6,5 à 12,7 %
+/// sur `dev-2007`, de 22,3 à 35,0 % sur `famille-2007`, quand la tolérance ne
+/// les bouge que d'un point ou deux. La quatrième borne, les seize fenêtres
+/// du dernier recours (`fallbackWindows`), ne joue que sur un volume sans
+/// espace vierge. Leur coût est sans ambiguïté : sans tolérance, la
+/// génération de `dev-2007` est huit fois plus longue.
 ///
-/// Ce qui en sort :
-///
-/// - **elles ne poussent pas toutes vers la contiguïté.** Élargir la tolérance
-///   jusqu'au best-fit pur, ou l'horizon, *réduit* la fragmentation : ce que
-///   la borne fait, c'est renoncer au trou juste qui était un peu plus loin.
-///   Seuls un horizon plus court ou une fenêtre changée la font monter sur
-///   `famille-2003` ;
-/// - **l'horizon décide le plus** : de 4,6 à 21,2 % sur `famille-2003`, quand
-///   la tolérance ne va que de 5,8 à 9,4. Un facteur quatre tient à une borne
-///   de recherche, et c'est ce qu'il faut dire quand on cite ce que le modèle
-///   produit sur ce volume ;
-/// - **ce volume est chaotique** : trois cents clusters de `$Bitmap` posés
-///   derrière la zone MFT suffisent à le faire passer de 10,5 à 7,6 %. Au-delà
-///   du premier chiffre, son taux ne dit rien ; les volumes moins pleins
-///   bougent d'un point ou deux ;
-/// - **aucune ne rejoint la cible** de 40 à 60 % sur `famille-2003`
-///   (`CalibrationTests`). Le manque est ailleurs — dans l'écriture en
-///   séquence de la chronologie, que l'entrelacement lèverait
-///   (`DiskGenerator.runsProgramsConcurrently`).
-///
-/// Leur coût, lui, est sans ambiguïté : sans tolérance, la génération de
-/// `dev-2007` est huit fois plus longue.
-///
-/// La « réutilisation paresseuse » des clusters libérés est modélisée par une
-/// préférence pour l'espace jamais servi : la libération, elle, est immédiate,
-/// et l'espace rendu reste disponible. Un trou n'est repris que s'il convient
-/// vraiment au fichier à placer, ou quand le vierge est épuisé — d'où des trous
-/// qui persistent longtemps au milieu d'un volume par ailleurs contigu, ce
-/// qu'aucun FAT ne produit jamais.
+/// La « réutilisation paresseuse » des clusters libérés est modélisée, hors
+/// XP, par cette préférence pour l'espace jamais servi : la libération est
+/// immédiate, et un trou n'est repris que s'il convient vraiment au fichier,
+/// ou quand le vierge est épuisé. Sous XP, le délai tient au journal : les
+/// clusters libérés sont masqués jusqu'au point de contrôle, puis offerts au
+/// *best fit* comme les autres (`ntfs-alloc-03`).
 public struct NTFSAllocator: Allocator {
 
     /// Où `FORMAT` pose les métafichiers, selon le système qui formate.
@@ -153,9 +137,11 @@ public struct NTFSAllocator: Allocator {
     /// les fichiers qui l'ont fait gonfler ont disparu depuis longtemps.
     public private(set) var mftPeakRecords: UInt64
 
-    /// Plage réservée à la croissance de la MFT, juste derrière celle-ci — la
-    /// zone **courante**, celle que renverrait `FSCTL_GET_NTFS_VOLUME_DATA`.
-    /// Elle ne fait que rétrécir.
+    /// Plage réservée à la croissance de la MFT — la zone **courante**, celle
+    /// que renverrait `FSCTL_GET_NTFS_VOLUME_DATA`. Hors XP, juste derrière la
+    /// MFT, et elle ne fait que rétrécir (sauf la tranche neuve de Vista et
+    /// 7). Sous XP, recalculée à chaque montage, réduite, regonflée ou
+    /// reposée ailleurs (`xpInitializeMftZone`, `xpReduceZone`).
     public internal(set) var mftZone: Range<UInt32>
     /// Combien de fois la zone a cédé la moitié de sa queue libre.
     public internal(set) var mftZoneHalvings = 0
@@ -166,6 +152,8 @@ public struct NTFSAllocator: Allocator {
     /// vierge.
     public internal(set) var highWater: UInt32
 
+    /// Modèle d'avant, hors XP (qui n'a ni curseur ni bornes).
+    ///
     /// Les bornes de la recherche de trous : quatre constantes introduites pour
     /// le coût de calcul, qui règlent aussi la fragmentation (voir l'en-tête).
     /// Les valeurs de la galerie sont `standard` ; les autres ne servent qu'à
@@ -211,24 +199,30 @@ public struct NTFSAllocator: Allocator {
     private var searchWindow: Int { search.window }
     private var searchHorizon: UInt32 { search.horizon }
 
-    /// Bloc par lequel `$MFT` s'agrandit hors de sa zone. NTFS n'étend jamais
-    /// la table d'un enregistrement à la fois : il en demande un paquet — au
-    /// moins huit — et cherche de quoi le poser d'un seul tenant. Huit clusters
-    /// couvrent ce minimum quelle que soit la taille de cluster du volume.
-    /// **Un ordre de grandeur**, sans source citée.
+    /// Bloc par lequel `$MFT` s'agrandit hors de sa zone, hors XP : huit
+    /// clusters, **un ordre de grandeur du modèle d'avant**. XP l'étend par
+    /// seize enregistrements (`MFT_EXTEND_GRANULARITY`, `ntfs.h:415`), soit
+    /// quatre clusters à 4 Ko, dans la zone comme ailleurs
+    /// (`mftGranularityRecords`).
     private let mftGrowthClusters: UInt32 = 8
 
+    /// Modèle d'avant, hors XP (qui n'a ni curseur ni bornes).
+    ///
     /// Point de départ du prochain parcours. Il avance avec les allocations, ce
     /// qui évite que toutes les écritures se disputent les mêmes trous en tête
     /// de volume.
     private var searchCursor: UInt32 = 0
 
+    /// Modèle d'avant, hors XP (qui n'a ni curseur ni bornes).
+    ///
     /// Premier cluster derrière le dernier extent du fichier qu'on agrandit,
     /// le temps d'une extension. C'est là, et non au curseur, que la recherche
     /// commence : un système de fichiers qui étend un fichier cherche près de
     /// lui (voir l'en-tête).
     private var extensionHint: UInt32?
 
+    /// Modèle d'avant, hors XP (qui n'a ni curseur ni bornes).
+    ///
     /// Où en est l'écriture des fichiers système. Une installation de Windows
     /// pose quarante-cinq mille fichiers à la suite : elle ne redémarre pas du
     /// début du volume à chaque fichier. Le regroupement des fichiers de
