@@ -2132,8 +2132,12 @@ screenshots/               cadrage Koubou, assemblage, et les cartes envoyées
 
 ## Soutenir
 
-Winchester est gratuit, sans achat intégré. Pour laisser un pourboire :
-[ko-fi.com/gabylandais](https://ko-fi.com/gabylandais).
+Winchester est gratuit, et rien ne s'y débloque. Dans l'app, Réglages →
+« Soutenir Winchester » propose trois pourboires par achat intégré
+(`Sources/Tips/TipJar.swift`, chantier 38), qui ne débloquent rien. Hors de
+l'app, on peut aussi en laisser un sur
+[ko-fi.com/gabylandais](https://ko-fi.com/gabylandais) : le lien vit sur le
+site et ici, jamais dans l'app (directive 3.1.1, chantier 36).
 
 ## Journal de bord
 

@@ -4,9 +4,11 @@
 `xp`** (47 à 52, `LEDGER.md`), ni poussés ni fusionnés. Avant la soumission
 de la 1.0.0 restent : la fusion de `xp` dans `develop`, un nouveau build
 (le build 4 ne porte ni la section « À propos » ni les pourboires, dont les
-trois achats intégrés partent avec la version), et les corrections laissées
+trois achats intégrés partent avec la version). Les corrections laissées
 hors de ce plan — B#31 à B#34, B#36 et B#45 (« sans achat intégré », Ko-fi,
-« no network access », le commentaire d'`AboutLink`).
+« no network access », le commentaire d'`AboutLink`) — sont faites au
+chantier 53, sur la même branche ; restent à Gabriel Ko-fi sur le site et
+l'envoi des notes de revue.
 
 Ce fichier n'est pas un chantier : **aucune ligne du modèle n'a bougé**. Il
 range en chantiers trois retours du 22 septembre 2026, pris sur `develop` à
@@ -339,4 +341,5 @@ anglaise.
   chantier 40 (B#50).
 
 **Hors plan, plus tard** : B#31 à B#34 et B#45 (« sans achat intégré »,
-Ko-fi, « no network access »), et B#36.
+Ko-fi, « no network access »), et B#36. *Fait au chantier 53
+(`LEDGER.md`).*

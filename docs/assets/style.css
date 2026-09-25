@@ -6,8 +6,9 @@
    ============================================================ */
 
 /* No web font. The system stack is SF on the devices the app runs on,
-   and a page about an app that never touches the network should not
-   make a request of its own to render itself. */
+   and a page about an app that collects nothing and connects to no
+   server of its own should not make a request of its own to render
+   itself. */
 
 :root {
   /* From Sources/UI/Theme.swift. */

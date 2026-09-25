@@ -4301,8 +4301,8 @@
         "settings.about.note": {
           "comment": "Sous les liens « À propos » des Réglages",
           "translations": {
-            "en": "These open in Safari or the App Store. The app itself never goes online.",
-            "fr": "Ces liens s'ouvrent dans Safari ou l'App Store. L'app, elle, ne se connecte jamais."
+            "en": "These open in Safari or the App Store. The app sends nothing along with them.",
+            "fr": "Ces liens s'ouvrent dans Safari ou l'App Store. L'app ne leur transmet rien."
           }
         },
         "settings.about.privacy": {

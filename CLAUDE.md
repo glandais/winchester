@@ -368,10 +368,11 @@ ne remontait plus aucune erreur le 21 septembre 2026. **La 1.0.0 n'est pas
 prête à être soumise** : le build 4 ne porte ni la section « À propos »
 (chantier 37) ni les pourboires (chantier 38), dont les trois achats intégrés
 partent avec la version ; il faut un nouveau build, fait après la fusion de la
-branche `xp` (chantiers 47 à 52, `LEDGER-XP.md`) dans `develop`, et les
-corrections laissées hors de ce plan : le site et le `README.md` qui disent
-l'app sans achat intégré, Ko-fi, « no network access », le commentaire
-d'`AboutLink` (B#31 à B#34, B#36 et B#45 d'`AUDIT_REALISME.md`). L'envoi prend
+branche `xp` (chantiers 47 à 52, `LEDGER-XP.md`, puis 53 : les pourboires
+dits partout, B#31 à B#34, B#36 et B#45 d'`AUDIT_REALISME.md`) dans
+`develop`. Avant la soumission restent à décider Ko-fi sur le site, que
+l'app ouvre en un tap (directive 3.1.1(a)), et à pousser les notes de revue
+(`asc review details-update`). L'envoi prend
 parfois une erreur 500 d'App Store Connect sur un fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
 ne renvoie que ce qui manque.
 

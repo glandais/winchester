@@ -11174,13 +11174,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "These open in Safari or the App Store. The app itself never goes online."
+            "value" : "These open in Safari or the App Store. The app sends nothing along with them."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ces liens s'ouvrent dans Safari ou l'App Store. L'app, elle, ne se connecte jamais."
+            "value" : "Ces liens s'ouvrent dans Safari ou l'App Store. L'app ne leur transmet rien."
           }
         }
       }

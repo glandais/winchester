@@ -3,10 +3,11 @@ import SwiftUI
 /// Les adresses que l'app cite, toutes ici : le site (`docs/`), la fiche de
 /// l'App Store et le dépôt.
 ///
-/// Chaque ligne s'ouvre dans Safari ou dans l'App Store : l'app elle-même ne
-/// touche pas au réseau — `docs/privacy/` le dit. Aucun lien de don ici : un
-/// pourboire, dans l'app, passerait par l'achat intégré (directive 3.1.1,
-/// chantier 36).
+/// Chaque ligne s'ouvre dans Safari ou dans l'App Store, sans que l'app y
+/// joigne rien : elle n'ouvre aucune connexion à elle, et seuls les pourboires
+/// passent par StoreKit — `docs/privacy/` le dit. Aucun lien de don ici : le
+/// pourboire passe par l'achat intégré (directive 3.1.1), dans `TipSheet`,
+/// ouverte par « Soutenir Winchester » (`SettingsScreen`, chantier 38).
 enum AboutLink: CaseIterable, Identifiable {
     case website
     case support

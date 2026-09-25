@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Aucun pistage : l'app n'a aucun accès réseau, aucune mesure d'audience
+	<!-- Aucun pistage : l'app n'ouvre aucune connexion à elle (seul StoreKit
+	     interroge l'App Store pour les pourboires), n'a aucune mesure d'audience
 	     et aucun SDK tiers, rien ne peut donc être recoupé avec d'autres apps. -->
 	<key>NSPrivacyTracking</key>
 	<false/>

@@ -9196,3 +9196,72 @@ la lire) : 400 bilans et 58 md5 identiques à `51i`, un binaire différent.
   « no network access », le commentaire d'`AboutLink`), que Gabriel corrigera.
 - **Rien n'a été vu dans le simulateur** : les remarques de l'assistant et
   les fiches d'outils dans les deux langues restent à regarder.
+
+## Chantier 53 — les pourboires, partout
+
+### Le problème
+
+Le chantier 38 a ajouté trois pourboires par l'achat intégré, et n'a relu que
+la page confidentialité et les notes de revue. Six constats de
+l'`AUDIT_REALISME.md`, laissés hors du plan XP, disaient encore l'app sans
+achat intégré, Ko-fi comme seule voie de pourboire, et l'app jamais en ligne,
+alors que la feuille des pourboires interroge l'App Store par StoreKit.
+
+### Les décisions
+
+- **Ko-fi reste sur le site et dans le README**, comme l'ont décidé les
+  chantiers 36 et 37, et toujours hors de l'app. Il n'y est plus la seule
+  voie : l'achat intégré est cité d'abord.
+- **Ce qui passe par le réseau est dit tel quel** : l'app n'ouvre aucune
+  connexion à elle ; StoreKit demande à l'App Store les noms et les prix des
+  trois pourboires à l'ouverture de la feuille, confie un achat à la feuille de
+  paiement d'Apple, et signale à l'app, pendant qu'elle tourne, un pourboire
+  approuvé plus tard. `TipJar` ne garde rien : son état vit en mémoire et
+  revient au repos à la fermeture de la feuille (B#35), sans `UserDefaults`.
+- **B#31** (`docs/index.html`) : « Free, with no in-app purchase » devient
+  « Free, with everything included », et les trois pourboires facultatifs qui
+  ne débloquent rien ; la vignette « No account, no network » devient « No
+  account, no data collected ».
+- **B#32 et B#45** (`README.md`, « Soutenir ») : « gratuit, sans achat intégré »
+  devient la ligne « Soutenir Winchester » des Réglages, puis Ko-fi, hors de
+  l'app.
+- **B#33** : l'accueil du site ne dit plus « free and stays free » mais
+  « a tip unlocks nothing », et renvoie à « Settings → Support Winchester »
+  avant Ko-fi. Les notes de revue disent que l'app ne porte aucun lien de don
+  externe, et que le site, l'un des liens « About », mentionne une page Ko-fi.
+- **B#34** : la page confidentialité (description, « In short », « Tips »,
+  « There is no other path »), la ligne de l'accueil, les notes de revue, et
+  `settings.about.note` (« The app itself never goes online » devient « The
+  app sends nothing along with them », en anglais et en français) décrivent
+  l'échange StoreKit. Date d'effet de la confidentialité : 25 septembre 2026.
+  Les commentaires de `docs/assets/style.css` et de `PrivacyInfo.xcprivacy`
+  suivent ; les déclarations du manifeste ne bougent pas.
+- **B#36** : le commentaire d'`AboutLink` renvoie à `TipSheet` et au
+  chantier 38, au présent.
+- Les métadonnées du store (`metadata/app-info`, `metadata/version`) ne
+  parlaient ni d'achat intégré ni de réseau : rien à changer.
+
+### Ce qui valide
+
+- `./scripts/i18n.py import` puis `check` : aller-retour exact à l'octet ;
+  `metadata/` inchangé.
+- `./scripts/xcb.sh gen` puis `./scripts/xcb.sh build` : réussi. `swift test` :
+  346 tests en 52 suites, tous verts.
+- Les liens relatifs et les ancres des quatre pages du site : aucun cassé.
+- `readme-tables.py --check` n'a pas été relancé : les bilans de `.build/measure`
+  n'existent plus dans ce worktree, et la section changée ne porte ni table ni
+  chiffre.
+
+### Laissé ouvert
+
+- **Ko-fi sur le site**, que l'app ouvre en un tap (« Website », « Help and
+  support », « Privacy policy ») : garder ou retirer reste une décision de
+  Gabriel au regard de 3.1.1(a). Retirer, c'est le pied des quatre pages, la
+  phrase de l'accueil, les deux lignes du README et la phrase des notes de
+  revue.
+- **Les notes de revue ne sont pas poussées** (`asc review details-update`).
+- **« Data Not Collected »** (`metadata/app-privacy.json`) et le manifeste
+  restent vrais : Apple traite l'achat, l'app ne reçoit ni ne garde rien de
+  l'acheteur, et StoreKit n'est pas une API à raison déclarée. À confirmer par
+  Gabriel avant la soumission.
+- La nouvelle `settings.about.note` n'a pas été vue à l'écran.
