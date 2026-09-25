@@ -170,7 +170,7 @@ final class OperationSink {
                                           isWrite: operation.isWrite, issueTime: operation.issueTime,
                                           cluster: operation.cluster, mutationStart: start,
                                           mutationCount: operation.mutationCount + Int32(carried.count),
-                                          thinkTime: operation.thinkTime)
+                                          thinkTime: operation.thinkTime, flow: operation.flow)
                 carried.removeAll(keepingCapacity: true)
             }
         }

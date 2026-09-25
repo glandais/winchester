@@ -389,6 +389,11 @@ struct DiskMechanics {
     /// si aucune ne l'a encore été. C'est l'horloge de l'hôte : avec un tampon,
     /// le bras peut encore travailler après elle.
     private(set) var clock: Double
+    /// Quand le fil de l'hôte est prêt à émettre : la fin de sa dernière
+    /// requête au premier plan, avancée du calcul qu'il a fait pendant que le
+    /// disque servait des requêtes qu'il n'attendait pas (`RequestFlow`). Égal
+    /// à `clock` tant que tout est au premier plan.
+    private var hostReady: Double
     private(set) var stats = TraceStats()
     private var headCylinder: Int
     private var headIndex = 0
@@ -431,6 +436,7 @@ struct DiskMechanics {
         self.cacheSectors = drive.cacheSectors
         self.skew = geometry.skew(seekModel: seekModel)
         self.clock = spinUpAt + spinUpDuration
+        self.hostReady = clock
         self.armFree = clock
         // Au repos le bras est parqué au diamètre intérieur, sur la zone
         // d'atterrissage. Un plateau qui tournait déjà l'y a laissé ; un disque
@@ -492,6 +498,7 @@ struct DiskMechanics {
         // Une montée trop courte pour la salve retarde le disque prêt ; aucune
         // des rampes des scénarios ne l'est.
         clock = max(clock, t)
+        hostReady = clock
         armFree = clock
     }
 
@@ -556,11 +563,24 @@ struct DiskMechanics {
                         samples: inout [HeadSample]) -> RequestTiming {
         // Le disque ne repart pas à la milliseconde où il s'est arrêté :
         // la machine a peut-être quelque chose à faire de ce qu'elle vient
-        // de lire. `thinkTime` est nul partout sauf pour un démarrage.
-        let issued = max(clock + request.thinkTime, request.issueTime)
-        // Le calcul ne compte que ce qui s'est écoulé avant la prise en charge ;
-        // le reste de l'écart est un disque qui attend qu'on lui demande.
-        let thought = max(min(issued, clock + request.thinkTime) - clock, 0)
+        // de lire. Le calcul part de l'instant où le fil de l'hôte est libre
+        // (`hostReady`) ; une requête qu'il n'attend pas part dès que le
+        // disque l'est, et son calcul avance le fil sans retenir le disque.
+        let computed: Double
+        switch request.flow {
+        case .foreground:
+            computed = hostReady + request.thinkTime
+        case .barrier:
+            computed = max(hostReady, clock) + request.thinkTime
+        case .background:
+            computed = clock
+            hostReady += request.thinkTime
+        }
+        let issued = max(clock, computed, request.issueTime)
+        // Le calcul ne compte que ce qui s'est écoulé disque arrêté, avant la
+        // prise en charge ; le reste de l'écart est un disque qui attend
+        // qu'on lui demande.
+        let thought = max(min(issued, computed) - clock, 0)
         stats.thinkSeconds += thought
         stats.waitSeconds += max(issued - clock - thought, 0)
 
@@ -576,6 +596,7 @@ struct DiskMechanics {
         if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
         stats.requestCount += 1
         clock = end
+        if request.flow != .background { hostReady = end }
         served = true
         return RequestTiming(start: issued, end: end)
     }

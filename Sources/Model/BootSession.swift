@@ -766,6 +766,12 @@ enum BootPlanner {
         let readGranularity: Int
         let stampsAccess: Bool
         let flushSeconds: Double
+        /// Sous XP, un acte préchargé émet ses lectures d'un lot, et la file
+        /// d'`atapi` les sert par LBA (`AtapiQueue`).
+        let prefetchBursts: Bool
+        /// La file d'`atapi`, sous XP : sa clé courante passe d'un lot à
+        /// l'autre.
+        var queue = AtapiQueue()
 
         var requests: [BlockRequest] = []
         var consumed: Set<UInt32> = []
@@ -842,6 +848,7 @@ enum BootPlanner {
             self.readGranularity = readGranularity
             self.stampsAccess = stampsAccess
             self.flushSeconds = flushSeconds
+            self.prefetchBursts = os == "winxp-sp1"
             self.rng = SeededGenerator(seed: seed)
         }
 
@@ -881,6 +888,10 @@ enum BootPlanner {
             // suivent d'une seule requête : les fichiers d'un démarrage n'ont
             // pas été créés à la suite.
             let bulk = query.order == .byPosition && !partition.format.isFAT
+            if bulk, prefetchBursts, !files.isEmpty {
+                emitPrefetched(files: files, query: query, phase: phase)
+                return
+            }
             if bulk, !files.isEmpty {
                 var index = fileIndex
                 var numbers: [Int] = []
@@ -956,6 +967,116 @@ enum BootPlanner {
                 sinceFlush += cost
                 if sinceFlush >= flushSeconds { flushStamps(phase: phase) }
             }
+        }
+
+        /// Un acte préchargé, sous XP : ce que `MmPrefetchPages` fait d'un
+        /// lot.
+        ///
+        /// Il met toutes les pages en transition, **émet toutes les lectures**
+        /// en asynchrone, puis seulement les attend (`pfsup.c:318-338,
+        /// 370-388`) : les requêtes du lot sont en file ensemble, et c'est
+        /// `atapi` qui les sert, par LBA croissante à partir de sa clé
+        /// courante (`AtapiQueue`). Le système, lui, attend la fin du lot
+        /// avant de se servir de ce qu'il a lu : le calcul de l'acte vient
+        /// après, fichier par fichier, avec ce qu'il écrit.
+        ///
+        /// Deux lots : les enregistrements de MFT d'abord, puis les données.
+        /// Le reste de l'acte — l'ordre, les pages, les phases — est encore
+        /// celui du modèle (`BootOrder.byPosition`).
+        private mutating func emitPrefetched(files: [FileRecord], query: BootQuery, phase: Int) {
+            var index = fileIndex
+            var numbers: [Int] = []
+            numbers.reserveCapacity(files.count)
+            for record in files {
+                numbers.append(mftRecord(of: record, readingRank: index))
+                index += 1
+            }
+            numbers.sort()
+            var metadata: [MetadataAccess] = []
+            var first = numbers[0]
+            var last = first
+            func readRun() {
+                var from = first
+                while from <= last {
+                    let start = partition.mftRecordLBA(from)
+                    var to = from
+                    while to < last,
+                          partition.mftRecordLBA(to + 1) == start + (to + 1 - from) * partition.mftRecordSectors {
+                        to += 1
+                    }
+                    metadata.append(MetadataAccess(lba: start, sectors: (to - from + 1) * partition.mftRecordSectors))
+                    from = to + 1
+                }
+            }
+            for number in numbers.dropFirst() where number != last {
+                if number == last + 1 {
+                    last = number
+                } else {
+                    readRun()
+                    first = number
+                    last = number
+                }
+            }
+            readRun()
+            issueBurst(metadata, isWrite: false, phase: phase)
+
+            var data: [MetadataAccess] = []
+            var touchedBytes: [Int] = []
+            touchedBytes.reserveCapacity(files.count)
+            for record in files {
+                guard !record.isResident else { touchedBytes.append(0); continue }
+                let touched = min(Int(record.logicalSize), query.bytesPerFile)
+                touchedBytes.append(touched)
+                if readItems.insert(record.id).inserted { readOrder.append(record.id) }
+                data += pieces(record.extents, limit: touched)
+                bytesRead += touched
+            }
+            issueBurst(data, isWrite: false, phase: phase)
+
+            for (record, touched) in zip(files, touchedBytes) {
+                if record.isResident {
+                    residentFiles += 1
+                } else if rng.unitInterval() < query.writeBack {
+                    emitData(record.extents, limit: touched, isWrite: true, phase: phase)
+                    bytesWritten += touched
+                }
+                if stampsAccess { stamp(record) }
+                filesRead += 1
+                fileIndex += 1
+                let cost = think.seconds(bytes: touched)
+                pending += cost
+                thinkSeconds += cost
+                sinceFlush += cost
+                if sinceFlush >= flushSeconds { flushStamps(phase: phase) }
+            }
+        }
+
+        /// Les requêtes d'un lot, dans l'ordre où la file d'`atapi` les sert.
+        /// Le calcul en attente part avec la première.
+        private mutating func issueBurst(_ accesses: [MetadataAccess], isWrite: Bool, phase: Int) {
+            for access in queue.serve(burst: accesses, key: \.lba) {
+                issue(lba: access.lba, sectors: access.sectors, isWrite: isWrite, phase: phase)
+            }
+        }
+
+        /// Les extents d'un fichier en requêtes, sans les émettre : le même
+        /// découpage que `emitData`.
+        private func pieces(_ extents: [Extent], limit: Int) -> [MetadataAccess] {
+            var result: [MetadataAccess] = []
+            var remaining = PartitionGeometry.readSectors(forBytes: limit, granularity: readGranularity)
+            for extent in extents {
+                let length = Int(extent.length) * partition.clusterSectors
+                var offset = 0
+                while offset < length && remaining > 0 {
+                    let sectors = min(length - offset, maxRequestSectors, remaining)
+                    result.append(MetadataAccess(lba: partition.lba(ofCluster: Int(extent.start)) + offset,
+                                                 sectors: sectors))
+                    offset += sectors
+                    remaining -= sectors
+                }
+                if remaining == 0 { break }
+            }
+            return result
         }
 
         /// La date de dernier accès du fichier qu'on vient de lire : son

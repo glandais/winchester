@@ -45,11 +45,13 @@ struct DiskOperation {
     /// qui enchaîne dès que le disque se libère ; la lecture du CD et la
     /// décompression pour une installation.
     let thinkTime: Double
+    /// Qui l'attend (`RequestFlow`).
+    let flow: RequestFlow
 
     init(kind: Kind, phase: Int, lba: Int, sectors: Int, isWrite: Bool,
          issueTime: Double, cluster: Int?,
          mutationStart: Int32 = 0, mutationCount: Int32 = 0,
-         thinkTime: Double = 0) {
+         thinkTime: Double = 0, flow: RequestFlow = .foreground) {
         self.kind = kind
         self.phase = phase
         self.lba = lba
@@ -60,6 +62,7 @@ struct DiskOperation {
         self.mutationStart = mutationStart
         self.mutationCount = mutationCount
         self.thinkTime = thinkTime
+        self.flow = flow
     }
 }
 

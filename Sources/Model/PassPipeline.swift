@@ -418,7 +418,8 @@ private struct Chain {
                                         sectorCount: operation.sectors,
                                         isWrite: operation.isWrite,
                                         phaseIndex: operation.phase,
-                                        thinkTime: operation.thinkTime))
+                                        thinkTime: operation.thinkTime,
+                                        flow: operation.flow))
 
         if abs(progress - lastProgress) >= 0.001 {
             batch.progress.append(ProgressMark(time: timing.start, value: progress))
