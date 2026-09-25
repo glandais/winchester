@@ -630,6 +630,12 @@ enum DefragOperations {
                          into sink: OperationSink) {
         deletePending(target: destination, volume: &volume, phase: phase, into: sink)
         let partition = volume.partition
+        if partition.format.isFAT, destination.count == 1 {
+            fatMoveFile(source: source, target: destination[0], category: category,
+                        contiguous: contiguous, phase: phase, partition: partition,
+                        entrySector: entrySector, firstVCN: firstVCN, repaint: repaint, into: sink)
+            return
+        }
         guard journalsEachBlock(partition) else {
             move(source: source, destination: destination, category: category,
                  contiguous: contiguous, phase: phase, partition: partition,
@@ -657,6 +663,153 @@ enum DefragOperations {
             for extent in repaint.extents where !extent.isEmpty {
                 sink.carry(MapMutation(start: Int(extent.start), count: Int(extent.length),
                                        category: repaint.category, contiguous: repaint.contiguous))
+            }
+        }
+    }
+
+    /// `FSCTL_MOVE_FILE` sur un volume FAT, tel que `fastfat` le joue
+    /// (`FatMoveFile`, `base/fs/fastfat/fsctrl.c:5290-5645`) — ce que JkDefrag
+    /// et UltraDefrag obtiennent de Windows quand on les lance sur FAT.
+    ///
+    /// Le pilote avance par tranches de **256 Kio** alignées dans le fichier
+    /// (`FatComputeMoveFileParameter`, 5959-5968), et pour chacune, dans
+    /// l'ordre :
+    ///
+    /// 1. la cible allouée d'un tenant, ses entrées de FAT écrites tout de
+    ///    suite (`FatFlushFatEntries`) — les deux copies de la table, en deux
+    ///    écritures lancées ensemble (`write.c:749-790`) ;
+    /// 2. la source lue par le cache (`CcMapData`), par fautes de 64 Ko ;
+    /// 3. la tranche écrite d'une seule requête synchrone, en
+    ///    *write-through* — que `classpnp` découpe en paquets de 124 Ko
+    ///    (`BootPlanner.classPacketSectors`) ;
+    /// 4. la seconde soudure de la chaîne, écrite ; puis l'entrée de
+    ///    répertoire si le premier cluster du fichier bouge, sinon la première
+    ///    soudure — deux ou trois retours à la table selon le cas ;
+    /// 5. la source rendue, **sans** être écrite tout de suite (« We don't
+    ///    have to commit this right now ») : le *lazy writer* la posera ;
+    /// 6. le cache du disque vidé (`FatHijackIrpAndFlushDevice`) : un
+    ///    `FLUSH CACHE`.
+    ///
+    /// Il n'y a pas d'autre validation par fichier. La première soudure d'un
+    /// déplacement qui ne commence pas au début du fichier touche le cluster
+    /// qui précède, que le modèle ne connaît pas : il prend le secteur de
+    /// table voisin de la source.
+    private static func fatMoveFile(source: [Extent], target: Extent, category: ClusterCategory,
+                                    contiguous: Bool, phase: Int, partition: PartitionGeometry,
+                                    entrySector: Int?, firstVCN: UInt32,
+                                    repaint: (extents: [Extent], category: ClusterCategory, contiguous: Bool)?,
+                                    into sink: OperationSink) {
+        let clusterBytes = partition.clusterBytes
+        let span = max(262_144 / clusterBytes, 1)
+        let kept = [target]
+        let total = Int(min(target.length, source.reduce(UInt32(0)) { $0 + $1.length }))
+        var pendingRepaint = repaint
+        func tables(_ first: Int, _ count: Int) {
+            let low = partition.fatSector(forCluster: first)
+            let high = partition.fatSector(forCluster: first + max(count, 1) - 1)
+            for base in [partition.fat1LBA, partition.fat2LBA] {
+                sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: base + low,
+                                        sectors: high - low + 1, isWrite: true,
+                                        issueTime: 0, cluster: nil))
+            }
+        }
+        // La source, cluster par rang dans le déplacement.
+        func sourceRuns(from offset: Int, count: Int) -> [Extent] {
+            var runs: [Extent] = []
+            var skip = offset
+            var left = count
+            for extent in source where left > 0 {
+                let length = Int(extent.length)
+                if skip >= length { skip -= length; continue }
+                let take = min(length - skip, left)
+                runs.append(Extent(start: extent.start + UInt32(skip), length: UInt32(take)))
+                left -= take
+                skip = 0
+            }
+            return runs
+        }
+        var done = 0
+        while done < total {
+            let vcn = Int(firstVCN) + done
+            let count = min(span - vcn % span, total - done)
+            let write = Int(target.start) + done
+            // 1. Les entrées de la cible.
+            tables(write, count)
+            // 2. La source, par le cache.
+            let runs = sourceRuns(from: done, count: count)
+            for run in runs {
+                var offset = 0
+                let sectors = Int(run.length) * partition.clusterSectors
+                while offset < sectors {
+                    let piece = min(sectors - offset, 128)
+                    sink.emit(DiskOperation(kind: .readExtent, phase: phase,
+                                            lba: partition.lba(ofCluster: Int(run.start)) + offset,
+                                            sectors: piece, isWrite: false, issueTime: 0,
+                                            cluster: Int(run.start) + offset / partition.clusterSectors))
+                    offset += piece
+                }
+            }
+            // 3. La tranche, d'une requête coupée en paquets.
+            var offset = 0
+            let sectors = count * partition.clusterSectors
+            var first = true
+            while offset < sectors {
+                let piece = min(sectors - offset, BootPlanner.classPacketSectors)
+                let mark = sink.mutationMark
+                if first {
+                    sink.record(MapMutation(start: write, count: count, category: category,
+                                            contiguous: contiguous))
+                    for run in runs {
+                        recordFreed(start: run.start, length: run.length, kept: kept, into: sink)
+                    }
+                    first = false
+                }
+                sink.emit(DiskOperation(kind: .writeExtent, phase: phase,
+                                        lba: partition.lba(ofCluster: write) + offset,
+                                        sectors: piece, isWrite: true, issueTime: 0,
+                                        cluster: write + offset / partition.clusterSectors,
+                                        mutationStart: mark, mutationCount: sink.mutationMark - mark))
+                offset += piece
+            }
+            // 4. La seconde soudure, puis l'entrée ou la première soudure. Le
+            // fichier change d'état avec la soudure de sa dernière tranche :
+            // ses morceaux restés en place prennent la teinte.
+            if done + count >= total, let file = pendingRepaint {
+                for extent in file.extents where !extent.isEmpty {
+                    sink.carry(MapMutation(start: Int(extent.start), count: Int(extent.length),
+                                           category: file.category, contiguous: file.contiguous))
+                }
+                pendingRepaint = nil
+            }
+            tables(write + count - 1, 1)
+            if vcn == 0 {
+                let entry = entrySector ?? partition.rootLBA
+                sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: entry, sectors: 1,
+                                        isWrite: true, issueTime: 0, cluster: nil))
+            } else {
+                let previous = done > 0 ? write - 1 : max(Int(source.first?.start ?? 1) - 1, 0)
+                tables(previous, 1)
+            }
+            // 5. La source rendue : ses entrées salies, pour le lazy writer.
+            let now = sink.plannedSeconds
+            for run in runs {
+                let low = partition.fatSector(forCluster: Int(run.start))
+                let high = partition.fatSector(forCluster: Int(run.end) - 1)
+                for base in [partition.fat1LBA, partition.fat2LBA] {
+                    sink.lazyWriter.dirtyMetadata(.other(1), lba: base + low, sectors: high - low + 1,
+                                                  at: now)
+                }
+            }
+            // 6. Le cache du disque vidé.
+            sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: partition.startLBA,
+                                    sectors: 0, isWrite: true, issueTime: 0, cluster: nil))
+            lazyFlush(partition: partition, phase: phase, force: false, into: sink)
+            done += count
+        }
+        if let file = pendingRepaint {
+            for extent in file.extents where !extent.isEmpty {
+                sink.carry(MapMutation(start: Int(extent.start), count: Int(extent.length),
+                                       category: file.category, contiguous: file.contiguous))
             }
         }
     }
@@ -770,6 +923,10 @@ enum DefragOperations {
 
     /// Réécriture complète des tables, en fin de passe.
     static func final(partition: PartitionGeometry, phase: Int, into sink: OperationSink) {
+        // Sur FAT, ce que `FatMoveFile` a rendu sans l'écrire part d'abord.
+        if partition.format.isFAT, !sink.lazyWriter.isClean {
+            lazyFlush(partition: partition, phase: phase, force: true, into: sink)
+        }
         // Sous XP, ce que le lazy writer n'a pas encore écrit part d'abord.
         guard sink.journalsLazily else {
             sink.emit(contentsOf: final(partition: partition, phase: phase,
