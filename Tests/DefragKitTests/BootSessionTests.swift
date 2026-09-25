@@ -263,9 +263,21 @@ struct BootSessionTests {
         // les documents et `index.dat` : la borne des deux tiers, sans
         // source, tombait entre deux. Ce que le mécanisme dit — des dates
         // différées et groupées par page — est seulement « moins d'écritures
-        // que de fichiers ».
+        // que de pages salies ».
+        //
+        // Jusqu'au chantier 51, une date ne salissait qu'une page — celle de
+        // la MFT —, et la borne était « moins d'écritures que de fichiers »
+        // (validée le 25 septembre 2026). Sous XP, une date en salit deux :
+        // la page de MFT du fichier et l'entrée `$FILE_NAME` de l'index de
+        // son répertoire (`ntfs/cleanup.c:2331-2348`, `attrsup.c:3398-3405`,
+        // `indexsup.c:611-830`) ; 994 dates, 1 028 écritures au chantier 51f.
+        // La borne suit le mécanisme : moins d'écritures que de pages salies.
         #expect(xp.stampWrites > 0)
-        #expect(xp.stampWrites < xp.stampedFiles)
+        #expect(xp.stampWrites < 2 * xp.stampedFiles)
+        // Et le journal passe avant elles : quelques pages, bien moins que
+        // les tables.
+        #expect(xp.stampLogWrites > 0)
+        #expect(xp.stampLogWrites < xp.stampWrites)
 
         // Le même volume sous Vista : plus rien.
         var vistaDisk = disk

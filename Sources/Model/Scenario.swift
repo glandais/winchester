@@ -152,6 +152,9 @@ struct BootPlayback {
     /// d'écritures une fois groupées.
     let stampedFiles: Int
     let stampWrites: Int
+    /// Sous XP, les écritures de `$LogFile` que le *lazy writer* pose devant
+    /// elles : une date d'accès est journalisée.
+    var stampLogWrites = 0
     /// Ce que le cache du système a fait, pour le bilan (`BootPlan`).
     var softwareCache: String? = nil
     /// Ce que le système aurait mis sans disque : la somme des calculs.
@@ -446,6 +449,7 @@ enum ScenarioBuilder {
                                residentFiles: plan.residentFiles,
                                stampedFiles: plan.stampedFiles,
                                stampWrites: plan.stampWrites,
+                               stampLogWrites: plan.stampLogWrites,
                                softwareCache: plan.softwareCache,
                                thinkSeconds: plan.thinkSeconds,
                                tail: plan.tail,

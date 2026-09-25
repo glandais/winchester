@@ -589,6 +589,8 @@ struct BootPlan {
     let stampedFiles: Int
     /// Écritures de métadonnées qui les ont portées, une fois groupées.
     let stampWrites: Int
+    /// Sous XP, les écritures du journal qui les précèdent.
+    let stampLogWrites: Int
     /// Ce que le cache du système a fait, en une ligne de bilan : `SMARTDRV`
     /// en 1993, VCACHE et la table FAT32 en 1999. `nil` sans cache à décrire.
     let softwareCache: String?
@@ -702,6 +704,7 @@ enum BootPlanner {
                         residentFiles: builder.residentFiles,
                         stampedFiles: builder.stampedFiles,
                         stampWrites: builder.stampWrites,
+                        stampLogWrites: builder.stampLogWrites,
                         softwareCache: builder.softwareCacheReport,
                         thinkSeconds: builder.thinkSeconds,
                         queue: builder.queue,
@@ -937,6 +940,8 @@ enum BootPlanner {
         var residentFiles = 0
         var stampedFiles = 0
         var stampWrites = 0
+        /// Sous XP, les écritures de `$LogFile` qui les précèdent.
+        var stampLogWrites = 0
         var thinkSeconds: Double = 0
         /// Les éléments du volume — fichiers, et répertoires qui ont des
         /// clusters (`FileCatalog.itemID`) — dans l'ordre où le démarrage en
@@ -1195,11 +1200,84 @@ enum BootPlanner {
                                         sectors: pageSectors)
             }
             if prefetchBursts, !partition.format.isFAT {
-                lazy.dirty(.mft, rank: access.lba, lba: access.lba, at: thinkSeconds)
+                stampXP(record, mftPage: access.lba)
             } else {
                 dirtyStamps[access.lba] = max(dirtyStamps[access.lba] ?? 0, access.sectors)
             }
             stampedFiles += 1
+        }
+
+        /// Une date d'accès sous XP, à la fermeture du handle
+        /// (`ntfs/cleanup.c:2282-2348`) : trois choses salies, et non une.
+        ///
+        /// - la page de MFT du fichier : `NtfsUpdateStandardInformation`
+        ///   change la valeur résidente par `NtfsChangeAttributeValue`, qui
+        ///   **journalise** un `UpdateResidentValue` (`attrsup.c:3398-3405`) ;
+        /// - l'entrée `$FILE_NAME` du fichier dans l'index de son répertoire :
+        ///   la date d'accès fait partie de l'information dupliquée
+        ///   (`FCB_INFO_DUPLICATE_FLAGS`, `ntfsstru.h:2587-2594`), que
+        ///   `NtfsUpdateDuplicateInfo` recopie dans l'index du parent
+        ///   (`NtfsUpdateFileNameInIndex`, `attrsup.c:8172-8400`,
+        ///   `indexsup.c:611-830`), journalisé lui aussi (`UpdateFileNameRoot`
+        ///   ou `…Allocation`) — le tampon d'index qui porte l'entrée, ou
+        ///   l'enregistrement du répertoire si son index y tient ;
+        /// - le journal, que le *lazy writer* fait poser avant ces pages.
+        ///
+        /// Les fichiers système de NTFS en sont exclus (`FCB_STATE_SYSTEM_FILE`,
+        /// `cleanup.c:2331-2340`) : aucun n'est dans le catalogue. Un fichier
+        /// qui a aussi un nom court a deux entrées ; le modèle n'en connaît
+        /// qu'une.
+        private mutating func stampXP(_ record: FileRecord, mftPage: Int) {
+            lazy.dirty(.mft, rank: mftPage, lba: mftPage, at: thinkSeconds)
+            stampRecords += 2
+            guard let placement = directories else { return }
+            let directory = placement.directories[Int(record.directory)]
+            let page = LazyWriter.pageSectors
+            if directory.entry.clusterCount > 0 {
+                let offset = placement.fileOffsets[record.id] ?? 0
+                let cluster = min(placement.format.clusterIndex(ofEntryAt: offset),
+                                  directory.entry.clusterCount - 1)
+                guard let access = partition.directoryAccesses(directory.extents,
+                                                               clusters: cluster..<(cluster + 1)).first
+                else { return }
+                let lba = access.lba + Int(offset % UInt64(partition.clusterBytes))
+                    / DriveGeometry.bytesPerSector / page * page
+                lazy.dirty(.index(record.directory), rank: lba, lba: lba, at: thinkSeconds)
+            } else if let number = directoryRecords[record.directory] {
+                let lba = partition.mftRecordLBA(number) / page * page
+                lazy.dirty(.mft, rank: lba, lba: lba, at: thinkSeconds)
+            }
+        }
+
+        /// Enregistrements de journal écrits par les dates d'accès — deux par
+        /// date —, et ce qui en est déjà posé : seize par page de 4 Ko, huit
+        /// validations de deux enregistrements, l'ordre de grandeur du modèle
+        /// (`PartitionGeometry.validationsPerLogPage`).
+        private var stampRecords = 0
+        private var loggedStampRecords = 0
+
+        /// Les pages de journal que les dates ont remplies depuis le dernier
+        /// vidage, d'un trait tant qu'elles se suivent.
+        private mutating func pendingStampLog() -> [LazyWriter.Write] {
+            guard stampRecords > loggedStampRecords else { return [] }
+            let perPage = 2 * PartitionGeometry.validationsPerLogPage
+            // La page entamée au vidage précédent est réécrite.
+            let first = loggedStampRecords / perPage
+            let last = (stampRecords - 1) / perPage
+            loggedStampRecords = stampRecords
+            var writes: [LazyWriter.Write] = []
+            for index in first...last {
+                let access = partition.logPage(index)
+                if let previous = writes.last, previous.lba + previous.sectors == access.lba {
+                    writes[writes.count - 1] = LazyWriter.Write(lba: previous.lba,
+                                                                sectors: previous.sectors + access.sectors,
+                                                                stream: .other(0))
+                } else {
+                    writes.append(LazyWriter.Write(lba: access.lba, sectors: access.sectors,
+                                                   stream: .other(0)))
+                }
+            }
+            return writes
         }
 
         /// Sous XP, le *lazy writer* (`LazyWriter`) : son horloge est le
@@ -1216,13 +1294,15 @@ enum BootPlanner {
                 // Le passage tombe tant de secondes de calcul après la
                 // dernière requête du premier plan.
                 let delay = max(min(scan.time, thinkSeconds) - thinkAtForeground, 0)
-                for write in LazyWriter.served(scan.streams, log: [], queue: &queue) {
+                let metadata = scan.streams.contains { $0.first?.stream.isMetadata ?? false }
+                let log = metadata ? pendingStampLog() : []
+                for write in LazyWriter.served(scan.streams, log: log, queue: &queue) {
                     issue(lba: write.lba, sectors: write.sectors, isWrite: true, phase: phase,
                           flow: .background, delay: delay)
                     // Les données sont comptées quand l'acte les réécrit.
                     if write.stream.isMetadata {
                         bytesWritten += write.sectors * DriveGeometry.bytesPerSector
-                        stampWrites += 1
+                        if case .other = write.stream { stampLogWrites += 1 } else { stampWrites += 1 }
                     }
                 }
             }
@@ -1233,9 +1313,10 @@ enum BootPlanner {
         ///
         /// L'horloge est le temps de calcul, qui minore le temps réel — le
         /// disque attend aussi — : les vidages sont un peu plus espacés qu'ils
-        /// ne l'étaient. Aucune page de journal ne les accompagne : le modèle
-        /// suppose, sans source qui le tranche, que NTFS ne journalise pas une
-        /// simple date.
+        /// ne l'étaient. Ce chemin-là est celui de VFAT, sans journal ; sous
+        /// XP, une date salit aussi l'index du répertoire et elle est
+        /// journalisée (`stampXP`) — l'hypothèse d'avant, « NTFS ne journalise
+        /// pas une simple date », est contredite par `attrsup.c:3398-3405`.
         ///
         /// - Parameter until: sous XP, en fin de démarrage, les passages du
         ///   lazy writer jusqu'à la fin du silence final ; ailleurs, tout.
