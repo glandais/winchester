@@ -181,8 +181,11 @@ avec.
 **Seek** — loi à deux régimes de Ruemmler & Wilkes (IEEE Computer 27(3), 1994) :
 `a + b·√d` pour les seeks courts, `c + e·d` au-delà du cylindre de croisement.
 La forme fonctionnelle vient de l'article, **les constantes sont recalibrées**
-pour un disque de 2001 (1,1 ms piste-à-piste, 8,7 ms en seek moyen, 18 ms pleine
-course) : les coefficients publiés valent pour des disques HP des années 90.
+pour chaque disque sur les trois durées de sa fiche — piste-à-piste, seek moyen
+pris comme l'espérance d'un seek aléatoire (et non comme le seek d'un tiers de
+course), pleine course quand elle est publiée : le Barracuda ATA IV de 2001, à
+0,95 et 9,0 ms, en reçoit 16,7 en pleine course. Les coefficients publiés
+valent pour des disques HP des années 90.
 Chaque seek est découpé en *speedup / coast / slowdown / settle* ; un seek court
 n'a pas de phase de coast, ce qui fait varier la **forme** de l'enveloppe avec la
 distance et pas seulement son amplitude.
@@ -1032,15 +1035,19 @@ rien : le planificateur travaille en extents, et un volume de 320 Go ne lui
 coûte pas plus cher qu'un de 180 Mo. Ce qui change avec le format, c'est
 l'**outil** — parce que c'est lui que le format datait.
 
-#### Huit défragmenteurs, dont deux d'époque
+#### Sept défragmenteurs, dont deux d'époque
 
 Sur un volume FAT, c'est la passe livrée avec Windows 95 puis 98 : tasser tous
 les fichiers contre le début du volume, dans l'ordre du parcours de
-l'arborescence. Sur un volume NTFS, c'est le `dfrg.msc` de Windows XP, dérivé
-de Diskeeper Lite — l'outil qu'un utilisateur de 2003 ou 2007 avait réellement
-sous la main — et, avec le seuil de 64 Mo de Vista et de Windows 7, celui de
-2012. Le modèle l'a longtemps décrit comme un outil qui « n'évacue personne » :
-c'était faux, et **la source est le code de XP SP1** lui-même, tel qu'il a
+l'arborescence. Sur les disques de 1993, l'app la nomme « MS-DOS 6 DEFRAG » —
+le `DEFRAG.EXE` de Symantec sous licence, qui faisait la même chose dans le
+même ordre : le modèle leur donne le même moteur. Sur un volume NTFS, c'est
+le `dfrg.msc` de Windows XP, dérivé de Diskeeper Lite — l'outil qu'un
+utilisateur de 2003 avait réellement sous la main —, nommé « Windows Vista
+Defragmenter » en 2007 et « Windows 7 Defragmenter » en 2012, où il ne
+recolle plus les fragments de 64 Mo et plus : le même moteur, par hypothèse.
+Le modèle l'a longtemps décrit comme un outil qui « n'évacue personne » : c'était
+faux, et **la source est le code de XP SP1** lui-même, tel qu'il a
 circulé en 2020 (`dfrgntfs.cpp`, `mftdefrag.cpp`, `deviosup.c` — pas une source
 ouverte, et le journal le dit, chantier 45). Sous XP, une passe commence
 par **ranger le démarrage** : les fichiers que le préchargeur a notés dans
@@ -1108,7 +1115,7 @@ passe de XP sur le même volume tient en **1 159 153 requêtes et 29 min 21**.
 Ce qu'il laisse en morceaux, il le dit dans son rapport : un fichier que ni
 un trou ni une région vidée ne peuvent recevoir y reste.
 Et **le remplissage ne suffit pas à le prédire**. `dev-2003` et
-`secretaire-2003` sont deux volumes de 40 Go remplis à 91-91 % : le premier
+`secretaire-2003` sont deux volumes de 40 Go remplis tous deux à 91 % : le premier
 répare 690 fichiers sur 690, le second 5 626 sur 5 912. La taille de ce qu'il y a à
 réparer ne l'explique pas non plus — 2 Mo par fichier déplacé chez le
 développeur, 1,2 Mo chez la secrétaire. Ce qui sépare les deux volumes n'est pas établi : il
@@ -1172,7 +1179,7 @@ sujet : un fichier ramené de quarante morceaux à deux y reste « fragmenté »
 
 Sur `famille-2007`, les 29 960 morceaux que XP laisse derrière lui tombent à
 **1 139** — 96 % de moins — pendant que le nombre de fichiers fragmentés, lui,
-reste à 176. Le prix est 0,1 fois plus de requêtes et 0,7 fois plus de temps.
+reste à 176. Il lui faut 7,7 fois moins de requêtes et 1,4 fois moins de temps.
 
 UltraDefrag ne réutilise pas dans un tour l'espace qu'il vient de libérer : il
 ne relit sa liste de trous qu'en tête de tour, même quand le point de contrôle
@@ -1180,15 +1187,16 @@ de Windows est passé entre-temps. Et il range des fichiers **dans la zone
 réservée à la MFT** : son source ne la retire des régions libres que sous
 Windows 2000 et avant, parce qu'il a sa propre routine d'optimisation de la MFT.
 Sur `gamer-2007`, c'est le plus grand trou du volume. Ses destinations sont donc
-à la fois plus lointaines et plus grandes — sur `dev-2007`, le seek moyen est de
-18 483 cylindres contre 27 628 chez XP, le cache d'écriture posant les
-écritures des deux dans l'ordre de l'ascenseur — et un morceau inversé compte
-pour deux : la tête le lit dans l'ordre du fichier. L'outil de XP, lui, respecte la zone :
+plus grandes, pas forcément plus lointaines — sur `dev-2007`, son seek moyen est
+plus court que chez XP : 18 483 cylindres contre 27 628, le cache d'écriture
+posant les écritures des deux dans l'ordre de l'ascenseur — et un morceau
+inversé compte pour deux : la tête le lit dans l'ordre du fichier. L'outil de XP, lui, respecte la zone :
 ses listes de trous en sont rognées (`BuildFreeSpaceList`), et il la vide une fois par passe.
 
-Cela ne fait pas d'UltraDefrag le meilleur outil partout. Des deux volumes que
-XP nettoie entièrement, il nettoie l'un aussi, et laisse 77 morceaux sur
-l'autre. Et sur un volume FAT de 1996, où presque aucun fichier n'atteint 40 Mo,
+Cela ne fait pas d'UltraDefrag le meilleur outil partout. XP fait mieux sur
+cinq des onze volumes : il nettoie entièrement `dev-2003` et `secretaire-2012`,
+où UltraDefrag laisse 6 et 2 morceaux. Et sur un volume FAT de 1996, où presque
+aucun fichier n'atteint 40 Mo,
 la défragmentation partielle n'a rien à mordre : sur `dev-1996`, la passe tient
 en 1 min 24 contre 21 min 31 à l'outil de 95, parce qu'elle n'évacue personne. Elle
 laisse 1 085 morceaux — et l'outil de 95, sur ce volume-là, en laisse 602 : à
@@ -1221,8 +1229,8 @@ manquent :
 
 À 99 %, il ne fait presque rien : un outil qui n'évacue personne a besoin de
 trous. **Et l'outil de 95 non plus** : sur `gamer-1996`, dont les quelques centaines de
-clusters libres ne logent aucun de ses gros fichiers, il n'évacue que un
-occupants avant de se retrouver bloqué partout, et rend le volume intact. C'est la limite
+clusters libres ne logent aucun de ses gros fichiers, il n'évacue qu'un
+occupant avant de se retrouver bloqué partout, et rend le volume intact. C'est la limite
 réelle de l'algorithme de 1995, et c'est pourquoi l'outil demandait de faire de
 la place avant de le lancer.
 
@@ -1287,13 +1295,16 @@ routine**, sans défragmentation devant :
 
 Un tri évacue une place, puis s'y pose. Sur FAT, la place est libre dès
 l'évacuation validée, et le tri range : sur `secretaire-1999`, il laisse 293
-morceaux contre 1 277 au mode 2. Sur NTFS, elle ne l'est qu'au point de
-contrôle suivant, et `FindGap`, qui relit le bitmap juste après l'évacuation,
-la trouve encore prise : le fichier part dans le trou suivant, en morceaux s'il
-le faut. L'auteur de JkDefrag décrit ce cas dans son code. Sur `famille-2007`,
-le tri par nom déplace 33 Go en 44 435 évacuations et 25 min 53, et laisse
-37 978 morceaux sur les 71 575 du départ ; `gamer-2007` en sort avec 20 164
-morceaux, contre 30 au mode 2. Sur un volume NTFS plein, un tri de JkDefrag
+morceaux contre 1 277 au mode 2. Sur un NTFS de Vista ou de 7, elle ne l'est
+qu'au point de contrôle suivant, et `FindGap`, qui relit le bitmap juste après
+l'évacuation, la trouve encore prise : le fichier part dans le trou suivant, en
+morceaux s'il le faut. L'auteur de JkDefrag décrit ce cas dans son code. Sur
+`famille-2007`, le tri par nom déplace 33 Go en 44 435 évacuations et 25 min 53,
+et laisse 37 978 morceaux sur les 71 575 du départ ; `gamer-2007` en sort avec
+20 164 morceaux, contre 30 au mode 2. Sous XP, la place est libre tout de suite
+— s'y poser fait vider le journal (`STATUS_DELETE_PENDING`) — et le tri va au
+bout, sans ranger mieux pour autant : sur `secretaire-2003`, il laisse 15 875
+morceaux contre 769 au mode 2. Sur un volume NTFS plein, un tri de JkDefrag
 range à peine.
 
 Le catalogue ne date que les écritures, au jour près : le dernier accès y est la
@@ -1317,8 +1328,8 @@ décrit : `dev-1999` déplace
 juste au-dessus de la frontière, qui les rattraperait quelques fichiers plus
 loin, ferait déplacer à la passe jusqu'à seize fois son contenu. Le prix est sur
 les volumes pleins : quand la frontière arrive au fond, elle y trouve ses
-propres réfugiés et plus de place au-dessus, et `dev-1999` en sort avec 3
-morceaux. C'est pour cela que l'outil d'époque demandait de faire de la place
+propres réfugiés et plus de place au-dessus, et `famille-1996`, plein à 99 %, en
+sort avec 5 108 morceaux. C'est pour cela que l'outil d'époque demandait de faire de la place
 avant de le lancer.
 
 #### Tasser sans changer l'ordre
@@ -1364,20 +1375,22 @@ passe laisse un volume cohérent.
 | `secretaire-1999` | 87 % | 28 min 05 → 16 min 22 → **15 min 52** | 58 / 1 277 / **58** | 59 / 1 046 / **1** |
 | `gamer-1999` | 89 % | 1 h 01 → 26 min 40 → **31 min 56** | 5 / 536 / **5** | 6 / 557 / **1** |
 
-Les morceaux qui restent sont **tous ceux du fichier d'échange**, que personne
-ne déplace : aucun fichier déplaçable ne sort de la passe en morceaux. Les trous
-qui restent sont entre ces morceaux — sur `dev-1996`, 334 morceaux ne laissent
-plus que 115 trous. Une exception : `gamer-1993`, plein à 100 % depuis que ses
-répertoires ont pris ses derniers clusters libres. Sans les deux clusters dont
-la navette a besoin, la passe ne peut rien, et elle le rend tel quel.
+Les morceaux qui restent sont presque tous **ceux du fichier d'échange**, que
+personne ne déplace : aucun fichier déplaçable ne sort de la passe en morceaux,
+sauf sur `gamer-1996` (4 de plus). Les trous qui restent sont entre ces
+morceaux — sur `dev-1996`, 334 morceaux ne laissent plus que 115 trous.
+Même `gamer-1993`, plein à 99 %, en sort sans un morceau (838 au départ) : deux
+clusters libres suffisent à la navette.
 
 Sur les douze volumes, la passe dure 4 h 32 au total contre 4 h 51 pour
-Windows 95, et elle déplace à peu près autant de données (29,8 Go contre 40,5).
-Ce n'est pas la durée qui les sépare — elles sont à quelques minutes l'une de
-l'autre, et la moindre correction du modèle fait passer l'avantage de l'un à
-l'autre —, c'est ce qu'ils laissent : sur les volumes pleins de 1999, Windows 95
-laisse jusqu'à 58 morceaux, la frontière 58 au plus. Elle est 2,1 fois plus
-longue que JkDefrag (2 h 11), qui ne fait pas le même travail : sur les quatre
+Windows 95, et elle déplace 1,4 fois moins de données (29,8 Go contre 40,5).
+Ce n'est pas la durée qui les sépare — 19 min d'écart sur les douze volumes,
+et la moindre correction du modèle fait passer l'avantage de l'un à l'autre —,
+c'est ce qu'ils laissent : sur les volumes de 1999, Windows 95 laisse jusqu'à
+58 morceaux et 59 trous, la frontière 58 morceaux et 2 trous au plus — les
+mêmes morceaux, ceux du fichier d'échange, mais l'espace libre d'un seul
+tenant. Elle est 2,1 fois plus longue que JkDefrag (2 h 11), qui ne fait pas
+le même travail : sur les quatre
 volumes de 1999, il laisse entre 350 et 2 140 morceaux et de 285 à 1 046
 trous. Et c'est le seul des trois à ranger `gamer-1996`, plein à 99 %, où
 l'algorithme de 1995 ne trouve plus où évacuer et rend le volume tel quel : là,
@@ -1427,20 +1440,21 @@ bras par morceau. La zone MFT n'est jamais une destination.
 | `secretaire-2012` | 89 % | 1 h 01 / 23 min 10 / 36 min 43 / **3 min 31** | 0 / 2 / 0 / **144** | 2 051 / 4 743 / 206 / **89** |
 
 Sur les douze volumes, la passe dure 1 h 33, contre 16 h 19 pour XP, 4 h 57 pour
-UltraDefrag et 9 h 24 pour JkDefrag, et laisse moins de morceaux (8 426) et
-moins de trous (1 855) que chacun d'eux. Sa durée tient à deux choses qui se
-compensent. Le cache d'écriture du disque pose les destinations de XP,
+UltraDefrag et 9 h 24 pour JkDefrag. Elle laisse 8 426 morceaux et 1 855
+trous : moins de morceaux que XP mais plus qu'UltraDefrag et JkDefrag, et
+moins de trous que chacun d'eux. Sa durée tient à deux choses qui jouent en sens
+contraires. Le cache d'écriture du disque pose les destinations de XP,
 contiguës, par salves de 4,4 à 93,3 écritures selon le volume, quand celles du
-recollage sont éparses, 1,2 par vidage. Mais les volumes de 2007 et 2012 portent les
-fichiers en quelques morceaux que leur donne un NTFS qui étend un fichier près
-de lui (`NTFSAllocator`), et XP les recopie en entier, quand le recollage ne
-déplace que les morceaux. Les blocs pleins ne comptent presque plus : donnés à
+recollage sont éparses, 1,2 par vidage : cela avantage XP. Mais XP recopie en
+entier chaque fichier cassé, vide des régions et tasse tout le volume vers
+l'avant, quand le recollage ne déplace que les morceaux : c'est ce qui
+l'emporte, de loin. Les blocs pleins ne comptent presque plus : donnés à
 XP et à UltraDefrag (`FULL_BLOCKS=1`), ils les mènent à 14 h 30 et 4 h 54, sans
 changer ce qu'ils laissent — à un fichier près, les points de contrôle ne
-tombant plus aux mêmes déplacements. Ce que la passe
-apporte en propre, c'est la qualité à durée voisine. Elle ne recopie jamais un fichier
-entier : sur `dev-2007`, où un grand trou accueille tout, XP et JkDefrag
-finissent sans un morceau, et elle en laisse 868.
+tombant plus aux mêmes déplacements. Ce que la passe apporte en propre, c'est
+la durée et l'espace libre, pas le dernier morceau. Elle ne recopie jamais un
+fichier entier : sur `dev-2007`, où un grand trou accueille tout, XP en laisse
+2, JkDefrag 63, et elle 868.
 
 #### Ranger pour démarrer
 
@@ -1464,56 +1478,63 @@ est chassé, entier quand il y est surtout, sinon le seul morceau qui gêne.
 Le reste est tassé derrière par le moteur du tassage à la frontière, avec deux
 retouches. Les fenêtres qui suivent la dernière assez grande pour recevoir tout
 l'espace libre sont remplies **d'abord** : sans cela l'espace libre finit semé
-entre les morceaux du fichier d'échange ou de petits métafichiers NTFS — 1
-trous sur `famille-1996`. Et sur NTFS, les fichiers qui pèsent plus du quart
+entre les morceaux du fichier d'échange ou de petits métafichiers NTFS — sur
+`dev-1996`, 115 trous au tassage à la frontière, 2 au rangement. Et sur NTFS,
+les fichiers qui pèsent plus du quart
 de l'espace libre suivent le bloc de démarrage, parce que les fenêtres de la fin
 du volume ne leur garderaient pas de place ; une zone MFT que les fichiers
 occupent déjà à plus de moitié n'est plus respectée, parce qu'elle ne réserve
 plus rien.
 
-La table porte sur les vingt disques de 1993 à 2007 : ceux de 2012 n'ont pas
-encore été rangés (`smart.sh` les connaît, la mesure reste à faire).
+La table porte sur les vingt-quatre disques, mesurés au chantier 52 sur le
+modèle du chantier 51 (`smart.sh`, `passes.py <étape>:smart`) : elle datait
+d'avant les lots réalisme et les chantiers 47 à 51, et ne comptait pas 2012.
 
 | scénario | plein | démarrage : livré / meilleur outil / **intelligent** | morceaux restants : meilleur outil / **intelligent** | trous libres : meilleur outil / **intelligent** | passe |
 |---|---:|---:|---:|---:|---:|
-| `dev-1993` | 69 % | 41,6 / 41,1 / **37,1** | 0 / **0** | 1 / **1** | 8 min 42 |
-| `gamer-1993` | 100 % | 29,6 / 29,6 / **29,6** | 990 / **990** | 0 / **0** | 8 s |
-| `secretaire-1993` | 88 % | 36,0 / 35,5 / **31,9** | 0 / **0** | 1 / **1** | 17 min 41 |
-| `poweruser-1993` | 86 % | 42,4 / 41,6 / **38,6** | 0 / **0** | 1 / **1** | 13 min 57 |
-| `dev-1996` | 93 % | 58,8 / 57,6 / **52,6** | 43 / **43** | 1 / **1** | 12 min 50 |
-| `famille-1996` | 89 % | 54,5 / 52,2 / **48,5** | 145 / **145** | 99 / **16** | 12 min 46 |
-| `gamer-1996` | 99 % | 45,4 / 45,4 / **39,9** | 6 / **6** | 1 / **1** | 1 h 00 |
-| `secretaire-1996` | 76 % | 54,9 / 54,5 / **50,6** | 2 / **2** | 1 / **1** | 8 min 36 |
-| `dev-1999` | 93 % | 57,3 / 51,3 / **45,1** | 3 / **3** | 1 / **1** | 37 min 16 |
-| `famille-1999` | 96 % | 63,3 / 58,2 / **52,0** | 42 / **42** | 3 / **1** | 33 min 10 |
-| `gamer-1999` | 97 % | 56,2 / 54,3 / **46,3** | 147 / **147** | 18 / **24** | 55 min 54 |
-| `secretaire-1999` | 87 % | 57,5 / 52,2 / **46,3** | 4 / **4** | 2 / **1** | 20 min 06 |
-| `dev-2003` | 95 % | 50,1 / 50,1 / **48,4** | 64 / **0** | 130 / **1** | 35 min 54 |
-| `famille-2003` | 95 % | 29,0 / 27,7 / **25,8** | 1137 / **0** | 168 / **14** | 1 h 56 |
-| `gamer-2003` | 9 % | 67,9 / 67,8 / **64,8** | 0 / **0** | 22 / **3** | 5 min 16 |
-| `secretaire-2003` | 94 % | 35,7 / 34,9 / **32,2** | 2758 / **0** | 835 / **2** | 51 min 45 |
-| `dev-2007` | 86 % | 46,7 / 45,9 / **42,8** | 0 / **0** | 197 / **5** | 2 h 49 |
-| `famille-2007` | 93 % | 38,8 / 36,8 / **34,0** | 805 / **0** | 296 / **1** | 3 h 50 |
-| `gamer-2007` | 90 % | 31,5 / 30,3 / **27,2** | 356 / **0** | 673 / **2** | 2 h 53 |
-| `secretaire-2007` | 88 % | 41,6 / 41,7 / **38,8** | 0 / **0** | 193 / **10** | 2 h 40 |
+| `dev-1993` | 72 % | 42,2 / 41,8 / **38,3** | 0 / **0** | 1 / **1** | 7 min 19 |
+| `gamer-1993` | 99 % | 29,7 / 29,7 / **27,0** | 0 / **0** | 1 / **1** | 35 min 02 |
+| `secretaire-1993` | 92 % | 35,5 / 34,9 / **32,0** | 0 / **0** | 1 / **1** | 19 min 46 |
+| `poweruser-1993` | 84 % | 41,9 / 41,5 / **38,7** | 0 / **0** | 1 / **1** | 10 min 57 |
+| `dev-1996` | 87 % | 58,8 / 56,6 / **52,3** | 334 / **334** | 115 / **2** | 15 min 28 |
+| `famille-1996` | 99 % | 55,2 / 54,1 / **48,9** | 5 / **5** | 1 / **1** | 18 min 12 |
+| `gamer-1996` | 99 % | 44,4 / 44,4 / **39,5** | 46 / **39** | 1 / **1** | 1 h 07 |
+| `secretaire-1996` | 74 % | 54,7 / 54,1 / **50,1** | 3 / **3** | 1 / **1** | 7 min 54 |
+| `dev-1999` | 85 % | 57,7 / 50,6 / **44,7** | 3 / **3** | 2 / **1** | 35 min 55 |
+| `famille-1999` | 96 % | 64,3 / 57,8 / **51,8** | 19 / **19** | 1 / **2** | 30 min 03 |
+| `gamer-1999` | 89 % | 54,8 / 51,1 / **46,1** | 5 / **5** | 1 / **1** | 36 min 16 |
+| `secretaire-1999` | 87 % | 57,5 / 52,4 / **46,9** | 58 / **58** | 1 / **1** | 18 min 48 |
+| `dev-2003` | 91 % | 49,8 / 49,1 / **48,4** | 0 / **0** | 31 / **4** | 38 min 18 |
+| `famille-2003` | 88 % | 32,4 / 30,5 / **29,5** | 502 / **0** | 147 / **3** | 58 min 47 |
+| `gamer-2003` | 9 % | 66,0 / 63,8 / **62,8** | 0 / **0** | 20 / **6** | 5 min 20 |
+| `secretaire-2003` | 91 % | 34,3 / 31,5 / **31,5** | 435 / **0** | 197 / **3** | 53 min 00 |
+| `dev-2007` | 93 % | 42,4 / 41,9 / **39,3** | 2 / **0** | 79 / **2** | 3 h 06 |
+| `famille-2007` | 97 % | 43,2 / 41,9 / **38,2** | 1067 / **0** | 234 / **10** | 4 h 17 |
+| `gamer-2007` | 87 % | 30,7 / 29,1 / **26,6** | 30 / **0** | 184 / **3** | 2 h 53 |
+| `secretaire-2007` | 88 % | 41,1 / 40,9 / **37,7** | 0 / **0** | 82 / **2** | 2 h 48 |
+| `dev-2012` | 85 % | 39,1 / 38,9 / **37,2** | 0 / **0** | 223 / **2** | 2 h 09 |
+| `famille-2012` | 92 % | 29,0 / 27,4 / **24,4** | 1086 / **0** | 219 / **2** | 4 h 14 |
+| `gamer-2012` | 92 % | 43,6 / 42,8 / **40,9** | 202 / **0** | 294 / **2** | 2 h 25 |
+| `secretaire-2012` | 89 % | 33,9 / 33,8 / **30,1** | 0 / **0** | 89 / **3** | 2 h 12 |
 
 « Meilleur outil » est, pour chaque colonne et chaque volume, le meilleur des
 quatre autres outils de son format — Windows 95, JkDefrag, UltraDefrag et le
 tassage à la frontière sur FAT ; XP, JkDefrag, UltraDefrag et le recollage
 économe sur NTFS —, démarré de la même façon (`SCENARIO=boot:<profil>` avec une
-`STRATEGY`). Sur les douze FAT, les démarrages passent de 597,5 s livrés et
-573,5 s au mieux à **518,5 s** ; sur les huit NTFS, de 341,3 et 335,2 s à
-**314,0 s**. Le bloc de démarrage atteint la borne d'un rangement idéal posé à
+`STRATEGY`). Sur les douze FAT, les démarrages passent de 596,7 s livrés et
+569,0 s au mieux à **516,3 s** ; sur les douze NTFS, de 485,5 et 471,6 s à
+**446,6 s**. Le bloc de démarrage atteint la borne d'un rangement idéal posé à
 la main, que le journal mesure (`LEDGER.md`, chantier 28). Les morceaux qui
-restent sur FAT sont tous ceux du fichier d'échange, que personne ne déplace, et
-`gamer-1993`, plein à 100 %, reste tel quel. Les trous tombent de 129 à 49 sur
-FAT et de 2 514 à 38 sur NTFS ; un volume fait exception, `gamer-1999`, où la
-frontière seule en laisse 18 et le rangement 24.
+restent sur FAT sont presque tous ceux du fichier d'échange, que personne ne
+déplace — `gamer-1996` garde un fichier de plus en morceaux —, et `gamer-1993`,
+plein à 99 %, est rangé comme les autres. Les trous tombent de 127 à 14 sur
+FAT et de 1 799 à 42 sur NTFS ; un volume fait exception, `famille-1999`, où la
+frontière seule en laisse 1 et le rangement 2.
 
-Le prix est la passe. Sur FAT, elle dure 4 h 42 pour les douze volumes, contre
+Le prix est la passe. Sur FAT, elle dure 5 h 03 pour les douze volumes, contre
 4 h 32 au tassage à la frontière et 4 h 51 à Windows 95. Sur NTFS, c'est un
-tassage complet : 1,3 To déplacés et 15 h 43 pour les huit volumes, jusqu'à
-3 h 50 sur `famille-2007`, quand le recollage économe s'en tient à 1 h 33.
+tassage complet : 3,7 To déplacés et 26 h 45 pour les douze volumes, jusqu'à
+4 h 17 sur `famille-2007`, quand le recollage économe s'en tient à 1 h 33.
 
 Le rendu hors-ligne accepte les mêmes identifiants, préfixés de `boot:` pour le
 démarrage :
@@ -1558,7 +1579,11 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   coupe à 124 Ko ce qui ne passe pas par le cache — les lots du préchargeur —
   et le cache s'en tient à 64 Ko ; les installations et les journées d'avant ne
   dépassent pas 256 secteurs, la limite d'une commande ATA sans LBA48, et Vista
-  et 7 gardent ce plafond faute de code.
+  et 7 gardent ce plafond faute de code. Sous XP, le pilote NTFS
+  (`NtfsDefragFile`) coupe pourtant **tout** `FSCTL_MOVE_FILE` en blocs de
+  64 Kio, une transaction chacun, quel que soit l'outil : le modèle ne l'applique
+  qu'à l'outil de XP, et JkDefrag et UltraDefrag y gardent leurs requêtes de
+  4 Mo, une transaction par requête.
 - **Le démarrage de XP suit son préchargeur, avec des trous.** Pas de trace :
   ce qu'on lit d'un fichier reste le budget de l'acte, lu d'un tenant depuis
   le début — ce que ferait `MmPrefetchPages` de pages tracées qu'aucun écart de
@@ -1610,6 +1635,22 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   commande, sans `-f`, l'outil refuserait, et ce n'est pas ce que l'app
   imite. Vista et 7 gardent la rétention de cinq secondes et la validation
   par fichier : le code de XP ne dit rien de leurs pilotes.
+- **Le moteur de XP, à quelques nuances près.** L'analyse lit encore chaque
+  répertoire sur NTFS, quand `dfrgntfs` semble ne lire que la MFT ; deux
+  nuances de `FindRegionToConsolidate` ne sont pas reprises (une région
+  commence toujours par un trou, et la coupure sur un fichier trop gros recule
+  d'un cluster), et la zone de démarrage y coupe une région comme la zone MFT ;
+  `NtfsAcquireAllFiles` à chaque bloc de la MFT et la dernière retentative d'un
+  `STATUS_DELETE_PENDING` ne sont pas joués. Côté pilote, la MFT n'est jamais
+  trouée (`NtfsCreateMftHole` : sa condition, comptée, n'est remplie sur aucun
+  volume de la galerie), sa bitmap ne grandit pas, et `FORMAT` ne pose ni
+  `$Secure` ni `$Extend`, que le pilote crée au premier montage.
+- **Un document Word grossit comme sous l'enregistrement rapide.** Le modèle
+  fait passer chaque enregistrement par `~wrdxxxx.tmp` — l'enregistrement
+  complet, celui de Word par défaut depuis Word 97 SR-1 (KB Q192480) — mais
+  garde au document le gonflement d'un enregistrement rapide, qui, lui,
+  fusionnerait en place. Le lien de Word à ole32 est déduit, pas attesté, et
+  le pas de ses écritures n'est dit nulle part.
 - **Le refuge de Windows 95 au fond du volume est un choix du modèle**, calé
   sur les durées d'époque, pas lu dans une source ; et l'outil de 9x ne
   **redémarre jamais sa passe** (« the disk's contents have changed.
@@ -1684,7 +1725,8 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   entendre ; ×1 reste l'écoute fidèle.
 - Le défragmenteur modélisé ne fait pas de passe de vérification, ne relit pas
   ce qu'il vient d'écrire et ne reprend pas une passe interrompue. Sur FAT,
-  les outils qui passent par l'API de Windows — XP, JkDefrag, UltraDefrag —
+  les outils qui passent par l'API de Windows — JkDefrag, UltraDefrag ; celui
+  de XP, qui y lançait un autre moteur (`dfrgfat`), n'y est pas proposé —
   échouent à déplacer un répertoire, comme Windows ; les autres le déplacent
   comme un fichier, sans réécrire l'entrée `..` de ses sous-répertoires, que
   `DEFRAG.EXE` devait bien réécrire.
@@ -1836,7 +1878,8 @@ par étape, le jeu complet des bilans, les comparaisons — sous
 ./Tools/Measure/readme-tables.py m1 --write   # tables et prose, réécrites
 ./Tools/Measure/run.sh m1 disks               # les vingt-quatre volumes, un à la fois
 ./Tools/Measure/extents.py base m1            # morceaux par fichier, répertoires, coût
-./Tools/Measure/smart.sh m1                   # chaque disque démarré après chaque outil
+./Tools/Measure/smart.sh m1 "- windows95 jkDefrag ultraDefrag frontierCompaction smart" \
+    "- windowsXP ultraDefrag jkDefrag fragmentMerge smart"   # chaque disque démarré après chaque outil
 ./Tools/Measure/smart.py base m1              # démarrage rangé, morceaux, trous
 ./Tools/Measure/passes.py m1:smart         # durée et volume des passes
 ./Tools/Measure/smart-table.py base m1        # la table du rangement intelligent
@@ -1861,7 +1904,9 @@ mécanisme ; elles demandent les bilans d'un binaire jetable, nommé en argument
 (`nora=…`, `nopf=…`, `nosd=…`, `cp1=…`, `cp30=…`, `cpend=…`), et sont dites non
 vérifiées sans lui. Il se valide d'abord en reproduisant le README du commit
 précédent à partir des bilans de ce commit-là ; la table des trois allocateurs
-et celle du rangement intelligent n'en sortent pas (voir son en-tête).
+n'en sort pas, et celle du rangement intelligent seulement quand `smart.sh`
+(avec `smart` dans les deux listes, entre guillemets) et `passes.py <étape>:smart`
+ont tourné sur la même étape (voir son en-tête).
 
 ## Vidéos
 
@@ -1906,14 +1951,16 @@ vidéo déjà présente n'est pas refaite.
 Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swift 6
     DriveGeometry.swift    géométrie zonée, LBA→CHS ; déduction d'un disque
                            quelconque à partir de sa fiche et de son année
-    DriveCatalog.swift     neuf disques réellement vendus, 1993 → 2012, avec
-                           leurs sources ; densités interpolées dans le temps ;
-                           le tampon de chacun et sa politique par défaut ;
-                           les VelociRaptor, et la mécanique qu'ils donnent à
-                           un 10 000 tr/min d'après 2008
+    DriveCatalog.swift     douze fiches de disques réellement vendus, 1993 →
+                           2012, avec leurs sources ; densités interpolées dans
+                           le temps ; le tampon de chacun et sa politique par
+                           défaut ; leurs niveaux acoustiques ; les deux
+                           VelociRaptor, et la mécanique qu'ils donnent à un
+                           10 000 tr/min d'après 2008
     SeekModel.swift        loi de durée, découpage en quatre phases, calage
-                           sur le seek moyen et le piste-à-piste d'une fiche ;
-                           le settle plus long d'une écriture
+                           sur les trois durées d'une fiche (piste-à-piste,
+                           seek moyen en espérance, pleine course) ; le settle
+                           plus long d'une écriture
     SeededGenerator.swift  SplitMix64, tirages stables entre plateformes
     Extent.swift           suite de clusters contigus, huit octets
     ClusterBitmap.swift    occupation des clusters, recherche de place libre
@@ -1923,7 +1970,11 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     FormatOverhead.swift   ce que le format pose devant les clusters, commun
                            au générateur et à la partition simulée
     Allocator.swift        protocole de placement, indices, entrée de fichier
-    Allocators/            FAT (scan depuis le début ou next-free) et NTFS
+    Allocators/            FAT (scan depuis le début ou next-free) et NTFS ;
+                           `NTFSAllocator+XP` et `NTFSFreeRunCache` : le pilote
+                           de XP à la lettre (best fit dans le cache des runs
+                           libres, surallocation, zone MFT recalculée au
+                           montage), pour les volumes formatés par XP
     FileCatalog.swift      arborescence, extents, métadonnées
     WritePattern.swift     motifs d'écriture
     EventTimeline.swift    suite datée d'événements, indépendante du format ;
@@ -1941,9 +1992,22 @@ Sources/DiskCore/          noyau, paquet SPM sans UI ni audio, mode langage Swif
     ScenarioLibrary.swift  chargement des scénarios embarqués
     DiskGenerator.swift    point d'entrée : une description, un disque ; ou
                            son premier jour, rejoué pas à pas
+    RearrangedDisk.swift   le même disque, ses fichiers posés ailleurs : ce
+                           qu'une passe laisse, pour le démarrer ensuite
+    ProfileIssues.swift    ce qui ne va pas dans un profil écrit à la main,
+                           bloquant ou non (la phrase est dite par l'app)
+    CellPartition.swift    le partage des clusters entre les blocs d'une carte
+    CellContents.swift     ce que contient un bloc de la carte
+    FrenchUnits.swift      nombres et octets en français, pour les bilans et
+                           les tables de ce README
     Resources/scenarios/   vingt-quatre scénarios : six époques, quatre profils
 Sources/Model/
     Workload.swift         requête bloc, et datation des phases après coup
+    AtapiQueue.swift       la file du pilote IDE de XP : C-LOOK par LBA,
+                           jouée par le planificateur sur ce qu'il émet ensemble
+    LazyWriter.swift       le *lazy writer* du cache de XP : un réveil par
+                           seconde, 3 s au premier, un huitième des pages sales
+                           dépensé flux par flux
     BootSession.swift      démarrage décrit en fichiers : ce que chaque époque
                            va chercher dans le catalogue, dans quel ordre, et ce
                            que la machine calcule entre deux lectures ; plus le
@@ -1968,8 +2032,13 @@ Sources/Model/
                            fabriques d'opérations communes à tous, et la
                            recherche de trou
     Windows95Strategy.swift  tasser le volume contre son début (FAT16, FAT32)
-    WindowsXPStrategy.swift  réparer les seuls fichiers cassés (NTFS), dans
-                           l'ordre de la MFT ou d'un autre outil
+    WindowsXPStrategy.swift  `dfrgntfs` de XP SP1 (NTFS) : ranger le démarrage
+                           (`Layout.ini`), recoller la MFT, réparer du plus petit
+                           au plus gros dans le plus petit trou qui le tient,
+                           vider une région puis la zone MFT, tasser vers
+                           l'avant ; blocs de 64 Kio, une transaction chacun ;
+                           nommé d'après Vista ou 7 sur leurs disques, avec le
+                           seuil de 64 Mo
     JKDefragStrategy.swift  ranger en trois zones et combler les trous par le
                            haut, sans évacuer personne ; sur demande
     JKDefragFullOptimize.swift  ses autres modes : tasser contre le début ou
@@ -2005,6 +2074,22 @@ Sources/Model/
     ClusterMap.swift       carte du volume par plages, rejeu vers l'avant, grille
                            d'affichage dérivée de la surface, rémanence
     ClusterPalette.swift   couleurs des catégories et teinte proportionnelle
+    MapZones.swift         la carte racontée par zones, pour VoiceOver
+    SpindleCharacter.swift ce que le plateau fait entendre au repos : régime,
+                           plateaux, palier, pris aux manuels
+    SeekCharacter.swift    le niveau de la tête, pris aux manuels (le repos
+                           retranché, à moitié en décibels)
+    SoundMix.swift         le mixage et l'haptique en une valeur
+    PassRecord.swift       le bilan d'une passe entendue jusqu'au bout
+    PassDigest.swift       ce qu'il en reste une fois l'app fermée
+    PassHistory.swift      ce que les disques gardent d'un lancement à l'autre
+    CustomDiskStore.swift  les disques construits dans l'app : leur histoire,
+                           pas le volume
+    DiskLibraryModel.swift la galerie : générer hors du fil principal, publier
+                           l'avancement
+    DisplayFormat.swift    nombres, tailles, noms et résumés des disques
+                           d'époque, remarques de l'assistant, dans la langue de
+                           l'appareil
     Scenario.swift         description des scénarios : disque, chronologie,
                            source des requêtes
     PlaybackClock.swift    allure de l'écoute : horloge du player ↔ temps de passe
@@ -2014,14 +2099,25 @@ Sources/Audio/
     Biquad.swift           filtres RBJ, bruit xorshift
     SeekSynth.swift        banc de résonateurs, excitation, trains
     SpindleVoice.swift     couche continue procédurale
+    NowPlaying.swift       la passe sur l'écran verrouillé et le centre de
+                           contrôle
     WinchesterEngine.swift  graphe AVAudioEngine, transport, programmation des
                            repères tirés de la passe, attente du producteur
 Sources/Haptics/
     DiskHaptics.swift      Core Haptics : motifs de seek, texture des trains
 Sources/UI/                SwiftUI : plateau, carte des clusters, chronologie,
-                           transport, mixage
+                           transport, mixage ; `AboutLinks` (les adresses que
+                           l'app cite) et `TipSheet` (la feuille des pourboires)
+Sources/Tips/TipJar.swift  les pourboires : trois achats consommables, par
+                           StoreKit 2
 Sources/Screenshots/       mode capture de l'App Store, compilé seulement dans
                            la configuration Screenshots
+Tests/DiskCoreTests/       le noyau : allocateurs (dont `NTFSXPAllocationTests`,
+                           le pilote de XP), catalogue, calibration (en Release)
+Tests/DefragKitTests/      la couche Model : stratégies, démarrages, sessions ;
+                           `WindowsXPLetterTests`, `AtapiQueueTests`,
+                           `LazyWriterTests`, `FatMoveFileTests` pour XP à la
+                           lettre (chantiers 47 à 51)
 Tools/RenderTrace/         rendu hors-ligne en WAV
 Tools/RenderVideo/         rendu hors-ligne en vidéo : carte, plateau, bilan
 Tools/Shared/              scénario demandé, mixage en flux et bilan, communs
