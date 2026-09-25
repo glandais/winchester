@@ -55,4 +55,28 @@ struct LazyWriterTests {
         let second = lazy.due(at: 4).flatMap(\.streams).flatMap { $0 }
         #expect(second.first?.lba == 10 * 8)
     }
+
+    @Test("La lecture anticipée : dès la première lecture à l'offset 0, puis deux tranches d'avance")
+    func readAhead() {
+        var cache = CcReadAhead()
+        let k = 65_536
+        // Première lecture, à 0 : un défaut, et la tranche après la
+        // prochaine frontière de 64 Ko (`cachesub.c:1459-1466`).
+        var step = cache.read(offset: 0, length: k, fileSize: 10 * k)
+        #expect(step.demand == 0..<k)
+        #expect(step.ahead == 2 * k..<3 * k)
+        step = cache.read(offset: k, length: k, fileSize: 10 * k)
+        #expect(step.demand == k..<2 * k)
+        #expect(step.ahead == 3 * k..<4 * k)
+        // Ensuite, tout vient du cache.
+        step = cache.read(offset: 2 * k, length: k, fileSize: 10 * k)
+        #expect(step.demand == nil)
+        #expect(step.ahead == 4 * k..<5 * k)
+        // Une première lecture courte à l'offset 0 fait lire la suite dès la
+        // page suivante, bornée par la fin du fichier.
+        var short = CcReadAhead()
+        let first = short.read(offset: 0, length: 8_192, fileSize: 40_000)
+        #expect(first.demand == 0..<8_192)
+        #expect(first.ahead == 8_192..<40_000)
+    }
 }

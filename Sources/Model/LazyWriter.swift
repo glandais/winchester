@@ -286,3 +286,121 @@ struct LazyWriter: Sendable {
         return queue.serve(streams: streams, workers: workers, key: \.lba)
     }
 }
+
+/// La lecture anticipée du gestionnaire de cache de Windows XP, pour un
+/// fichier lu par le cache (`CcScheduleReadAhead`, `cachesub.c:1330-1520` ;
+/// `CcCopyRead`, `copysup.c:149-150, 560-575`).
+///
+/// - Elle s'active au premier défaut de page d'une lecture (`GotAMiss`),
+///   et se décide alors sur cette lecture.
+/// - Ensuite, à chaque lecture, tant qu'aucune n'est en attente : si c'est
+///   la **troisième lecture séquentielle** — ou la première, à l'offset 0,
+///   qui passe le même test —, le cache lit d'avance, en asynchrone, la
+///   tranche qui suit la prochaine frontière de 64 Ko au-delà de la
+///   lecture, de la taille de la lecture arrondie à 64 Ko
+///   (`READ_AHEAD_GRANULARITY`, `ntfs/ntfsdata.h:374`) ; une première
+///   lecture courte à l'offset 0 fait lire la suite dès la page suivante
+///   (`cachesub.c:1459-1468`). Bornée par la fin du fichier.
+/// - Ce qui est lu d'avance sert les lectures suivantes sans aller au
+///   disque.
+///
+/// Le cas des lectures à pas constant (`cachesub.c`, cas 2) n'est pas joué :
+/// le modèle ne lit que dans l'ordre. La taille des lectures du programme
+/// n'est connue nulle part : le modèle suppose qu'il lit par 64 Ko, la
+/// taille des requêtes qu'il émettait.
+struct CcReadAhead: Sendable {
+
+    static let granularity = 65_536
+
+    private var fileOffset1 = 0
+    private var beyond1 = 0
+    private var fileOffset2 = 0
+    private var beyond2 = 0
+    private var enabled = false
+    private var lastAhead = -1
+    /// Ce que le cache tient du fichier : des plages d'octets.
+    private var cached: [Range<Int>] = []
+
+    /// Une lecture du programme : ce qu'il faut lire au disque pour elle, au
+    /// premier plan, puis ce que le cache lit d'avance, en arrière-plan.
+    mutating func read(offset: Int, length: Int, fileSize: Int)
+        -> (demand: Range<Int>?, ahead: Range<Int>?) {
+        let end = offset + length
+        var ahead: Range<Int>?
+        // Une lecture anticipée déjà active se décide avant la copie.
+        if enabled { ahead = schedule(offset: offset, length: length, fileSize: fileSize) }
+        var demand: Range<Int>?
+        if !covered(offset..<end) {
+            demand = offset..<end
+            cached.append(offset..<end)
+            if !enabled {
+                enabled = true
+                ahead = schedule(offset: offset, length: length, fileSize: fileSize)
+            }
+        }
+        fileOffset1 = fileOffset2
+        beyond1 = beyond2
+        fileOffset2 = offset
+        beyond2 = end
+        if let range = ahead { cached.append(range) }
+        return (demand, ahead)
+    }
+
+    /// Les secteurs d'une plage d'octets d'un fichier, extent par extent,
+    /// par requêtes de 64 Ko au plus — la faute d'une vue du cache en lit 16
+    /// pages (`mm.h:62`).
+    static func pieces(of extents: [Extent], bytes range: Range<Int>,
+                       partition: PartitionGeometry) -> [MetadataAccess] {
+        let sector = DriveGeometry.bytesPerSector
+        var first = range.lowerBound / sector
+        let last = (range.upperBound + sector - 1) / sector
+        var result: [MetadataAccess] = []
+        var base = 0
+        for extent in extents where first < last {
+            let length = Int(extent.length) * partition.clusterSectors
+            defer { base += length }
+            guard first < base + length else { continue }
+            var offset = first - base
+            let stop = min(length, last - base)
+            while offset < stop {
+                let count = min(stop - offset, 128)
+                result.append(MetadataAccess(lba: partition.lba(ofCluster: Int(extent.start)) + offset,
+                                             sectors: count))
+                offset += count
+            }
+            first = base + stop
+        }
+        return result
+    }
+
+    private func covered(_ range: Range<Int>) -> Bool {
+        var from = range.lowerBound
+        var progressed = true
+        while from < range.upperBound, progressed {
+            progressed = false
+            for piece in cached where piece.contains(from) {
+                from = piece.upperBound
+                progressed = true
+            }
+        }
+        return from >= range.upperBound
+    }
+
+    private mutating func schedule(offset: Int, length: Int, fileSize: Int) -> Range<Int>? {
+        // Cas 1 : la troisième de trois lectures qui se suivent.
+        guard offset == beyond2, fileOffset2 == beyond1 else { return nil }
+        let mask = Self.granularity - 1
+        let size = (length + mask) & ~mask
+        let start: Int
+        if offset == 0, length + 4_095 <= mask {
+            start = (length + 4_095) / 4_096 * 4_096
+        } else {
+            start = (offset + length + size) & ~mask
+        }
+        guard start != lastAhead else { return nil }
+        lastAhead = start
+        let stop = min(start + size, fileSize)
+        guard stop > start, !covered(start..<stop) else { return nil }
+        return start..<stop
+    }
+}

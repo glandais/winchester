@@ -1128,9 +1128,13 @@ enum BootPlanner {
                 } else {
                     touched = min(Int(record.logicalSize), query.bytesPerFile)
                     if layoutOpen, readItems.insert(record.id).inserted { readOrder.append(record.id) }
-                    emitData(record.extents, limit: touched, isWrite: false, phase: phase,
-                             requestSectors: imageFaults && Self.isImage(record)
-                                 ? BootPlanner.imageFaultSectors : maxRequestSectors)
+                    if imageFaults, !Self.isImage(record), !partition.format.isFAT {
+                        readThroughCache(record, touched: touched, phase: phase)
+                    } else {
+                        emitData(record.extents, limit: touched, isWrite: false, phase: phase,
+                                 requestSectors: imageFaults && Self.isImage(record)
+                                     ? BootPlanner.imageFaultSectors : maxRequestSectors)
+                    }
                     bytesRead += touched
                     if rng.unitInterval() < query.writeBack {
                         writeBack(record, touched: touched, phase: phase)
@@ -1435,6 +1439,35 @@ enum BootPlanner {
             }
             let cluster = partition.directoryAccesses(directory.extents, clusters: last..<(last + 1)).first?.lba
             return cluster.map { $0 + Int(offset % UInt64(partition.clusterBytes) / sectorBytes) }
+        }
+
+        /// Sous XP, un fichier de données lu hors préchargement : par le
+        /// cache, par lectures de 64 Ko, avec sa lecture anticipée
+        /// (`CcReadAhead`), qui part en arrière-plan.
+        private mutating func readThroughCache(_ record: FileRecord, touched: Int, phase: Int) {
+            var cache = CcReadAhead()
+            let total = PartitionGeometry.readSectors(forBytes: touched, granularity: readGranularity)
+                * DriveGeometry.bytesPerSector
+            let chunk = maxRequestSectors * DriveGeometry.bytesPerSector
+            var offset = 0
+            while offset < total {
+                let length = min(chunk, total - offset)
+                let (demand, ahead) = cache.read(offset: offset, length: length,
+                                                 fileSize: Int(record.logicalSize))
+                if let demand {
+                    for piece in CcReadAhead.pieces(of: record.extents, bytes: demand, partition: partition) {
+                        append(lba: piece.lba, sectors: piece.sectors, isWrite: false, phase: phase)
+                    }
+                }
+                if let ahead {
+                    for piece in CcReadAhead.pieces(of: record.extents, bytes: ahead, partition: partition) {
+                        issue(lba: piece.lba, sectors: piece.sectors, isWrite: false, phase: phase,
+                              flow: .background)
+                        bytesRead += piece.sectors * DriveGeometry.bytesPerSector
+                    }
+                }
+                offset += length
+            }
         }
 
         /// Ce qu'un acte réécrit d'un fichier qu'il a lu. Sous XP, par le

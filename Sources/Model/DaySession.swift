@@ -340,7 +340,7 @@ private struct DayReader {
             var loaded = 0
             for record in catalog.files where record.category == .gameAsset && loaded < script.gameLoadBytes {
                 let bytes = min(Int(record.logicalSize), script.gameLoadBytes - loaded)
-                writer.read(record.extents, bytes: bytes)
+                writer.read(record.extents, bytes: bytes, fileSize: Int(record.logicalSize))
                 loaded += bytes
                 filesRead += 1
                 plan.bytesRead += bytes

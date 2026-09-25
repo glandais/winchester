@@ -335,6 +335,12 @@ enum InstallPlanner {
 
         /// Archives de l'étape, relues en tourniquet pendant la copie.
         private var cabinets: [Extent] = []
+        /// Sous XP, à quel fichier appartient chaque extent des archives, et
+        /// à quel secteur de ce fichier il commence : la lecture anticipée
+        /// du cache se joue par fichier (`CcReadAhead`).
+        private var cabinetOwners: [(id: UInt32, firstSector: Int)] = []
+        private var cabinetFiles: [UInt32: (extents: [Extent], size: Int)] = [:]
+        private var readAheads: [UInt32: CcReadAhead] = [:]
         /// Où l'installeur en est dans ses archives : l'extent, et le secteur
         /// dans cet extent.
         private var cabinetCursor = (extent: 0, offset: 0)
@@ -392,6 +398,9 @@ enum InstallPlanner {
             guard let current = currentStep else { return }
             phase = phases.copy[index]
             cabinets = []
+            cabinetOwners = []
+            cabinetFiles = [:]
+            readAheads = [:]
             cabinetCursor = (0, 0)
             engineLaunched = false
             // Part d'archive relue par octet posé : l'installeur tire tout ce
@@ -466,6 +475,12 @@ enum InstallPlanner {
             }
 
             if isTemporary, current.style.extraction?.use == .cabinets {
+                var first = 0
+                for extent in record.extents {
+                    cabinetOwners.append((record.id, first))
+                    first += Int(extent.length) * partition.clusterSectors
+                }
+                cabinetFiles[record.id] = (record.extents, Int(record.logicalSize))
                 cabinets.append(contentsOf: record.extents)
             }
             flushMetadata(force: era.flush == .everyFile)
@@ -588,11 +603,9 @@ enum InstallPlanner {
                 let take = min(length - cabinetCursor.offset, sectors, maxRequestSectors)
                 let cluster = Int(extent.start) + cabinetCursor.offset / partition.clusterSectors
                 let lba = partition.lba(ofCluster: Int(extent.start)) + cabinetCursor.offset
-                // Sous XP, une archive que le lazy writer n'a pas encore posée
-                // se relit dans le cache.
-                let cached = usesLazyWriter
-                    && stride(from: lba / 8 * 8, to: lba + take, by: 8).allSatisfy { lazy.holds(lba: $0) }
-                if !cached {
+                if usesLazyWriter {
+                    readCabinetThroughCache(extent: cabinetCursor.extent, sectors: take)
+                } else {
                     emit(.readExtent, lba: lba, sectors: take, isWrite: false, cluster: cluster)
                 }
                 plan.temporaryBytesRead += take * DriveGeometry.bytesPerSector
@@ -600,6 +613,41 @@ enum InstallPlanner {
                 cabinetCursor.offset += take
                 if cabinetCursor.offset >= length {
                     cabinetCursor = (cabinetCursor.extent + 1, 0)
+                }
+            }
+        }
+
+        /// Sous XP, une lecture d'archive passe par le cache : ce que le lazy
+        /// writer n'a pas encore posé, ou que la lecture anticipée a déjà lu,
+        /// s'y relit ; ce que le cache lit d'avance part en arrière-plan
+        /// (`CcReadAhead`).
+        private mutating func readCabinetThroughCache(extent index: Int, sectors take: Int) {
+            let owner = cabinetOwners[index]
+            guard let file = cabinetFiles[owner.id] else { return }
+            let sector = DriveGeometry.bytesPerSector
+            let offset = (owner.firstSector + cabinetCursor.offset) * sector
+            var cache = readAheads[owner.id] ?? CcReadAhead()
+            let (demand, ahead) = cache.read(offset: offset, length: take * sector, fileSize: file.size)
+            readAheads[owner.id] = cache
+            func held(_ piece: MetadataAccess) -> Bool {
+                stride(from: piece.lba / 8 * 8, to: piece.lba + piece.sectors, by: 8)
+                    .allSatisfy { lazy.holds(lba: $0) }
+            }
+            if let demand {
+                for piece in CcReadAhead.pieces(of: file.extents, bytes: demand, partition: partition)
+                where !held(piece) {
+                    emit(.readExtent, lba: piece.lba, sectors: piece.sectors, isWrite: false,
+                         cluster: (piece.lba - partition.dataStartLBA) / partition.clusterSectors)
+                }
+            }
+            if let ahead {
+                for piece in CcReadAhead.pieces(of: file.extents, bytes: ahead, partition: partition)
+                where !held(piece) {
+                    sink.emit(DiskOperation(kind: .readExtent, phase: phase, lba: piece.lba,
+                                            sectors: piece.sectors, isWrite: false, issueTime: 0,
+                                            cluster: (piece.lba - partition.dataStartLBA) / partition.clusterSectors,
+                                            mutationStart: sink.mutationMark, mutationCount: 0,
+                                            flow: .background))
                 }
             }
         }

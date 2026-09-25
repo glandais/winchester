@@ -134,9 +134,54 @@ struct MachineWriter {
     }
 
     /// Lit le contenu d'un fichier, ou ce qu'on en touche.
-    mutating func read(_ extents: [Extent], bytes: Int, cost: (Int) -> Double = { _ in 0 }) {
-        transfer(extents, bytes: bytes, isWrite: false, kind: .readExtent,
-                 perRequestSectors: Self.maxRequestSectors, cost: cost)
+    ///
+    /// Sous XP, la lecture passe par le cache, avec sa lecture anticipée
+    /// (`CcReadAhead`) : ce qui est déjà lu d'avance ne va pas au disque, et
+    /// ce que le cache lit d'avance part en arrière-plan. `fileSize` borne
+    /// cette lecture d'avance.
+    mutating func read(_ extents: [Extent], bytes: Int, fileSize: Int? = nil,
+                       cost: (Int) -> Double = { _ in 0 }) {
+        guard usesLazyWriter else {
+            transfer(extents, bytes: bytes, isWrite: false, kind: .readExtent,
+                     perRequestSectors: Self.maxRequestSectors, cost: cost)
+            return
+        }
+        var cache = CcReadAhead()
+        let size = max(fileSize ?? bytes, bytes)
+        let total = PartitionGeometry.readSectors(forBytes: bytes, granularity: era.granularity)
+            * DriveGeometry.bytesPerSector
+        var offset = 0
+        let chunk = Self.maxRequestSectors * DriveGeometry.bytesPerSector
+        while offset < total {
+            let length = min(chunk, total - offset)
+            think(cost(min(length, bytes - min(offset, bytes))))
+            let (demand, ahead) = cache.read(offset: offset, length: length, fileSize: size)
+            if let demand {
+                for piece in CcReadAhead.pieces(of: extents, bytes: demand, partition: partition)
+                where !inCache(lba: piece.lba, sectors: piece.sectors) {
+                    emit(.readExtent, lba: piece.lba, sectors: piece.sectors, isWrite: false,
+                         cluster: (piece.lba - partition.dataStartLBA) / partition.clusterSectors)
+                }
+            }
+            if let ahead {
+                for piece in CcReadAhead.pieces(of: extents, bytes: ahead, partition: partition)
+                where !inCache(lba: piece.lba, sectors: piece.sectors) {
+                    emitAhead(piece)
+                }
+            }
+            bytesRead += min(length, max(bytes - offset, 0))
+            offset += length
+        }
+    }
+
+    /// Une lecture anticipée du cache : en arrière-plan, dès que le disque
+    /// est libre.
+    private mutating func emitAhead(_ piece: MetadataAccess) {
+        sink.emit(DiskOperation(kind: .readExtent, phase: phase, lba: piece.lba, sectors: piece.sectors,
+                                isWrite: false, issueTime: 0,
+                                cluster: (piece.lba - partition.dataStartLBA) / partition.clusterSectors,
+                                mutationStart: sink.mutationMark, mutationCount: 0,
+                                flow: .background))
     }
 
     /// Sous XP, ce qu'une lecture trouve sale dans le cache n'est pas relu.
