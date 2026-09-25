@@ -207,9 +207,10 @@ struct FullBlocksOptionTests {
         #expect(gathered.after.freeHoles == cut.after.freeHoles)
         #expect(count(gathered, .readExtent) == count(cut, .readExtent))
         #expect(count(gathered, .writeExtent) < count(cut, .writeExtent))
-        // JkDefrag range aussi le reste du volume ; les deux autres ne
-        // déplacent que le fichier cassé.
-        if strategyID != "jkDefrag" {
+        // JkDefrag range aussi le reste du volume, et XP tasse ensuite les
+        // documents dans les trous que le recollage vient d'ouvrir — libres
+        // tout de suite sous XP. UltraDefrag ne déplace que le fichier cassé.
+        if strategyID == "ultraDefrag" {
             #expect(count(cut, .writeExtent) >= 8)
             #expect(count(gathered, .writeExtent) == 1)
         }

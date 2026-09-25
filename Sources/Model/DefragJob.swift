@@ -45,11 +45,15 @@ struct DiskOperation {
     /// qui enchaîne dès que le disque se libère ; la lecture du CD et la
     /// décompression pour une installation.
     let thinkTime: Double
+    /// Qui l'attend (`RequestFlow`).
+    let flow: RequestFlow
+    /// En arrière-plan, le calcul que l'hôte fait pendant qu'elle se sert.
+    let hostWork: Double
 
     init(kind: Kind, phase: Int, lba: Int, sectors: Int, isWrite: Bool,
          issueTime: Double, cluster: Int?,
          mutationStart: Int32 = 0, mutationCount: Int32 = 0,
-         thinkTime: Double = 0) {
+         thinkTime: Double = 0, flow: RequestFlow = .foreground, hostWork: Double = 0) {
         self.kind = kind
         self.phase = phase
         self.lba = lba
@@ -60,6 +64,8 @@ struct DiskOperation {
         self.mutationStart = mutationStart
         self.mutationCount = mutationCount
         self.thinkTime = thinkTime
+        self.flow = flow
+        self.hostWork = hostWork
     }
 }
 
@@ -138,6 +144,9 @@ struct DefragPlan {
     /// reposer sur le disque d'origine pour le démarrer rangé. Quelques octets
     /// par fichier, là où garder le volume entier garderait sa bitmap.
     var arrangement: [FileArrangement] = []
+    /// Sous XP, les vidages du journal que la passe a forcés en se posant
+    /// sur des clusters qu'elle venait de quitter (`DefragOperations.deletePending`).
+    var logFlushes = 0
 
     /// Le même plan, avec les opérations et les mutations qu'un récepteur a
     /// gardées.
@@ -146,7 +155,7 @@ struct DefragPlan {
                    operations: operations, mutations: mutations, phases: phases,
                    before: before, after: after, movedBytes: movedBytes,
                    filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,
-                   evacuations: evacuations, arrangement: arrangement)
+                   evacuations: evacuations, arrangement: arrangement, logFlushes: logFlushes)
     }
 
     /// Le même plan, sans les opérations ni les mutations.
@@ -159,7 +168,7 @@ struct DefragPlan {
                    operations: [], mutations: [], phases: phases,
                    before: before, after: after, movedBytes: movedBytes,
                    filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,
-                   evacuations: evacuations, arrangement: arrangement)
+                   evacuations: evacuations, arrangement: arrangement, logFlushes: logFlushes)
     }
 }
 

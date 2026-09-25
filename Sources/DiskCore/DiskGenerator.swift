@@ -336,12 +336,15 @@ public enum DiskGenerator {
         NTFSProfile(clusterKB: spec.fileSystem.clusterKB ?? 4)
     }
 
-    /// `$MFTMirr` est au milieu du volume jusqu'à NT 4, ramené près du début
-    /// par NTFS 3.0 — c'est-à-dire par Windows 2000, et non par XP : un
-    /// aller-retour de moins par écriture de métadonnées, et ça s'entend.
-    /// Aucun scénario embarqué ne démarre en 2000 ; c'est un disque
-    /// personnalisé daté de cette année-là que la borne d'avant traitait comme
-    /// un NT 4.
+    /// Le système qui formate le volume, donc où sont ses métafichiers
+    /// (`NTFSAllocator.Formatting`) : le champ `os` du profil d'abord,
+    /// l'année en repli. `$MFTMirr` n'a pas été ramené près du début par
+    /// Windows 2000 : le `FORMAT` de XP SP1 le pose encore au milieu du
+    /// volume (`mftref.cxx:177-182`) ; c'est Windows 7 qui le met au LCN 2.
+    /// Ce que XP a déplacé, c'est `$MFT`, à 3 Gio, avec le journal juste
+    /// devant elle (`format.cxx:585-618`). Un disque personnalisé daté
+    /// d'avant 2001 sans champ `os` est formaté comme sous NT 4 : `$MFT` en
+    /// tête, une disposition que le code de XP ne permet pas de vérifier.
     public static func formatting(for spec: ProfileSpec) -> NTFSAllocator.Formatting {
         switch spec.os {
         case "winxp-sp1": return .xp
@@ -410,7 +413,12 @@ extension FATAllocator: GeneratorAllocator {
 }
 
 extension NTFSAllocator: GeneratorAllocator {
+    /// La zone est celle que verra un défragmenteur : sous XP, celle que
+    /// recalcule le montage qui précède sa passe (`NtfsInitializeMftZone`),
+    /// et non celle que la dernière écriture a laissée.
     var generatedMFT: (clusters: UInt32, extents: Int, zone: Range<UInt32>?, system: [Extent], file: [Extent]) {
-        (mft.clusterCount, mft.extents.count, mftZone, systemExtents, mft.extents)
+        var mounted = self
+        mounted.mount()
+        return (mft.clusterCount, mft.extents.count, mounted.mftZone, systemExtents, mft.extents)
     }
 }

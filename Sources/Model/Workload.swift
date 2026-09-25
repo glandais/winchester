@@ -3,6 +3,35 @@ import DiskCore
 
 // MARK: - Requête bloc
 
+/// Qui attend une requête, et quand elle part.
+///
+/// Le disque sert une commande à la fois, dans l'ordre du plan ; ce qui
+/// change est **l'hôte**. Un démarrage ou une installation a un fil qui
+/// calcule, puis demande, puis attend : c'est le premier plan. Sous NT,
+/// d'autres requêtes partent sans que ce fil les attende — le préchargeur
+/// qui émet tout un lot avant d'attendre (`pfsup.c:318-388`), le *lazy
+/// writer* sur ses fils de travail, la lecture anticipée du cache — et le
+/// calcul du premier plan continue pendant qu'elles occupent le disque.
+enum RequestFlow: UInt8, Sendable {
+    /// Le fil de l'hôte calcule `thinkTime`, puis émet et attend : la
+    /// requête part quand le disque est libre et le calcul fini.
+    case foreground
+    /// Émise sans que le fil de l'hôte l'attende : elle part `thinkTime`
+    /// après l'instant où le fil s'est libéré — un passage du *lazy writer*
+    /// tombe pendant son calcul —, dès que le disque est libre ; `hostWork`
+    /// est du calcul que le fil fait pendant ce temps.
+    case background
+    /// Le fil attend d'abord que le disque ait fini tout ce qui a été émis
+    /// avant elle — un événement qu'il attend, la fin d'un lot du
+    /// préchargeur (`prefboot.c:936-955`) —, puis calcule, puis émet.
+    case barrier
+    /// En arrière-plan, mais le fil a d'abord attendu, comme à `barrier`, la
+    /// fin de ce qui a été émis avant : les délais comptent de là.
+    case backgroundBarrier
+
+    var isBackground: Bool { self == .background || self == .backgroundBarrier }
+}
+
 struct BlockRequest {
     /// Date d'émission imposée, ou 0 : dès que le disque se libère.
     let issueTime: Double
@@ -20,15 +49,28 @@ struct BlockRequest {
     /// C'est ce « en fait quelque chose » qui fixe le plancher d'un démarrage,
     /// et ce que le disque y ajoute est exactement ce qu'on écoute.
     let thinkTime: Double
+    /// Qui l'attend (`RequestFlow`) : le premier plan partout, sauf ce que le
+    /// noyau de NT émet de lui-même.
+    let flow: RequestFlow
+    /// En arrière-plan, le calcul que le fil de l'hôte fait pendant que la
+    /// requête se sert (`RequestFlow.background`).
+    let hostWork: Double
+
+    /// Une écriture de zéro secteur : la commande `FLUSH CACHE`
+    /// (`DiskMechanics.flushCache`).
+    var isCacheFlush: Bool { isWrite && sectorCount == 0 }
 
     init(issueTime: Double, lba: Int, sectorCount: Int, isWrite: Bool,
-         phaseIndex: Int, thinkTime: Double = 0) {
+         phaseIndex: Int, thinkTime: Double = 0, flow: RequestFlow = .foreground,
+         hostWork: Double = 0) {
         self.issueTime = issueTime
         self.lba = lba
         self.sectorCount = sectorCount
         self.isWrite = isWrite
         self.phaseIndex = phaseIndex
         self.thinkTime = thinkTime
+        self.flow = flow
+        self.hostWork = hostWork
     }
 }
 

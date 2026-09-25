@@ -144,9 +144,86 @@ struct NTFSMetafileTests {
         }
         let nt = Self.allocator(clusterCount: clusterCount, formatting: .nt)
         #expect(nt.mft.extents[0].start == nt.bootExtent.end)
-        // Un volume de moins de 3 Gio : la MFT au huitième, une règle du modèle.
-        let small = Self.allocator(clusterCount: 100_000, formatting: .xp)
+        // Vista et 7, un volume de moins de 24 Gio : la MFT au huitième, une
+        // règle du modèle.
+        let small = Self.allocator(clusterCount: 100_000, formatting: .vista)
         #expect(small.mft.extents[0].start == 12_500)
+    }
+
+    /// Sous XP, trois paliers (`format.cxx:585-593`) : au tiers du volume
+    /// sous 2 Gio, à 1 Gio de 2 à 6 Gio, à 3 Gio au-delà — et non au
+    /// huitième d'un volume de moins de 24 Gio.
+    @Test("$MFT par paliers sous XP : au tiers, à 1 Gio, à 3 Gio")
+    func xpMFTTiers() {
+        // 400 Mo : (secteurs / 3) / secteurs par cluster.
+        #expect(Self.allocator(clusterCount: 100_000, formatting: .xp).mft.extents[0].start
+                == (100_000 * 8 + 1) / 3 / 8)
+        // 4 Gio : 1 Gio.
+        #expect(Self.allocator(clusterCount: 1 << 20, formatting: .xp).mft.extents[0].start == 262_144)
+        // 10 Gio : 3 Gio, là où le modèle d'avant mettait 1,25 Gio.
+        #expect(Self.allocator(clusterCount: 10 << 18, formatting: .xp).mft.extents[0].start == 786_432)
+    }
+
+    /// La disposition de `FORMAT` sous XP SP1 (`LOGFILE_PLACEMENT_V1`) :
+    /// `$LogFile`, la bitmap de la MFT et `$MFT` à la suite, à 3 Gio ;
+    /// `$MFTMirr`, `$AttrDef`, `$Bitmap`, `$UpCase` et l'index racine à la
+    /// suite, au milieu (`format.cxx:329-341, 585-618, 904-1175`,
+    /// `logfile.cxx:223-233`, `mftfile.cxx:289-293`, `mftref.cxx:177-182`).
+    @Test("Sous XP, le journal finit devant la MFT, et la bitmap est au milieu")
+    func xpLayout() {
+        let clusterCount: UInt32 = 9_765_624          // les 40 Go de `secretaire-2003`
+        let ntfs = Self.allocator(clusterCount: clusterCount, formatting: .xp)
+        let layout = NTFSAllocator.layout(profile: NTFSProfile(clusterKB: 4),
+                                          clusterCount: clusterCount, formatting: .xp)
+        let mft = ntfs.mft.extents[0]
+        #expect(mft.start == 786_432)
+        // 16 enregistrements (`FIRST_USER_FILE_NUMBER`), quatre clusters.
+        #expect(mft.length == 4 && ntfs.mftRecordCount == 16)
+        // La bitmap de la MFT juste devant elle ; le journal finit à
+        // `MftLcn` moins les 8 Ko réservés à cette bitmap, soit deux clusters.
+        #expect(layout.mftBitmap == Extent(start: 786_431, length: 1))
+        #expect(ntfs.logFile.end == 786_430)
+        #expect(UInt64(ntfs.logFile.length) * 4_096 == 64 << 20)
+        #expect(!ntfs.bitmap.isAllocated(786_430))
+        // Le milieu : le miroir, puis ce que `_NextAlloc` pose derrière lui.
+        #expect(ntfs.mftMirror.start == clusterCount / 2)
+        #expect(layout.attrDef == Extent(start: ntfs.mftMirror.end, length: 1))
+        #expect(ntfs.volumeBitmap.start == layout.attrDef.end)
+        #expect(UInt64(ntfs.volumeBitmap.length) * 4_096 * 8 >= UInt64(clusterCount))
+        #expect(layout.upCase == Extent(start: ntfs.volumeBitmap.end, length: 32))
+        #expect(layout.rootIndex == Extent(start: layout.upCase.end, length: 1))
+        #expect(ntfs.formattedRootIndex == layout.rootIndex)
+        for extent in [layout.mftBitmap, layout.attrDef, layout.upCase] {
+            #expect(ntfs.systemExtents.contains(extent))
+        }
+        #expect(!ntfs.systemExtents.contains(layout.rootIndex!), "l'index racine est à la racine")
+        // La zone MFT, calculée au montage (`NtfsInitializeMftZone`,
+        // `bitmpsup.c:8542-8641`) : un huitième du volume moins la MFT, à partir
+        // du cluster qui la suit, aligné sur 32 clusters.
+        let zoneEnd = (786_436 + (clusterCount >> 3) - 4 + 31) & ~UInt32(31)
+        #expect(ntfs.mftZone == 786_432..<zoneEnd)
+        // Un premier fichier se pose devant le journal, en tête.
+        var copy = ntfs
+        #expect(copy.allocate(clusterCount: 8, hint: .normal).first?.start == ntfs.bootExtent.end)
+    }
+
+    /// La taille du journal sous XP est une rampe (`logfile.cxx:48-56,
+    /// 869-888`) : 1 % jusqu'à 400 Mo, au moins 2 Mo ; au-delà, 4 Mo plus un
+    /// deux-centième de ce qui dépasse, plafonné à 64 Mo, arrondi à 16 Ko.
+    @Test("Le journal de XP suit une rampe, pas des paliers")
+    func xpLogFileRamp() {
+        let mebibyte: UInt64 = 1 << 20
+        #expect(NTFSAllocator.xpLogFileBytes(volumeBytes: 100 * mebibyte) == 2 * mebibyte)
+        #expect(NTFSAllocator.xpLogFileBytes(volumeBytes: 400 * mebibyte) == 4 * mebibyte)
+        // 2 Go : environ 12 Mo, là où les paliers de `mkntfs` donnaient 4.
+        let two = NTFSAllocator.xpLogFileBytes(volumeBytes: 2_000_000_000)
+        #expect(two > 12_000_000 && two < 12_200_000 && two % 16_384 == 0)
+        // 8 Gio : environ 43 Mo.
+        let eight = NTFSAllocator.xpLogFileBytes(volumeBytes: 8 << 30)
+        #expect(eight > 42 * mebibyte && eight < 44 * mebibyte)
+        // Le plafond, vers 12,1 Gio : tous les NTFS de la galerie.
+        #expect(NTFSAllocator.xpLogFileBytes(volumeBytes: 13 << 30) == 64 * mebibyte)
+        #expect(NTFSAllocator.xpLogFileBytes(volumeBytes: 3 << 40) == 64 * mebibyte)
     }
 
     /// `$MFTMirr` est au milieu du volume de NT 4 à Vista, et au LCN 2
@@ -262,11 +339,13 @@ struct FormatOverheadTests {
         #expect(naive - UInt64(spec.clusterCount) >= UInt64(tables * 512) / 8_192)
     }
 
-    /// `$Bitmap` est posée derrière la zone MFT, et elle couvre le volume.
-    @Test("La table d'occupation NTFS a sa place, derrière la zone MFT")
+    /// `$Bitmap` est posée derrière la zone MFT hors XP — au milieu sous XP
+    /// (`NTFSMetafileTests.xpLayout`) —, et elle couvre le volume.
+    @Test("La table d'occupation NTFS a sa place, derrière la zone MFT hors XP")
     func ntfsBitmapHasItsPlace() {
         let clusters: UInt32 = 1_000_000
-        let ntfs = NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: clusters)
+        let ntfs = NTFSAllocator(profile: NTFSProfile(clusterKB: 4), clusterCount: clusters,
+                                 formatting: .vista)
         #expect(ntfs.volumeBitmap.start == ntfs.mftZone.upperBound)
         #expect(UInt64(ntfs.volumeBitmap.length) * 4_096 * 8 >= UInt64(clusters))
         #expect(ntfs.systemExtents.contains(ntfs.volumeBitmap))

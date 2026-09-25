@@ -61,10 +61,15 @@ struct InstallEra: Sendable {
     ///
     /// Une commande ATA sans LBA48 porte son compte de secteurs sur huit bits,
     /// zéro valant 256 : 128 Ko par commande, quoi que le cache ait à vider.
-    /// Le pilote de port de Windows XP découpait même à 64 Ko
-    /// (`DISK_EXPERT_REVIEW.md` §3.3) ; MS-DOS écrit par ses tampons de
-    /// 64 Ko. Vista garde ici le plafond de l'ATA : les disques de 2007 sont en
-    /// LBA48, qui le lève, mais rien ne dit ce que faisait son pilote.
+    /// Sous XP, les 64 Ko ne viennent pas du pilote de port — `atapi`
+    /// accepte 128 Ko par SRB, en LBA48 aussi (`ide/inc/idep.h:31`), et
+    /// `classpnp` coupe à 124 Ko (`BootPlanner.classPacketSectors`) : ils
+    /// viennent du cache, dont le *lazy writer* écrit par 64 Ko au plus
+    /// (`MAX_WRITE_BEHIND`, `cache/cc.h:159, 175`), et de `CopyFile`, qui copie
+    /// par 64 Ko (`BASE_COPY_FILE_CHUNK`, `win32/client/basedll.h:129`) ;
+    /// MS-DOS écrit par ses tampons de 64 Ko. Vista garde ici le plafond de
+    /// l'ATA : les disques de 2007 sont en LBA48, qui le lève, mais rien ne
+    /// dit ce que faisait son pilote.
     ///
     /// Écrire un DVD par morceaux de 64 Ko ne fait pas attendre un demi-tour de
     /// plateau à chaque morceau : le disque a son cache d'écriture, il acquitte
@@ -311,6 +316,14 @@ enum InstallPlanner {
 
         /// Secteurs de métadonnées modifiés et pas encore écrits.
         private var dirty: [Int: Int] = [:]
+        /// Sous XP, le *lazy writer* et la file d'`atapi` (`LazyWriter`).
+        private var lazy = LazyWriter()
+        private var queue = AtapiQueue()
+        /// L'heure estimée de la fin de la dernière requête du premier plan.
+        private var foregroundEnd = 0.0
+        private var usesLazyWriter: Bool {
+            era.name == "Windows XP" && partition.format == .ntfs
+        }
         private var pendingMutations: [MapMutation] = []
         private var pendingThink = 0.0
         /// Heure estimée de la passe, et du dernier vidage des tables.
@@ -322,6 +335,12 @@ enum InstallPlanner {
 
         /// Archives de l'étape, relues en tourniquet pendant la copie.
         private var cabinets: [Extent] = []
+        /// Sous XP, à quel fichier appartient chaque extent des archives, et
+        /// à quel secteur de ce fichier il commence : la lecture anticipée
+        /// du cache se joue par fichier (`CcReadAhead`).
+        private var cabinetOwners: [(id: UInt32, firstSector: Int)] = []
+        private var cabinetFiles: [UInt32: (extents: [Extent], size: Int)] = [:]
+        private var readAheads: [UInt32: CcReadAhead] = [:]
         /// Où l'installeur en est dans ses archives : l'extent, et le secteur
         /// dans cet extent.
         private var cabinetCursor = (extent: 0, offset: 0)
@@ -364,7 +383,7 @@ enum InstallPlanner {
 
         mutating func finish() {
             closeStep()
-            flushMetadata(force: true)
+            flushMetadata(force: true, shutdown: true)
             // La dernière écriture des tables, et ce que la carte attend encore.
             sink.progress = 1
             if !pendingMutations.isEmpty {
@@ -379,6 +398,9 @@ enum InstallPlanner {
             guard let current = currentStep else { return }
             phase = phases.copy[index]
             cabinets = []
+            cabinetOwners = []
+            cabinetFiles = [:]
+            readAheads = [:]
             cabinetCursor = (0, 0)
             engineLaunched = false
             // Part d'archive relue par octet posé : l'installeur tire tout ce
@@ -453,6 +475,12 @@ enum InstallPlanner {
             }
 
             if isTemporary, current.style.extraction?.use == .cabinets {
+                var first = 0
+                for extent in record.extents {
+                    cabinetOwners.append((record.id, first))
+                    first += Int(extent.length) * partition.clusterSectors
+                }
+                cabinetFiles[record.id] = (record.extents, Int(record.logicalSize))
                 cabinets.append(contentsOf: record.extents)
             }
             flushMetadata(force: era.flush == .everyFile)
@@ -470,6 +498,9 @@ enum InstallPlanner {
         }
 
         private mutating func delete(_ record: FileRecord) {
+            // Sous XP, ses pages sales sont purgées sans être écrites
+            // (`ntfs/cleanup.c:1576, 1930, 2515`).
+            if usesLazyWriter { lazy.discard(.data(record.id)) }
             markDirty(record)
             placed.removeValue(forKey: record.id)
             for extent in record.extents where !extent.isEmpty {
@@ -523,9 +554,13 @@ enum InstallPlanner {
             return seconds
         }
 
+        /// Sous XP, `CopyFile` écrit par le cache (`BaseCopyStream`,
+        /// 64 Ko à la fois, `win32/client/fileopcr.c:4847-4870`) : les pages
+        /// sont salies, et c'est le *lazy writer* qui les pose (`LazyWriter`).
         private mutating func writeData(of record: FileRecord, compressed: Bool) {
             var remaining = PartitionGeometry.readSectors(forBytes: Int(record.logicalSize),
                                                           granularity: era.granularity)
+            var page = 0
             for extent in record.extents {
                 let length = Int(extent.length) * partition.clusterSectors
                 var offset = 0
@@ -535,8 +570,19 @@ enum InstallPlanner {
                     pendingThink += sourceTime(bytes: min(bytes, Int(record.logicalSize)),
                                                compressed: compressed)
                     let cluster = Int(extent.start) + offset / partition.clusterSectors
-                    emit(.writeExtent, lba: partition.lba(ofCluster: Int(extent.start)) + offset,
-                         sectors: sectors, isWrite: true, cluster: cluster)
+                    let lba = partition.lba(ofCluster: Int(extent.start)) + offset
+                    if usesLazyWriter {
+                        var piece = 0
+                        while piece < sectors {
+                            lazy.dirty(.data(record.id), rank: page, lba: lba + piece,
+                                       at: clock + pendingThink)
+                            page += 1
+                            piece += LazyWriter.pageSectors
+                        }
+                        runLazyWriter(at: clock + pendingThink, shutdown: false)
+                    } else {
+                        emit(.writeExtent, lba: lba, sectors: sectors, isWrite: true, cluster: cluster)
+                    }
                     offset += sectors
                     remaining -= sectors
                 }
@@ -556,13 +602,52 @@ enum InstallPlanner {
                 let length = Int(extent.length) * partition.clusterSectors
                 let take = min(length - cabinetCursor.offset, sectors, maxRequestSectors)
                 let cluster = Int(extent.start) + cabinetCursor.offset / partition.clusterSectors
-                emit(.readExtent, lba: partition.lba(ofCluster: Int(extent.start)) + cabinetCursor.offset,
-                     sectors: take, isWrite: false, cluster: cluster)
+                let lba = partition.lba(ofCluster: Int(extent.start)) + cabinetCursor.offset
+                if usesLazyWriter {
+                    readCabinetThroughCache(extent: cabinetCursor.extent, sectors: take)
+                } else {
+                    emit(.readExtent, lba: lba, sectors: take, isWrite: false, cluster: cluster)
+                }
                 plan.temporaryBytesRead += take * DriveGeometry.bytesPerSector
                 sectors -= take
                 cabinetCursor.offset += take
                 if cabinetCursor.offset >= length {
                     cabinetCursor = (cabinetCursor.extent + 1, 0)
+                }
+            }
+        }
+
+        /// Sous XP, une lecture d'archive passe par le cache : ce que le lazy
+        /// writer n'a pas encore posé, ou que la lecture anticipée a déjà lu,
+        /// s'y relit ; ce que le cache lit d'avance part en arrière-plan
+        /// (`CcReadAhead`).
+        private mutating func readCabinetThroughCache(extent index: Int, sectors take: Int) {
+            let owner = cabinetOwners[index]
+            guard let file = cabinetFiles[owner.id] else { return }
+            let sector = DriveGeometry.bytesPerSector
+            let offset = (owner.firstSector + cabinetCursor.offset) * sector
+            var cache = readAheads[owner.id] ?? CcReadAhead()
+            let (demand, ahead) = cache.read(offset: offset, length: take * sector, fileSize: file.size)
+            readAheads[owner.id] = cache
+            func held(_ piece: MetadataAccess) -> Bool {
+                stride(from: piece.lba / 8 * 8, to: piece.lba + piece.sectors, by: 8)
+                    .allSatisfy { lazy.holds(lba: $0) }
+            }
+            if let demand {
+                for piece in CcReadAhead.pieces(of: file.extents, bytes: demand, partition: partition)
+                where !held(piece) {
+                    emit(.readExtent, lba: piece.lba, sectors: piece.sectors, isWrite: false,
+                         cluster: (piece.lba - partition.dataStartLBA) / partition.clusterSectors)
+                }
+            }
+            if let ahead {
+                for piece in CcReadAhead.pieces(of: file.extents, bytes: ahead, partition: partition)
+                where !held(piece) {
+                    sink.emit(DiskOperation(kind: .readExtent, phase: phase, lba: piece.lba,
+                                            sectors: piece.sectors, isWrite: false, issueTime: 0,
+                                            cluster: (piece.lba - partition.dataStartLBA) / partition.clusterSectors,
+                                            mutationStart: sink.mutationMark, mutationCount: 0,
+                                            flow: .background))
                 }
             }
         }
@@ -586,11 +671,71 @@ enum InstallPlanner {
                 for id in step.settingsIDs {
                     guard let record = placed[id], !record.extents.isEmpty else { continue }
                     pendingThink += era.think.perFile
-                    readWhole(record, isWrite: true)
+                    if usesLazyWriter {
+                        // Sous XP, la ruche est salie, et le vidage paresseux
+                        // du registre part 5 s après la dernière modification
+                        // (`CmpLazyFlush`, `config/cmworker.c:41, 523-535` :
+                        // la minuterie est réarmée à chaque `HvMarkDirty`,
+                        // `hivesync.c:659-662`).
+                        dirtyHives.insert(id)
+                        registryFlushAt = clock + pendingThink + Self.registryFlushDelay
+                    } else {
+                        readWhole(record, isWrite: true)
+                    }
                     rewrote = true
                 }
             }
             if rewrote { plan.settingsRewrites += 1 }
+        }
+
+        /// `LAZY_FLUSH_INTERVAL_IN_SECONDS` (`config/cmworker.c:41`).
+        static let registryFlushDelay = 5.0
+        /// Sous XP, les ruches salies, et l'heure de leur vidage paresseux.
+        private var dirtyHives: Set<UInt32> = []
+        private var registryFlushAt = Double.infinity
+
+        /// Sous XP, le vidage des ruches salies (`CmpDoFlushAll`, puis
+        /// `HvSyncHive`, `config/hivesync.c:1759-2500, 2542-2810`) : pour
+        /// chacune, son `.LOG` — en-tête, secteurs sales, en-tête —, chaque
+        /// écriture suivie d'un `ZwFlushBuffersFile` qui descend jusqu'au
+        /// `FLUSH CACHE` du disque (`cmwrapr.c:1045-1048` ; `ntfs/flush.c:596-611` ;
+        /// `disk/disk.c:3406-3411`) ; puis la ruche elle-même, par le cache
+        /// (`CcFlushCache`, sans vidage du disque, `cmwrapr.c:1036-1040`).
+        ///
+        /// Le catalogue n'a pas de `.LOG` : ses écritures ne sont pas posées,
+        /// seuls ses trois `FLUSH CACHE` le sont. La ruche est réécrite en
+        /// entier, comme le modèle le faisait : ce qu'une installation salit
+        /// d'une ruche n'est dit nulle part.
+        ///
+        /// - Parameter now: à l'arrêt ou avant un redémarrage
+        ///   (`CmShutdownSystem`), l'hôte l'attend ; sinon c'est un fil de
+        ///   travail, en arrière-plan, à son heure.
+        private mutating func flushRegistry(now: Bool) {
+            guard !dirtyHives.isEmpty else { return }
+            let delay = now ? 0 : max(registryFlushAt - foregroundEnd, 0)
+            let flow: RequestFlow = now ? .foreground : .background
+            for step in installed.steps {
+                for id in step.settingsIDs where dirtyHives.contains(id) {
+                    guard let record = placed[id] else { continue }
+                    for _ in 0..<3 {
+                        sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: partition.startLBA,
+                                                sectors: 0, isWrite: true, issueTime: 0, cluster: nil,
+                                                mutationStart: sink.mutationMark, mutationCount: 0,
+                                                thinkTime: delay, flow: flow))
+                    }
+                    for piece in CcReadAhead.pieces(of: record.extents,
+                                                    bytes: 0..<Int(record.logicalSize),
+                                                    partition: partition) {
+                        sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: piece.lba,
+                                                sectors: piece.sectors, isWrite: true, issueTime: 0,
+                                                cluster: (piece.lba - partition.dataStartLBA) / partition.clusterSectors,
+                                                mutationStart: sink.mutationMark, mutationCount: 0,
+                                                thinkTime: delay, flow: flow))
+                    }
+                }
+            }
+            dirtyHives.removeAll()
+            registryFlushAt = .infinity
         }
 
         private mutating func readWhole(_ record: FileRecord, isWrite: Bool) {
@@ -617,7 +762,7 @@ enum InstallPlanner {
         /// Un démarrage à chaud sur ce qui est posé jusqu'ici. Le plateau ne
         /// s'arrête pas : seul le POST impose son silence.
         private mutating func reboot() {
-            flushMetadata(force: true)
+            flushMetadata(force: true, shutdown: true)
             var catalog = installed.disk.catalog
             for id in catalog.liveIDs where placed[id] == nil {
                 _ = catalog.remove(id)
@@ -629,13 +774,17 @@ enum InstallPlanner {
                                         firstOfTheDay: false)
             pendingThink += boot.post
             for request in boot.requests {
-                pendingThink += request.thinkTime
+                if !request.flow.isBackground { pendingThink += request.thinkTime }
                 let offset = request.lba - partition.dataStartLBA
                 let cluster = offset >= 0 ? offset / partition.clusterSectors : nil
                 emit(request.isWrite ? .metadata : .scan, lba: request.lba,
-                     sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster)
+                     sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster,
+                     flow: request.flow,
+                     delay: request.flow.isBackground ? request.thinkTime : 0,
+                     hostWork: request.hostWork)
             }
             pendingThink += boot.tail
+            queue = boot.queue
             plan.reboots += 1
         }
 
@@ -648,14 +797,68 @@ enum InstallPlanner {
             let directories = installed.disk.catalog.directories
             let entry = partition.entrySector(inDirectory: directories.indices.contains(Int(record.directory))
                                                   ? directories[Int(record.directory)] : nil)
-            for access in partition.commitAccesses(for: record.extents, fileIndex: rank,
-                                                   entrySector: entry,
-                                                   validation: nil) {
-                dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
+            let accesses = partition.commitAccesses(for: record.extents, fileIndex: rank,
+                                                    entrySector: entry,
+                                                    validation: nil)
+            guard usesLazyWriter else {
+                for access in accesses { dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors) }
+                return
+            }
+            MachineWriter.dirtyNTFS(accesses, partition: partition, into: &lazy,
+                                    at: clock + pendingThink)
+        }
+
+        /// Sous XP, les passages du *lazy writer* échus — ou tout, avant un
+        /// redémarrage et à la fin —, en arrière-plan, une page de journal
+        /// devant chacun (`MachineWriter.runLazyWriter`).
+        private mutating func runLazyWriter(at time: Double, shutdown: Bool) {
+            let scans = shutdown ? [LazyWriter.Scan(time: time, streams: lazy.flushAll())]
+                : lazy.due(at: time)
+            for scan in scans where !scan.streams.isEmpty {
+                let metadata = scan.streams.contains { $0.first?.stream.isMetadata ?? false }
+                var log: [LazyWriter.Write] = []
+                if metadata {
+                    let page = partition.logPage(journalPages)
+                    journalPages += 1
+                    log = [LazyWriter.Write(lba: page.lba, sectors: page.sectors, stream: .other(0))]
+                }
+                // Le passage tombe tant de secondes après la dernière requête
+                // du premier plan ; l'arrêt, lui, l'attend.
+                let delay = shutdown ? 0 : max(scan.time - foregroundEnd, 0)
+                for write in LazyWriter.served(scan.streams, log: log, queue: &queue) {
+                    // Les couleurs en attente partent avec l'écriture : les
+                    // données n'arrivent au disque que par le lazy writer.
+                    let start = sink.mutationMark
+                    for mutation in pendingMutations { sink.record(mutation) }
+                    let count = Int32(pendingMutations.count)
+                    pendingMutations.removeAll(keepingCapacity: true)
+                    let data = !write.stream.isMetadata
+                    let offset = write.lba - partition.dataStartLBA
+                    sink.progress = min(Double(bytesPlaced) / Double(totalBytes), 1)
+                    sink.moves = MoveCount(filesMoved: plan.filesWritten, evacuations: 0)
+                    sink.emit(DiskOperation(kind: data ? .writeExtent : .metadata, phase: phase,
+                                            lba: write.lba, sectors: write.sectors, isWrite: true,
+                                            issueTime: 0,
+                                            cluster: data && offset >= 0 ? offset / partition.clusterSectors : nil,
+                                            mutationStart: start, mutationCount: count,
+                                            thinkTime: delay,
+                                            flow: shutdown ? .foreground : .background))
+                    if !data { plan.metadataSectors += write.sectors }
+                }
+                if metadata { plan.metadataFlushes += 1 }
             }
         }
 
-        private mutating func flushMetadata(force: Bool) {
+        /// - Parameter shutdown: l'arrêt de la machine, qui vide tout. Sous
+        ///   XP, rien d'autre ne force le *lazy writer*.
+        private mutating func flushMetadata(force: Bool, shutdown: Bool = false) {
+            if usesLazyWriter {
+                if shutdown || registryFlushAt <= clock + pendingThink {
+                    flushRegistry(now: shutdown)
+                }
+                runLazyWriter(at: clock + pendingThink, shutdown: shutdown)
+                return
+            }
             guard !dirty.isEmpty else { return }
             if !force, case let .every(seconds) = era.flush, clock - lastFlush < seconds { return }
 
@@ -695,23 +898,39 @@ enum InstallPlanner {
 
         // MARK: Sortie
 
+        /// `flow` et `backgroundThink` : comme `MachineWriter.emit`.
         private mutating func emit(_ kind: DiskOperation.Kind, lba: Int, sectors: Int,
-                                   isWrite: Bool, cluster: Int?) {
+                                   isWrite: Bool, cluster: Int?,
+                                   flow: RequestFlow = .foreground, delay: Double = 0,
+                       hostWork: Double = 0) {
+            // Ce que le lazy writer — et le vidage du registre — ont écrit
+            // pendant le calcul qui précède.
+            if usesLazyWriter, !flow.isBackground {
+                if registryFlushAt <= clock + pendingThink { flushRegistry(now: false) }
+                runLazyWriter(at: clock + pendingThink, shutdown: false)
+            }
             let start = sink.mutationMark
             for mutation in pendingMutations { sink.record(mutation) }
             let count = Int32(pendingMutations.count)
             pendingMutations.removeAll(keepingCapacity: true)
 
+            let think = flow.isBackground ? delay : pendingThink
             sink.progress = min(Double(bytesPlaced) / Double(totalBytes), 1)
             sink.moves = MoveCount(filesMoved: plan.filesWritten, evacuations: 0)
             sink.emit(DiskOperation(kind: kind, phase: phase, lba: lba, sectors: sectors,
                                     isWrite: isWrite, issueTime: 0, cluster: cluster,
                                     mutationStart: start, mutationCount: count,
-                                    thinkTime: pendingThink))
-            plan.thinkSeconds += pendingThink
-            clock += pendingThink
+                                    thinkTime: think, flow: flow, hostWork: hostWork))
+            guard !flow.isBackground else {
+                plan.thinkSeconds += hostWork
+                clock += hostWork
+                return
+            }
+            plan.thinkSeconds += think
+            clock += think
                 + Double(sectors * DriveGeometry.bytesPerSector) / diskBytesPerSecond
                 + 0.012
+            foregroundEnd = clock
             pendingThink = 0
         }
     }

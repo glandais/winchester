@@ -72,14 +72,7 @@ extension ProfileSpec {
         return String(localized: "disk.rpm", defaultValue: "\(value) rpm")
     }
 
-    var fileSystemLabel: String {
-        switch fileSystem.type {
-        case .fat16: return "FAT16"
-        case .vfat:  return "VFAT"
-        case .fat32: return "FAT32"
-        case .ntfs:  return "NTFS"
-        }
-    }
+    var fileSystemLabel: String { fileSystem.type.displayName }
 
     /// Le nom du système, celui que dit aussi le démarrage.
     var osName: String {

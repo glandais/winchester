@@ -104,6 +104,8 @@ struct TraceStats {
     var readAheadSeconds = 0.0
     var cachedWrites = 0
     var destageWrites = 0
+    /// Commandes `FLUSH CACHE` servies.
+    var cacheFlushes = 0
 
     var averageSeekDistance: Int {
         seekCount > 0 ? totalSeekDistance / seekCount : 0
@@ -292,10 +294,12 @@ struct DiskTrace {
 /// Rejoue une liste de requêtes bloc sur la géométrie et le modèle de seek,
 /// et en déduit la chronologie mécanique exacte.
 ///
-/// File d'attente FIFO, sans réordonnancement des commandes : c'est volontaire,
-/// un contrôleur IDE de cette époque ne réordonnait quasiment rien, et c'est
-/// précisément ce qui rend le crépitement si dense. Seul le cache d'écriture du
-/// disque pose ce qu'il a acquitté dans l'ordre de l'ascenseur.
+/// Une commande à la fois, dans l'ordre de la liste : le disque d'un
+/// contrôleur IDE n'a pas de file (ni NCQ ni *tagged queuing*), et c'est ce
+/// qui rend le crépitement si dense. Seul le cache d'écriture du disque pose
+/// ce qu'il a acquitté dans l'ordre de l'ascenseur. La file logicielle du
+/// pilote de port de XP, qui trie ce qui attend par LBA, est jouée en amont,
+/// par le planificateur (`AtapiQueue`).
 enum DiskSimulator {
 
     /// Toute une passe d'un coup, et tout ce qu'elle a produit. C'est la
@@ -389,6 +393,14 @@ struct DiskMechanics {
     /// si aucune ne l'a encore été. C'est l'horloge de l'hôte : avec un tampon,
     /// le bras peut encore travailler après elle.
     private(set) var clock: Double
+    /// Quand le fil de l'hôte est prêt à émettre : la fin de sa dernière
+    /// requête au premier plan, avancée du calcul qu'il a fait pendant que le
+    /// disque servait des requêtes qu'il n'attendait pas (`RequestFlow`). Égal
+    /// à `clock` tant que tout est au premier plan.
+    private var hostReady: Double
+    /// La fin de la dernière requête du premier plan : ce d'où se compte le
+    /// délai d'une requête d'arrière-plan.
+    private var foregroundEnd: Double
     private(set) var stats = TraceStats()
     private var headCylinder: Int
     private var headIndex = 0
@@ -431,6 +443,8 @@ struct DiskMechanics {
         self.cacheSectors = drive.cacheSectors
         self.skew = geometry.skew(seekModel: seekModel)
         self.clock = spinUpAt + spinUpDuration
+        self.hostReady = clock
+        self.foregroundEnd = clock
         self.armFree = clock
         // Au repos le bras est parqué au diamètre intérieur, sur la zone
         // d'atterrissage. Un plateau qui tournait déjà l'y a laissé ; un disque
@@ -492,6 +506,8 @@ struct DiskMechanics {
         // Une montée trop courte pour la salve retarde le disque prêt ; aucune
         // des rampes des scénarios ne l'est.
         clock = max(clock, t)
+        hostReady = clock
+        foregroundEnd = clock
         armFree = clock
     }
 
@@ -556,11 +572,29 @@ struct DiskMechanics {
                         samples: inout [HeadSample]) -> RequestTiming {
         // Le disque ne repart pas à la milliseconde où il s'est arrêté :
         // la machine a peut-être quelque chose à faire de ce qu'elle vient
-        // de lire. `thinkTime` est nul partout sauf pour un démarrage.
-        let issued = max(clock + request.thinkTime, request.issueTime)
-        // Le calcul ne compte que ce qui s'est écoulé avant la prise en charge ;
-        // le reste de l'écart est un disque qui attend qu'on lui demande.
-        let thought = max(min(issued, clock + request.thinkTime) - clock, 0)
+        // de lire. Le calcul part de l'instant où le fil de l'hôte est libre
+        // (`hostReady`) ; une requête qu'il n'attend pas part dès que le
+        // disque l'est, et son calcul avance le fil sans retenir le disque.
+        let computed: Double
+        switch request.flow {
+        case .foreground:
+            computed = hostReady + request.thinkTime
+        case .barrier:
+            computed = max(hostReady, clock) + request.thinkTime
+        case .background:
+            computed = foregroundEnd + request.thinkTime
+            hostReady += request.hostWork
+        case .backgroundBarrier:
+            hostReady = max(hostReady, clock)
+            foregroundEnd = hostReady
+            computed = foregroundEnd + request.thinkTime
+            hostReady += request.hostWork
+        }
+        let issued = max(clock, computed, request.issueTime)
+        // Le calcul ne compte que ce qui s'est écoulé disque arrêté, avant la
+        // prise en charge ; le reste de l'écart est un disque qui attend
+        // qu'on lui demande.
+        let thought = request.flow.isBackground ? 0 : max(min(issued, computed) - clock, 0)
         stats.thinkSeconds += thought
         stats.waitSeconds += max(issued - clock - thought, 0)
 
@@ -576,6 +610,10 @@ struct DiskMechanics {
         if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
         stats.requestCount += 1
         clock = end
+        if !request.flow.isBackground {
+            hostReady = end
+            foregroundEnd = end
+        }
         served = true
         return RequestTiming(start: issued, end: end)
     }
@@ -644,6 +682,9 @@ struct DiskMechanics {
     private mutating func serveWrite(_ request: BlockRequest, at issued: Double,
                                      events: inout [DiskEvent],
                                      samples: inout [HeadSample]) -> Double {
+        if request.sectorCount == 0 {
+            return flushCache(at: issued, events: &events, samples: &samples)
+        }
         let first = request.lba
         let last = request.lba + request.sectorCount
         let overhead = drive.commandOverhead
@@ -681,6 +722,31 @@ struct DiskMechanics {
                                              readAhead: false, origin: first,
                                              events: &events, samples: &samples)
         return max(hostFloor, mediaEnd)
+    }
+
+    /// `FLUSH CACHE` (ATA 0xE7, 0xEA en LBA48) : le disque pose tout ce qu'il
+    /// a acquitté sans l'écrire, dans l'ordre de son ascenseur, et ne rend
+    /// la commande qu'ensuite. Une écriture de zéro secteur la porte
+    /// (`BlockRequest.isCacheFlush`) : sous XP, `disk.sys` en fait un
+    /// `SYNCHRONIZE_CACHE` quand le cache d'écriture est actif
+    /// (`disk/disk.c:3406-3411`), qu'`atapi` traduit (`atapi.c:5564`).
+    private mutating func flushCache(at issued: Double,
+                                     events: inout [DiskEvent],
+                                     samples: inout [HeadSample]) -> Double {
+        advanceBackground(until: issued, events: &events, samples: &samples)
+        continueStream(until: issued, events: &events, samples: &samples)
+        abandonStream()
+        var t = max(issued + drive.commandOverhead, armFree)
+        while !pending.isEmpty {
+            guard let done = destage(at: t, events: &events, samples: &samples) else {
+                // Ce qui n'est pas encore acquitté l'est à son heure.
+                t = max(t, pending.map(\.acceptedAt).min() ?? t)
+                continue
+            }
+            t = done
+        }
+        stats.cacheFlushes += 1
+        return max(t, armFree)
     }
 
     // MARK: - Le bras

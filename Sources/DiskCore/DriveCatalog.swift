@@ -146,8 +146,10 @@ public struct DriveReference: Sendable {
 /// repos et en seek, en bels (ISO 7779). Le seek s'entend **au-dessus** du
 /// repos : ce qui revient au bras seul est la différence des puissances,
 /// `seekOnlyBels` — 3,20 B sur le U8 (3,5 pour 3,2 au repos), 1,97 sur le
-/// 7200.14 (2,4 pour 2,2). Douze décibels entre les deux, que la voix de la
-/// tête, longtemps la même pour tous, ignorait (`SeekCharacter`).
+/// 7200.14 (2,4 pour 2,2), 3,64 sur le 7200.10 SATA (3,7 pour 2,8), le plus
+/// fort. Douze décibels entre le U8 et le 7200.14, 16,7 d'un bout à l'autre
+/// du catalogue, que la voix de la tête, longtemps la même pour tous,
+/// ignorait (`SeekCharacter`).
 public struct Acoustics: Sendable, Equatable {
     public let idleBels: Double
     public let seekBels: Double
@@ -721,14 +723,6 @@ public enum DriveCatalog {
         } ?? all[0]
     }
 
-    /// Les seeks d'écriture d'un disque de cette année : ceux de sa fiche si
-    /// elle les publie, sinon ceux de la fiche la plus proche qui les publie.
-    ///
-    /// Le Conner de 1993 est le seul du catalogue à ne pas en avoir — le
-    /// manuel du Cougar, son voisin, ne publie qu'un seek moyen. Les disques
-    /// de 1993 reçoivent donc le rapport du Fireball de 1996 : **une
-    /// hypothèse**, celle qu'un disque de 1993 n'écrivait pas plus vite qu'il
-    /// ne lisait, ce qu'aucun disque à asservissement ne fait.
     /// Les niveaux publiés d'un disque de cette année : ceux de sa fiche, ou
     /// ceux de la fiche la plus proche qui en publie. Le Conner et le
     /// Fireball n'en ont pas en seek : 1993 et 1996 empruntent au U8.
@@ -738,6 +732,14 @@ public enum DriveCatalog {
             .min { abs($0.year - year) < abs($1.year - year) }?.acoustics
     }
 
+    /// Les seeks d'écriture d'un disque de cette année : ceux de sa fiche si
+    /// elle les publie, sinon ceux de la fiche la plus proche qui les publie.
+    ///
+    /// Le Conner de 1993 est le seul du catalogue à ne pas en avoir — le
+    /// manuel du Cougar, son voisin, ne publie qu'un seek moyen. Les disques
+    /// de 1993 reçoivent donc le rapport du Fireball de 1996 : **une
+    /// hypothèse**, celle qu'un disque de 1993 n'écrivait pas plus vite qu'il
+    /// ne lisait, ce qu'aucun disque à asservissement ne fait.
     public static func writeSeek(year: Int, reference: DriveReference? = nil) -> WriteSeek? {
         if let own = reference?.writeSeek { return own }
         return all.filter { $0.writeSeek != nil }

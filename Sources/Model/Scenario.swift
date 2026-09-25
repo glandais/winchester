@@ -152,6 +152,9 @@ struct BootPlayback {
     /// d'écritures une fois groupées.
     let stampedFiles: Int
     let stampWrites: Int
+    /// Sous XP, les écritures de `$LogFile` que le *lazy writer* pose devant
+    /// elles : une date d'accès est journalisée.
+    var stampLogWrites = 0
     /// Ce que le cache du système a fait, pour le bilan (`BootPlan`).
     var softwareCache: String? = nil
     /// Ce que le système aurait mis sans disque : la somme des calculs.
@@ -168,8 +171,10 @@ struct BootPlayback {
     /// Le format du volume : c'est lui qui dit si le témoin a une chance de
     /// perdre — NTFS place mieux qu'un empilement, FAT non.
     let fileSystem: FileSystemKind
-    /// Le système relit sa liste dans l'ordre du disque — le préchargeur de
-    /// Windows XP, puis SuperFetch — plutôt que dans l'ordre du registre.
+    /// Le système a un préchargeur, dont la relecture se sert dans l'ordre
+    /// du disque plutôt que dans celui du registre : par la file d'`atapi`
+    /// sous XP (`BootOrder.firstAccess`), par le tri que le modèle suppose
+    /// sous Vista et 7 (`byPosition`).
     let readsByPosition: Bool
     /// Seeks du témoin, pour les mettre en regard de ceux qu'on écoute.
     let freshSeeks: Int
@@ -444,13 +449,14 @@ enum ScenarioBuilder {
                                residentFiles: plan.residentFiles,
                                stampedFiles: plan.stampedFiles,
                                stampWrites: plan.stampWrites,
+                               stampLogWrites: plan.stampLogWrites,
                                softwareCache: plan.softwareCache,
                                thinkSeconds: plan.thinkSeconds,
                                tail: plan.tail,
                                freshSeconds: freshSeconds,
                                bytesRead: plan.bytesRead,
                                fileSystem: disk.spec.fileSystem.type,
-                               readsByPosition: BootScript.Era.matching(disk.spec).prefetch == .byPosition,
+                               readsByPosition: BootScript.Era.matching(disk.spec).prefetch != .declared,
                                freshSeeks: freshTrace.stats.seekCount,
                                freshAverageSeek: freshTrace.stats.averageSeekDistance,
                                partition: plan.partition,
@@ -592,7 +598,8 @@ enum ScenarioBuilder {
             setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
                              // Une mise sous tension à froid, la même que
                              // celle du démarrage : la journée commence par
-                             // lui, et `DayPlanner` attend déjà le POST.
+                             // lui. Le POST, c'est cette montée en régime ;
+                             // `DayPlanner` ne le compte pas une seconde fois.
                              spinUpAt: 0.35,
                              spinUpDuration: BootScript.Era.matching(disk.spec).spinUpDuration,
                              // La machine s'allume le matin et s'éteint le
@@ -668,8 +675,14 @@ enum ScenarioBuilder {
     /// l'intérêt de l'exercice.
     static func build(generated disk: GeneratedDisk,
                       using strategy: (any DefragStrategy)? = nil) throws -> Scenario {
-        let strategy = strategy.map { prepared($0, for: disk) }
         let volume = try GeneratedVolumeBridge.volume(from: disk)
+        // Sans outil demandé, celui que la machine avait : daté comme l'écran
+        // de choix le date, par l'année du scénario — celle du logiciel. Le
+        // matériel ne s'en mêle pas : un disque nommé garde sa propre année
+        // (`DriveHardware.year`), qui n'est pas l'âge du système (B#25).
+        let strategy = prepared(strategy ?? DefragPlanner.strategy(for: volume.partition.format,
+                                                                   year: disk.spec.timeline.start.year),
+                                for: disk)
         let hardware = GeneratedVolumeBridge.drive(for: disk.spec,
                                                    atLeast: volume.partition.totalSectors)
 
@@ -697,10 +710,16 @@ enum ScenarioBuilder {
             dated.year = disk.spec.timeline.start.year
             return dated
         }
-        if var dated = strategy as? WindowsXPStrategy, dated.year == nil {
-            let year = disk.spec.timeline.start.year
-            dated.year = year
-            if year >= 2007 { dated.fragmentCeilingBytes = WindowsXPStrategy.vistaFragmentCeilingBytes }
+        if var dated = strategy as? WindowsXPStrategy {
+            if dated.year == nil {
+                let year = disk.spec.timeline.start.year
+                dated.year = year
+                if year >= 2007 { dated.fragmentCeilingBytes = WindowsXPStrategy.vistaFragmentCeilingBytes }
+            }
+            // Sous XP, la passe s'ouvre sur `Layout.ini` (`processBootOptimise`).
+            if dated.year.map({ $0 < 2007 }) ?? false, dated.layout == nil {
+                dated = dated.informed(by: BootLayout(disk: disk))
+            }
             return dated
         }
         guard let consumer = strategy as? any BootLayoutConsumer else { return strategy }
@@ -712,7 +731,7 @@ enum ScenarioBuilder {
     /// Rien n'est planifié ici : la stratégie tournera sur le fil producteur,
     /// sur sa propre copie du volume, et émettra ses opérations à mesure.
     private static func assembleDefrag(volume: DefragVolume,
-                                       strategy chosen: (any DefragStrategy)? = nil,
+                                       strategy: any DefragStrategy,
                                        hardware: DriveHardware,
                                        label: ScenarioLabel) -> Scenario {
         let geometry = hardware.geometry
@@ -720,8 +739,6 @@ enum ScenarioBuilder {
         let partition = volume.partition
         precondition(geometry.totalSectors >= partition.totalSectors,
                      "la partition déborde du disque qui la porte")
-
-        let strategy = chosen ?? DefragPlanner.strategy(for: partition.format, year: hardware.year)
 
         // Le plateau tourne déjà : Windows est démarré. La rampe de 0,9 s n'est
         // qu'un fondu pour que la couche de rotation s'installe.

@@ -9,8 +9,13 @@
 # l'histogramme des extents par fichier, les répertoires, le coût de génération
 # — ce que lit `extents.py`. `full` fait les vingt-quatre démarrages, volumes et
 # installations, les quatre journées du README, les vingt-quatre profils croisés
-# avec les treize outils, et XP et UltraDefrag en blocs pleins sur les douze
-# NTFS : 412 bilans. Chaque bilan est un fichier texte dans $MEASURE_DIR/out-<étape>/.
+# avec les treize outils — sauf XP sur les douze FAT —, et XP et UltraDefrag en
+# blocs pleins sur les douze NTFS : 400 bilans. Chaque bilan est un fichier texte
+# dans $MEASURE_DIR/out-<étape>/.
+#
+# Pas d'outil de XP sur FAT : XP y lançait `dfrgfat`, un autre moteur que celui
+# que `WindowsXPStrategy` reconstitue, et l'app ne le propose que sur NTFS
+# (LEDGER.md, chantier 47).
 set -e
 cd "$(dirname "$0")/../.."
 STEP="${1:?usage : run.sh <étape> boots|disks|full}"
@@ -49,7 +54,10 @@ fi
     if [ "$WHAT" = full ]; then
         for p in $PROFILES; do echo "install-$p - install:$p -"; done
         for d in $DAYS; do echo "day-$(echo "$d" | tr : _) - day:$d -"; done
-        for p in $PROFILES; do for t in $TOOLS; do echo "defrag-$p-$t - $p $t"; done; done
+        for p in $PROFILES; do for t in $TOOLS; do
+            case "$t:$NTFS" in windowsXP:*"$p"*) ;; windowsXP:*) continue ;; esac
+            echo "defrag-$p-$t - $p $t"
+        done; done
         for p in $NTFS; do for t in windowsXP ultraDefrag; do echo "full-$p-$t 1 $p $t"; done; done
     fi
 } | (cd "$BIN" && xargs -P 6 -L 1 sh -c '

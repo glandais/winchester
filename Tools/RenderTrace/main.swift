@@ -127,7 +127,7 @@ scénario      : \(scenario.label.title) — \(geometry.model)
 requêtes      : \(end.requestCount)
 seeks         : \(end.stats.seekCount) (moy. \(end.stats.averageSeekDistance) cyl.)
 \(end.stats.recalibrations > 0 ? String(format: "recalibrations : %d, %.1f s d'attente\n", end.stats.recalibrations, end.stats.recalibrationSeconds) : "")lu / écrit    : \(end.stats.bytesRead / 1_000_000) / \(end.stats.bytesWritten / 1_000_000) Mo
-\(scenario.setup.drive.buffer == nil ? "" : String(format: "tampon        : %d lectures servies, %.1f Mo lus d'avance ; %d écritures différées, posées en %d vidages\n", end.stats.bufferHits, Double(end.stats.readAheadSectors * DriveGeometry.bytesPerSector) / 1_000_000, end.stats.cachedWrites, end.stats.destageWrites))événements    : \(end.eventCount)
+\(scenario.setup.drive.buffer == nil ? "" : String(format: "tampon        : %d lectures servies, %.1f Mo lus d'avance ; %d écritures différées, posées en %d vidages\n", end.stats.bufferHits, Double(end.stats.readAheadSectors * DriveGeometry.bytesPerSector) / 1_000_000, end.stats.cachedWrites, end.stats.destageWrites))\(end.stats.cacheFlushes > 0 ? "FLUSH CACHE   : \(end.stats.cacheFlushes)\n" : "")événements    : \(end.eventCount)
 repères audio : \(tally.cues)
 durée         : \(String(format: "%.1f", end.duration)) s
 \(end.plan.map(describe) ?? "")

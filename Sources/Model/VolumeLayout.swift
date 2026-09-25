@@ -16,9 +16,12 @@ import DiskCore
 /// enregistrement de journal y soit, et `$LogFile` est un bloc fixe, posé au
 /// formatage. Le bras y revient donc, lui aussi — mais pas à chaque
 /// validation : le *lazy writer* remplit une page de journal de plusieurs
-/// validations avant de l'écrire. En lecture, rien de tout cela n'existe, et le
-/// bras n'a aucune raison de revenir au bord ; en écriture, il y revient par
-/// **rafales espacées**, et non régulièrement comme sur FAT.
+/// validations avant de l'écrire. Sous XP, `FORMAT` a posé le journal juste
+/// devant la MFT, à 3 Gio, et `$Bitmap` au milieu du volume
+/// (`NTFSAllocator.Formatting`) : chaque validation paie l'aller vers la
+/// bitmap, et la page de journal n'est qu'un seek court à côté de la MFT.
+/// En lecture, rien de tout cela n'existe ; en écriture, la bitmap revient à
+/// chaque validation, le journal par **rafales espacées**.
 enum VolumeFormat: Sendable {
     case fat16
     case fat32
@@ -84,8 +87,9 @@ struct PartitionGeometry {
     let format: VolumeFormat
     /// Secteurs d'une copie de la table d'allocation. Nul sur NTFS.
     let fatSectors: Int
-    /// Où `FORMAT` a posé les métafichiers d'un NTFS : près du début depuis
-    /// Windows 2000, au milieu du volume avant. Sans objet sur FAT.
+    /// Le système qui a formaté un NTFS, donc où sont ses métafichiers :
+    /// `$MFT` en tête sous NT, à 3 Gio depuis XP ; le miroir au milieu
+    /// jusqu'à Vista (`NTFSAllocator.Formatting`). Sans objet sur FAT.
     var ntfsFormatting: NTFSAllocator.Formatting = .xp
     /// Les extents de `$MFT` telle que le volume la porte, dans l'ordre des
     /// enregistrements (`GeneratedDisk.mftFileExtents`). `nil` pour un volume
@@ -312,10 +316,10 @@ extension PartitionGeometry {
                 + [MetadataAccess(lba: entry, sectors: 1)]
         case .ntfs:
             // Un seul enregistrement MFT réécrit, et la bitmap du volume. La
-            // MFT est près du début du volume, derrière les 64 Mo du journal ;
-            // un enregistrement n'est pas la table entière : c'est un
-            // kilo-octet. Et, une validation sur huit, la page de journal que
-            // les précédentes ont remplie.
+            // MFT est à 3 Gio depuis XP, et sous XP les 64 Mo du journal
+            // finissent juste devant elle ; un enregistrement n'est pas la
+            // table entière : c'est un kilo-octet. Et, une validation sur
+            // huit, la page de journal que les précédentes ont remplie.
             // La bitmap, elle aussi, sur toute la longueur de chaque extent :
             // un bit par cluster, 4 096 clusters par secteur.
             let bitsPerSector = 8 * DriveGeometry.bytesPerSector
@@ -333,8 +337,9 @@ extension PartitionGeometry {
         }
     }
 
-    /// Premier secteur de `$Bitmap`, là où le générateur l'a posée : derrière
-    /// la zone MFT d'origine (`NTFSAllocator.Layout.bitmap`).
+    /// Premier secteur de `$Bitmap`, là où le générateur l'a posée : au
+    /// milieu du volume sous XP, derrière la zone MFT d'origine ailleurs
+    /// (`NTFSAllocator.Layout.bitmap`).
     var bitmapLBA: Int { lba(ofCluster: Int(ntfsLayout.bitmap.start)) }
 
     /// Ce que coûte l'**ouverture** d'un fichier, une fois son répertoire lu.
@@ -422,15 +427,53 @@ extension PartitionGeometry {
             return [MetadataAccess(lba: startLBA, sectors: 2),
                     MetadataAccess(lba: fat1LBA, sectors: 1),
                     MetadataAccess(lba: dataStartLBA, sectors: clusterSectors)]
+        case .ntfs where ntfsFormatting == .xp:
+            // Le montage du pilote de XP (`NtfsMountVolume`), dans son ordre :
+            // le secteur d'amorçage — sa copie, au milieu puis au dernier
+            // secteur, n'est lue que si celui-ci est illisible
+            // (`fsctrl.c:5015-5046`, `ntfs-format-17`) ; les premiers
+            // enregistrements de la MFT, comparés à ceux de `$MFTMirr`
+            // (`fsctrl.c:1561-1587`, quatre enregistrements ; le modèle en
+            // lit seize, ceux des métafichiers qu'il ouvre ensuite) ; la zone
+            // de redémarrage de `$LogFile`, qui dit si le volume a été démonté
+            // proprement (`fsctrl.c:1718-1801`) ; `$UpCase` **entière**,
+            // copiée en mémoire (`fsctrl.c:2384-2412`) — `$AttrDef`, elle,
+            // n'est plus lue (2330-2370, en commentaire) ; enfin `$Bitmap`
+            // **entière**, que `NtfsInitializeClusterAllocation` parcourt page
+            // par page pour compter l'espace libre et remplir son cache
+            // (`fsctrl.c:2475`, `bitmpsup.c:655, 2006-2120`).
+            //
+            // Trois zones : le début, la MFT à 3 Gio avec le journal devant
+            // elle, et le milieu du volume, où sont le miroir, `$UpCase` et la
+            // bitmap. Plus de course jusqu'au fond du disque.
+            //
+            // `$UpCase` et `$Bitmap` passent par le cache, qui les lit par
+            // vues de 64 Ko : autant de requêtes, et aucune ne dépasse une
+            // commande ATA (1,2 Mo de bitmap sur 40 Go).
+            let layout = ntfsLayout
+            func cached(_ extent: Extent) -> [MetadataAccess] {
+                let first = lba(ofCluster: Int(extent.start))
+                let total = Int(extent.length) * clusterSectors
+                return stride(from: 0, to: total, by: 128).map {
+                    MetadataAccess(lba: first + $0, sectors: min(128, total - $0))
+                }
+            }
+            return [MetadataAccess(lba: startLBA, sectors: 16),
+                    MetadataAccess(lba: mftLBA, sectors: 16 * mftRecordSectors),
+                    MetadataAccess(lba: lba(ofCluster: Int(layout.mirror.start)),
+                                   sectors: 4 * mftRecordSectors),
+                    MetadataAccess(lba: logFileLBA, sectors: 2 * Self.logPageSectors)]
+                + cached(layout.upCase) + cached(layout.bitmap)
         case .ntfs:
-            // Monter un NTFS, ce n'est pas lire la MFT : c'est lire `$Boot`,
-            // aller vérifier sa copie au **tout dernier secteur du volume**,
-            // lire les seize premiers enregistrements de la MFT — ceux des
-            // métafichiers —, les comparer à `$MFTMirr`, puis ouvrir `$Bitmap`.
-            // Quelques dizaines de kilo-octets, répartis sur trois zones du
-            // volume : le début, la bitmap derrière la zone MFT, et le fond du
-            // disque. Peu de transfert, beaucoup de seeks. Le reste de la MFT
-            // se lit à la demande, enregistrement par enregistrement.
+            // NT, Vista et 7 : le modèle d'avant le chantier 48, que le code
+            // de XP ne peut ni confirmer ni réfuter. Monter un NTFS, ce n'est
+            // pas lire la MFT : c'est lire `$Boot`, aller vérifier sa copie au
+            // **tout dernier secteur du volume**, lire les seize premiers
+            // enregistrements de la MFT — ceux des métafichiers —, les
+            // comparer à `$MFTMirr`, puis ouvrir `$Bitmap`. Quelques dizaines
+            // de kilo-octets, répartis sur trois zones du volume : le début, la
+            // bitmap derrière la zone MFT, et le fond du disque. Le reste de la
+            // MFT se lit à la demande, enregistrement par enregistrement.
             //
             // Entre les deux, la zone de redémarrage de `$LogFile` : c'est elle
             // qui dit si le volume a été démonté proprement. S'il ne l'a pas
@@ -460,16 +503,15 @@ extension PartitionGeometry {
             }
             return accesses
         case .ntfs:
-            // `$Boot`, puis sa copie — qui est au **tout dernier secteur du
-            // volume**, et non à côté de l'original : une course complète du
-            // bras jusqu'au fond du disque, aller et retour.
-            //
-            // La MFT n'est pas ici : elle se lit là où le volume l'a posée,
-            // et entière (`DefragOperations.analysis`) — le forfait de
-            // 4 096 secteurs qui la représentait n'en lisait que 0,16 % sur un
-            // 320 Go.
-            return [MetadataAccess(lba: startLBA, sectors: 16),
-                    MetadataAccess(lba: startLBA + totalSectors - 1, sectors: 1)]
+            // Rien avant les tables. `dfrgntfs` ne lit ni `$Boot` ni sa copie
+            // au dernier secteur : la géométrie du volume lui vient de
+            // `FSCTL_GET_NTFS_VOLUME_DATA` (`ntfssubs.cpp:2296`), que le
+            // pilote sert de mémoire, et ses seules lectures du disque sont
+            // celles de `DefragOperations.analysis` (B#24). Le modèle lisait
+            // ici `$Boot`, que l'analyse relisait ensuite, puis le dernier
+            // secteur : une course complète du bras, aller et retour, que
+            // l'outil de XP ne fait pas (`ntfs-format-17`).
+            return []
         }
     }
 

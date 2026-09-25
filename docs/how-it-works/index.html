@@ -43,6 +43,7 @@
       <ul class="toc">
         <li><a href="#chain">The chain</a></li>
         <li><a href="#history">A history</a></li>
+        <li><a href="#system">The system</a></li>
         <li><a href="#drive">The drive</a></li>
         <li><a href="#sound">The sound</a></li>
         <li><a href="#live">Live</a></li>
@@ -102,12 +103,40 @@
           <ul>
             <li><b>MS-DOS FAT</b> serves the first free cluster from the start of the volume, at every write: holes are plugged at once, and recent files are chopped up.</li>
             <li><b>VFAT and FAT32</b> resume at the last cluster allocated: writing is clean while the cursor advances, then it wraps round and fragmentation arrives in waves.</li>
-            <li><b>NTFS</b> picks the hole that fits rather than the first one it meets, and reserves a zone for its master file table: files stay in one piece far longer.</li>
+            <li><b>NTFS</b> picks the hole that fits rather than the first one it meets, and reserves a zone for its master file table: files stay in one piece far longer. On a volume formatted by Windows XP, the allocator follows the driver’s own code: the smallest free run that fits, taken from its cache of free runs; a file whose size is not known in advance grows as it is written, and its first cluster lands in the smallest hole that holds it.</li>
           </ul>
           <p>
             Directories exist and grow like files. The swap file is open and
             never moves. And a defragmentation works on the clusters the
             allocator actually handed out, not on an approximation of them.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="system">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The system</h2>
+        <div class="sheet__body">
+          <h2>Windows XP, as its own source code does it.</h2>
+          <p>
+            Between the files and the disk sits an operating system, and for
+            everything dated Windows XP the model follows the XP SP1 source
+            code rather than a description of it: where <code>FORMAT</code>
+            lays out an NTFS volume, how the driver allocates clusters, how the
+            defragmenter moves files, how a boot is prefetched, and how the
+            cache writes behind.
+          </p>
+          <ul>
+            <li><b>The boot</b> is read back by the prefetcher in the order it was first used, in large batches issued at once — MFT records first, then data, then executable images.</li>
+            <li><b>The IDE driver</b> serves what is waiting in increasing block order from its current position, so a batch is heard as one sweep of the arm.</li>
+            <li><b>The cache’s lazy writer</b> wakes once a second, three seconds after the first page is dirtied, and writes an eighth of the dirty pages, stream by stream, the log first.</li>
+            <li><b>The defragmenter</b> first lays out the boot files, pulls the MFT back together, repairs files in pieces into the smallest hole that holds them, empties a region when none does, then packs everything towards the start, in 64 KB blocks, each a transaction.</li>
+          </ul>
+          <p>
+            Windows 95 and 98, Vista and 7 are not in that code: they keep the
+            model they had, and the project’s <code>README.md</code> says so,
+            point by point.
           </p>
         </div>
       </div>
@@ -177,6 +206,9 @@
             resonances of an actuator do not transpose with seek speed: only the
             excitation changes. A short seek has no coasting phase, so the shape
             of the sound changes with the distance, not only its loudness.
+            Its loudness follows the drive’s manual: the seek sound power it
+            publishes, the idle level subtracted, heard at half its decibels,
+            like the spindle.
           </p>
           <p>
             <b>Trains.</b> Two seeks close together never fire two separate

@@ -109,9 +109,17 @@ public protocol Allocator {
     ///
     /// Tout ou rien, comme `extend` : si un paquet ne trouve pas de place, ce
     /// que les précédents ont pris est rendu et le fichier ressort inchangé.
+    ///
+    /// `growth` dit comment le programme fait grandir le fichier ; seul le
+    /// NTFS de XP le distingue (`NTFSAllocator.stream`).
     /// - Returns: `false` si la place manquait.
     @discardableResult
-    mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool
+    mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool
+
+    /// La taille que prend un fichier écrit ainsi quand son programme veut y
+    /// mettre `bytes` : `bytes`, sauf sous XP pour `index.dat`, que `wininet`
+    /// tient à un multiple de 16 Ko (`StreamedGrowth.fileBytes`).
+    func streamedFileBytes(_ bytes: UInt64, growth: StreamedGrowth) -> UInt64
 
     /// Prend `count` clusters dans l'ordre exact où `count` paquets d'un
     /// cluster, demandés l'un après l'autre par des fichiers différents, les
@@ -150,13 +158,50 @@ public protocol Allocator {
     /// du catalogue : `$Boot`, la MFT et sa copie sur NTFS. Vide sur FAT, dont
     /// les tables vivent avant la zone de données.
     var metadataExtents: [Extent] { get }
+
+    /// Les clusters que le formatage a déjà donnés à l'index du répertoire
+    /// racine, et que la racine reprend à sa création : l'allocation de
+    /// l'index racine que `FORMAT` de XP pose au milieu du volume. `nil`
+    /// partout ailleurs, où la racine prend ses clusters comme tout
+    /// répertoire.
+    var formattedRootIndex: Extent? { get }
+
+    /// La plage qu'un défragmenteur laisse vide : la zone MFT de NTFS, telle
+    /// que le pilote la publie à l'instant (`FSCTL_GET_NTFS_VOLUME_DATA`,
+    /// `MftZoneStart` et `MftZoneEnd`). `nil` sur FAT, ou quand la zone est
+    /// vide. Seule la défragmentation de l'histoire la lit
+    /// (`Simulator.defragment`) ; l'allocateur, lui, la gère.
+    var defragmentExcludedZone: Range<UInt32>? { get }
+
+    /// Le volume est monté : la machine a démarré. Le simulateur l'annonce au
+    /// premier événement de chaque journée. Sans effet hors NTFS de XP, dont
+    /// le pilote rebâtit alors son cache de runs libres.
+    mutating func mount()
+
+    /// Un point de contrôle du journal. Le simulateur l'annonce entre deux
+    /// événements. Sans effet hors NTFS de XP, qui masque les clusters
+    /// libérés jusque-là.
+    mutating func checkpoint()
+
+    /// Donne un enregistrement de métadonnées à un fichier ou un répertoire
+    /// qui naît, et le reprend quand il disparaît. `nil` quand le format ne
+    /// les désigne pas — tout sauf le NTFS de XP, où le plus petit libre est
+    /// repris (`NtfsAllocateRecord`).
+    mutating func takeRecord() -> UInt32?
+    mutating func releaseRecord(_ record: UInt32)
 }
 
 extension Allocator {
 
+    public mutating func mount() {}
+    public mutating func checkpoint() {}
+    public mutating func takeRecord() -> UInt32? { nil }
+    public mutating func releaseRecord(_ record: UInt32) {}
     public mutating func noteFileCreated(logicalSize: UInt64) {}
     public mutating func noteFileDeleted() {}
     public var metadataExtents: [Extent] { [] }
+    public var formattedRootIndex: Extent? { nil }
+    public var defragmentExcludedZone: Range<UInt32>? { nil }
 
     /// Place un fichier entier et renseigne son entrée. La résidence est
     /// décidée ici : un fichier résident ne passe jamais par l'allocateur.
@@ -205,7 +250,21 @@ extension Allocator {
 
     public mutating func takeInWritingOrder(_ count: UInt32, hints: [AllocationHint]) -> [Extent]? { nil }
 
+    public mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool {
+        streamByPackets(file: &file, clusters: count)
+    }
+
+    public func streamedFileBytes(_ bytes: UInt64, growth: StreamedGrowth) -> UInt64 { bytes }
+
+    /// `stream` d'un programme qui écrit par `WriteFile` (`.buffered`).
+    @discardableResult
     public mutating func stream(file: inout FileEntry, clusters count: UInt32) -> Bool {
+        stream(file: &file, clusters: count, growth: .buffered)
+    }
+
+    /// `stream` par paquets fixes de `profile.writePacketClusters`, chacun un
+    /// `extend` : ce que fait tout allocateur qui n'a pas sa propre règle.
+    public mutating func streamByPackets(file: inout FileEntry, clusters count: UInt32) -> Bool {
         let packet = profile.writePacketClusters
         // Ce qui a été ajouté, et non une copie des extents d'avant : gardée,
         // elle ferait recopier le tableau à chaque paquet.
@@ -241,14 +300,15 @@ extension Allocator {
     /// naît vide et grandit par paquets jusqu'à sa taille finale. La résidence
     /// se décide comme pour `place` — sur la taille à laquelle il arrive.
     /// - Returns: `false` si la place manquait ; rien n'est alors pris.
-    public mutating func placeStreamed(file: inout FileEntry) -> Bool {
+    public mutating func placeStreamed(file: inout FileEntry, growth: StreamedGrowth = .buffered) -> Bool {
+        file.logicalSize = streamedFileBytes(file.logicalSize, growth: growth)
         if profile.isResident(bytes: file.logicalSize) {
             place(file: &file)
             return true
         }
         file.isResident = false
         file.extents = []
-        let written = stream(file: &file, clusters: profile.clusters(forBytes: file.logicalSize))
+        let written = stream(file: &file, clusters: profile.clusters(forBytes: file.logicalSize), growth: growth)
         noteFileCreated(logicalSize: file.logicalSize)
         return written
     }
@@ -256,12 +316,14 @@ extension Allocator {
     /// `grow` pour un fichier qu'on allonge sans en connaître la fin : un
     /// journal, `index.dat`, le `.pst` d'Outlook. Le complément arrive par
     /// paquets.
-    public mutating func growStreamed(file: inout FileEntry, toLogicalSize bytes: UInt64) {
+    public mutating func growStreamed(file: inout FileEntry, toLogicalSize bytes: UInt64,
+                                      growth: StreamedGrowth = .buffered) {
+        let bytes = streamedFileBytes(bytes, growth: growth)
         guard bytes > file.logicalSize else { return }
         if file.isResident, !profile.isResident(bytes: bytes) {
             var moved = file
             moved.extents = []
-            guard stream(file: &moved, clusters: profile.clusters(forBytes: bytes)) else { return }
+            guard stream(file: &moved, clusters: profile.clusters(forBytes: bytes), growth: growth) else { return }
             file.isResident = false
             file.logicalSize = bytes
             file.extents = moved.extents
@@ -274,7 +336,7 @@ extension Allocator {
         let before = profile.clusters(forBytes: file.logicalSize)
         let after = profile.clusters(forBytes: bytes)
         if after > before {
-            guard stream(file: &file, clusters: after - before) else { return }
+            guard stream(file: &file, clusters: after - before, growth: growth) else { return }
         }
         file.logicalSize = bytes
     }

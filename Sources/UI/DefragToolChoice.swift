@@ -8,10 +8,11 @@ typealias DiskHandover = (GeneratedDisk, GeneratedActivity, (any DefragStrategy)
 /// Un défragmenteur tel que l'écran de choix le présente.
 ///
 /// Les durées ne sont pas estimées : aucun calcul ne les donne avant la passe.
-/// Ce sont les fourchettes **mesurées** sur les vingt disques de la galerie
-/// (README et `LEDGER.md`), par format, et rien quand l'outil n'y a pas été
-/// mesuré. Une estimation fausse d'un facteur dix serait pire que pas
-/// d'estimation.
+/// Ce sont les fourchettes **mesurées** sur les vingt-quatre disques de la
+/// galerie (bilans de `Tools/Measure`, en dernier ceux du chantier 51 de
+/// `LEDGER.md`), par format, et rien quand l'outil n'y a pas été mesuré. Une
+/// estimation fausse d'un facteur dix serait pire que pas d'estimation. Elles
+/// sont à refaire quand un chantier change les passes.
 struct DefragTool: Identifiable {
 
     let strategy: any DefragStrategy
@@ -88,7 +89,7 @@ struct DefragTool: Identifiable {
                        principle: String(localized: "tool.windows95.principle", defaultValue: "Packs everything to the start of the disk, in tree order, evicting whatever is in the way."),
                        sound: String(localized: "tool.windows95.sound", defaultValue: "Constant back-and-forth, and a “clack” at the edge of the platter for every file."),
                        periodFormats: [.fat], onlyOn: .fat, isAdvanced: false,
-                       measured: [.fat: String(localized: "tool.windows95.fat.measured", defaultValue: "6 min to 1 h")]),
+                       measured: [.fat: String(localized: "tool.windows95.fat.measured", defaultValue: "a few seconds to 1 h")]),
             DefragTool(strategy: strategy("windowsXP"),
                        name: seven
                            ? String(localized: "tool.win7.name", defaultValue: "Windows 7 Defragmenter")
@@ -103,22 +104,22 @@ struct DefragTool: Identifiable {
                        principle: String(localized: "tool.windowsXP.principle", defaultValue: "Repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start."),
                        sound: String(localized: "tool.windowsXP.sound", defaultValue: "Bursts of small 64 KB copies, a quiet stretch, then the long sweep of the packing."),
                        periodFormats: [.ntfs], onlyOn: .ntfs, isAdvanced: false,
-                       measured: [.ntfs: String(localized: "tool.windowsXP.ntfs.measured", defaultValue: "a few seconds to 45 min")]),
+                       measured: [.ntfs: String(localized: "tool.windowsXP.ntfs.measured", defaultValue: "2 min to 3 h 55")]),
             DefragTool(strategy: strategy("ultraDefrag"),
                        name: String(localized: "tool.ultraDefrag.name", defaultValue: "UltraDefrag 7.1.1"),
                        origin: String(localized: "tool.ultraDefrag.origin", defaultValue: "2018 · all formats"),
                        principle: String(localized: "tool.ultraDefrag.principle", defaultValue: "Merges the small splinters without moving the big blocks, and evicts nobody."),
                        sound: String(localized: "tool.ultraDefrag.sound", defaultValue: "Many short requests; far fewer pieces at the end."),
                        periodFormats: [], onlyOn: nil, isAdvanced: false,
-                       measured: [.fat: String(localized: "tool.ultraDefrag.fat.measured", defaultValue: "a few seconds to 9 min"),
-                                  .ntfs: String(localized: "tool.ultraDefrag.ntfs.measured", defaultValue: "a few seconds to 40 min")]),
+                       measured: [.fat: String(localized: "tool.ultraDefrag.fat.measured", defaultValue: "a few seconds to 7 min"),
+                                  .ntfs: String(localized: "tool.ultraDefrag.ntfs.measured", defaultValue: "a few seconds to 46 min")]),
             DefragTool(strategy: strategy("jkDefrag"),
                        name: String(localized: "tool.jkDefrag.name", defaultValue: "JkDefrag 3.36"),
                        origin: String(localized: "tool.jkDefrag.origin", defaultValue: "2008 · default mode"),
                        principle: String(localized: "tool.jkDefrag.principle", defaultValue: "Tidies the volume by zones and fills the holes, never evicting."),
                        sound: String(localized: "tool.jkDefrag.sound", defaultValue: "Fast as long as there is room; almost nothing on a full disk."),
                        periodFormats: [], onlyOn: nil, isAdvanced: false,
-                       measured: [.fat: String(localized: "tool.jkDefrag.fat.measured", defaultValue: "a few seconds to 10 min"), .ntfs: String(localized: "tool.jkDefrag.ntfs.measured", defaultValue: "4 min to 1 h 15")]),
+                       measured: [.fat: String(localized: "tool.jkDefrag.fat.measured", defaultValue: "a few seconds to 29 min"), .ntfs: String(localized: "tool.jkDefrag.ntfs.measured", defaultValue: "4 min to 1 h 55")]),
             // Les deux derniers n'imitent aucun outil : ils ont été écrits dans
             // ce projet, chacun pour un format, à partir de ce que les autres
             // font mal. Proposés sur leur format seulement.
@@ -128,14 +129,14 @@ struct DefragTool: Identifiable {
                        principle: String(localized: "tool.frontierCompaction.principle", defaultValue: "Packs the volume in the order it is in: files slide towards the start in runs, and no write ever lands on data that is still referenced."),
                        sound: String(localized: "tool.frontierCompaction.sound", defaultValue: "A short shuttle working its way up the platter; long on a full disk."),
                        periodFormats: [], onlyOn: .fat, isAdvanced: false,
-                       measured: [.fat: String(localized: "tool.frontierCompaction.fat.measured", defaultValue: "6 to 55 min")]),
+                       measured: [.fat: String(localized: "tool.frontierCompaction.fat.measured", defaultValue: "6 min to 1 h")]),
             DefragTool(strategy: strategy("fragmentMerge"),
                        name: String(localized: "tool.fragmentMerge.name", defaultValue: "Thrifty merge"),
                        origin: String(localized: "tool.fragmentMerge.origin", defaultValue: "written for Winchester · NTFS only"),
                        principle: String(localized: "tool.fragmentMerge.principle", defaultValue: "Only copies the small pieces, next to their big neighbour or into the nearest hole, and gathers the free space."),
                        sound: String(localized: "tool.fragmentMerge.sound", defaultValue: "Blocks read piece by piece then written in one go, and a checkpoint every sixteen moves."),
                        periodFormats: [], onlyOn: .ntfs, isAdvanced: false,
-                       measured: [.ntfs: String(localized: "tool.fragmentMerge.ntfs.measured", defaultValue: "a few seconds to 20 min")]),
+                       measured: [.ntfs: String(localized: "tool.fragmentMerge.ntfs.measured", defaultValue: "a few seconds to 13 min")]),
             // Le rangement intelligent vise ce qu'on mesure après la passe —
             // le démarrage, les morceaux, les trous —, pas sa durée.
             DefragTool(strategy: strategy("smart"),
@@ -144,35 +145,35 @@ struct DefragTool: Identifiable {
                        principle: String(localized: "tool.smart.principle", defaultValue: "Lays what the boot reads at the head, in the order it reads it, then packs the rest behind: not a piece left, almost no holes."),
                        sound: String(localized: "tool.smart.sound", defaultValue: "A great removal at the start of the disk, then the shuttle of the packing; long on NTFS, where all the contents pass under the heads."),
                        periodFormats: [], onlyOn: nil, isAdvanced: false,
-                       measured: [.fat: String(localized: "tool.smart.fat.measured", defaultValue: "8 min to 1 h"), .ntfs: String(localized: "tool.smart.ntfs.measured", defaultValue: "5 min to 4 h")]),
+                       measured: [.fat: String(localized: "tool.smart.fat.measured", defaultValue: "7 min to 1 h 05"), .ntfs: String(localized: "tool.smart.ntfs.measured", defaultValue: "5 min to 4 h 20")]),
             jk("jkDefragForcedFill", String(localized: "tool.jkDefragForcedFill.name", defaultValue: "Pack to the start"),
                String(localized: "tool.jkDefragForcedFill.principle", defaultValue: "Fills every hole with the end of the highest fragment of the volume."),
                String(localized: "tool.jkDefragForcedFill.sound", defaultValue: "Short, but it breaks more files than it repairs."),
-               fat: String(localized: "tool.jkDefragForcedFill.fat.measured", defaultValue: "up to 2 min"), ntfs: String(localized: "tool.jkDefragForcedFill.ntfs.measured", defaultValue: "up to 25 min")),
+               fat: String(localized: "tool.jkDefragForcedFill.fat.measured", defaultValue: "up to 13 min"), ntfs: String(localized: "tool.jkDefragForcedFill.ntfs.measured", defaultValue: "up to 24 min")),
             jk("jkDefragMoveUp", String(localized: "tool.jkDefragMoveUp.name", defaultValue: "Pack to the end"),
                String(localized: "tool.jkDefragMoveUp.principle", defaultValue: "Fills every hole, from the far end towards the start, with the files taken below."),
                String(localized: "tool.jkDefragMoveUp.sound", defaultValue: "The start of the volume empties little by little."),
-               fat: String(localized: "tool.jkDefragMoveUp.fat.measured", defaultValue: "1 to 6 min"), ntfs: String(localized: "tool.jkDefragMoveUp.ntfs.measured", defaultValue: "2 to 25 min")),
+               fat: String(localized: "tool.jkDefragMoveUp.fat.measured", defaultValue: "up to 10 min"), ntfs: String(localized: "tool.jkDefragMoveUp.ntfs.measured", defaultValue: "3 to 31 min")),
             jk("jkDefragSortName", String(localized: "tool.jkDefragSortName.name", defaultValue: "Sort by name"),
                String(localized: "tool.jkDefragSortName.principle", defaultValue: "Puts every file back at its rank, evicting whatever holds its place."),
                String(localized: "tool.jkDefragSortName.sound", defaultValue: "The only JkDefrag mode that evicts: long, and what leaves comes back."),
-               fat: String(localized: "tool.jkDefragSortName.fat.measured", defaultValue: "6 to 32 min"), ntfs: String(localized: "tool.jkDefragSortName.ntfs.measured", defaultValue: "3 min to 3 h 30")),
+               fat: String(localized: "tool.jkDefragSortName.fat.measured", defaultValue: "a few seconds to 1 h 20"), ntfs: String(localized: "tool.jkDefragSortName.ntfs.measured", defaultValue: "7 min to 5 h 40")),
             jk("jkDefragSortSize", String(localized: "tool.jkDefragSortSize.name", defaultValue: "Sort by size"),
                String(localized: "tool.jkDefragSortSize.principle", defaultValue: "Puts every file back at its rank by size, evicting whatever is in the way."),
                String(localized: "tool.jkDefragSortSize.sound", defaultValue: "Long: what is evicted comes back down when its turn arrives."),
-               fat: String(localized: "tool.jkDefragSortSize.fat.measured", defaultValue: "7 to 21 min"), ntfs: String(localized: "tool.jkDefragSortSize.ntfs.measured", defaultValue: "4 min to 1 h 15")),
+               fat: String(localized: "tool.jkDefragSortSize.fat.measured", defaultValue: "a few seconds to 1 h 25"), ntfs: String(localized: "tool.jkDefragSortSize.ntfs.measured", defaultValue: "9 min to 1 h 55")),
             jk("jkDefragSortAccess", String(localized: "tool.jkDefragSortAccess.name", defaultValue: "Sort by last access"),
                String(localized: "tool.jkDefragSortAccess.principle", defaultValue: "Puts every file back by its last read, evicting whatever is in the way."),
                String(localized: "tool.jkDefragSortAccess.sound", defaultValue: "Long: what is evicted comes back down when its turn arrives."),
-               fat: String(localized: "tool.jkDefragSortAccess.fat.measured", defaultValue: "10 to 30 min"), ntfs: String(localized: "tool.jkDefragSortAccess.ntfs.measured", defaultValue: "3 min to 3 h 50")),
+               fat: String(localized: "tool.jkDefragSortAccess.fat.measured", defaultValue: "a few seconds to 1 h 25"), ntfs: String(localized: "tool.jkDefragSortAccess.ntfs.measured", defaultValue: "7 min to 7 h 20")),
             jk("jkDefragSortChange", String(localized: "tool.jkDefragSortChange.name", defaultValue: "Sort by last change"),
                String(localized: "tool.jkDefragSortChange.principle", defaultValue: "Puts every file back by its last write, evicting whatever is in the way."),
                String(localized: "tool.jkDefragSortChange.sound", defaultValue: "Long: what is evicted comes back down when its turn arrives."),
-               fat: String(localized: "tool.jkDefragSortChange.fat.measured", defaultValue: "10 to 35 min"), ntfs: String(localized: "tool.jkDefragSortChange.ntfs.measured", defaultValue: "3 min to 4 h 05")),
+               fat: String(localized: "tool.jkDefragSortChange.fat.measured", defaultValue: "a few seconds to 1 h 30"), ntfs: String(localized: "tool.jkDefragSortChange.ntfs.measured", defaultValue: "7 min to 4 h")),
             jk("jkDefragSortCreation", String(localized: "tool.jkDefragSortCreation.name", defaultValue: "Sort by creation date"),
                String(localized: "tool.jkDefragSortCreation.principle", defaultValue: "Puts every file back by its creation date, evicting whatever is in the way."),
                String(localized: "tool.jkDefragSortCreation.sound", defaultValue: "Long: what is evicted comes back down when its turn arrives."),
-               fat: String(localized: "tool.jkDefragSortCreation.fat.measured", defaultValue: "10 to 35 min"), ntfs: String(localized: "tool.jkDefragSortCreation.ntfs.measured", defaultValue: "3 min to 4 h 10")),
+               fat: String(localized: "tool.jkDefragSortCreation.fat.measured", defaultValue: "a few seconds to 1 h 30"), ntfs: String(localized: "tool.jkDefragSortCreation.ntfs.measured", defaultValue: "7 min to 4 h")),
         ]
     }
 }

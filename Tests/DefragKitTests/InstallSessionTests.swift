@@ -38,7 +38,9 @@ struct InstallSessionTests {
         for operation in planned.operations {
             #expect(operation.lba >= planned.partition.startLBA)
             #expect(operation.lba + operation.sectors <= planned.partition.totalSectors)
-            #expect(operation.sectors > 0)
+            // Zéro secteur : un `FLUSH CACHE`, qu'une écriture seule porte
+            // (le vidage du registre de XP, chantier 51h).
+            #expect(operation.sectors > 0 || operation.isWrite)
             #expect(operation.thinkTime >= 0)
             #expect(planned.plan.phases.indices.contains(operation.phase))
         }

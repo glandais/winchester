@@ -15,7 +15,7 @@ struct SystemOption: Identifiable {
     let manifests: [String]
 
     static let all: [SystemOption] = [
-        SystemOption(id: "msdos-6.22+win31", name: "MS-DOS 6.22 et Windows 3.1", year: 1994,
+        SystemOption(id: "msdos-6.22+win31", name: "MS-DOS 6 et Windows 3.1", year: 1994,
                      manifests: ["msdos-6", "win31"]),
         SystemOption(id: "win95-osr1", name: "Windows 95", year: 1996, manifests: ["win95"]),
         SystemOption(id: "win98se", name: "Windows 98 SE", year: 1999, manifests: ["win98se"]),
@@ -808,7 +808,7 @@ private struct IssuesPanel: View {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: issue.severity == .blocking ? "xmark.octagon" : "exclamationmark.triangle")
                             .foregroundStyle(issue.severity == .blocking ? Color.red : Theme.read)
-                        Text(issue.message)
+                        Text(verbatim: issue.message)
                             .font(.dynamic(size: 12))
                             .foregroundStyle(Theme.text.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)

@@ -216,6 +216,8 @@ public struct Simulator<A: Allocator> {
         var kind: Kind
         var entry: FileEntry
         var remaining: UInt32
+        /// Comment son programme le fait grandir.
+        var growth: StreamedGrowth = .buffered
         /// Le fichier avant l'écriture, pour le compte rendu.
         var before: FileRecord?
     }
@@ -320,6 +322,7 @@ public struct Simulator<A: Allocator> {
         // `growStreamed`) et le volume est le même.
         if !sequential.isEmpty {
             let timed = events[sequential.lowerBound]
+            begin(timed)
             sequential = sequential.dropFirst()
             if sequential.isEmpty { busyQueues = 0 }
             return (timed, perform(timed, reporting: reporting))
@@ -395,6 +398,22 @@ public struct Simulator<A: Allocator> {
                               metadataBefore: metadataBefore, reporting: reporting))
     }
 
+    /// Le jour du dernier montage du volume.
+    private var mountedDay: UInt32?
+
+    /// Un événement commence : le premier de sa journée trouve un volume qui
+    /// vient d'être monté — la machine a été éteinte la nuit —, les suivants
+    /// un volume dont le journal a fait un point de contrôle depuis
+    /// l'événement d'avant (`Allocator.mount`, `Allocator.checkpoint`).
+    private mutating func begin(_ timed: TimedEvent) {
+        if timed.day != mountedDay {
+            mountedDay = timed.day
+            allocator.mount()
+        } else {
+            allocator.checkpoint()
+        }
+    }
+
     /// Un tour d'un programme.
     private mutating func play(queue index: Int, alone: Bool,
                                reporting: Bool) -> (timed: TimedEvent, step: SimulationStep?)? {
@@ -405,6 +424,7 @@ public struct Simulator<A: Allocator> {
             stream = current
         } else {
             let timed = events[queues[index].events[queues[index].head]]
+            begin(timed)
             guard let started = startStream(timed, reporting: reporting) else {
                 queues[index].head += 1
                 return (timed, perform(timed, reporting: reporting))
@@ -414,7 +434,7 @@ public struct Simulator<A: Allocator> {
 
         let packet = alone ? stream.remaining : min(stream.remaining, packetClusters)
         let metadataBefore = reporting ? allocator.metadataExtents : []
-        let written = allocator.stream(file: &stream.entry, clusters: packet)
+        let written = allocator.stream(file: &stream.entry, clusters: packet, growth: stream.growth)
         if written { stream.remaining -= packet }
         guard !written || stream.remaining == 0 else {
             queues[index].stream = stream
@@ -433,21 +453,25 @@ public struct Simulator<A: Allocator> {
         let profile = allocator.profile
         switch timed.event {
         case let .create(spec):
-            guard !spec.sizeKnownInAdvance, spec.bytes > 0, !profile.isResident(bytes: spec.bytes) else { return nil }
+            let bytes = allocator.streamedFileBytes(spec.bytes, growth: spec.growth)
+            guard !spec.sizeKnownInAdvance, bytes > 0, !profile.isResident(bytes: bytes) else { return nil }
             catalog.reserve(id: spec.id)
             // Le fichier est créé — son entrée écrite dans son répertoire —
             // avant qu'un octet de données ne le soit.
             addEntry(named: spec.name, to: spec.directory)
             return Stream(kind: .create(spec),
-                          entry: FileEntry(id: spec.id, logicalSize: spec.bytes, hint: spec.resolvedHint),
-                          remaining: profile.clusters(forBytes: spec.bytes))
+                          entry: FileEntry(id: spec.id, logicalSize: bytes, hint: spec.resolvedHint),
+                          remaining: profile.clusters(forBytes: bytes),
+                          growth: spec.growth)
 
-        case let .append(id, bytes):
+        case let .append(id, wanted):
             // Un journal qui grossit est écrit par le programme qui l'alimente,
             // au fil de ce qu'il reçoit : personne ne déclare la taille d'un
             // ajout. Seul le fichier d'échange fait exception — le gestionnaire
             // de mémoire décide d'une taille, et la demande.
-            guard let record = catalog[id], case .append = record.pattern,
+            guard let record = catalog[id] else { return nil }
+            let bytes = allocator.streamedFileBytes(wanted, growth: record.growth)
+            guard case .append = record.pattern,
                   bytes > record.logicalSize, !profile.isResident(bytes: bytes) else { return nil }
             var entry = record.entry
             let before = entry.isResident ? 0 : profile.clusters(forBytes: entry.logicalSize)
@@ -456,6 +480,7 @@ public struct Simulator<A: Allocator> {
             guard after > before else { return nil }
             return Stream(kind: .append(toBytes: bytes, clustersBefore: before, wasResident: record.isResident),
                           entry: entry, remaining: after - before,
+                          growth: record.growth,
                           before: reporting ? record : nil)
 
         case let .replaceViaTemporary(id, newBytes):
@@ -467,6 +492,7 @@ public struct Simulator<A: Allocator> {
             return Stream(kind: .replace(newBytes: newBytes),
                           entry: FileEntry(id: id, logicalSize: newBytes, hint: record.entry.hint),
                           remaining: profile.clusters(forBytes: newBytes),
+                          growth: record.growth,
                           before: reporting ? record : nil)
 
         default:
@@ -484,16 +510,18 @@ public struct Simulator<A: Allocator> {
         switch stream.kind {
         case let .create(spec):
             if written {
-                allocator.noteFileCreated(logicalSize: spec.bytes)
-                let record = FileRecord(entry: entry, name: spec.name, directory: spec.directory,
-                                        category: spec.category, pattern: spec.pattern, createdDay: day)
+                allocator.noteFileCreated(logicalSize: entry.logicalSize)
+                var record = FileRecord(entry: entry, name: spec.name, directory: spec.directory,
+                                        category: spec.category, pattern: spec.pattern, createdDay: day,
+                                        growth: spec.growth)
+                record.mftRecord = allocator.takeRecord()
                 catalog.insert(record)
                 result.after = record
                 result.written = entry.extents
                 result.allocated = entry.extents
             } else {
                 allocator.free(entry.extents)
-                allocator.noteFileCreated(logicalSize: spec.bytes)
+                allocator.noteFileCreated(logicalSize: entry.logicalSize)
                 removeEntry(named: spec.name, from: spec.directory)
                 failedWrites += 1
                 result.failed = true
@@ -529,11 +557,14 @@ public struct Simulator<A: Allocator> {
             // rende les siennes — l'ordre de `placeStreamed`.
             if written {
                 allocator.noteFileCreated(logicalSize: entry.logicalSize)
+                let number = allocator.takeRecord()
                 var previous = record.entry
                 allocator.release(file: &previous)
                 // Le temporaire a consommé un enregistrement de métadonnées en
                 // naissant ; l'original rend le sien en disparaissant.
                 allocator.noteFileDeleted()
+                if let old = record.mftRecord { allocator.releaseRecord(old) }
+                record.mftRecord = number
                 record.entry = entry
                 record.modifiedDay = day
                 catalog[entry.id] = record
@@ -663,7 +694,7 @@ public struct Simulator<A: Allocator> {
             // ajout. Seul le fichier d'échange fait exception — le gestionnaire
             // de mémoire décide d'une taille, et la demande.
             if case .append = record.pattern {
-                allocator.growStreamed(file: &record.entry, toLogicalSize: bytes)
+                allocator.growStreamed(file: &record.entry, toLogicalSize: bytes, growth: record.growth)
             } else {
                 allocator.grow(file: &record.entry, toLogicalSize: bytes)
             }
@@ -690,6 +721,7 @@ public struct Simulator<A: Allocator> {
             guard var record = catalog.remove(id) else { return }
             allocator.release(file: &record.entry)
             allocator.noteFileDeleted()
+            if let number = record.mftRecord { allocator.releaseRecord(number) }
             removeEntry(named: record.name, from: record.directory)
 
         case .defragment:
@@ -707,19 +739,22 @@ public struct Simulator<A: Allocator> {
         if spec.sizeKnownInAdvance {
             allocator.place(file: &entry)
         } else {
-            _ = allocator.placeStreamed(file: &entry)
+            _ = allocator.placeStreamed(file: &entry, growth: spec.growth)
         }
         guard !entry.extents.isEmpty || entry.isResident || spec.bytes == 0 else {
             removeEntry(named: spec.name, from: spec.directory)
             failedWrites += 1
             return
         }
-        catalog.insert(FileRecord(entry: entry,
-                                  name: spec.name,
-                                  directory: spec.directory,
-                                  category: spec.category,
-                                  pattern: spec.pattern,
-                                  createdDay: day))
+        var record = FileRecord(entry: entry,
+                                name: spec.name,
+                                directory: spec.directory,
+                                category: spec.category,
+                                pattern: spec.pattern,
+                                createdDay: day,
+                                growth: spec.growth)
+        record.mftRecord = allocator.takeRecord()
+        catalog.insert(record)
     }
 
     /// Le motif de Word : le temporaire est écrit **pendant que l'original
@@ -737,12 +772,15 @@ public struct Simulator<A: Allocator> {
         addEntry(named: Self.temporaryName, to: record.directory)
         defer { removeEntry(named: Self.temporaryName, from: record.directory) }
         var replacement = FileEntry(id: id, logicalSize: newBytes, hint: old.hint)
-        _ = allocator.placeStreamed(file: &replacement)
+        _ = allocator.placeStreamed(file: &replacement, growth: record.growth)
         guard !replacement.extents.isEmpty || replacement.isResident else {
             failedWrites += 1
             return
         }
 
+        // Le temporaire a son enregistrement ; renommé, il devient le fichier,
+        // et l'original rend le sien.
+        let number = allocator.takeRecord()
         var previous = old
         allocator.release(file: &previous)
         // Le temporaire a consommé un enregistrement de métadonnées en
@@ -750,6 +788,8 @@ public struct Simulator<A: Allocator> {
         // décompte, un document enregistré deux cents fois gonflerait la MFT de
         // deux cents entrées fantômes.
         allocator.noteFileDeleted()
+        if let old = record.mftRecord { allocator.releaseRecord(old) }
+        record.mftRecord = number
 
         record.entry = replacement
         record.modifiedDay = day
@@ -814,7 +854,33 @@ public struct Simulator<A: Allocator> {
             $0.peakEntryBytes = initial
             $0.capacityBytes = capacity
         }
-        if case .ntfs = format.kind { allocator.noteFileCreated(logicalSize: 0) }
+        // La racine d'un NTFS formaté par XP a déjà son tampon d'index, au
+        // milieu du volume : `FORMAT` l'y a posé (`format.cxx:1175`). Elle le
+        // reprend, et grandira derrière lui. Le cluster est pris depuis le
+        // formatage ; il est rapporté ici, à la création de la racine, pour
+        // que qui rejoue le journal sache à qui il est.
+        if record.parent == nil, case .ntfs = format.kind, let root = allocator.formattedRootIndex {
+            let bytes = UInt64(root.length) * UInt64(allocator.profile.clusterBytes)
+            catalog.updateDirectory(directory) {
+                $0.entry.extents = [root]
+                $0.entry.logicalSize = bytes
+                $0.capacityBytes = bytes
+            }
+            if reportsDirectoryGrowth { directoryGrowth.append(root) }
+        }
+        if case .ntfs = format.kind {
+            allocator.noteFileCreated(logicalSize: 0)
+            // La racine est l'enregistrement 5, que le formatage a posé ;
+            // les autres prennent le plus petit libre.
+            if record.parent == nil {
+                if let probe = allocator.takeRecord() {
+                    allocator.releaseRecord(probe)
+                    catalog.updateDirectory(directory) { $0.mftRecord = 5 }
+                }
+            } else if let number = allocator.takeRecord() {
+                catalog.updateDirectory(directory) { $0.mftRecord = number }
+            }
+        }
         fit(directory, format: format)
     }
 
@@ -885,6 +951,15 @@ public struct Simulator<A: Allocator> {
             allocator.release(file: &entry)
         }
 
+        // La zone MFT reste vide : le défragmenteur de XP la rogne de toutes
+        // ses listes de trous (`BuildFreeSpaceList`, `freespace.cpp:305-318`),
+        // JkDefrag aussi (`MftExcludes`). Tassés à travers elle, les fichiers
+        // y prenaient la place de la MFT, qui ne pouvait plus grandir sur
+        // place : XP lui ouvrait alors une zone neuve loin derrière les
+        // données (`bitmpsup.c:1263-1287`, `NtfsInitializeMftZone`,
+        // `8491-8660`). La zone est celle que publie le pilote à cet instant ;
+        // sous Vista et 7, c'est celle du modèle, sans source.
+        let zone = allocator.defragmentExcludedZone
         var cursor: UInt32 = 0
         for var record in movable {
             let isDirectory = record.category == .directory
@@ -895,7 +970,13 @@ public struct Simulator<A: Allocator> {
             var remaining = needed
 
             while remaining > 0, cursor < allocator.bitmap.clusterCount {
-                guard let run = allocator.bitmap.nextFreeRun(from: cursor, limit: remaining) else { break }
+                guard var run = allocator.bitmap.nextFreeRun(from: cursor, limit: remaining) else { break }
+                if let zone, run.start < zone.upperBound, run.end > zone.lowerBound {
+                    // Un trou dans la zone : la recherche reprend derrière
+                    // elle. Un trou qui y entre : sa partie d'avant seule.
+                    guard run.start < zone.lowerBound else { cursor = zone.upperBound; continue }
+                    run = Extent(start: run.start, length: zone.lowerBound - run.start)
+                }
                 let take = min(run.length, remaining)
                 let extent = Extent(start: run.start, length: take)
                 guard allocator.claim(extent) else { break }

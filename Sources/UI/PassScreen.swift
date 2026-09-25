@@ -688,7 +688,7 @@ struct SimulatorScreen: View {
                     .padding(.vertical, -6)
                 Text(boot.readsByPosition
                      ? String(localized: "pass.boot.prefetch",
-                              defaultValue: "\(boot.osName) prefetcher: the read list is sorted by position on the disk, and read back in a single sweep of the arm.")
+                              defaultValue: "\(boot.osName) prefetcher: what the previous boots read is requested in batches, and read back in position order on the disk.")
                      : String(localized: "pass.boot.noPrefetch",
                               defaultValue: "No prefetcher on \(boot.osName): the arm follows the order in which the system asks for its files, not their position."))
                     .font(.dynamic(size: 11))

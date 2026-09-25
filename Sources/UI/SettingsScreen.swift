@@ -40,7 +40,9 @@ struct SettingsScreen: View {
         .sheet(isPresented: $showsSound, onDismiss: { revision += 1 }) {
             SoundSheet(engine: engine)
         }
-        .sheet(isPresented: $showsTips) {
+        // La feuille fermée, son message aussi : un « merci » ou un échec ne
+        // se réaffiche pas à l'ouverture suivante (B#35).
+        .sheet(isPresented: $showsTips, onDismiss: { tipJar.sheetClosed() }) {
             TipSheet(tipJar: tipJar)
         }
     }

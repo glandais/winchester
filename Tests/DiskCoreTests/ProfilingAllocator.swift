@@ -59,6 +59,27 @@ struct ProfilingAllocator<Wrapped: Allocator>: Allocator {
         wrapped.noteFileDeleted()
     }
 
+    /// Même raison : le montage, le point de contrôle et l'écriture par
+    /// paquets ont une implémentation vide ou générique dans le protocole,
+    /// que l'allocateur de XP remplace.
+    mutating func mount() { wrapped.mount() }
+    mutating func checkpoint() { wrapped.checkpoint() }
+
+    @discardableResult
+    mutating func stream(file: inout FileEntry, clusters count: UInt32, growth: StreamedGrowth) -> Bool {
+        let start = Date()
+        defer { extendTime += Date().timeIntervalSince(start) }
+        return wrapped.stream(file: &file, clusters: count, growth: growth)
+    }
+
+    func streamedFileBytes(_ bytes: UInt64, growth: StreamedGrowth) -> UInt64 {
+        wrapped.streamedFileBytes(bytes, growth: growth)
+    }
+
+    var metadataExtents: [Extent] { wrapped.metadataExtents }
+    var formattedRootIndex: Extent? { wrapped.formattedRootIndex }
+    var defragmentExcludedZone: Range<UInt32>? { wrapped.defragmentExcludedZone }
+
     var report: String {
         String(format: "allocate %.2f s (%d appels) · extend %.2f s · free %.2f s · MFT %.2f s (%d appels)",
                allocateTime, allocateCalls, extendTime, freeTime, noteTime, noteCalls)

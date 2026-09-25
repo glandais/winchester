@@ -161,7 +161,10 @@
             The period tools are modelled on the ones that shipped, and three
             more were written for Winchester from what those do badly. Pick one
             on the <span class="ui">With which tool?</span> screen; the tool of
-            the disk’s era is preselected.
+            the disk’s era is preselected, under the name it had that year: a
+            FAT disk from 1993 gets MS-DOS 6 DEFRAG, and an NTFS disk from 2007
+            or 2012 the Vista or Windows 7 Defragmenter — the XP engine, which
+            leaves fragments of 64 MB and more where they are.
           </p>
           <div class="scroll-x">
             <table class="spec">
@@ -170,13 +173,16 @@
                 <tr><th scope="col">Tool</th><th scope="col">Origin</th><th scope="col">What it does</th></tr>
               </thead>
               <tbody>
+                <tr><th scope="row">MS-DOS 6 DEFRAG</th><td class="origin">1993 · FAT only · same engine as Windows 95</td><td>Packs everything to the start of the disk, in tree order, evicting whatever is in the way.</td></tr>
                 <tr><th scope="row">Windows 95/98 Defragmenter</th><td class="origin">1995 · FAT only</td><td>Packs everything to the start of the disk, in tree order, evicting whatever is in the way.</td></tr>
                 <tr><th scope="row">Windows XP Defragmenter</th><td class="origin">2001 · NTFS only</td><td>Repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start.</td></tr>
-                <tr><th scope="row">JkDefrag 3.36</th><td class="origin">2008</td><td>Tidies the volume by zones and fills the holes, never evicting. Seven other modes under <span class="ui">Advanced options</span>.</td></tr>
+                <tr><th scope="row">Windows Vista Defragmenter</th><td class="origin">2007 · NTFS only · same engine as XP, fragments under 64 MB</td><td>Repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start.</td></tr>
+                <tr><th scope="row">Windows 7 Defragmenter</th><td class="origin">2009 · NTFS only · same engine as XP, fragments under 64 MB</td><td>Repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start.</td></tr>
+                <tr><th scope="row">JkDefrag 3.36</th><td class="origin">2008 · default mode</td><td>Tidies the volume by zones and fills the holes, never evicting. Seven other modes under <span class="ui">Advanced options</span>.</td></tr>
                 <tr><th scope="row">UltraDefrag 7.1.1</th><td class="origin">2018 · all formats</td><td>Merges the small splinters without moving the big blocks, and evicts nobody.</td></tr>
-                <tr><th scope="row">Frontier compaction</th><td class="origin">Winchester · FAT only</td><td>Packs the volume in the order it is in; no write ever lands on data that is still referenced.</td></tr>
-                <tr><th scope="row">Thrifty merge</th><td class="origin">Winchester · NTFS only</td><td>Only copies the small pieces, next to their big neighbour or into the nearest hole.</td></tr>
-                <tr><th scope="row">Smart tidying</th><td class="origin">Winchester · all formats</td><td>Lays what the boot reads at the head, in the order it reads it, then packs the rest behind.</td></tr>
+                <tr><th scope="row">Frontier compaction</th><td class="origin">written for Winchester · FAT only</td><td>Packs the volume in the order it is in: files slide towards the start in runs, and no write ever lands on data that is still referenced.</td></tr>
+                <tr><th scope="row">Thrifty merge</th><td class="origin">written for Winchester · NTFS only</td><td>Only copies the small pieces, next to their big neighbour or into the nearest hole, and gathers the free space.</td></tr>
+                <tr><th scope="row">Smart tidying</th><td class="origin">written for Winchester · all formats</td><td>Lays what the boot reads at the head, in the order it reads it, then packs the rest behind: not a piece left, almost no holes.</td></tr>
               </tbody>
             </table>
           </div>

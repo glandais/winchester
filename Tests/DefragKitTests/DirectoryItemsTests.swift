@@ -75,14 +75,25 @@ struct DirectoryItemsTests {
         #expect(plan.after.fragmentedFiles == 0)
     }
 
-    /// UltraDefrag les saute d'emblée (`can_defragment`, `defrag.c:139`), et la
-    /// passe de XP, qui déplace les fichiers entiers, échoue sur chacun.
-    @Test("UltraDefrag et XP laissent les répertoires FAT en place", arguments: ["ultraDefrag", "windowsXP"])
-    func apiToolsLeaveFATDirectories(strategyID: String) throws {
+    /// UltraDefrag les saute d'emblée (`can_defragment`, `defrag.c:139`) : chaque
+    /// répertoire garde ses deux morceaux **à leur place**, et seul le fichier
+    /// ordinaire est réparé.
+    ///
+    /// L'outil de XP n'est plus essayé ici : sur FAT, XP lançait `dfrgfat`, un
+    /// autre moteur que celui que `WindowsXPStrategy` reconstitue, et l'app ne
+    /// le propose que sur NTFS (LEDGER.md, chantier 47).
+    @Test("UltraDefrag laisse les répertoires FAT en place")
+    func ultraDefragLeavesFATDirectories() throws {
         let volume = Self.brokenDirectories(format: .fat16)
-        let plan = try #require(DefragPlanner.strategy(named: strategyID)).plan(volume: volume)
+        let plan = UltraDefragStrategy().plan(volume: volume)
         #expect(plan.after.fragmentedFiles == 30)
-        #expect(plan.arrangement.filter { $0.extents.count > 1 }.count == 30)
+        // Les extents de chaque répertoire, avant et après : les mêmes.
+        for file in volume.files where file.category == .directory {
+            let after = try #require(plan.arrangement.first { $0.id == file.id })
+            #expect(after.extents == file.extents, "\(file.path) a bougé")
+        }
+        let document = try #require(plan.arrangement.first { $0.id == 0 })
+        #expect(document.extents.count == 1)
     }
 
     /// Le pont adopte chaque répertoire qui a des clusters, avant ce qu'il

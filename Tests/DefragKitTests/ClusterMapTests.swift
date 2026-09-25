@@ -87,14 +87,20 @@ struct ClusterMapTests {
     /// Chaque catégorie n'a ici qu'un fichier : sur la carte rejouée, ses
     /// plages sont donc exactement ce fichier, et la nuance qu'elles portent
     /// doit dire s'il est d'un seul tenant, après chaque déplacement validé.
+    ///
+    /// Sous XP, le pilote valide chaque bloc de 64 Kio et le *lazy writer*
+    /// écrit les tables quand il passe (chantier 50) : une écriture de
+    /// métadonnées peut tomber au milieu d'un déplacement. La nuance n'y est
+    /// jugée qu'en fin de passe.
     @Test("À la fin de la passe, la nuance dit l'état réel de chaque fichier",
-          arguments: DefragPlanner.all.map(\.id))
-    func contiguityAfterPass(strategyID: String) throws {
+          arguments: DefragPlanner.all.map(\.id), [NTFSAllocator.Formatting.vista, .xp])
+    func contiguityAfterPass(strategyID: String, formatting: NTFSAllocator.Formatting) throws {
         let strategy = try #require(DefragPlanner.strategy(named: strategyID))
         let fat = [Windows95Strategy().id, FrontierCompactionStrategy().id]
         let format: VolumeFormat = fat.contains(strategyID) ? .fat16 : .ntfs
-        let partition = PartitionGeometry(startLBA: 0, clusterCount: 4_000,
+        var partition = PartitionGeometry(startLBA: 0, clusterCount: 4_000,
                                           clusterSectors: 8, format: format)
+        partition.ntfsFormatting = formatting
         let categories: [ClusterCategory] = [.system, .application, .document, .archive, .churn]
         var records: [DefragFile] = categories.enumerated().map { index, category in
             // Quatre morceaux entrelacés avec ceux des autres, et de tailles
@@ -117,17 +123,7 @@ struct ClusterMapTests {
 
         var map = ClusterRunMap(clusterCount: partition.clusterCount, occupied: volume.categoryRuns())
         var validations = 0
-        for operation in plan.operations {
-            let start = Int(operation.mutationStart)
-            for mutation in plan.mutations[start..<start + Int(operation.mutationCount)] {
-                map.replace(start: mutation.start, count: mutation.count,
-                            category: mutation.category.rawValue,
-                            contiguous: mutation.contiguous) { _ in }
-            }
-            // Entre la première écriture et la validation, un fichier en cours
-            // de déplacement est à la fois ici et là : on ne juge qu'une fois
-            // le déplacement validé, ce qui vaut aussi pour la fin de la passe.
-            guard operation.kind == .metadata else { continue }
+        func judge() {
             validations += 1
             let runs = map.runs()
             for category in categories + [.swap] {
@@ -138,6 +134,21 @@ struct ClusterMapTests {
                         "\(strategyID), validation \(validations) : \(category) en \(extents.count) morceau(x)")
             }
         }
+        let eachBlock = DefragOperations.journalsEachBlock(partition)
+        for operation in plan.operations {
+            let start = Int(operation.mutationStart)
+            for mutation in plan.mutations[start..<start + Int(operation.mutationCount)] {
+                map.replace(start: mutation.start, count: mutation.count,
+                            category: mutation.category.rawValue,
+                            contiguous: mutation.contiguous) { _ in }
+            }
+            // Entre la première écriture et la validation, un fichier en cours
+            // de déplacement est à la fois ici et là : on ne juge qu'une fois
+            // le déplacement validé, ce qui vaut aussi pour la fin de la passe.
+            guard operation.kind == .metadata, !eachBlock else { continue }
+            judge()
+        }
+        judge()
         #expect(validations > 0)
     }
 

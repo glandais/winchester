@@ -35,6 +35,8 @@ MODEL_SOURCES="
     Sources/Model/DaySession.swift
     Sources/Model/DiskLife.swift
     Sources/Model/DiskSimulator.swift
+    Sources/Model/AtapiQueue.swift
+    Sources/Model/LazyWriter.swift
     Sources/Model/DriveCache.swift
     Sources/Model/SoftwareCache.swift
     Sources/Model/Volume.swift

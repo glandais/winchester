@@ -64,7 +64,7 @@ enum Explanation: String, CaseIterable, Identifiable {
                           defaultValue: "On FAT, every committed move rewrites both copies of the allocation table, at the very start of the partition, then the file's entry in its directory. The arm comes back to the edge roughly once per file: that is the sharp “clack” that paces a Windows 95 pass.")
         case .prefetch:
             return String(localized: "explanation.prefetch.text",
-                          defaultValue: "Windows XP and Vista sort the list of files read at boot by position on the disk, and read it back in a single sweep of the arm, together with the MFT records that describe them. Before XP there was no prefetcher: the arm follows the order in which the system asks for its files, not their position.")
+                          defaultValue: "Windows XP rereads what the previous boots read, in the order it was first used, in large batches issued all at once — the MFT records first, then the data, then the executable images. The IDE driver serves each batch in position order on the disk: that is the sweep of the arm. Vista and 7 are modelled the same way, sorted by position. Before XP there was no prefetcher: the arm follows the order in which the system asks for its files, not their position.")
         case .witness:
             return String(localized: "explanation.witness.text",
                           defaultValue: "The same files, each in one piece, packed against the start of the volume. The gap measures what the real placement costs. On FAT it is almost nil; on NTFS, the witness sometimes loses.")

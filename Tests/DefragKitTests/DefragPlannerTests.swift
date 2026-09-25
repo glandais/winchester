@@ -125,20 +125,58 @@ struct PartitionGeometryTests {
         let volume = DefragVolume(partition: partition, files: files)
         let ops = DefragOperations.analysis(volume: volume)
 
-        // Les tables d'abord, dans l'ordre d'émission ; la MFT est la
-        // troisième lecture, longue de (100 + 16) enregistrements.
-        #expect(ops[2].lba == partition.mftLBA)
-        #expect(ops[2].sectors == (files.count + 16) * partition.mftRecordSectors)
+        // Les tables d'abord, dans l'ordre de `dfrgntfs` : la bitmap de la MFT
+        // (la partition de XP la pose devant elle), la bitmap du volume, puis
+        // la MFT, longue de (100 + 16) enregistrements.
+        let layout = partition.ntfsLayout
+        let tables = [layout.mftBitmap, layout.bitmap].filter { !$0.isEmpty }
+        for (op, table) in zip(ops, tables) {
+            #expect(op.lba == partition.lba(ofCluster: Int(table.start)))
+            #expect(op.sectors == Int(table.length) * partition.clusterSectors)
+        }
+        #expect(ops[tables.count - 1].lba == partition.bitmapLBA)
+        #expect(ops[tables.count].lba == partition.mftLBA)
+        #expect(ops[tables.count].sectors == (files.count + 16) * partition.mftRecordSectors)
         // Le répertoire, à son extent, sur toute sa longueur.
         let directory = ops.last!
         #expect(directory.lba == partition.lba(ofCluster: 700_000))
         #expect(directory.sectors == 3 * partition.clusterSectors)
-        #expect(ops.count == 4)
+        #expect(ops.count == tables.count + 2)
         // Un volume à MFT publiée la lit là où elle est.
         let placed = DefragVolume(partition: partition, files: files,
-                                  systemExtents: [Extent(start: 50_000, length: 64), Extent(start: 400_000, length: 64)])
+                                  systemExtents: [Extent(start: 50_000, length: 64), Extent(start: 400_000, length: 64)],
+                                  mftExtents: [Extent(start: 50_000, length: 64), Extent(start: 400_000, length: 64)])
         let mft = DefragOperations.analysis(volume: placed).filter { $0.cluster == 50_000 || $0.cluster == 400_000 }
         #expect(mft.count == 2 && mft.allSatisfy { $0.sectors == 64 * partition.clusterSectors })
+    }
+
+    /// B#24 : l'analyse de `dfrgntfs` lit la bitmap de la MFT, celle du
+    /// volume et la MFT (`dfrgntfs.cpp:4588-4613, 5110-5160`,
+    /// `freespace.cpp:1345`). Ni les 64 Mio de `$LogFile`, ni `$MFTMirr`,
+    /// ni `$Boot`, ni le dernier secteur — que le modèle lisait tous.
+    @Test("L'analyse NTFS ne lit ni le journal, ni le miroir, ni $Boot")
+    func ntfsAnalysisSkipsTheJournal() throws {
+        let spec = try ScenarioLibrary.load("secretaire-2003")
+        var partition = PartitionGeometry(startLBA: 0, clusterCount: Int(spec.clusterCount),
+                                          clusterSectors: 8, format: .ntfs)
+        partition.ntfsFormatting = DiskGenerator.formatting(for: spec)
+        let layout = partition.ntfsLayout
+        let mft = Extent(start: layout.mftStart, length: 4_000)
+        let system = [Extent(start: 0, length: 2), mft, layout.mirror, layout.logFile, layout.bitmap]
+        let volume = DefragVolume(partition: partition, files: [],
+                                  systemExtents: system, mftExtents: [mft])
+        let ops = DefragOperations.analysis(volume: volume)
+        func touches(_ extent: Extent) -> Bool {
+            let sectors = partition.lba(ofCluster: Int(extent.start))
+                ..< partition.lba(ofCluster: Int(extent.end))
+            return ops.contains { sectors.overlaps($0.lba..<($0.lba + $0.sectors)) }
+        }
+        #expect(!touches(layout.logFile))
+        #expect(!touches(layout.mirror))
+        #expect(!touches(Extent(start: 0, length: 2)))
+        #expect(!ops.contains { $0.lba + $0.sectors >= partition.startLBA + partition.totalSectors })
+        #expect(touches(mft) && touches(layout.bitmap))
+        #expect(partition.scanAccesses.isEmpty)
     }
 
     @Test("Un cluster se traduit toujours en LBA de la zone de données")
@@ -514,9 +552,11 @@ struct AgedVolumeTests {
 
 /// Un volume NTFS de test, dont on choisit exactement le placement.
 private func ntfsVolume(clusterCount: Int, files: [TestFile],
-                        mftZone: Range<UInt32>? = nil) -> DefragVolume {
-    let partition = PartitionGeometry(startLBA: 0, clusterCount: clusterCount,
+                        mftZone: Range<UInt32>? = nil,
+                        formatting: NTFSAllocator.Formatting = .xp) -> DefragVolume {
+    var partition = PartitionGeometry(startLBA: 0, clusterCount: clusterCount,
                                       clusterSectors: 8, format: .ntfs)
+    partition.ntfsFormatting = formatting
     let records: [DefragFile] = files.enumerated().map { position, file in
         DefragFile(id: UInt32(position), path: "\\Documents\\F\(position).dat",
                    category: file.category, walkOrder: position,
@@ -567,8 +607,9 @@ struct WindowsXPStrategyTests {
     }
 
     /// Conséquence directe : un fichier décrit en deux extents jointifs ne
-    /// donne aucun travail au défragmenteur, et n'est pas compté comme cassé.
-    @Test("Un fichier en deux extents jointifs n'est pas défragmenté")
+    /// donne aucun travail à la réparation, et n'est pas compté comme cassé.
+    /// Le tassement vers l'avant, lui, le déplace comme tout fichier contigu.
+    @Test("Un fichier en deux extents jointifs n'est pas compté comme cassé")
     func adjacentExtentsAreNotWorthMoving() {
         let input = ntfsVolume(clusterCount: 1_000, files: [
             TestFile(category: .document,
@@ -580,7 +621,8 @@ struct WindowsXPStrategyTests {
         // Rien à réparer, personne à déloger ; le tassement vers l'avant le
         // ramène en tête, d'un seul tenant.
         #expect(plan.evacuations == 0)
-        #expect(plan.filesAlreadyInPlace == 1)
+        // Ramené : il n'est donc pas « déjà en place » (B#17).
+        #expect(plan.filesAlreadyInPlace == 0)
         #expect(plan.arrangement[0].extents.count == 1)
     }
 
@@ -588,8 +630,9 @@ struct WindowsXPStrategyTests {
     /// de 320 Go elle fait quarante gigaoctets d'un seul tenant, donc le plus
     /// grand trou disponible et de très loin. Un défragmenteur qui s'y range
     /// condamne la MFT à se fragmenter dès la création de fichier suivante.
-    /// L'outil de XP, par défaut sur NTFS, s'en garde — c'est une hypothèse,
-    /// voir `WindowsXPStrategy.avoidsMFTZone`.
+    /// L'outil de XP, par défaut sur NTFS, s'en garde : c'est un fait de la
+    /// source, `BuildFreeSpaceList` rogne la zone de toutes ses listes
+    /// (`freespace.cpp:305-318`, `WindowsXPStrategy.avoidsMFTZone`).
     @Test("L'outil de XP ne range rien dans la zone réservée à la MFT")
     func theMftZoneIsNotAPlayground() {
         // Tout le volume est occupé sauf la zone MFT (100..<400) et un trou
@@ -646,14 +689,18 @@ struct WindowsXPStrategyTests {
         let plan = DefragPlanner.plan(volume: input)
         let text = plan.strategy.summary(of: plan)
 
-        // Hors de l'app, `String(localized:)` retombe sur la langue source.
+        // Hors de l'app, `String(localized:)` retombe sur la langue source,
+        // et sur la forme `other` de sa phrase : les pluriels (« 1 file »)
+        // vivent dans le catalogue. Le test lit donc les nombres, pas
+        // l'accord.
         #expect(plan.strategy.label == "Windows XP Defragmenter")
-        #expect(text.contains("repairs 1 files out of 1"))
+        #expect(text.hasPrefix("The pass repairs 1 "))
+        #expect(text.contains(" out of 1, "))
         #expect(!text.contains("presque toujours occupée"),
-                "la phrase de 1995 a resurgi sur une passe qui n'évacue rien")
+                "la phrase de 1995 a resurgi sur une passe XP")
         // Tout est réparé : l'écran n'a pas à parler de ce qui resterait.
         #expect(plan.after.fragmentedFiles == 0)
-        #expect(!text.contains("restent en morceaux"))
+        #expect(!text.contains("in pieces"))
     }
 
     /// Et le plan porte bien la stratégie qui l'a produit, y compris une fois
@@ -687,7 +734,9 @@ struct WindowsXPStrategyTests {
         ])
         let plan = DefragPlanner.plan(volume: input)
 
-        #expect(plan.filesAlreadyInPlace == 2)
+        // L'application et le fichier système sont tassés vers l'avant : aucun
+        // des deux contigus n'est resté en place (B#17).
+        #expect(plan.filesAlreadyInPlace == 0)
         #expect(plan.before.fragmentedFiles == 1)
         #expect(plan.after.fragmentedFiles == 0)
         #expect(plan.filesMoved >= 2)
@@ -733,14 +782,16 @@ struct WindowsXPStrategyTests {
 
     /// La signature sonore, vérifiée là où elle se décide : une validation NTFS
     /// écrit l'enregistrement de MFT du fichier et un secteur de bitmap, pas
-    /// trois fois au tout début de la partition.
+    /// trois fois au tout début de la partition. Sur un volume de Vista, où
+    /// le modèle valide chaque fichier aussitôt ; sous XP, c'est le lazy
+    /// writer qui écrit ces pages (`WindowsXPLetterTests`, chantier 50).
     @Test("Valider un déplacement ne ramène pas le bras au cluster 0")
     func commitStaysAwayFromTheEdge() {
         let input = ntfsVolume(clusterCount: 200_000, files: [
             TestFile(category: .document,
                      extents: [Extent(start: 150_000, length: 8),
                                Extent(start: 180_000, length: 8)]),
-        ])
+        ], formatting: .vista)
         let plan = DefragPlanner.plan(volume: input)
         let commits = plan.operations.filter { $0.kind == .metadata && (1...3).contains($0.phase) }
 
@@ -809,7 +860,8 @@ struct WindowsXPStrategyTests {
     @Test("Faute de trou assez grand, le fichier reste en morceaux")
     func aFileWithNowhereToGoStaysPut() {
         // Deux fichiers remplissent le volume en damier : il ne reste que des
-        // trous de deux clusters, et le fichier cassé en demande six.
+        // trous d'un ou deux clusters. Le document cassé en tient dans l'un ;
+        // le fichier système, cinquante clusters, dans aucun.
         var occupied: [Extent] = []
         for index in stride(from: 0, to: 100, by: 4) {
             occupied.append(Extent(start: UInt32(index), length: 2))
@@ -819,16 +871,22 @@ struct WindowsXPStrategyTests {
             TestFile(category: .document,
                      extents: [Extent(start: 2, length: 1), Extent(start: 6, length: 1)]),
         ])
-        // Le fichier système est lui aussi fragmenté, bien trop gros pour le
-        // moindre trou, et aucune région ne se vide : tout est fragmenté.
+        // Le fichier système, bien trop gros pour le moindre trou, reste
+        // en morceaux, à sa place ; le document est recollé. Sous XP, sa
+        // place quittée est libre tout de suite, et le tassement l'y ramène :
+        // deux déplacements pour lui (`filesMoved` compte des déplacements).
         let plan = DefragPlanner.plan(volume: input)
-        #expect(plan.after.fragmentedFiles >= 1)
-        #expect(plan.filesMoved < plan.before.fragmentedFiles)
+        #expect(plan.before.fragmentedFiles == 2)
+        #expect(plan.after.fragmentedFiles == 1)
+        #expect(plan.arrangement.first { $0.id == 0 }?.extents == occupied)
     }
 
-    /// Le fichier d'échange est ouvert par Windows, et la MFT ne se réorganise
-    /// pas à chaud : le défragmenteur de XP les signalait et passait son
-    /// chemin.
+    /// Le fichier d'échange est ouvert par Windows — `NtfsDefragFile` refuse
+    /// un `FCB_STATE_PAGING_FILE` (`deviosup.c:10112-10125`) — et un fichier
+    /// réservé n'est pas dans les tables de l'outil (`ScanNtfs` part du
+    /// premier enregistrement d'utilisateur). La MFT, elle, se recolle à
+    /// chaud, mais par `MFTDefrag`, qui la lit dans `mftExtents` et non parmi
+    /// les fichiers (`WindowsXPLetterTests`).
     @Test("Ni le fichier d'échange ni les métadonnées ne bougent")
     func swapAndMetadataAreLeftAlone() {
         let swap = [Extent(start: 100, length: 20), Extent(start: 300, length: 20)]
@@ -920,7 +978,10 @@ struct WindowsXPStrategyTests {
         let elapsed = Date().timeIntervalSince(start)
 
         #expect(plan.filesMoved >= 250)
-        #expect(plan.filesAlreadyInPlace == 12_000)
+        // Le tassement emmène la plupart des douze mille ; « déjà en place »
+        // ne compte que ceux qu'aucune phase n'a touchés (B#17).
+        #expect(plan.filesAlreadyInPlace == 450)
+        #expect(plan.filesMoved + plan.filesAlreadyInPlace >= 12_000)
         #expect(plan.after.fragmentedFiles == 0)
         // Deux cent cinquante fichiers de 4,8 Mo par blocs de 64 Kio, puis
         // douze mille fichiers tassés vers l'avant : des centaines de milliers
@@ -1027,8 +1088,9 @@ struct UltraDefragStrategyTests {
     }
 
     /// L'ordre de `fragmented_files_compare` (`analyze.c:756`) : décroissant sur
-    /// le nombre de morceaux, là où XP suit les numéros d'enregistrement de la
-    /// MFT. Il ne décide de rien tant qu'il y a de la place pour tout le monde ;
+    /// le nombre de morceaux, là où XP prend les plus petits d'abord,
+    /// départagés par numéro d'enregistrement (`FileEntrySizeCompareRoutine`,
+    /// `dfrgntfs.cpp:395-432`). Il ne décide de rien tant qu'il y a de la place pour tout le monde ;
     /// ici il n'y a qu'un trou, et les deux outils n'y mettent pas le même
     /// fichier.
     @Test("Le fichier le plus fragmenté passe en premier")

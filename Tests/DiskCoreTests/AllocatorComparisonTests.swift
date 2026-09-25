@@ -170,6 +170,9 @@ func replay<A: Allocator>(_ events: [FSEvent], on allocator: inout A) -> (metric
     var failures = 0
 
     for event in events {
+        // Comme le simulateur : un point de contrôle entre deux événements,
+        // sans quoi XP ne rendrait jamais ce qu'on libère (`Allocator.checkpoint`).
+        allocator.checkpoint()
         switch event {
         case let .create(id, bytes, hint):
             var file = FileEntry(id: id, logicalSize: bytes, hint: hint)

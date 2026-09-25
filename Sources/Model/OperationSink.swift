@@ -60,6 +60,31 @@ final class OperationSink {
     /// l'ont remplie, quelle que soit la stratégie qui les a produites.
     private(set) var validations = 0
 
+    /// Vidages forcés du journal qu'ont coûtés les réemplois de clusters
+    /// récemment désalloués, sous XP (`DefragOperations.deletePending`).
+    var logFlushes = 0
+
+    /// Sous XP, le *lazy writer* : les pages de métadonnées qu'un
+    /// déplacement a salies, et quand il les écrit
+    /// (`DefragOperations.lazyFlush`).
+    var lazyWriter = LazyWriter()
+    /// Sous XP, la file d'`atapi`, que ses fils de travail croisent.
+    var queue = AtapiQueue()
+    /// Validations dont les enregistrements de journal sont déjà sur le
+    /// disque, sous XP : LFS écrit paresseusement (`LfsWrite`), et seul un
+    /// vidage les pose (`DefragOperations.flushLog`).
+    var loggedValidations = 0
+    /// Points de contrôle de NTFS passés, comptés en tranches de cinq
+    /// secondes planifiées.
+    var kernelCheckpoints = 0
+    /// La passe a déplacé par `FSCTL_MOVE_FILE` sous XP : son journal est
+    /// tenu par LFS, et la fin de passe le vide (`DefragOperations.final`).
+    var journalsLazily = false
+
+    /// Des mutations qu'aucune opération ne porte encore : la prochaine
+    /// émise les appliquera (`carry`).
+    private var carried: [MapMutation] = []
+
     /// Le temps que la passe a pris jusqu'ici, **estimé** requête par requête :
     /// un positionnement et un transfert pour chaque opération émise.
     ///
@@ -124,7 +149,32 @@ final class OperationSink {
         mutations.append(mutation)
     }
 
+    /// Une mutation que l'opération suivante appliquera, quelle qu'elle soit :
+    /// la teinte d'une plage que le pilote réalloue sans l'écrire, ou le
+    /// recoloriage d'un fichier que valide une transaction sans écriture
+    /// propre.
+    func carry(_ mutation: MapMutation) {
+        carried.append(mutation)
+    }
+
     func emit(_ operation: DiskOperation) {
+        var operation = operation
+        if !carried.isEmpty {
+            // Les mutations d'une opération sont les dernières enregistrées :
+            // celles qu'on porte s'y ajoutent.
+            let start = operation.mutationCount == 0 ? mutationMark : operation.mutationStart
+            if Int(start) + Int(operation.mutationCount) == mutations.count {
+                mutations.append(contentsOf: carried)
+                operation = DiskOperation(kind: operation.kind, phase: operation.phase,
+                                          lba: operation.lba, sectors: operation.sectors,
+                                          isWrite: operation.isWrite, issueTime: operation.issueTime,
+                                          cluster: operation.cluster, mutationStart: start,
+                                          mutationCount: operation.mutationCount + Int32(carried.count),
+                                          thinkTime: operation.thinkTime, flow: operation.flow,
+                                          hostWork: operation.hostWork)
+                carried.removeAll(keepingCapacity: true)
+            }
+        }
         plannedSeconds += Self.plannedPositioning
             + Double(operation.sectors * DriveGeometry.bytesPerSector) / Self.plannedBytesPerSecond
         guard let downstream else {

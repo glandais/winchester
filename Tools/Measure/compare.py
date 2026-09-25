@@ -41,6 +41,11 @@ if "--identical" in sys.argv:
     sys.exit(1 if changed or missing else 0)
 
 for n in names:
+    # Un bilan que la seconde étape ne fait plus — les passes XP sur FAT depuis
+    # le chantier 47 — est dit absent, pas comparé.
+    if not os.path.exists(os.path.join(MEASURE, f"out-{b}", f"{n}.txt")):
+        print(f"{n:44} absent de out-{b}")
+        continue
     x, y = common(text(a, n)), common(text(b, n))
     if x["duration"] is None or y["duration"] is None:
         continue

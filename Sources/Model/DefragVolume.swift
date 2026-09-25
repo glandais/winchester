@@ -211,7 +211,10 @@ extension ExtentIndex {
 /// gigaoctet pour la représentation par chaîne de clusters qu'elle remplace.
 struct DefragVolume {
 
-    let partition: PartitionGeometry
+    /// La partition, et ce qu'elle sait de la MFT : `mftRecordLBA` y lit les
+    /// extents de `$MFT`, si bien qu'elle suit la MFT quand une passe la
+    /// déplace (`relocateMFTTail`). Rien d'autre n'y change.
+    private(set) var partition: PartitionGeometry
     private(set) var bitmap: ClusterBitmap
     private(set) var files: [DefragFile]
     private(set) var index: ExtentIndex
@@ -229,7 +232,10 @@ struct DefragVolume {
     let mftZone: Range<UInt32>?
 
     /// Ce que le système de fichiers occupe sans qu'aucun fichier ne le
-    /// décrive : la MFT, sa copie, le secteur d'amorçage.
+    /// décrive : les métafichiers de NTFS — `$Boot`, la MFT, son miroir, le
+    /// journal, `$Bitmap` et ceux que `FORMAT` pose avec eux. Des obstacles,
+    /// pas ce que lit l'analyse : elle ne lit que la MFT et les deux bitmaps
+    /// (`DefragOperations.analysis`).
     ///
     /// Occupé dans la bitmap, donc jamais proposé comme trou ; absent de
     /// `files`, donc jamais déplacé ni compté. Tant que la zone MFT gardait sa
@@ -323,29 +329,88 @@ struct DefragVolume {
     }
 
     /// Si ce que quitte un déplacement attend le prochain point de contrôle
-    /// avant de redevenir libre.
+    /// avant de redevenir libre, pour un outil qui passe par
+    /// `FSCTL_MOVE_FILE` et relit la bitmap du volume.
     ///
-    /// C'est une propriété du **volume**, pas de l'outil qui le défragmente.
-    /// NTFS ne laisse pas réutiliser un cluster désalloué tant que ses données
-    /// de reprise ne sont pas sur le disque : « NTFS prevents deallocated
-    /// clusters from being used again until NTFS checkpoints the drive's
-    /// state. Once every few seconds, NTFS ensures that all its crash recovery
-    /// data is safely on disk; only then can deallocated clusters be reused »
-    /// (Mark Russinovich, *Inside Windows NT Disk Defragmenting*, Windows NT
-    /// Magazine, 1997). Un `FSCTL_MOVE_FILE` vers ces clusters échoue en
-    /// `STATUS_ALREADY_COMMITTED`, et le bitmap que relit un défragmenteur les
-    /// montre occupés. FAT n'a pas de journal : ce qu'un déplacement quitte
-    /// est libre dès qu'il est validé.
-    var releaseWaitsForCheckpoint: Bool { partition.format == .ntfs }
+    /// C'est une propriété du **volume**, pas de l'outil qui le défragmente,
+    /// et elle n'est vraie que **hors XP**. Pour NT 4, Russinovich la décrit :
+    /// « NTFS prevents deallocated clusters from being used again until NTFS
+    /// checkpoints the drive's state. Once every few seconds, NTFS ensures
+    /// that all its crash recovery data is safely on disk; only then can
+    /// deallocated clusters be reused » (*Inside Windows NT Disk
+    /// Defragmenting*, Windows NT Magazine, 1997) ; un `FSCTL_MOVE_FILE` vers
+    /// ces clusters échouerait, et la bitmap que relit un défragmenteur les
+    /// montrerait occupés. Vista et 7 gardent cette règle : le code de XP ne
+    /// dit rien d'eux, c'est le modèle d'avant le chantier 50.
+    ///
+    /// Le pilote de XP SP1 fait autrement (`reusesWithDeletePending`). FAT
+    /// n'a pas de journal : ce qu'un déplacement quitte est libre dès qu'il
+    /// est validé.
+    var releaseWaitsForCheckpoint: Bool {
+        partition.format == .ntfs && partition.ntfsFormatting != .xp
+    }
+
+    /// Le NTFS de XP SP1 : ce qu'un déplacement quitte est **libre tout de
+    /// suite** dans la bitmap que relit l'outil, et se réutilise au prix d'un
+    /// vidage du journal.
+    ///
+    /// `NtfsDeallocateClusters` efface les bits sur-le-champ
+    /// (`NtfsFreeBitmapRun`, `bitmpsup.c:1798`) et garde la plage dans une
+    /// liste en mémoire, les clusters « récemment désalloués » ;
+    /// `FSCTL_GET_VOLUME_BITMAP` copie les pages brutes de `$Bitmap`, sans
+    /// eux (`NtfsGetVolumeBitmap`, `fsctrl.c:9222-9470`). Un `MOVE_FILE` vers
+    /// l'un d'eux lève `STATUS_DELETE_PENDING` (`NtfsRunIsClear`,
+    /// `bitmpsup.c:9046-9067`) ; `NtfsDefragFile` l'intercepte
+    /// (`NtfsDefragExceptionFilter`, dix fois au plus, `deviosup.c:10303,
+    /// 10745-10790`), prend tous les fichiers, vide le journal
+    /// (`LfsFlushToLsn`), rend **tous** les clusters récemment désalloués
+    /// (`NtfsFreeRecentlyDeallocated`, `CleanVolume`, 10360-10390) et
+    /// recommence : le déplacement réussit (`DefragOperations.deletePending`).
+    /// Sans réemploi, le point de contrôle de cinq secondes les rend
+    /// (`NTFSCheckpoints`).
+    var reusesWithDeletePending: Bool {
+        partition.format == .ntfs && partition.ntfsFormatting == .xp
+    }
+
+    /// Sous XP, les clusters qu'un déplacement a quittés depuis le dernier
+    /// point de contrôle : libres dans `bitmap`, suivis par le pilote
+    /// (`reusesWithDeletePending`). Vide ailleurs.
+    private(set) var recentlyDeallocated: [Extent] = []
+
+    /// Le pilote rend les `count` premiers clusters récemment désalloués — un
+    /// point de contrôle — ou tous (`count` à `nil`), après un vidage du
+    /// journal. Rien ne change dans la bitmap : ils y étaient déjà libres.
+    mutating func forgetRecentlyDeallocated(first count: Int? = nil) {
+        let count = min(count ?? recentlyDeallocated.count, recentlyDeallocated.count)
+        guard count > 0 else { return }
+        recentlyDeallocated.removeFirst(count)
+    }
+
+    /// Si une destination recoupe des clusters récemment désalloués.
+    func touchesRecentlyDeallocated(_ target: [Extent]) -> Bool {
+        guard !recentlyDeallocated.isEmpty else { return false }
+        return target.contains { wanted in
+            recentlyDeallocated.contains { $0.start < wanted.end && wanted.start < $0.end }
+        }
+    }
+
+    /// Ce qu'un déplacement vient de rendre, sous XP : au pilote, pas à la
+    /// bitmap.
+    private mutating func noteDeallocated<C: Collection>(_ extents: C) where C.Element == Extent {
+        guard reusesWithDeletePending else { return }
+        recentlyDeallocated.append(contentsOf: extents.filter { !$0.isEmpty })
+    }
 
     /// Déplace un fichier vers une nouvelle suite d'extents, comme le fait la
     /// validation d'un déplacement dans les tables, et rend aussitôt ce qu'il
     /// quitte.
     ///
-    /// **Refusé sur NTFS**, où rien n'est rendu aussitôt : une stratégie y
-    /// passe par `relocateHoldingReleased`, et choisit sa cadence de points de
-    /// contrôle (`releaseHeldClusters`). La règle ne peut pas être oubliée par
-    /// un outil — c'est ce qui était arrivé à deux sur cinq.
+    /// **Refusé sur un NTFS qui retient** (`releaseWaitsForCheckpoint`) : une
+    /// stratégie y passe par `relocateHoldingReleased`, et choisit sa cadence
+    /// de points de contrôle (`releaseHeldClusters`). La règle ne peut pas
+    /// être oubliée par un outil — c'est ce qui était arrivé à deux sur cinq.
+    /// Sous XP, ce qui est rendu l'est aussi au pilote, comme récemment
+    /// désalloué.
     ///
     /// - Parameter changesOnly: ne toucher la bitmap et l'index que pour les
     ///   extents qui changent. Retirer et réinsérer tous les extents du fichier
@@ -357,17 +422,18 @@ struct DefragVolume {
     ///   évacue dans cet ordre-là : il déplace tout.
     mutating func relocate(_ position: Int, to extents: [Extent], changesOnly: Bool = false) {
         precondition(!releaseWaitsForCheckpoint,
-                     "sur NTFS, ce qu'un déplacement quitte attend le point de contrôle : relocateHoldingReleased")
-        replace(position, with: extents, changesOnly: changesOnly)
+                     "sur ce NTFS, ce qu'un déplacement quitte attend le point de contrôle : relocateHoldingReleased")
+        noteDeallocated(replace(position, with: extents, changesOnly: changesOnly))
     }
 
     /// Les clusters qu'un déplacement a libérés mais qu'on s'interdit encore de
     /// réutiliser : occupés dans la bitmap, portés par aucun fichier. Dans
     /// l'ordre où ils ont été retenus.
     ///
-    /// Sur NTFS c'est la règle du volume (`releaseWaitsForCheckpoint`) ; sur
-    /// FAT, un choix de l'outil — `FrontierCompactionStrategy` retient ce
-    /// qu'elle quitte jusqu'à ce que les tables soient écrites.
+    /// Hors XP, sur NTFS, c'est la règle du volume
+    /// (`releaseWaitsForCheckpoint`) ; ailleurs, un choix de l'outil —
+    /// `FrontierCompactionStrategy` retient ce qu'elle quitte jusqu'à ce que
+    /// les tables soient écrites, UltraDefrag jusqu'au tour suivant.
     private(set) var heldClusters: [Extent] = []
 
     /// Le déplacement, en retenant ce que le fichier quitte au lieu de le
@@ -379,6 +445,7 @@ struct DefragVolume {
     mutating func relocateHoldingReleased(_ position: Int, to extents: [Extent],
                                           changesOnly: Bool = false) {
         let removed = replace(position, with: extents, changesOnly: changesOnly)
+        noteDeallocated(removed)
         for extent in removed where !extent.isEmpty {
             var cursor = extent.start
             // Le run est borné à l'extent : un trou voisin, déjà libre avant le
@@ -394,22 +461,59 @@ struct DefragVolume {
     }
 
     /// Déplace la queue de `$MFT` — tout sauf son premier extent — vers une
-    /// place neuve, comme le fait `MFTDefrag` de XP. Ce qu'elle quitte attend
-    /// le point de contrôle, comme pour un fichier.
+    /// place neuve, comme le fait `MFTDefrag` de XP. Ce qu'elle quitte suit la
+    /// règle d'un fichier : récemment désalloué sous XP, retenu jusqu'au point
+    /// de contrôle ailleurs.
+    ///
+    /// `extent` peut être plus court que la queue : `FSCTL_MOVE_FILE` avance
+    /// bloc par bloc et s'arrête au premier qu'il ne peut pas poser
+    /// (`deviosup.c:10499-10523`). Les premiers clusters de la queue sont alors
+    /// à `extent`, le reste où il était, derrière eux dans l'ordre des
+    /// enregistrements.
     mutating func relocateMFTTail(to extent: Extent) {
-        guard mftExtents.count > 1 else { return }
+        guard mftExtents.count > 1, !extent.isEmpty else { return }
         let tail = Array(mftExtents.dropFirst())
+        var moved: [Extent] = []
+        var kept: [Extent] = []
+        var remaining = extent.length
+        for old in tail {
+            if remaining >= old.length {
+                moved.append(old)
+                remaining -= old.length
+            } else if remaining > 0 {
+                moved.append(Extent(start: old.start, length: remaining))
+                kept.append(Extent(start: old.start + remaining, length: old.length - remaining))
+                remaining = 0
+            } else {
+                kept.append(old)
+            }
+        }
         for old in tail {
             bitmap.free(old)
             if let at = systemExtents.firstIndex(of: old) { systemExtents.remove(at: at) }
         }
-        for old in tail where !old.isEmpty {
-            bitmap.allocate(old)
-            heldClusters.append(old)
+        for piece in kept {
+            bitmap.allocate(piece)
+            systemExtents.append(piece)
+        }
+        if releaseWaitsForCheckpoint {
+            for old in moved where !old.isEmpty {
+                bitmap.allocate(old)
+                heldClusters.append(old)
+            }
+        } else {
+            noteDeallocated(moved)
         }
         bitmap.allocate(extent)
         systemExtents.append(extent)
-        mftExtents = [mftExtents[0], extent]
+        var extents = [mftExtents[0]]
+        extents.appendRun(start: extent.start, length: extent.length)
+        for piece in kept { extents.appendRun(start: piece.start, length: piece.length) }
+        mftExtents = extents
+        // Les validations qui suivent écrivent les enregistrements là où la
+        // MFT est maintenant, et non dans la queue qu'elle vient de quitter
+        // (B#15) : c'est la partition qui les situe.
+        partition.mftExtents = mftExtents
     }
 
     /// Le point de contrôle : tout ce qui était retenu redevient libre.

@@ -48,7 +48,7 @@ func describe(_ plan: DefragPlan) -> String {
     fragmentés    : \(plan.before.fragmentedFiles) avant, \(plan.after.fragmentedFiles) après
     morceaux      : \(plan.before.fragments) avant, \(plan.after.fragments) après
     trous libres  : \(plan.before.freeHoles) avant, \(plan.after.freeHoles) après
-    """
+    """ + (plan.logFlushes > 0 ? "\njournal       : \(plan.logFlushes) vidages forcés (DELETE_PENDING)" : "")
 }
 
 /// Ce qu'un démarrage a lu, et qui du processeur ou du disque l'a fait durer.
@@ -59,7 +59,8 @@ func describe(_ playback: BootPlayback, duration: Double) -> String {
     return """
     système       : \(playback.osName)\(playback.appName.map { " puis \($0)" } ?? "")
     fichiers      : \(playback.filesRead) ouverts, \(playback.residentFiles) résidents
-    dates d'accès : \(playback.stampedFiles) réécrites en \(playback.stampWrites) écritures
+    dates d'accès : \(playback.stampedFiles) réécrites en \(playback.stampWrites) écritures\
+    \(playback.stampLogWrites > 0 ? ", et \(playback.stampLogWrites) du journal" : "")
     \(playback.softwareCache.map { "cache système : \($0)\n" } ?? "")\
     calcul        : \(String(format: "%.1f", playback.thinkSeconds)) s
     disque        : \(String(format: "%.1f", disk)) s \

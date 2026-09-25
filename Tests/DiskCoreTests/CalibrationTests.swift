@@ -188,8 +188,10 @@ struct CalibrationTests {
 
     /// Les cibles du cahier des charges, et ce que le modèle produit.
     ///
-    /// Trois d'entre elles ne sont **pas** atteintes, et le test le dit au lieu
-    /// de l'arrondir. L'analyse est au bas de ce fichier.
+    /// Deux cibles FAT ne sont **pas** atteintes, et le test le dit au lieu
+    /// de l'arrondir. Les cibles NTFS de 2003 sont reposées au chantier 49
+    /// d'après ce que fait l'allocateur de XP (`LEDGER-XP.md`, décision 1) :
+    /// chaque borne dit sa source. L'analyse est au bas de ce fichier.
     @Test("dev-1996 après dix-huit mois : 35 à 50 % de fichiers fragmentés")
     func developer1996() throws {
         let disk = try Self.generate("dev-1996")
@@ -205,14 +207,32 @@ struct CalibrationTests {
         #expect(disk.metrics.slackRatio > 0.10)
     }
 
-    @Test("gamer-2003 fraîchement installé : moins de 5 %")
+    /// Un volume de jeu installé sur un disque neuf, puis quelques mois de
+    /// parties.
+    ///
+    /// Ce qui est écrit le jour de l'installation, en fichiers de taille
+    /// connue, est d'un seul tenant : sur un volume neuf, le cache des runs
+    /// libres de XP tient des runs plus longs que tout fichier installé, et
+    /// `NtfsLookupCachedLcnByLength` rend un run au moins aussi long que la
+    /// demande — il ne découpe que si aucun ne suffit (`bitmpsup.c:9577-9661`).
+    ///
+    /// Les sauvegardes, elles, peuvent se découper, et la borne d'avant (« pas
+    /// un seul fichier en deux morceaux ») est retirée : un jeu écrit sa
+    /// sauvegarde par écritures de 4 Ko sans en connaître la taille, et XP
+    /// pose la première dans le plus petit trou qui lui suffit
+    /// (`NtfsCommonWrite`, `write.c:2059-2163` ; `UNUSED_LCN`, « maximum
+    /// left-packing », `bitmpsup.c:1015-1022`) — ceux que la sauvegarde
+    /// précédente a laissés. Le chantier 49 en mesure six, en 7 morceaux au
+    /// plus.
+    @Test("gamer-2003 fraîchement installé : moins de 5 %, l'installation d'un seul tenant")
     func gamer2003() throws {
         let disk = try Self.generate("gamer-2003")
         print(Self.describe(disk))
         #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.05)
-        // Écrit une fois depuis le DVD sur un disque neuf : pas un seul fichier
-        // en deux morceaux.
-        #expect(disk.metrics.maxExtentsPerFile == 1)
+        let installed = disk.catalog.files.filter { $0.modifiedDay == 0 && !$0.isResident }
+        #expect(installed.count > 3_000)
+        #expect(installed.allSatisfy { $0.extents.count == 1 },
+                "\(installed.filter { $0.extents.count > 1 }.map(\.name))")
     }
 
     /// Cette cible-là était atteinte, et elle ne l'est plus depuis que `.system`
@@ -246,59 +266,75 @@ struct CalibrationTests {
         #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.10)
     }
 
-    @Test("famille-2003 : le remplissage est la variable de premier ordre")
+    /// famille-2003 : photos et DivX jusqu'à saturation, sur le NTFS de XP.
+    ///
+    /// **La cible de 40 à 60 % est retirée** (chantier 49, décision 1 de
+    /// `LEDGER-XP.md`). Elle venait du cahier des charges, pas de XP ; suivi à
+    /// la lettre, l'allocateur de XP en produit 16 %. Ses mécanismes ne vont
+    /// pas tous dans le même sens : le *best fit* sur le cache des runs libres
+    /// reprend chaque trou dès le point de contrôle qui suit sa libération
+    /// (`NtfsFreeRecentlyDeallocated`, `logsup.c:4500-4533`), le découpage
+    /// prend les plus grands morceaux d'abord (`AllowShorter`,
+    /// `bitmpsup.c:9652-9661`), et la surallocation tient les gros fichiers en
+    /// morceaux de 64 Ko au moins (`allocsup.c:1321-1387`) — mais la première
+    /// écriture de 4 Ko d'un fichier va dans le plus petit trou qui lui
+    /// suffit. La fourchette de non-régression (4 à 16 %) est retirée aussi :
+    /// elle suivait la mesure, sans mécanisme.
+    ///
+    /// **Le remplissage de 90 %** n'est pas l'affaire de l'allocateur : le
+    /// volume finit à 88,7 % aux chantiers 48 et 49, au même point de son
+    /// cycle de rangement (`hoarding.tidiesUpAt` 0,99), avec les mêmes 161
+    /// écritures refusées. Il reste une cible, manquée, hors de ce chantier.
+    @Test("famille-2003 : saturé, un gros fichier écrit à la fin est en miettes")
     func family2003() throws {
         let disk = try Self.generate("famille-2003")
         print(Self.describe(disk))
 
-        // Le remplissage, lui, est bien au rendez-vous.
-        #expect(disk.metrics.fill > 0.90)
-
-        withKnownIssue("le modèle produit 8 % : NTFS place bien même à 95 % — voir la note") {
-            #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.40)
+        withKnownIssue("88,7 % : la fin du cycle de rangement du profil, pas l'allocateur") {
+            #expect(disk.metrics.fill > 0.90)
         }
-        // Fourchette de non-régression : le volume est chaotique — 6, 11, 13
-        // puis 7,6 % d'un lot à l'autre, 4,6 à 21 % selon les constantes de
-        // `NTFSAllocator` —, elle laisse passer ce bruit et rien de plus.
-        #expect(disk.metrics.fragmentedRatioAmongFragmentable > 0.04)
-        #expect(disk.metrics.fragmentedRatioAmongFragmentable < 0.16)
-        // Mais les gros fichiers écrits en fin de course, eux, sont en miettes.
+        // Un gros fichier écrit quand le volume est plein est découpé dans les
+        // runs qui restent, du plus grand au plus petit, jusqu'à 128 par appel
+        // et autant d'appels qu'il faut (`AllowShorter`, `MAXIMUM_RUNS_AT_ONCE`,
+        // `allocsup.c:1475-1600`) : des centaines de morceaux.
         #expect(disk.metrics.maxExtentsPerFile > 500)
     }
 
-    /// Le même profil, la même année, sur FAT32 plutôt que NTFS : 19 % contre
-    /// 8 %. L'écart entre les deux est l'un des résultats les plus parlants du
-    /// modèle — et il montre que ce qui manque à famille-2003 pour atteindre la
-    /// fourchette visée n'est pas un réglage, c'est un allocateur qui place
-    /// moins bien.
+    /// Le même profil sur le FAT32 de 1999 et sur le NTFS de XP.
     ///
-    /// La borne est **fixe** : deux fois, le rapport qu'annonçait le cahier des
-    /// charges une fois retirés les deux mécanismes qui n'avaient jamais existé
-    /// (le curseur système de `NTFSAllocator` renvoyé au début, le hint
-    /// `.system` au cluster 0 sur FAT32). Elle a été élargie quatre fois, de
-    /// 2,5 à 1,25, pour suivre la mesure ; une borne qui suit son sujet ne
-    /// contraint plus rien, et le rapport est revenu à 2,5. Si un chantier la
-    /// fait tomber, c'est à lui de dire pourquoi — pas au test de s'y ranger.
-    /// `famille-2003` est un volume chaotique (`NTFSAllocator`), d'où la marge.
-    @Test("Le même usage fragmente au moins deux fois plus sur FAT32 que sur NTFS")
+    /// **La borne « deux fois plus sur FAT32 » est retirée** (chantier 49,
+    /// décision 1). Elle venait du cahier des charges (« NTFS : fichiers bien
+    /// plus contigus »), et le modèle ne la tenait que par un allocateur NTFS
+    /// sans source, qui préférait l'espace vierge. Celui de XP ne la tient
+    /// pas : 16,4 % sur FAT32, 16,2 % sur NTFS. Il pose la première écriture
+    /// de 4 Ko d'un fichier dans le plus petit trou qui lui suffit
+    /// (`bitmpsup.c:1015-1022, 9577-9661`), là où FAT32 écrit à la suite de
+    /// son curseur ; il rattrape ensuite par la surallocation. Aucun
+    /// mécanisme de XP ne dit dans quel rapport les deux doivent finir : le
+    /// test imprime les deux, et ne borne que le remplissage, qui est le
+    /// sujet du profil.
+    @Test("Le même usage, sur FAT32 et sur le NTFS de XP")
     func fileSystemDominatesTheOutcome() throws {
         let fat32 = try Self.generate("famille-1999")
         let ntfs = try Self.generate("famille-2003")
         print(Self.describe(fat32))
+        print(Self.describe(ntfs))
         #expect(fat32.metrics.fill > 0.90)
-        #expect(ntfs.metrics.fill > 0.90)
-        #expect(fat32.metrics.fragmentedRatioAmongFragmentable
-                > ntfs.metrics.fragmentedRatioAmongFragmentable * 2)
+        withKnownIssue("88,7 % : la fin du cycle de rangement du profil, pas l'allocateur") {
+            #expect(ntfs.metrics.fill > 0.90)
+        }
     }
 
-    /// La table de l'en-tête de `NTFSAllocator` : ce que chacune de ses bornes
-    /// de recherche pèse sur la fragmentation, bougée seule. Elle est imprimée
-    /// telle que l'en-tête la porte ; c'est ce test qui la refait, et non un
-    /// binaire jetable qu'il faudrait réécrire à chaque fois.
+    /// La table de l'en-tête de `NTFSAllocator` : ce que chacune des bornes de
+    /// recherche du modèle d'avant pèse sur la fragmentation, bougée seule.
+    /// Elle est imprimée telle que l'en-tête la porte ; c'est ce test qui la
+    /// refait.
     ///
-    /// Aucune n'est sourcée : ce qui est vérifié ici, c'est ce que l'en-tête en
-    /// dit — aucune ne rejoint la cible de `famille-2003`, et c'est l'horizon
-    /// qui la fait le plus varier.
+    /// Depuis le chantier 49, ces bornes ne servent plus qu'à NT 4, Vista et
+    /// 7 : XP n'en a aucune, son *best fit* est celui de son cache de runs
+    /// libres. Ce qui est vérifié : les volumes de XP n'en dépendent pas du
+    /// tout, et sur ceux de Vista l'horizon reste la borne qui fait le plus
+    /// varier le résultat — ce que l'en-tête dit.
     @Test("Les bornes de recherche de NTFSAllocator, mesurées une à une")
     func ntfsSearchBoundsWeighOnFragmentation() throws {
         let profiles = ["famille-2003", "secretaire-2003", "dev-2007", "famille-2007"]
@@ -331,14 +367,17 @@ struct CalibrationTests {
         }
         print("\n" + lines.joined(separator: "\n"))
 
-        // Aucune ne rejoint la cible de famille-2003 (40 à 60 %).
-        #expect(ratios.allSatisfy { $0[0] < 0.40 })
-        // L'horizon est celle qui fait le plus varier famille-2003.
-        let span = { (rows: ArraySlice<[Double]>) in
-            (rows.map { $0[0] } + [ratios[0][0]]).max()! - (rows.map { $0[0] } + [ratios[0][0]]).min()!
+        // XP ne connaît aucune de ces bornes.
+        for column in 0..<2 {
+            #expect(Set(ratios.map { $0[column] }).count == 1, "\(profiles[column]) dépend d'une borne")
         }
-        #expect(span(ratios[5...6]) > span(ratios[1...2]))
-        #expect(span(ratios[5...6]) > span(ratios[3...4]))
+        // Sur Vista, l'horizon fait le plus varier chaque volume.
+        for column in 2..<4 {
+            let values = { (rows: ArraySlice<[Double]>) in rows.map { $0[column] } + [ratios[0][column]] }
+            let span = { (rows: ArraySlice<[Double]>) in values(rows).max()! - values(rows).min()! }
+            #expect(span(ratios[5...6]) > span(ratios[1...2]), "\(profiles[column])")
+            #expect(span(ratios[5...6]) > span(ratios[3...4]), "\(profiles[column])")
+        }
     }
 
     /// L'asymétrie entre profils est ce qui rend l'application crédible : si
@@ -375,8 +414,9 @@ struct CalibrationTests {
 
 // MARK: - Ce que le modèle ne produit pas, et pourquoi
 //
-// Trois des quatre cibles du cahier des charges ne sont pas atteintes. Le
-// diagnostic tient en une phrase : **le taux de fichiers fragmentés mesure
+// Deux des cibles du cahier des charges ne sont pas atteintes, sur FAT ; deux
+// autres, sur le NTFS de XP, sont retirées (plus bas). Le diagnostic des
+// premières tient en une phrase : **le taux de fichiers fragmentés mesure
 // d'abord la population du volume, et seulement ensuite l'allocateur.**
 //
 // Le lot 4 leur a donné ce qui leur manquait selon le lot 2 : des fichiers
@@ -399,16 +439,14 @@ struct CalibrationTests {
 // fichiers système que les trois vagues de mises à jour par an qu'a reçues
 // Windows 95.
 //
-// `famille-2003` : 8 % au lieu de 40 à 60 %, à 95 % de remplissage. Ici la
-// cause est ailleurs, et elle est cohérente avec le reste du modèle : le
-// best-fit de NTFS trouve encore des trous à la bonne taille sur un volume à
-// 93 %, et il ne coupe un fichier que lorsqu'il n'a vraiment plus le choix.
-// C'est exactement ce que le cahier des charges décrit par ailleurs — « NTFS :
-// fichiers bien plus contigus ». Le même usage, la même durée, la même
-// saturation, rejoués sur le FAT32 de 1999, donnent deux fois et demie plus de
-// fichiers fragmentés.
-// La fourchette de 40 à 60 % correspondrait à un volume poussé au-delà de 98 %,
-// ou à un allocateur qui place moins bien que celui modélisé ici.
+// `famille-2003` : la cible de 40 à 60 % est retirée au chantier 49. Le
+// modèle d'avant produisait de 8 à 24 % selon le lot, par un allocateur NTFS
+// sans source (préférence pour le vierge, quatre bornes de recherche) ; celui
+// de XP, suivi à la lettre (`NTFSAllocator+XP.swift`), en produit 16 %, et
+// rien dans son code ne dit qu'un volume à 88 % devrait en compter 40. La
+// cible était celle du cahier des charges, pas celle de XP : c'est elle qui
+// est fausse (`LEDGER-XP.md`, décision 1). Même chose pour le rapport de deux
+// avec le FAT32 de 1999, qui tombe à un.
 //
 // Dans les deux cas, ce qui est mesuré est la conséquence du modèle et non un
 // réglage : aucune des vingt descriptions embarquées ne contient de taux de

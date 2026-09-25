@@ -35,8 +35,9 @@ import DiskCore
 /// - **le grain du déplacement suit la capacité du volume**
 ///   (`adjust_move_at_once_parameter`), pas le tampon d'un outil.
 ///
-/// Comme la passe de XP, elle n'évacue personne : une destination est toujours
-/// un trou déjà libre. Ce qu'elle change n'est pas le va-et-vient, c'est la
+/// Elle n'évacue personne — contrairement à la passe de XP, qui vide une
+/// région pour ouvrir un trou : une destination est toujours un trou déjà
+/// libre. Ce qu'elle change n'est pas le va-et-vient, c'est la
 /// **taille de ce qui est déplacé** — des rafales courtes sur les bords d'un
 /// gros fichier, au lieu d'un transfert de deux cents mégaoctets ou de rien du
 /// tout.
@@ -67,7 +68,8 @@ struct UltraDefragStrategy: DefragStrategy {
     /// (`udefrag-internals.h:37`).
     ///
     /// C'est le seul réglage qui décide de ce que la passe fait vraiment. Trop
-    /// bas, elle ne trouve plus rien à recoller et redevient la passe de XP ;
+    /// bas, elle ne trouve plus rien à recoller et ne fait plus que recopier
+    /// les fichiers entiers, comme la réparation de XP ;
     /// trop haut, elle redéplace des fichiers entiers et en retrouve les
     /// échecs. Le commentaire du code d'origine l'appelle une constante
     /// magique, et c'en est une : rien dans UltraDefrag ne la justifie.
@@ -117,10 +119,11 @@ struct UltraDefragStrategy: DefragStrategy {
     /// vite pour qu'on puisse interrompre la passe en une demi-seconde — et
     /// c'est pour cela qu'elle grandit avec le disque : un volume plus gros est
     /// porté par un disque plus rapide. Les huit volumes NTFS de la galerie
-    /// s'échelonnent de 39 à 312 Gio et tombent donc sur 4, 8 ou 16 Mo, là où
-    /// `WindowsXPStrategy` retient 4 Mo pour `FSCTL_MOVE_FILE` quelle que soit
-    /// la capacité. L'écart est réel mais reste du même ordre : ce qui sépare
-    /// les deux passes n'est pas le grain.
+    /// s'échelonnent de 39 à 312 Gio et tombent donc sur 4, 8 ou 16 Mo. C'est
+    /// ce qu'UltraDefrag demande à chaque `FSCTL_MOVE_FILE` ; le noyau, lui,
+    /// copie par blocs de 64 Kio (`LARGE_BUFFER_SIZE`, `ntfsdata.h:345`), le
+    /// tampon que `WindowsXPStrategy` retient, et sous XP chaque bloc est une
+    /// transaction (`DefragOperations.moveFile`).
     static func moveAtOnce(capacityBytes: Int) -> Int {
         switch capacityBytes {
         case ..<(20 << 30):           return 256 * 1024
@@ -203,7 +206,7 @@ struct UltraDefragStrategy: DefragStrategy {
         sink.progress = 1
         DefragOperations.final(partition: partition, phase: 3, into: sink)
 
-        return DefragPlan(
+        var plan = DefragPlan(
             strategy: self,
             partition: partition,
             initialRuns: initialRuns,
@@ -216,10 +219,12 @@ struct UltraDefragStrategy: DefragStrategy {
             filesMoved: moved.entirely.union(moved.partially).count,
             filesAlreadyInPlace: alreadyInPlace,
             // Une destination est toujours un trou libre : personne n'est
-            // délogé, exactement comme sur la passe de XP.
+            // délogé — là où la passe de XP vide des régions.
             evacuations: 0,
             arrangement: volume.arrangement
         )
+        plan.logFlushes = sink.logFlushes
+        return plan
     }
 
     /// Ce que la passe retient d'elle-même. Les deux ensembles sont distincts
@@ -229,6 +234,10 @@ struct UltraDefragStrategy: DefragStrategy {
     private struct Movements {
         var clusters = 0
         var clustersThisPass = 0
+        /// Sous XP, ce que le pilote suit encore des clusters que la passe a
+        /// quittés : UltraDefrag les tient hors de sa liste jusqu'au tour
+        /// suivant, mais le pilote, lui, les rend au point de contrôle.
+        var checkpoints = NTFSCheckpoints()
         var entirely: Set<Int> = []
         var partially: Set<Int> = []
     }
@@ -282,14 +291,13 @@ struct UltraDefragStrategy: DefragStrategy {
                 guard let target = DefragOperations.firstGap(in: volume, need: file.clusterCount,
                                                              avoidingMFTZone: Self.avoidsMFTZone)
                 else { continue }
-                DefragOperations.move(source: file.extents, destination: [target],
-                                      category: file.category, contiguous: true, phase: phase,
-                                      partition: partition, bufferBytes: bufferBytes,
-                                      fullBlocks: fullBlocks, into: sink)
-                DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: position),
-                                        entrySector: volume.entrySector(of: position),
-                                        phase: phase, partition: partition, into: sink)
-                apply(position, to: [target], in: &volume)
+                DefragOperations.moveFile(source: file.extents, destination: [target],
+                                          category: file.category, contiguous: true, phase: phase,
+                                          volume: &volume, fileIndex: volume.mftRecord(of: position),
+                                          entrySector: volume.entrySector(of: position),
+                                          bufferBytes: bufferBytes, fullBlocks: fullBlocks,
+                                          validBytes: file.bytes, into: sink)
+                apply(position, to: [target], in: &volume, sink: sink, moved: &moved)
                 moved.clusters += Int(file.clusterCount)
                 moved.clustersThisPass += Int(file.clusterCount)
                 moved.entirely.insert(position)
@@ -442,18 +450,17 @@ struct UltraDefragStrategy: DefragStrategy {
                                                                     vcn: vcn, length: length, to: target)
                 let extents = result.coalesced()
                 let contiguous = extents.count <= 1
-                DefragOperations.move(source: source, destination: [target],
-                                      category: category, contiguous: contiguous, phase: phase,
-                                      partition: partition, bufferBytes: bufferBytes,
-                                      fullBlocks: fullBlocks, into: sink)
-                DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: position),
-                                        entrySector: volume.entrySector(of: position),
-                                        phase: phase, partition: partition,
-                                        repaint: contiguous == volume.files[position].isContiguous
-                                            || length >= volume.files[position].clusterCount
-                                            ? nil : (extents, category, contiguous),
-                                        into: sink)
-                apply(position, to: extents, in: &volume)
+                let repaint = contiguous == volume.files[position].isContiguous
+                    || length >= volume.files[position].clusterCount
+                    ? nil : (extents: extents, category: category, contiguous: contiguous)
+                DefragOperations.moveFile(source: source, destination: [target],
+                                          category: category, contiguous: contiguous, phase: phase,
+                                          volume: &volume, fileIndex: volume.mftRecord(of: position),
+                                          entrySector: volume.entrySector(of: position),
+                                          bufferBytes: bufferBytes, fullBlocks: fullBlocks,
+                                          firstVCN: vcn, validBytes: volume.files[position].bytes,
+                                          repaint: repaint, into: sink)
+                apply(position, to: extents, in: &volume, sink: sink, moved: &moved)
                 moved.clusters += Int(length)
                 moved.clustersThisPass += Int(length)
                 succeeded = true
@@ -469,19 +476,24 @@ struct UltraDefragStrategy: DefragStrategy {
 
     /// Valide un déplacement dans le volume de travail.
     ///
-    /// Sur NTFS, ce que le fichier quitte reste hors d'atteinte jusqu'au tour
-    /// suivant : Windows tient ces clusters pour temporairement alloués
-    /// (`DefragVolume.releaseWaitsForCheckpoint`), et UltraDefrag ne les rend
-    /// à sa liste de régions libres qu'en tête de tour
-    /// (`release_temp_space_regions`, `move.c:719-727`) — même si le point de
-    /// contrôle de Windows est passé entre-temps. C'est sa cadence. Sur FAT,
-    /// ils sont réutilisables aussitôt.
-    private func apply(_ position: Int, to extents: [Extent], in volume: inout DefragVolume) {
-        if volume.releaseWaitsForCheckpoint {
+    /// Sur NTFS, ce que le fichier quitte reste hors de la liste de régions
+    /// libres d'UltraDefrag jusqu'au tour suivant : l'outil ne l'y rend qu'en
+    /// relisant la bitmap en tête de tour (`release_temp_space_regions`,
+    /// `move.c:36-50, 719-727`), parce que « Windows marks clusters as
+    /// temporarily allocated immediately after the move ». C'est **sa**
+    /// cadence, et elle vaut quel que soit le pilote : sous XP, où ces
+    /// clusters sont libres tout de suite, UltraDefrag les tient à l'écart
+    /// quand même. Le pilote de XP, lui, les suit comme récemment désalloués
+    /// jusqu'à son point de contrôle (`NTFSCheckpoints`) ; s'y poser plus tôt
+    /// coûte un vidage du journal. Sur FAT, ils sont réutilisables aussitôt.
+    private func apply(_ position: Int, to extents: [Extent], in volume: inout DefragVolume,
+                       sink: OperationSink, moved: inout Movements) {
+        if volume.partition.format == .ntfs {
             volume.relocateHoldingReleased(position, to: extents)
         } else {
             volume.relocate(position, to: extents)
         }
+        if volume.reusesWithDeletePending { moved.checkpoints.afterCommit(&volume, sink: sink) }
     }
 
     // MARK: - Morceaux d'un fichier

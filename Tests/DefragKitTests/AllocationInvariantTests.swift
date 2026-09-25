@@ -55,7 +55,15 @@ enum AllocationAudit {
         // 1. L'état d'arrivée : un cluster, un propriétaire. `-1` libre, `-2`
         //    système, et sinon le rang du fichier qui le tient.
         var owner = [Int32](repeating: -1, count: count)
-        for extent in volume.systemExtents {
+        // Les extents système **d'arrivée** : une passe de XP qui recolle la
+        // MFT (`MFTDefrag`, `relocateMFTTail`) quitte sa queue, et ce qu'elle
+        // quitte redevient de l'espace libre. Les juger sur les extents de
+        // départ comptait comme « posé sur le système » un fichier rangé là où
+        // était l'ancienne queue.
+        let mftBefore = Set(volume.mftExtents)
+        let mftAfter = plan.partition.mftExtents ?? volume.mftExtents
+        let finalSystem = volume.systemExtents.filter { !mftBefore.contains($0) } + mftAfter
+        for extent in finalSystem {
             for cluster in Int(extent.start)..<min(Int(extent.end), count) { owner[cluster] = -2 }
         }
         for (position, file) in plan.arrangement.enumerated() {

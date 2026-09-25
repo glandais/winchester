@@ -22,7 +22,16 @@ secondes, là où un cycle par le simulateur en coûte des dizaines. Il n'y a
 **pas** de cible de test Xcode, donc pas de `xcb.sh test`. Pour valider une
 modification de `Sources/Model` censée ne rien changer au son, le rendu
 hors-ligne reste la vérification de bout en bout : `./Tools/build-render.sh`
-puis `SCENARIO=<id> /tmp/rendertrace out.wav`, et comparer les `md5`.
+puis `SCENARIO=<id> /tmp/rendertrace out.wav`, et comparer les `md5` — ou, pour
+tout un chantier, `Tools/Measure/` (`snapshot.sh`, `run.sh <étape> full`,
+`compare.py --identical`, `wav-md5.py`), décrit dans le `README.md`.
+
+Deux suites ne tournent pas d'office. **`Calibration`** est sautée en Debug :
+`swift test -c release --filter CalibrationTests`, ou `DISKCORE_CALIBRATION=1`
+en Debug. **`GalleryAllocationAudit`** ne tourne qu'avec
+`DEFRAG_GALLERY_AUDIT` (`=1` pour les vingt-quatre volumes, ou une liste de
+profils), en Release : une vingtaine de minutes. Les chantiers 49 à 51, qui
+touchaient allocateur et stratégies, les ont lancées toutes les deux.
 
 ### Simulateur
 
@@ -74,7 +83,10 @@ Deux points qui piègent :
   `$(...)`. Sans ces deux entrées, XcodeGen écrit ses propres valeurs (`1.0` /
   `1`) et le numéro de build ignore silencieusement `project.yml`.
 - Un fichier ajouté à `Sources/Model` doit aussi être listé à la main dans
-  `Tools/build-render.sh`, sans quoi le rendu hors-ligne ne compile plus.
+  `Tools/build-render.sh`, sans quoi le rendu hors-ligne ne compile plus — et
+  `swift test` n'en dit rien, puisque le paquet prend tout le dossier. Pour
+  Xcode, `./scripts/xcb.sh gen` : le `.xcodeproj` d'un worktree n'est pas
+  versionné et ne voit pas le fichier neuf avant d'être régénéré.
 
 ## Traduction
 
@@ -125,12 +137,16 @@ mégaoctets — le 2²⁰ du système de fichiers : un disque étiqueté « 210 
 (décimaux, `DiskSpec.sizeMB`) en montre 200 une fois formaté, comme CHKDSK le
 faisait, et c'est l'étiquette que la galerie affiche.
 
-**Deux textes restent français exprès**, parce qu'ils ne vont nulle part dans
-l'app et que les outils les relisent au mot près : le rapport de cache
-(`BootSession.softwareCacheReport`, que `Tools/Measure/bilan.py` cherche sous
-« dont N relues après éviction ») et le nom de système `MS-DOS 6 et Windows
-3.1`, que `readme-tables.py` recopie dans la table des démarrages du
-`README.md`. Le commentaire le dit sur place. Avant de traduire une chaîne du
+**Deux textes restent français exprès**, parce que les outils les relisent au
+mot près : le rapport de cache (`BootSession.softwareCacheReport`, que
+`Tools/Measure/bilan.py` cherche sous « dont N relues après éviction »), qui ne
+va nulle part dans l'app, et le nom de système `MS-DOS 6 et Windows 3.1`, que
+`readme-tables.py` recopie dans la table des démarrages du `README.md`. Ce nom-là
+**s'affiche**, lui, tel quel et « et » compris, même en anglais : carte de la
+galerie, « Mes disques », titre de la passe, centre de contrôle, et
+l'assistant, qui le propose sous le même nom (`SystemOption`). Le commentaire
+de `BootScript.Era` dit pourquoi il reste français ; le traduire à l'affichage
+reste à faire. Avant de traduire une chaîne du
 modèle, vérifier qui la lit : `Tools/Shared/Report.swift` imprime le bilan que
 les mesures analysent.
 
@@ -348,9 +364,15 @@ dont les clés sont la phrase anglaise elle-même.
 
 Les vingt-quatre captures sont envoyées depuis le 21 septembre 2026 (six
 écrans × deux langues × `IPHONE_65` et `IPAD_PRO_3GEN_129`), et `asc validate`
-ne remonte plus aucune erreur : la version 1.0.0, build 4, est prête à être
-soumise. L'envoi prend parfois une erreur 500 d'App Store Connect sur un
-fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
+ne remontait plus aucune erreur le 21 septembre 2026. **La 1.0.0 n'est pas
+prête à être soumise** : le build 4 ne porte ni la section « À propos »
+(chantier 37) ni les pourboires (chantier 38), dont les trois achats intégrés
+partent avec la version ; il faut un nouveau build, fait après la fusion de la
+branche `xp` (chantiers 47 à 52, `LEDGER-XP.md`) dans `develop`, et les
+corrections laissées hors de ce plan : le site et le `README.md` qui disent
+l'app sans achat intégré, Ko-fi, « no network access », le commentaire
+d'`AboutLink` (B#31 à B#34, B#36 et B#45 d'`AUDIT_REALISME.md`). L'envoi prend
+parfois une erreur 500 d'App Store Connect sur un fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
 ne renvoie que ce qui manque.
 
 ### App previews

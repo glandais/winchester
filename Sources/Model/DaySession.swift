@@ -197,13 +197,18 @@ enum DayPlanner {
         plan.bootFiles = boot.filesRead
         for request in boot.requests {
             guard !isCancelled() else { return plan }
-            writer.think(min(request.thinkTime, script.maximumPause))
+            let think = min(request.thinkTime, script.maximumPause)
+            if !request.flow.isBackground { writer.think(think) }
             let offset = request.lba - partition.dataStartLBA
             let cluster = offset >= 0 ? offset / partition.clusterSectors : nil
             writer.emit(request.isWrite ? .metadata : .scan, lba: request.lba,
-                        sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster)
+                        sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster,
+                        flow: request.flow,
+                        delay: request.flow.isBackground ? think : 0,
+                        hostWork: request.hostWork)
         }
         plan.bytesRead += boot.bytesRead
+        writer.queue = boot.queue
         writer.think(script.userPause)
 
         // MARK: Les séances
@@ -242,6 +247,7 @@ enum DayPlanner {
             case .delete:
                 if let record = step.before {
                     writer.free(record.extents)
+                    writer.discard(file: record.id)
                     plan.filesDeleted += 1
                 }
             default:
@@ -252,7 +258,11 @@ enum DayPlanner {
                     let bytes = step.written.clusterCount == record.extents.clusterCount
                         ? Int(record.logicalSize)
                         : Int(step.written.clusterCount) * Int(partition.clusterBytes)
-                    writer.write(step.written, bytes: bytes) { chunk in
+                    let pagesPerCluster = max(Int(partition.clusterBytes) / 4_096, 1)
+                    let firstPage = Int(record.extents.clusterCount - step.written.clusterCount)
+                        * pagesPerCluster
+                    writer.write(step.written, bytes: bytes,
+                                 file: (record.id, firstPage)) { chunk in
                         reader.sourceTime(chunk, activity: activity, plan: &plan)
                     }
                     plan.filesWritten += 1
@@ -276,7 +286,7 @@ enum DayPlanner {
         // MARK: L'arrêt
         writer.phase = phases.count - 1
         writer.think(script.userPause)
-        writer.flushMetadata(force: true)
+        writer.shutdown()
         writer.settle()
 
         plan.bytesRead += writer.bytesRead
@@ -330,7 +340,7 @@ private struct DayReader {
             var loaded = 0
             for record in catalog.files where record.category == .gameAsset && loaded < script.gameLoadBytes {
                 let bytes = min(Int(record.logicalSize), script.gameLoadBytes - loaded)
-                writer.read(record.extents, bytes: bytes)
+                writer.read(record.extents, bytes: bytes, fileSize: Int(record.logicalSize))
                 loaded += bytes
                 filesRead += 1
                 plan.bytesRead += bytes
