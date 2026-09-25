@@ -123,8 +123,10 @@ struct Windows95Strategy: DefragStrategy {
         var checkpoints = NTFSCheckpoints()
 
         // Sur FAT, ce qu'un déplacement quitte est libre aussitôt validé ; sur
-        // NTFS — hors de son époque, mais la galerie l'y fait tourner — il
-        // attend le point de contrôle, comme pour tout outil.
+        // NTFS — hors de son époque, mais les mesures l'y font tourner — il
+        // suit la règle du volume : retenu jusqu'au point de contrôle hors XP,
+        // libre tout de suite sous XP. `DEFRAG.EXE` écrivait lui-même sur le
+        // disque, sans `FSCTL_MOVE_FILE` : pas de vidage du journal ici.
         func relocate(_ position: Int, to extents: [Extent]) {
             if volume.releaseWaitsForCheckpoint {
                 volume.relocateHoldingReleased(position, to: extents)
@@ -207,10 +209,11 @@ struct Windows95Strategy: DefragStrategy {
             // c'est la donnée de **quelqu'un d'autre**. L'audit de
             // `AllocationInvariantTests` le vérifie sur les treize plans ;
             // celle-ci le vérifie sur place, là où le manquement s'écrivait.
-            // Sur NTFS, la place que les occupants viennent de quitter est
-            // retenue jusqu'au point de contrôle : `FSCTL_MOVE_FILE` y
-            // échouerait, et « the only remedy is to wait and try again »
-            // (Russinovich). L'attente n'est pas jouée, seulement son effet.
+            // Sur un NTFS qui retient (hors XP), la place que les occupants
+            // viennent de quitter l'est jusqu'au point de contrôle :
+            // `FSCTL_MOVE_FILE` y échouerait, et « the only remedy is to wait
+            // and try again » (Russinovich, NT 4). L'attente n'est pas jouée,
+            // seulement son effet. Sous XP, rien n'est retenu.
             if volume.heldClusters.contains(where: { $0.start < target.end && $0.end > target.start }) {
                 volume.releaseHeldClusters()
             }

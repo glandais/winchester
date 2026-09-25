@@ -850,7 +850,8 @@ struct WindowsXPStrategyTests {
     @Test("Faute de trou assez grand, le fichier reste en morceaux")
     func aFileWithNowhereToGoStaysPut() {
         // Deux fichiers remplissent le volume en damier : il ne reste que des
-        // trous de deux clusters, et le fichier cassé en demande six.
+        // trous d'un ou deux clusters. Le document cassé en tient dans l'un ;
+        // le fichier système, cinquante clusters, dans aucun.
         var occupied: [Extent] = []
         for index in stride(from: 0, to: 100, by: 4) {
             occupied.append(Extent(start: UInt32(index), length: 2))
@@ -860,11 +861,14 @@ struct WindowsXPStrategyTests {
             TestFile(category: .document,
                      extents: [Extent(start: 2, length: 1), Extent(start: 6, length: 1)]),
         ])
-        // Le fichier système est lui aussi fragmenté, bien trop gros pour le
-        // moindre trou, et aucune région ne se vide : tout est fragmenté.
+        // Le fichier système, bien trop gros pour le moindre trou, reste
+        // en morceaux, à sa place ; le document est recollé. Sous XP, sa
+        // place quittée est libre tout de suite, et le tassement l'y ramène :
+        // deux déplacements pour lui (`filesMoved` compte des déplacements).
         let plan = DefragPlanner.plan(volume: input)
-        #expect(plan.after.fragmentedFiles >= 1)
-        #expect(plan.filesMoved < plan.before.fragmentedFiles)
+        #expect(plan.before.fragmentedFiles == 2)
+        #expect(plan.after.fragmentedFiles == 1)
+        #expect(plan.arrangement.first { $0.id == 0 }?.extents == occupied)
     }
 
     /// Le fichier d'échange est ouvert par Windows, et la MFT ne se réorganise

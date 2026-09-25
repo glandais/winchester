@@ -37,13 +37,17 @@ import DiskCore
 /// - **sur FAT, les répertoires** — la zone 0 — échouent : Windows ne sait pas
 ///   en déplacer le premier cluster, et au-delà de vingt échecs JkDefrag les
 ///   abandonne tous (`Pass.move`). Sur NTFS, ils se déplacent comme le reste ;
-/// - **sur NTFS, ce qu'un déplacement quitte** n'est libre qu'au point de
-///   contrôle suivant, toutes les cinq secondes (`NTFSCheckpoints`). `FindGap`
-///   relit le bitmap, qui le montre occupé d'ici là. Le mode 2 n'en souffre
-///   presque pas, ses trous étant tous relus ; les tris, qui évacuent une place
-///   pour s'y poser aussitôt (`Vacate`), la trouvent encore prise et posent le
-///   fichier plus loin, en morceaux. L'auteur le décrit lui-même
-///   (`MoveItem4`, `JkDefragLib.cpp:2355-2360`).
+/// - **sur NTFS, ce qu'un déplacement quitte** : sous XP, `FindGap` relit une
+///   bitmap où il est libre tout de suite, et s'y poser coûte un vidage du
+///   journal (`DefragVolume.reusesWithDeletePending`, `ntfs-alloc-15`) ; les
+///   tris, qui évacuent une place pour s'y poser aussitôt (`Vacate`), la
+///   prennent. Hors XP, le modèle garde la règle de NT 4 : libre au point de
+///   contrôle suivant, toutes les cinq secondes (`NTFSCheckpoints`), si bien
+///   que les tris trouvent la place encore prise et posent le fichier plus
+///   loin, en morceaux. L'auteur décrit ce cas (`MoveItem4`,
+///   `JkDefragLib.cpp:2355-2360`) sans dire sous quel Windows ; le code de XP
+///   SP1 ne le produit qu'après dix `DELETE_PENDING` dans un même
+///   déplacement, ce qu'un seul vidage empêche ;
 ///
 /// Ce qui n'est **pas** transposé, et pourquoi :
 ///
@@ -299,7 +303,7 @@ struct JKDefragStrategy: DefragStrategy {
         sink.progress = 1
         DefragOperations.final(partition: input.partition, phase: phases.count - 2, into: sink)
 
-        let plan = DefragPlan(
+        var plan = DefragPlan(
             strategy: self,
             partition: input.partition,
             initialRuns: initialRuns,
@@ -316,6 +320,7 @@ struct JKDefragStrategy: DefragStrategy {
             evacuations: pass.report.evacuations,
             arrangement: pass.volume.arrangement
         )
+        plan.logFlushes = sink.logFlushes
         return (plan, pass.report)
     }
 
@@ -741,6 +746,7 @@ extension JKDefragStrategy {
                                                               length: length, to: target)
             let extents = result.coalesced()
             let contiguous = extents.count <= 1
+            DefragOperations.deletePending(target: [target], volume: &volume, phase: phase, into: sink)
             DefragOperations.move(source: source, destination: [target],
                                   category: file.category, contiguous: contiguous, phase: phase,
                                   partition: volume.partition,
@@ -754,9 +760,10 @@ extension JKDefragStrategy {
                                     repaint: contiguous == file.isContiguous || length >= file.clusterCount
                                         ? nil : (extents, file.category, contiguous),
                                     into: sink)
-            // Sur NTFS, ce que la tranche quitte n'est libre qu'au point de
-            // contrôle suivant : `FindGap` relit le bitmap, qui le montre
-            // occupé d'ici là.
+            // Hors XP, sur NTFS, ce que la tranche quitte n'est libre qu'au
+            // point de contrôle suivant : `FindGap` relit le bitmap, qui le
+            // montre occupé d'ici là. Sous XP, il le montre libre tout de
+            // suite (`DefragVolume.reusesWithDeletePending`).
             if volume.releaseWaitsForCheckpoint {
                 volume.relocateHoldingReleased(index, to: extents, changesOnly: true)
             } else {

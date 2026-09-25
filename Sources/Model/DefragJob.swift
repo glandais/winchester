@@ -138,6 +138,9 @@ struct DefragPlan {
     /// reposer sur le disque d'origine pour le démarrer rangé. Quelques octets
     /// par fichier, là où garder le volume entier garderait sa bitmap.
     var arrangement: [FileArrangement] = []
+    /// Sous XP, les vidages du journal que la passe a forcés en se posant
+    /// sur des clusters qu'elle venait de quitter (`DefragOperations.deletePending`).
+    var logFlushes = 0
 
     /// Le même plan, avec les opérations et les mutations qu'un récepteur a
     /// gardées.
@@ -146,7 +149,7 @@ struct DefragPlan {
                    operations: operations, mutations: mutations, phases: phases,
                    before: before, after: after, movedBytes: movedBytes,
                    filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,
-                   evacuations: evacuations, arrangement: arrangement)
+                   evacuations: evacuations, arrangement: arrangement, logFlushes: logFlushes)
     }
 
     /// Le même plan, sans les opérations ni les mutations.
@@ -159,7 +162,7 @@ struct DefragPlan {
                    operations: [], mutations: [], phases: phases,
                    before: before, after: after, movedBytes: movedBytes,
                    filesMoved: filesMoved, filesAlreadyInPlace: filesAlreadyInPlace,
-                   evacuations: evacuations, arrangement: arrangement)
+                   evacuations: evacuations, arrangement: arrangement, logFlushes: logFlushes)
     }
 }
 

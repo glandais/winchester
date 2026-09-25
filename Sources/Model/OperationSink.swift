@@ -60,6 +60,10 @@ final class OperationSink {
     /// l'ont remplie, quelle que soit la stratégie qui les a produites.
     private(set) var validations = 0
 
+    /// Vidages forcés du journal qu'ont coûtés les réemplois de clusters
+    /// récemment désalloués, sous XP (`DefragOperations.deletePending`).
+    var logFlushes = 0
+
     /// Le temps que la passe a pris jusqu'ici, **estimé** requête par requête :
     /// un positionnement et un transfert pour chaque opération émise.
     ///

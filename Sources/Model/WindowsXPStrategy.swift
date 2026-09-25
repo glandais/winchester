@@ -50,11 +50,13 @@ import DiskCore
 /// fichiers, qui la fait par blocs de **64 Kio** (`LARGE_BUFFER_SIZE`,
 /// `ntfsdata.h`), une lecture puis une écriture synchrones par bloc — et non
 /// les 4 Mo empruntés à UltraDefrag ; valider un déplacement réécrit un
-/// enregistrement de MFT et un secteur de `$Bitmap`, jamais le cluster 0 ; et
-/// sur NTFS, ce qu'un déplacement quitte n'est libre qu'au point de contrôle
-/// suivant (`NTFSCheckpoints`). La liste des trous d'une phase est bâtie une
-/// fois, à son début, et consommée : ce qu'une phase libère ne sert qu'à la
-/// suivante, comme l'outil relisait la bitmap.
+/// enregistrement de MFT et un secteur de `$Bitmap`, jamais le cluster 0. Sous
+/// XP, ce qu'un déplacement quitte est libre tout de suite dans la bitmap que
+/// l'outil relit, et s'y poser coûte un vidage du journal
+/// (`DefragVolume.reusesWithDeletePending`) ; sous Vista et 7, le modèle le
+/// retient jusqu'au point de contrôle (`NTFSCheckpoints`). La liste des trous
+/// d'une phase est bâtie une fois, à son début, et consommée : ce qu'une
+/// phase libère ne sert qu'à la suivante, comme l'outil relisait la bitmap.
 ///
 /// Ce que la source donne aussi, et que le modèle **ne fait pas** : la zone
 /// d'optimisation du démarrage (`layout.ini`, 32 Mo par fichier au plus, hors
@@ -220,7 +222,7 @@ struct WindowsXPStrategy: DefragStrategy {
         sink.progress = 1
         DefragOperations.final(partition: pass.volume.partition, phase: Self.commitPhase, into: sink)
 
-        return DefragPlan(
+        var plan = DefragPlan(
             strategy: self,
             partition: pass.volume.partition,
             initialRuns: initialRuns,
@@ -235,6 +237,8 @@ struct WindowsXPStrategy: DefragStrategy {
             evacuations: pass.evacuations,
             arrangement: pass.volume.arrangement
         )
+        plan.logFlushes = sink.logFlushes
+        return plan
     }
 
     func summary(of plan: DefragPlan) -> String {
@@ -385,10 +389,12 @@ extension WindowsXPStrategy {
 
         // MARK: Déplacer
 
-        /// Un fichier entier vers un trou, validé, retenu jusqu'au point de
-        /// contrôle.
+        /// Un fichier entier vers un trou, validé. Ce qu'il quitte est retenu
+        /// jusqu'au point de contrôle hors XP ; sous XP, libre tout de suite,
+        /// et le réemployer coûte un vidage du journal.
         mutating func move(_ position: Int, to target: Extent, phase: Int) {
             let file = volume.files[position]
+            DefragOperations.deletePending(target: [target], volume: &volume, phase: phase, into: sink)
             DefragOperations.move(source: file.extents, destination: [target],
                                   category: file.category, contiguous: true, phase: phase,
                                   partition: partition, bufferBytes: strategy.bufferBytes,
@@ -421,6 +427,8 @@ extension WindowsXPStrategy {
             guard need > 0,
                   let target = DefragOperations.firstGap(in: volume, need: need, avoidingMFTZone: false)
             else { return }
+            DefragOperations.deletePending(target: [target], volume: &volume,
+                                           phase: WindowsXPStrategy.defragPhase, into: sink)
             DefragOperations.move(source: tail, destination: [target],
                                   category: .reserved, contiguous: true, phase: WindowsXPStrategy.defragPhase,
                                   partition: partition, bufferBytes: strategy.bufferBytes,

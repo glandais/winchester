@@ -48,7 +48,7 @@ func describe(_ plan: DefragPlan) -> String {
     fragmentés    : \(plan.before.fragmentedFiles) avant, \(plan.after.fragmentedFiles) après
     morceaux      : \(plan.before.fragments) avant, \(plan.after.fragments) après
     trous libres  : \(plan.before.freeHoles) avant, \(plan.after.freeHoles) après
-    """
+    """ + (plan.logFlushes > 0 ? "\njournal       : \(plan.logFlushes) vidages forcés (DELETE_PENDING)" : "")
 }
 
 /// Ce qu'un démarrage a lu, et qui du processeur ou du disque l'a fait durer.

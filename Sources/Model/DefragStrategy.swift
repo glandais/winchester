@@ -590,15 +590,27 @@ enum DefragOperations {
 // MARK: - Points de contrôle
 
 /// La cadence des points de contrôle NTFS, vue d'un outil qui passe par
-/// `FSCTL_MOVE_FILE` et relit le bitmap du volume à chaque recherche de trou.
+/// `FSCTL_MOVE_FILE` et relit le bitmap du volume.
 ///
 /// Un tel outil ne choisit rien : c'est Windows qui fait le point de contrôle,
-/// **toutes les cinq secondes** (« NTFS writes checkpoint every 5 sec », dans
-/// le chapitre sur la reprise de NTFS des supports de *Windows Internals*),
-/// « every few seconds » pour Russinovich. Entre deux, les clusters qu'un
-/// déplacement quitte sont occupés dans le bitmap que l'outil relit, et un
-/// déplacement vers eux échouerait. C'est la cadence du défragmenteur de XP et
-/// de JkDefrag.
+/// **toutes les cinq secondes** : le minuteur est armé à −5 s dès qu'un
+/// volume est sali, et réarmé à chaque point de contrôle (`FiveSecondsFromNow`,
+/// `logsup.c:902-906`, `verfysup.c:1470-1490`) ; à sa fin,
+/// `NtfsFreeRecentlyDeallocated` rend les clusters libérés avant lui
+/// (`logsup.c:2260, 4500-4533`).
+///
+/// Ce que cela change dépend du volume. **Hors XP**
+/// (`DefragVolume.releaseWaitsForCheckpoint`), les clusters qu'un
+/// déplacement quitte sont occupés dans le bitmap que l'outil relit jusqu'au
+/// point de contrôle : la règle de Russinovich pour NT 4, gardée pour Vista
+/// et 7 faute de source. Les **décisions** d'un outil qui la suit dépendent
+/// alors de l'horloge : deux secondes d'analyse en moins décalaient la grille
+/// et changeaient le plan (chantier 48). **Sous XP**
+/// (`DefragVolume.reusesWithDeletePending`), ces clusters sont libres pour
+/// l'outil tout de suite ; le point de contrôle ne décide que de ce que le
+/// pilote suit encore, donc des vidages de journal qu'un réemploi coûte
+/// (`DefragOperations.deletePending`). Le plan ne dépend plus de l'horloge,
+/// seulement le nombre de ces vidages.
 ///
 /// Les outils qui ont leur propre comptabilité en ont une autre, et chacune est
 /// un choix : UltraDefrag ne relit sa liste de trous qu'en tête de tour, le
@@ -614,20 +626,58 @@ struct NTFSCheckpoints {
     static let interval = 5.0
 
     private var last = 0.0
-    /// Les clusters retenus au moment de la dernière validation.
+    /// Les clusters retenus, ou récemment désalloués sous XP, au moment de la
+    /// dernière validation.
     private var heldAtLastCommit = 0
 
     /// Après chaque validation : si un point de contrôle est tombé depuis la
-    /// précédente, ce qu'elle avait laissé retenu redevient libre.
+    /// précédente, ce qu'elle avait laissé retenu redevient libre — ou, sous
+    /// XP, cesse d'être suivi par le pilote.
     mutating func afterCommit(_ volume: inout DefragVolume, sink: OperationSink) {
-        guard volume.releaseWaitsForCheckpoint else { return }
+        let waits = volume.releaseWaitsForCheckpoint
+        guard waits || volume.reusesWithDeletePending else { return }
         let now = sink.plannedSeconds
         let checkpoint = (now / Self.interval).rounded(.down) * Self.interval
         if checkpoint > last {
-            volume.releaseHeldClusters(first: heldAtLastCommit)
+            if waits {
+                volume.releaseHeldClusters(first: heldAtLastCommit)
+            } else {
+                volume.forgetRecentlyDeallocated(first: heldAtLastCommit)
+            }
             last = checkpoint
         }
-        heldAtLastCommit = volume.heldClusters.count
+        heldAtLastCommit = waits ? volume.heldClusters.count : volume.recentlyDeallocated.count
+    }
+}
+
+extension DefragOperations {
+
+    /// Sous XP, un `FSCTL_MOVE_FILE` dont la destination recoupe des clusters
+    /// récemment désalloués : `STATUS_DELETE_PENDING` au premier bloc, que
+    /// `NtfsDefragFile` intercepte ; il prend tous les fichiers, **vide le
+    /// journal** jusqu'à son dernier enregistrement (`LfsFlushToLsn(LiMax)`),
+    /// rend tous les clusters récemment désalloués
+    /// (`NtfsFreeRecentlyDeallocated` avec `CleanVolume`) et recommence
+    /// (`deviosup.c:10360-10390, 10661-10671, 10745-10790`). Le déplacement
+    /// réussit ; un seul vidage suffit, puisque tout est rendu.
+    ///
+    /// À appeler **avant** d'émettre le déplacement : le vidage le précède.
+    /// Le vidage écrit la page de journal entamée, là où tombe la dernière
+    /// validation (`PartitionGeometry.logPage(forValidation:)`) ; une page
+    /// de 4 Ko, sans savoir ce que LFS garde encore en tampon au-delà.
+    ///
+    /// - Returns: `true` si le journal a été vidé.
+    @discardableResult
+    static func deletePending(target: [Extent], volume: inout DefragVolume,
+                              phase: Int, into sink: OperationSink) -> Bool {
+        guard volume.reusesWithDeletePending, volume.touchesRecentlyDeallocated(target) else { return false }
+        let page = volume.partition.logPage(forValidation: max(sink.validations - 1, 0))
+        sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: page.lba,
+                                sectors: page.sectors, isWrite: true,
+                                issueTime: 0, cluster: nil))
+        volume.forgetRecentlyDeallocated()
+        sink.logFlushes += 1
+        return true
     }
 }
 
