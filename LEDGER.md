@@ -9254,14 +9254,49 @@ alors que la feuille des pourboires interroge l'App Store par StoreKit.
 
 ### Laissé ouvert
 
-- **Ko-fi sur le site**, que l'app ouvre en un tap (« Website », « Help and
-  support », « Privacy policy ») : garder ou retirer reste une décision de
-  Gabriel au regard de 3.1.1(a). Retirer, c'est le pied des quatre pages, la
-  phrase de l'accueil, les deux lignes du README et la phrase des notes de
-  revue.
-- **Les notes de revue ne sont pas poussées** (`asc review details-update`).
-- **« Data Not Collected »** (`metadata/app-privacy.json`) et le manifeste
-  restent vrais : Apple traite l'achat, l'app ne reçoit ni ne garde rien de
-  l'acheteur, et StoreKit n'est pas une API à raison déclarée. À confirmer par
-  Gabriel avant la soumission.
+- **Les notes de revue ne sont pas poussées** (`asc review details-update`) :
+  à faire par Gabriel au moment de soumettre.
+- **« Data Not Collected »** reste vrai : Apple traite l'achat, l'app ne
+  reçoit ni ne garde rien de l'acheteur, et StoreKit n'est pas une API à raison
+  déclarée. Le manifeste est celui de DepthWeaver à la lettre près (aucun
+  pistage, aucune donnée collectée, `UserDefaults` en `CA92.1`).
+  `metadata/app-privacy.json` le dit autrement : `"dataUsages": []`, là où
+  DepthWeaver écrit une entrée `DATA_NOT_COLLECTED` ; la déclaration publiée
+  sur le store (faite dans le navigateur) est la même, seul le fichier diffère.
+  Laissé tel quel.
 - La nouvelle `settings.about.note` n'a pas été vue à l'écran.
+
+### Aligné sur DepthWeaver
+
+Décision de Gabriel, le 25 septembre 2026 : **Ko-fi reste sur le site, le
+pourboire passe par l'achat intégré, comme dans DepthWeaver**, dont la
+version 1.2.1, publiée, a été validée par Apple avec ce schéma. DepthWeaver
+ne cite Ko-fi que dans le pied de ses pages, sous « Buy me a coffee » ; seule
+sa page confidentialité parle des pourboires ; ses notes de revue décrivent
+les trois consommables et disent qu'il n'y a aucun lien de don dans l'app,
+sans parler du site.
+
+- **Pied des quatre pages** (`docs/`) : « Support on Ko-fi » devient « Buy me
+  a coffee », `rel="noopener"`, à la même place.
+- **Accueil** : la phrase « … leave one in the app … or on Ko-fi » disparaît,
+  et les deux lignes « Details » ne parlent plus des pourboires ni de StoreKit
+  (« Free, with everything included » ; « no network connection of its own »).
+- **Confidentialité** : le paragraphe « Tips » reprend celui de DepthWeaver
+  (trois pourboires en achat intégré, rien de débloqué, paiement tout entier
+  chez Apple, ni nom, ni adresse, ni moyen de paiement reçus, aucune trace de
+  l'achat dans l'app), plus une phrase sur StoreKit, seule voie réseau. Le fond
+  ne change pas : date d'effet toujours au 25 septembre 2026.
+- **Notes de revue** : le premier paragraphe ne dit plus que l'app, ses liens
+  « About » et l'absence de réseau propre ; une section `TIPS (IN-APP
+  PURCHASE)` sur le modèle de DepthWeaver porte les trois identifiants, le
+  chemin Settings → Support Winchester, rien de débloqué, rien à restaurer,
+  aucun lien de don dans l'app, et l'échange StoreKit. La phrase sur le Ko-fi
+  du site est retirée.
+- **README** : « Offrir un café » dans la ligne de liens, et la section
+  « Soutenir » dit le pourboire de l'app puis Ko-fi en une ligne.
+- **L'app ne change pas** : `TipJar` est le fichier commun du dépôt
+  `donations`, comme chez DepthWeaver (plus `sheetClosed`, B#35), et
+  `TipSheet` porte les mêmes clés `tip.*` et le même texte. Aucun lien Ko-fi
+  ni de don dans `Sources/`. DepthWeaver range la feuille sous « À propos »,
+  Winchester dans une ligne des Réglages : sans effet pour la revue.
+- `CLAUDE.md` fixe la règle dans « Publier ».

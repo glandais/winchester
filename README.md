@@ -6,7 +6,7 @@
 [Confidentialité](https://glandais.github.io/winchester/privacy/) ·
 [Code source](https://github.com/glandais/winchester) ·
 [Autres apps du développeur](https://apps.apple.com/developer/id1891310404) ·
-[Ko-fi](https://ko-fi.com/gabylandais)
+[Offrir un café](https://ko-fi.com/gabylandais)
 
 Le nom vient de l'IBM 3340 « 30/30 », baptisé *Winchester* en 1973 — le
 premier disque à plateaux scellé avec ses têtes, l'ancêtre direct de ceux
@@ -2134,10 +2134,10 @@ screenshots/               cadrage Koubou, assemblage, et les cartes envoyées
 
 Winchester est gratuit, et rien ne s'y débloque. Dans l'app, Réglages →
 « Soutenir Winchester » propose trois pourboires par achat intégré
-(`Sources/Tips/TipJar.swift`, chantier 38), qui ne débloquent rien. Hors de
-l'app, on peut aussi en laisser un sur
-[ko-fi.com/gabylandais](https://ko-fi.com/gabylandais) : le lien vit sur le
-site et ici, jamais dans l'app (directive 3.1.1, chantier 36).
+(`Sources/Tips/TipJar.swift`, chantier 38), qui ne débloquent rien.
+
+Si Winchester vous plaît, vous pouvez aussi
+[m'offrir un café sur Ko-fi](https://ko-fi.com/gabylandais).
 
 ## Journal de bord
 

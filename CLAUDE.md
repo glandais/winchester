@@ -343,6 +343,12 @@ confidentialité doit suivre `Sources/Resources/PrivacyInfo.xcprivacy` et
 `metadata/app-privacy.json` — une donnée gardée de plus, une autorisation, un
 accès réseau, et elle change avec sa date d'effet.
 
+**Pourboires : le modèle est DepthWeaver 1.2.1**, validé par Apple. Dans
+l'app, trois achats intégrés (Réglages → « Support Winchester »), sans aucun
+lien de don externe ; sur le site, seule la page confidentialité en parle.
+Ko-fi n'apparaît **que** dans le pied des pages du site (« Buy me a coffee »)
+et dans le `README.md` — jamais dans l'app ni dans les notes de revue.
+
 ### Captures
 
 Trois temps, tous scriptés, décrits dans `screenshots/README.md` :
@@ -370,8 +376,7 @@ prête à être soumise** : le build 4 ne porte ni la section « À propos »
 partent avec la version ; il faut un nouveau build, fait après la fusion de la
 branche `xp` (chantiers 47 à 52, `LEDGER-XP.md`, puis 53 : les pourboires
 dits partout, B#31 à B#34, B#36 et B#45 d'`AUDIT_REALISME.md`) dans
-`develop`. Avant la soumission restent à décider Ko-fi sur le site, que
-l'app ouvre en un tap (directive 3.1.1(a)), et à pousser les notes de revue
+`develop`. Avant la soumission reste à pousser les notes de revue
 (`asc review details-update`). L'envoi prend
 parfois une erreur 500 d'App Store Connect sur un fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
 ne renvoie que ce qui manque.

@@ -12,7 +12,7 @@ Le garder vrai : une personne le lit avec l'app ouverte.
 
 ---
 
-Winchester is an offline simulator of the mechanical hard disks of 1993 to 2012. It computes the motion of the head over a simulated volume and renders the sound that motion would make. No sound is recorded, sampled or downloaded, and the app sends no data anywhere: there is no account, no server and no analytics. The app opens no network connection of its own; the only network traffic is Apple's StoreKit, which fetches the three tip products and their prices when Settings → Support Winchester is opened, and handles a tip purchase. The only outbound links are under Settings → About (website, support, privacy policy, source code, App Store listing and developer page); they open in Safari or the App Store. The app has no paid content or feature. Settings → Support Winchester offers three optional consumable tips (io.github.glandais.winchester.tip.small, .medium, .large) through In-App Purchase; they unlock nothing, nothing about them is stored, and the app just says thank you. The app itself contains no external tip, donation or payment link; the developer's website, one of the About links, also mentions a Ko-fi page.
+Winchester is an offline simulator of the mechanical hard disks of 1993 to 2012. It computes the motion of the head over a simulated volume and renders the sound that motion would make. No sound is recorded, sampled or downloaded, and the app sends no data anywhere: there is no account, no sign-in, no server and no analytics, and the app opens no network connection of its own. The only outbound links are under Settings → About (website, support, privacy policy, source code, App Store rating page and developer page); they open in Safari or the App Store.
 
 WHY THE AUDIO BACKGROUND MODE
 A defragmentation pass on a period volume runs for tens of minutes, sometimes several hours — that duration is the point of the app, not a side effect. The audio has to keep playing with the screen locked, exactly as a music player would, so the app declares the `audio` background mode. It plays only while a pass is running and stops with it.
@@ -22,3 +22,6 @@ Open the app and go through the three welcome screens; the last button, "Listen 
 
 NO USER DATA
 The app asks for no permission. Disks the user builds are stored on the device and nowhere else.
+
+TIPS (IN-APP PURCHASE)
+The app has no paid content or feature. Three optional consumable tips (io.github.glandais.winchester.tip.small, .medium, .large) are offered through In-App Purchase under Settings → Support Winchester. A tip unlocks nothing; the app just says thank you. There is nothing to restore, and there is no external tip or donation link in the app. The only network traffic is Apple's StoreKit, which fetches the three tips and their prices when that screen opens and handles the purchase.

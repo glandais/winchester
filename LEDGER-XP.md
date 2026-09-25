@@ -7,8 +7,9 @@ de la 1.0.0 restent : la fusion de `xp` dans `develop`, un nouveau build
 trois achats intégrés partent avec la version). Les corrections laissées
 hors de ce plan — B#31 à B#34, B#36 et B#45 (« sans achat intégré », Ko-fi,
 « no network access », le commentaire d'`AboutLink`) — sont faites au
-chantier 53, sur la même branche ; restent à Gabriel Ko-fi sur le site et
-l'envoi des notes de revue.
+chantier 53, sur la même branche, puis alignées sur DepthWeaver (Ko-fi au
+seul pied du site, pourboire en achat intégré) ; reste à Gabriel l'envoi des
+notes de revue.
 
 Ce fichier n'est pas un chantier : **aucune ligne du modèle n'a bougé**. Il
 range en chantiers trois retours du 22 septembre 2026, pris sur `develop` à
