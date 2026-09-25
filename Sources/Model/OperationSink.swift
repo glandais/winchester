@@ -64,12 +64,12 @@ final class OperationSink {
     /// récemment désalloués, sous XP (`DefragOperations.deletePending`).
     var logFlushes = 0
 
-    /// Sous XP, les pages de métadonnées qu'un déplacement a salies et que le
-    /// *lazy writer* n'a pas encore écrites : premier secteur, nombre de
-    /// secteurs (`DefragOperations.lazyFlush`).
-    var lazyDirty: [Int: Int] = [:]
-    /// Heure planifiée du dernier passage du *lazy writer*.
-    var lastLazyFlush = 0.0
+    /// Sous XP, le *lazy writer* : les pages de métadonnées qu'un
+    /// déplacement a salies, et quand il les écrit
+    /// (`DefragOperations.lazyFlush`).
+    var lazyWriter = LazyWriter()
+    /// Sous XP, la file d'`atapi`, que ses fils de travail croisent.
+    var queue = AtapiQueue()
     /// Validations dont les enregistrements de journal sont déjà sur le
     /// disque, sous XP : LFS écrit paresseusement (`LfsWrite`), et seul un
     /// vidage les pose (`DefragOperations.flushLog`).
@@ -170,7 +170,8 @@ final class OperationSink {
                                           isWrite: operation.isWrite, issueTime: operation.issueTime,
                                           cluster: operation.cluster, mutationStart: start,
                                           mutationCount: operation.mutationCount + Int32(carried.count),
-                                          thinkTime: operation.thinkTime, flow: operation.flow)
+                                          thinkTime: operation.thinkTime, flow: operation.flow,
+                                          hostWork: operation.hostWork)
                 carried.removeAll(keepingCapacity: true)
             }
         }

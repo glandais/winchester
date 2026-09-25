@@ -316,6 +316,14 @@ enum InstallPlanner {
 
         /// Secteurs de métadonnées modifiés et pas encore écrits.
         private var dirty: [Int: Int] = [:]
+        /// Sous XP, le *lazy writer* et la file d'`atapi` (`LazyWriter`).
+        private var lazy = LazyWriter()
+        private var queue = AtapiQueue()
+        /// L'heure estimée de la fin de la dernière requête du premier plan.
+        private var foregroundEnd = 0.0
+        private var usesLazyWriter: Bool {
+            era.name == "Windows XP" && partition.format == .ntfs
+        }
         private var pendingMutations: [MapMutation] = []
         private var pendingThink = 0.0
         /// Heure estimée de la passe, et du dernier vidage des tables.
@@ -369,7 +377,7 @@ enum InstallPlanner {
 
         mutating func finish() {
             closeStep()
-            flushMetadata(force: true)
+            flushMetadata(force: true, shutdown: true)
             // La dernière écriture des tables, et ce que la carte attend encore.
             sink.progress = 1
             if !pendingMutations.isEmpty {
@@ -622,7 +630,7 @@ enum InstallPlanner {
         /// Un démarrage à chaud sur ce qui est posé jusqu'ici. Le plateau ne
         /// s'arrête pas : seul le POST impose son silence.
         private mutating func reboot() {
-            flushMetadata(force: true)
+            flushMetadata(force: true, shutdown: true)
             var catalog = installed.disk.catalog
             for id in catalog.liveIDs where placed[id] == nil {
                 _ = catalog.remove(id)
@@ -639,9 +647,12 @@ enum InstallPlanner {
                 let cluster = offset >= 0 ? offset / partition.clusterSectors : nil
                 emit(request.isWrite ? .metadata : .scan, lba: request.lba,
                      sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster,
-                     flow: request.flow, backgroundThink: request.thinkTime)
+                     flow: request.flow,
+                     delay: request.flow == .background ? request.thinkTime : 0,
+                     hostWork: request.hostWork)
             }
             pendingThink += boot.tail
+            queue = boot.queue
             plan.reboots += 1
         }
 
@@ -654,14 +665,49 @@ enum InstallPlanner {
             let directories = installed.disk.catalog.directories
             let entry = partition.entrySector(inDirectory: directories.indices.contains(Int(record.directory))
                                                   ? directories[Int(record.directory)] : nil)
-            for access in partition.commitAccesses(for: record.extents, fileIndex: rank,
-                                                   entrySector: entry,
-                                                   validation: nil) {
-                dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
+            let accesses = partition.commitAccesses(for: record.extents, fileIndex: rank,
+                                                    entrySector: entry,
+                                                    validation: nil)
+            guard usesLazyWriter else {
+                for access in accesses { dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors) }
+                return
+            }
+            MachineWriter.dirtyNTFS(accesses, partition: partition, into: &lazy,
+                                    at: clock + pendingThink)
+        }
+
+        /// Sous XP, les passages du *lazy writer* échus — ou tout, avant un
+        /// redémarrage et à la fin —, en arrière-plan, une page de journal
+        /// devant chacun (`MachineWriter.runLazyWriter`).
+        private mutating func runLazyWriter(at time: Double, shutdown: Bool) {
+            let scans = shutdown ? [LazyWriter.Scan(time: time, streams: lazy.flushAll())]
+                : lazy.due(at: time)
+            for scan in scans where !scan.streams.isEmpty {
+                let page = partition.logPage(journalPages)
+                journalPages += 1
+                let log = [LazyWriter.Write(lba: page.lba, sectors: page.sectors, stream: .other(0))]
+                // Le passage tombe tant de secondes après la dernière requête
+                // du premier plan ; l'arrêt, lui, l'attend.
+                let delay = shutdown ? 0 : max(scan.time - foregroundEnd, 0)
+                for write in LazyWriter.served(scan.streams, log: log, queue: &queue) {
+                    sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: write.lba,
+                                            sectors: write.sectors, isWrite: true, issueTime: 0,
+                                            cluster: nil, mutationStart: sink.mutationMark,
+                                            mutationCount: 0, thinkTime: delay,
+                                            flow: shutdown ? .foreground : .background))
+                    plan.metadataSectors += write.sectors
+                }
+                plan.metadataFlushes += 1
             }
         }
 
-        private mutating func flushMetadata(force: Bool) {
+        /// - Parameter shutdown: l'arrêt de la machine, qui vide tout. Sous
+        ///   XP, rien d'autre ne force le *lazy writer*.
+        private mutating func flushMetadata(force: Bool, shutdown: Bool = false) {
+            if usesLazyWriter {
+                runLazyWriter(at: clock + pendingThink, shutdown: shutdown)
+                return
+            }
             guard !dirty.isEmpty else { return }
             if !force, case let .every(seconds) = era.flush, clock - lastFlush < seconds { return }
 
@@ -704,24 +750,35 @@ enum InstallPlanner {
         /// `flow` et `backgroundThink` : comme `MachineWriter.emit`.
         private mutating func emit(_ kind: DiskOperation.Kind, lba: Int, sectors: Int,
                                    isWrite: Bool, cluster: Int?,
-                                   flow: RequestFlow = .foreground, backgroundThink: Double = 0) {
+                                   flow: RequestFlow = .foreground, delay: Double = 0,
+                       hostWork: Double = 0) {
+            // Ce que le lazy writer a écrit pendant le calcul qui précède.
+            if usesLazyWriter, flow != .background {
+                runLazyWriter(at: clock + pendingThink, shutdown: false)
+            }
             let start = sink.mutationMark
             for mutation in pendingMutations { sink.record(mutation) }
             let count = Int32(pendingMutations.count)
             pendingMutations.removeAll(keepingCapacity: true)
 
-            let think = flow == .background ? backgroundThink : pendingThink
+            let think = flow == .background ? delay : pendingThink
             sink.progress = min(Double(bytesPlaced) / Double(totalBytes), 1)
             sink.moves = MoveCount(filesMoved: plan.filesWritten, evacuations: 0)
             sink.emit(DiskOperation(kind: kind, phase: phase, lba: lba, sectors: sectors,
                                     isWrite: isWrite, issueTime: 0, cluster: cluster,
                                     mutationStart: start, mutationCount: count,
-                                    thinkTime: think, flow: flow))
+                                    thinkTime: think, flow: flow, hostWork: hostWork))
+            guard flow != .background else {
+                plan.thinkSeconds += hostWork
+                clock += hostWork
+                return
+            }
             plan.thinkSeconds += think
             clock += think
                 + Double(sectors * DriveGeometry.bytesPerSector) / diskBytesPerSecond
                 + 0.012
-            if flow != .background { pendingThink = 0 }
+            foregroundEnd = clock
+            pendingThink = 0
         }
     }
 }

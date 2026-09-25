@@ -595,6 +595,9 @@ struct BootPlan {
     /// Somme des temps de calcul : la durée qu'aurait le démarrage si le disque
     /// répondait instantanément.
     let thinkSeconds: Double
+    /// La file d'`atapi` à la fin du démarrage : sa clé, que la suite de la
+    /// session reprend.
+    var queue = AtapiQueue()
     let post: Double
     let tail: Double
 }
@@ -683,7 +686,7 @@ enum BootPlanner {
                 }
             }
         }
-        builder.flushStamps(phase: script.acts.count - 1)
+        builder.flushStamps(phase: script.acts.count - 1, draining: true)
 
         return BootPlan(partition: partition,
                         osName: script.osName,
@@ -699,6 +702,7 @@ enum BootPlanner {
                         stampWrites: builder.stampWrites,
                         softwareCache: builder.softwareCacheReport,
                         thinkSeconds: builder.thinkSeconds,
+                        queue: builder.queue,
                         post: script.post,
                         tail: script.tail)
     }
@@ -1188,8 +1192,34 @@ enum BootPlanner {
                 access = MetadataAccess(lba: lba / pageSectors * pageSectors,
                                         sectors: pageSectors)
             }
-            dirtyStamps[access.lba] = max(dirtyStamps[access.lba] ?? 0, access.sectors)
+            if prefetchBursts, !partition.format.isFAT {
+                lazy.dirty(.mft, rank: access.lba, lba: access.lba, at: thinkSeconds)
+            } else {
+                dirtyStamps[access.lba] = max(dirtyStamps[access.lba] ?? 0, access.sectors)
+            }
             stampedFiles += 1
+        }
+
+        /// Sous XP, le *lazy writer* (`LazyWriter`) : son horloge est le
+        /// temps de calcul, qui minore le temps réel.
+        private var lazy = LazyWriter()
+        /// Le temps de calcul à la dernière requête du premier plan.
+        private var thinkAtForeground = 0.0
+
+        /// Sous XP, les passages du *lazy writer* échus — tous, en fin de
+        /// démarrage : ils partent en arrière-plan, sans retenir le fil.
+        private mutating func runLazyWriter(phase: Int, draining: Bool) {
+            for scan in lazy.due(at: draining ? .infinity : thinkSeconds) {
+                // Le passage tombe tant de secondes de calcul après la
+                // dernière requête du premier plan.
+                let delay = max(min(scan.time, thinkSeconds) - thinkAtForeground, 0)
+                for write in LazyWriter.served(scan.streams, log: [], queue: &queue) {
+                    issue(lba: write.lba, sectors: write.sectors, isWrite: true, phase: phase,
+                          flow: .background, delay: delay)
+                    bytesWritten += write.sectors * DriveGeometry.bytesPerSector
+                    stampWrites += 1
+                }
+            }
         }
 
         /// Le cache vide ce que les dates d'accès ont sali : dans l'ordre du
@@ -1200,8 +1230,12 @@ enum BootPlanner {
         /// ne l'étaient. Aucune page de journal ne les accompagne : le modèle
         /// suppose, sans source qui le tranche, que NTFS ne journalise pas une
         /// simple date.
-        mutating func flushStamps(phase: Int) {
+        mutating func flushStamps(phase: Int, draining: Bool = false) {
             sinceFlush = 0
+            if prefetchBursts, !partition.format.isFAT {
+                runLazyWriter(phase: phase, draining: draining)
+                return
+            }
             guard !dirtyStamps.isEmpty else { return }
             var runs: [(lba: Int, sectors: Int)] = []
             for lba in dirtyStamps.keys.sorted() {
@@ -1420,13 +1454,16 @@ enum BootPlanner {
         /// fin. En arrière-plan, `think` est ce que le fil calcule pendant
         /// qu'elle se sert, et le calcul en attente reste pour la suivante.
         private mutating func issue(lba: Int, sectors: Int, isWrite: Bool, phase: Int,
-                                    flow: RequestFlow = .foreground, think: Double = 0) {
+                                    flow: RequestFlow = .foreground, delay: Double = 0,
+                                    hostWork: Double = 0) {
             if flow == .background {
                 requests.append(BlockRequest(issueTime: 0, lba: lba, sectorCount: sectors,
                                              isWrite: isWrite, phaseIndex: phase,
-                                             thinkTime: think, flow: .background))
+                                             thinkTime: delay, flow: .background,
+                                             hostWork: hostWork))
                 return
             }
+            thinkAtForeground = thinkSeconds
             requests.append(BlockRequest(issueTime: 0,
                                          lba: lba,
                                          sectorCount: sectors,
@@ -1607,7 +1644,7 @@ enum BootPlanner {
             for lot in [data, image] where !lot.isEmpty {
                 for access in queue.serve(burst: lot, key: \.lba) {
                     issue(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase,
-                          flow: flow, think: carried)
+                          flow: flow, hostWork: carried)
                     carried = 0
                     emitted = true
                 }
@@ -1647,7 +1684,7 @@ enum BootPlanner {
                     computed += cost
                 } else {
                     pending += cost
-                    if sinceFlush >= flushSeconds { flushStamps(phase: phase) }
+                    flushStamps(phase: phase)
                 }
             }
             return computed

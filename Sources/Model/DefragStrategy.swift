@@ -596,13 +596,6 @@ enum DefragOperations {
         partition.format == .ntfs && partition.ntfsFormatting == .xp
     }
 
-    /// Le passage du *lazy writer*, en secondes de temps planifié. Le modèle
-    /// l'avait déjà pour les installations et les journées de XP
-    /// (`InstallEra`, une seconde) ; le détail du vrai — un réveil par
-    /// seconde, un huitième des pages sales, le premier passage à 3 s — est
-    /// au chantier 51.
-    static let lazyWriterInterval = 1.0
-
     /// Un déplacement demandé par un outil qui passe par `FSCTL_MOVE_FILE` —
     /// XP, JkDefrag, UltraDefrag —, tel que le pilote le joue.
     ///
@@ -679,8 +672,9 @@ enum DefragOperations {
         let pageSectors = PartitionGeometry.logPageSectors
         // Quatre enregistrements d'un kilo-octet par page de 4 Ko.
         let recordsPerPage = max(pageSectors / partition.mftRecordSectors, 1)
+        let now = sink.plannedSeconds
         let mftPage = partition.mftRecordLBA(fileIndex - fileIndex % recordsPerPage)
-        sink.lazyDirty[mftPage] = max(sink.lazyDirty[mftPage] ?? 0, pageSectors)
+        sink.lazyWriter.dirty(.mft, rank: mftPage, lba: mftPage, at: now)
         // Une page de bitmap couvre 32 768 clusters.
         let clustersPerPage = pageSectors * DriveGeometry.bytesPerSector * 8
         for range in [(chunk.read, chunk.length), (chunk.write, chunk.length)] {
@@ -688,7 +682,7 @@ enum DefragOperations {
             let last = (Int(range.0) + Int(range.1) - 1) / clustersPerPage
             for page in first...last {
                 let lba = partition.bitmapLBA + page * pageSectors
-                sink.lazyDirty[lba] = max(sink.lazyDirty[lba] ?? 0, pageSectors)
+                sink.lazyWriter.dirty(.bitmap, rank: page, lba: lba, at: now)
             }
         }
         kernelTick(partition: partition, phase: phase, into: sink)
@@ -720,55 +714,58 @@ enum DefragOperations {
     /// (`lfs/write.c:185-190`). La page entamée est réécrite au vidage
     /// suivant.
     static func flushLog(partition: PartitionGeometry, phase: Int, into sink: OperationSink) {
+        for write in pendingLog(partition: partition, into: sink) {
+            sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: write.lba,
+                                    sectors: write.sectors, isWrite: true,
+                                    issueTime: 0, cluster: nil))
+        }
+    }
+
+    /// Les pages de journal que LFS n'a pas encore posées, d'un trait tant
+    /// qu'elles se suivent sur le disque — le journal reboucle à sa fin —,
+    /// comptées comme posées.
+    private static func pendingLog(partition: PartitionGeometry,
+                                   into sink: OperationSink) -> [LazyWriter.Write] {
         let validations = sink.validations
-        guard validations > sink.loggedValidations else { return }
+        guard validations > sink.loggedValidations else { return [] }
         let perPage = PartitionGeometry.validationsPerLogPage
         let firstPage = sink.loggedValidations / perPage
         let lastPage = (validations - 1) / perPage
+        var writes: [LazyWriter.Write] = []
         var page = firstPage
         while page <= lastPage {
             let start = partition.logPage(page)
             var count = 1
-            // D'un trait tant que les pages se suivent sur le disque : le
-            // journal reboucle à sa fin.
             while page + count <= lastPage,
                   partition.logPage(page + count).lba == start.lba + count * start.sectors {
                 count += 1
             }
-            sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: start.lba,
-                                    sectors: count * start.sectors, isWrite: true,
-                                    issueTime: 0, cluster: nil))
+            writes.append(LazyWriter.Write(lba: start.lba, sectors: count * start.sectors,
+                                           stream: .other(0)))
             page += count
         }
         sink.loggedValidations = validations
+        return writes
     }
 
-    /// Le *lazy writer* : toutes les `lazyWriterInterval` secondes planifiées,
-    /// les pages sales partent dans l'ordre du disque, fusionnées quand elles
-    /// se touchent, après le journal — un enregistrement doit être sur le
-    /// disque avant la page qu'il décrit (le vidage d'un flux journalisé
-    /// passe par `LfsFlushToLsn`).
+    /// Le *lazy writer* (`LazyWriter`) : les passages échus à l'heure
+    /// planifiée — le premier 3 s après qu'une page est salie, puis chaque
+    /// seconde —, chacun avec le journal d'abord (un enregistrement doit être
+    /// sur le disque avant la page qu'il décrit : `LfsFlushToLsn`), puis la
+    /// MFT et `$Bitmap` sur leurs fils, dans la file d'`atapi`. `force` : un
+    /// vidage de tout, en fin de passe.
     static func lazyFlush(partition: PartitionGeometry, phase: Int, force: Bool,
                           into sink: OperationSink) {
-        guard !sink.lazyDirty.isEmpty else { return }
-        if !force, sink.plannedSeconds - sink.lastLazyFlush < lazyWriterInterval { return }
-        var runs: [(lba: Int, sectors: Int)] = []
-        for lba in sink.lazyDirty.keys.sorted() {
-            let sectors = sink.lazyDirty[lba] ?? 1
-            if let last = runs.last, lba <= last.lba + last.sectors {
-                runs[runs.count - 1].sectors = max(last.sectors, lba + sectors - last.lba)
-            } else {
-                runs.append((lba, sectors))
+        let scans = force ? [sink.lazyWriter.flushAll()]
+            : sink.lazyWriter.due(at: sink.plannedSeconds).map(\.streams)
+        for scan in scans where !scan.isEmpty {
+            let log = pendingLog(partition: partition, into: sink)
+            for write in LazyWriter.served(scan, log: log, queue: &sink.queue) {
+                sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: write.lba,
+                                        sectors: write.sectors, isWrite: true,
+                                        issueTime: 0, cluster: nil))
             }
         }
-        sink.lazyDirty.removeAll(keepingCapacity: true)
-        flushLog(partition: partition, phase: phase, into: sink)
-        for run in runs {
-            sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: run.lba,
-                                    sectors: run.sectors, isWrite: true,
-                                    issueTime: 0, cluster: nil))
-        }
-        sink.lastLazyFlush = sink.plannedSeconds
     }
 
     /// Réécriture complète des tables, en fin de passe.

@@ -47,11 +47,13 @@ struct DiskOperation {
     let thinkTime: Double
     /// Qui l'attend (`RequestFlow`).
     let flow: RequestFlow
+    /// En arrière-plan, le calcul que l'hôte fait pendant qu'elle se sert.
+    let hostWork: Double
 
     init(kind: Kind, phase: Int, lba: Int, sectors: Int, isWrite: Bool,
          issueTime: Double, cluster: Int?,
          mutationStart: Int32 = 0, mutationCount: Int32 = 0,
-         thinkTime: Double = 0, flow: RequestFlow = .foreground) {
+         thinkTime: Double = 0, flow: RequestFlow = .foreground, hostWork: Double = 0) {
         self.kind = kind
         self.phase = phase
         self.lba = lba
@@ -63,6 +65,7 @@ struct DiskOperation {
         self.mutationCount = mutationCount
         self.thinkTime = thinkTime
         self.flow = flow
+        self.hostWork = hostWork
     }
 }
 

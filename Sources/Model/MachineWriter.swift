@@ -48,6 +48,14 @@ struct MachineWriter {
     /// Rang de création d'un fichier, qui désigne son enregistrement dans la
     /// MFT. Les seize premiers sont ceux du système de fichiers lui-même.
     private var ranks: [UInt32: Int] = [:]
+    /// Sous XP, le *lazy writer* et la file d'`atapi` (`LazyWriter`).
+    private var lazy = LazyWriter()
+    /// L'heure estimée de la fin de la dernière requête du premier plan.
+    private var foregroundEnd = 0.0
+    var queue = AtapiQueue()
+    /// Le cache de NT tel que XP le code : ses tables partent par le *lazy
+    /// writer*, en arrière-plan. Vista et 7 gardent le vidage du modèle.
+    var usesLazyWriter: Bool { era.name == "Windows XP" && partition.format == .ntfs }
 
     // Ce qui se compte.
     private(set) var thinkSeconds = 0.0
@@ -164,15 +172,75 @@ struct MachineWriter {
             ranks[record.id] = rank
             return rank
         }()
-        for access in partition.commitAccesses(for: record.extents, fileIndex: rank,
-                                               entrySector: partition.entrySector(inDirectory: directory),
-                                               validation: nil) {
-            dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors)
+        let accesses = partition.commitAccesses(for: record.extents, fileIndex: rank,
+                                                entrySector: partition.entrySector(inDirectory: directory),
+                                                validation: nil)
+        guard usesLazyWriter else {
+            for access in accesses { dirty[access.lba] = max(dirty[access.lba] ?? 0, access.sectors) }
+            return
+        }
+        Self.dirtyNTFS(accesses, partition: partition, into: &lazy, at: clock + pendingThink)
+    }
+
+    /// Sous XP, ce qu'une validation salit, par flux : la page de 4 Ko de la
+    /// MFT qui porte l'enregistrement — le premier accès —, puis les pages
+    /// de `$Bitmap` (`PartitionGeometry.commitAccesses`).
+    static func dirtyNTFS(_ accesses: [MetadataAccess], partition: PartitionGeometry,
+                          into lazy: inout LazyWriter, at time: Double) {
+        let page = LazyWriter.pageSectors
+        for (index, access) in accesses.enumerated() {
+            if index == 0 {
+                let lba = access.lba / page * page
+                lazy.dirty(.mft, rank: lba, lba: lba, at: time)
+            } else {
+                let base = partition.bitmapLBA
+                let first = (access.lba - base) / page
+                let last = (access.lba + access.sectors - 1 - base) / page
+                for rank in first...last {
+                    lazy.dirty(.bitmap, rank: rank, lba: base + rank * page, at: time)
+                }
+            }
         }
     }
 
+    /// Sous XP, les passages du *lazy writer* échus à l'instant `time` — ou
+    /// tout, à l'arrêt —, avec une page de journal devant les tables de
+    /// chacun (l'ordre de grandeur du modèle d'avant : une par vidage), en
+    /// arrière-plan.
+    private mutating func runLazyWriter(at time: Double, shutdown: Bool = false) {
+        let scans = shutdown ? [LazyWriter.Scan(time: time, streams: lazy.flushAll())]
+            : lazy.due(at: time)
+        for scan in scans where !scan.streams.isEmpty {
+            var log: [LazyWriter.Write] = []
+            if era.journaled {
+                let page = partition.logPage(journalPages)
+                journalPages += 1
+                log = [LazyWriter.Write(lba: page.lba, sectors: page.sectors, stream: .other(0))]
+            }
+            // Le passage tombe tant de secondes après la dernière requête du
+            // premier plan ; l'arrêt, lui, l'attend.
+            let delay = shutdown ? 0 : max(scan.time - foregroundEnd, 0)
+            for write in LazyWriter.served(scan.streams, log: log, queue: &queue) {
+                emitBackground(lba: write.lba, sectors: write.sectors, delay: delay,
+                               waited: shutdown)
+                metadataSectors += write.sectors
+            }
+            metadataFlushes += 1
+        }
+    }
+
+    /// L'arrêt, ou un redémarrage : tout ce que le cache tient part.
+    mutating func shutdown() {
+        guard usesLazyWriter else { flushMetadata(force: true); return }
+        runLazyWriter(at: clock, shutdown: true)
+    }
+
     /// Vide les tables si l'époque le veut, ou si on le force.
+    ///
+    /// Sous XP, rien ne force le *lazy writer* entre deux séances : seuls ses
+    /// passages échus partent (`shutdown` à l'arrêt).
     mutating func flushMetadata(force: Bool = false) {
+        if usesLazyWriter { runLazyWriter(at: clock + pendingThink); return }
         guard !dirty.isEmpty else { return }
         if !force, case let .every(seconds) = era.flush, clock - lastFlush < seconds { return }
 
@@ -204,7 +272,7 @@ struct MachineWriter {
         lastFlush = clock
     }
 
-    var hasDirtyMetadata: Bool { !dirty.isEmpty }
+    var hasDirtyMetadata: Bool { !dirty.isEmpty || !lazy.isClean }
 
     /// Vide les tables à chaque fichier si l'époque n'a pas de cache d'écriture.
     mutating func flushIfEveryFile() {
@@ -220,24 +288,43 @@ struct MachineWriter {
     ///     et le calcul en attente reste pour la suivante.
     mutating func emit(_ kind: DiskOperation.Kind, lba: Int, sectors: Int,
                        isWrite: Bool, cluster: Int?,
-                       flow: RequestFlow = .foreground, backgroundThink: Double = 0) {
+                       flow: RequestFlow = .foreground, delay: Double = 0,
+                       hostWork: Double = 0) {
+        // Ce que le lazy writer a écrit pendant le calcul qui précède.
+        if usesLazyWriter, flow != .background { runLazyWriter(at: clock + pendingThink) }
         let start = sink.mutationMark
         for mutation in pendingMutations { sink.record(mutation) }
         let count = Int32(pendingMutations.count)
         pendingMutations.removeAll(keepingCapacity: true)
 
-        let think = flow == .background ? backgroundThink : pendingThink
+        let think = flow == .background ? delay : pendingThink
         sink.progress = progress
         sink.moves = moves
         sink.emit(DiskOperation(kind: kind, phase: phase, lba: lba, sectors: sectors,
                                 isWrite: isWrite, issueTime: 0, cluster: cluster,
                                 mutationStart: start, mutationCount: count,
-                                thinkTime: think, flow: flow))
+                                thinkTime: think, flow: flow, hostWork: hostWork))
+        guard flow != .background else {
+            // Le fil de l'hôte n'attend pas : seul son calcul avance l'heure.
+            thinkSeconds += hostWork
+            clock += hostWork
+            return
+        }
         thinkSeconds += think
         clock += think
             + Double(sectors * DriveGeometry.bytesPerSector) / diskBytesPerSecond
             + 0.012
-        if flow != .background { pendingThink = 0 }
+        foregroundEnd = clock
+        pendingThink = 0
+    }
+
+    /// Une écriture du *lazy writer* : en arrière-plan, sans calcul, et sans
+    /// les mutations de la carte, qui attendent l'opération du premier plan.
+    private mutating func emitBackground(lba: Int, sectors: Int, delay: Double, waited: Bool) {
+        sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: lba, sectors: sectors,
+                                isWrite: true, issueTime: 0, cluster: nil,
+                                mutationStart: sink.mutationMark, mutationCount: 0,
+                                thinkTime: delay, flow: waited ? .foreground : .background))
     }
 
     /// Une écriture d'un secteur, quand il reste des couleurs à poser mais plus

@@ -394,6 +394,9 @@ struct DiskMechanics {
     /// disque servait des requêtes qu'il n'attendait pas (`RequestFlow`). Égal
     /// à `clock` tant que tout est au premier plan.
     private var hostReady: Double
+    /// La fin de la dernière requête du premier plan : ce d'où se compte le
+    /// délai d'une requête d'arrière-plan.
+    private var foregroundEnd: Double
     private(set) var stats = TraceStats()
     private var headCylinder: Int
     private var headIndex = 0
@@ -437,6 +440,7 @@ struct DiskMechanics {
         self.skew = geometry.skew(seekModel: seekModel)
         self.clock = spinUpAt + spinUpDuration
         self.hostReady = clock
+        self.foregroundEnd = clock
         self.armFree = clock
         // Au repos le bras est parqué au diamètre intérieur, sur la zone
         // d'atterrissage. Un plateau qui tournait déjà l'y a laissé ; un disque
@@ -499,6 +503,7 @@ struct DiskMechanics {
         // des rampes des scénarios ne l'est.
         clock = max(clock, t)
         hostReady = clock
+        foregroundEnd = clock
         armFree = clock
     }
 
@@ -573,14 +578,14 @@ struct DiskMechanics {
         case .barrier:
             computed = max(hostReady, clock) + request.thinkTime
         case .background:
-            computed = clock
-            hostReady += request.thinkTime
+            computed = foregroundEnd + request.thinkTime
+            hostReady += request.hostWork
         }
         let issued = max(clock, computed, request.issueTime)
         // Le calcul ne compte que ce qui s'est écoulé disque arrêté, avant la
         // prise en charge ; le reste de l'écart est un disque qui attend
         // qu'on lui demande.
-        let thought = max(min(issued, computed) - clock, 0)
+        let thought = request.flow == .background ? 0 : max(min(issued, computed) - clock, 0)
         stats.thinkSeconds += thought
         stats.waitSeconds += max(issued - clock - thought, 0)
 
@@ -596,7 +601,10 @@ struct DiskMechanics {
         if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
         stats.requestCount += 1
         clock = end
-        if request.flow != .background { hostReady = end }
+        if request.flow != .background {
+            hostReady = end
+            foregroundEnd = end
+        }
         served = true
         return RequestTiming(start: issued, end: end)
     }

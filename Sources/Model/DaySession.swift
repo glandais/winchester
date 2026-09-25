@@ -203,9 +203,12 @@ enum DayPlanner {
             let cluster = offset >= 0 ? offset / partition.clusterSectors : nil
             writer.emit(request.isWrite ? .metadata : .scan, lba: request.lba,
                         sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster,
-                        flow: request.flow, backgroundThink: think)
+                        flow: request.flow,
+                        delay: request.flow == .background ? think : 0,
+                        hostWork: request.hostWork)
         }
         plan.bytesRead += boot.bytesRead
+        writer.queue = boot.queue
         writer.think(script.userPause)
 
         // MARK: Les séances
@@ -278,7 +281,7 @@ enum DayPlanner {
         // MARK: L'arrêt
         writer.phase = phases.count - 1
         writer.think(script.userPause)
-        writer.flushMetadata(force: true)
+        writer.shutdown()
         writer.settle()
 
         plan.bytesRead += writer.bytesRead
