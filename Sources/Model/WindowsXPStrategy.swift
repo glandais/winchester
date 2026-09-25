@@ -31,8 +31,12 @@ import DiskCore
 ///    plus longue que le plus grand trou, occupée à moins de 75 %. Ses
 ///    fichiers en partent de la fin vers le début, chacun vers le plus petit
 ///    trou qui le tient hors de la région — n'importe où, y compris après
-///    elle. Plus de dix fichiers sans destination, et la région est abandonnée ;
-/// 4. **vider la zone MFT** de la même façon, une fois par passe ;
+///    elle. Plus de dix fichiers sans destination, et la région est
+///    abandonnée ; la consolidation rend « région parcourue sans abandon »,
+///    que des fichiers soient partis ou non ;
+/// 4. **vider la zone MFT** de la même façon — mais le premier fichier sans
+///    trou y arrête tout, et la zone est retentée au tour suivant tant
+///    qu'elle n'a pas été vidée jusqu'au bout ;
 /// 5. **tasser vers l'avant** (`MoveFilesForward`) : tous les fichiers
 ///    contigus, du dernier cluster au premier, chacun vers le trou de plus
 ///    petit numéro qui le tient et qui commence avant lui. Après un échec, les
@@ -336,28 +340,34 @@ extension WindowsXPStrategy {
 
         /// Tous les trous du volume, zone MFT rognée, dans l'ordre du disque.
         /// Bâti une fois par phase, comme `BuildFreeSpaceList`.
+        ///
+        /// Le rognage est celui de l'outil (`freespace.cpp:305-318`, la même
+        /// règle dans les trois constructeurs de listes et pour la région
+        /// exclue, 434-476) : un trou qui chevauche une zone n'en garde que
+        /// la partie d'avant s'il commence avant elle — même s'il la
+        /// traverse, la partie d'après est perdue pour cette liste —, la
+        /// partie d'après s'il commence dedans, rien s'il y tient.
         func holes(excluding region: Range<UInt32>? = nil) -> [Hole] {
             var result: [Hole] = []
             let zone = WindowsXPStrategy.avoidsMFTZone ? volume.mftZone : nil
+            let cuts = [zone, region].compactMap { $0 }.filter { !$0.isEmpty }
             var cursor: UInt32 = 0
             while cursor < total, let run = volume.bitmap.nextFreeRun(from: cursor) {
                 cursor = run.end
-                var pieces = [Extent(start: run.start, length: run.length)]
-                for cut in [zone, region].compactMap({ $0 }) {
-                    pieces = pieces.flatMap { piece -> [Extent] in
-                        guard piece.start < cut.upperBound, piece.end > cut.lowerBound else { return [piece] }
-                        var kept: [Extent] = []
-                        if piece.start < cut.lowerBound {
-                            kept.append(Extent(start: piece.start, length: cut.lowerBound - piece.start))
-                        }
-                        if piece.end > cut.upperBound {
-                            kept.append(Extent(start: cut.upperBound, length: piece.end - cut.upperBound))
-                        }
-                        return kept
+                var start = run.start, end = run.end
+                var dropped = false
+                for cut in cuts where start < cut.upperBound && end > cut.lowerBound {
+                    if start < cut.lowerBound {
+                        end = cut.lowerBound
+                    } else if end <= cut.upperBound {
+                        dropped = true
+                        break
+                    } else {
+                        start = cut.upperBound
                     }
                 }
-                for piece in pieces where !piece.isEmpty {
-                    result.append(Hole(start: piece.start, length: piece.length))
+                if !dropped, end > start {
+                    result.append(Hole(start: start, length: end - start))
                 }
             }
             return result
@@ -642,45 +652,54 @@ extension WindowsXPStrategy {
             volume.systemExtents.first { $0.start <= cluster && cluster < $0.end }?.end ?? cluster + 1
         }
 
-        /// `ConsolidateFreeSpace` : vide la région, de la fin vers le début,
-        /// chaque fichier vers le plus petit trou qui le tient hors d'elle.
-        /// Rend `true` si au moins un fichier est parti.
+        /// `ConsolidateFreeSpace` (`dfrgntfs.cpp:3570-3897`) : vide la région,
+        /// de la fin vers le début, chaque fichier vers le plus petit trou qui
+        /// le tient hors d'elle. Rend **« région parcourue sans abandon »**
+        /// (`bSuccess`, 3897) : vrai quand la boucle va au bout, même sans
+        /// rien déplacer ; faux quand elle abandonne, même après des
+        /// déplacements — et faux sans région.
         mutating func consolidateFreeSpace(minimumLength: UInt32) -> Bool {
             guard let region = findRegion(minimumLength: minimumLength) else { return false }
-            return empty(region: region.start..<region.end, files: region.files)
+            return empty(region: region.start..<region.end, files: region.files, isMFTZone: false)
         }
 
-        /// La zone MFT, vidée une fois par passe.
+        /// La zone MFT vidée (`ConsolidateFreeSpace(0, 100, TRUE, 1)`) : les
+        /// fichiers contigus qui **commencent** dans la zone — l'énumération
+        /// part de sa fin et s'arrête au premier fichier qui commence avant
+        /// elle (3706-3712). Le premier fichier sans trou arrête tout et rend
+        /// faux (3858-3866) : la zone reste à vider, et la boucle de
+        /// `DefragNtfs` la retentera au tour suivant (4268-4272, 4297-4300).
         mutating func consolidateMFTZone() -> Bool {
             guard let zone = volume.mftZone, !zone.isEmpty else { return true }
             let inside = volume.occupants(of: zone).filter {
                 let file = volume.files[$0]
+                guard let first = file.firstCluster, zone.contains(first) else { return false }
                 return file.isContiguous && strategy.canTouch(file, partition: partition)
                     && volume.moveFileAccepts($0, fromVCN: 0)
             }
             guard !inside.isEmpty else { return true }
-            return empty(region: zone, files: inside)
+            return empty(region: zone, files: inside, isMFTZone: true)
         }
 
-        private mutating func empty(region: Range<UInt32>, files: [Int]) -> Bool {
+        private mutating func empty(region: Range<UInt32>, files: [Int], isMFTZone: Bool) -> Bool {
             var bySize = holes(excluding: region).sorted { $0.length < $1.length }
             // De la fin vers le début : la table est triée par LCN décroissant.
             let order = files.sorted { (volume.files[$0].firstCluster ?? 0) > (volume.files[$1].firstCluster ?? 0) }
             var failures = 0
-            var moved = 0
             for (rank, position) in order.enumerated() {
                 advance(to: 0.3 + 0.4 * Double(rank) / Double(order.count))
                 guard let target = Pass.takeBestFit(volume.files[position].clusterCount, from: &bySize) else {
+                    // « Unable to move file out » : la zone MFT abandonne au
+                    // premier, une région au onzième (`++iCount > 10`).
                     failures += 1
-                    if failures > WindowsXPStrategy.consolidationFailureLimit { break }
+                    if isMFTZone || failures > WindowsXPStrategy.consolidationFailureLimit { return false }
                     continue
                 }
                 move(position, to: target, phase: WindowsXPStrategy.consolidatePhase)
                 evacuations += 1
                 sink.moves.evacuations = evacuations
-                moved += 1
             }
-            return moved > 0
+            return true
         }
 
         // MARK: 4. Tasser vers l'avant

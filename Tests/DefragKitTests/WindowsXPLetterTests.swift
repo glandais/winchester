@@ -228,6 +228,76 @@ struct WindowsXPLetterTests {
         #expect(vista.move.filter { $0.kind == .writeExtent }.count == 4)
     }
 
+    // MARK: Chantier 50 — la consolidation
+
+    /// Un volume de 1 000 clusters : des fichiers déplaçables là où on les
+    /// pose, et des obstacles immobiles partout ailleurs sauf dans `free`.
+    private static func walled(files: [[Extent]], free: [Extent],
+                               mftZone: Range<UInt32>) -> DefragVolume {
+        let partition = PartitionGeometry(startLBA: 0, clusterCount: 1_000,
+                                          clusterSectors: 8, format: .ntfs)
+        var taken = files.flatMap { $0 } + free
+        taken.sort { $0.start < $1.start }
+        var walls: [Extent] = []
+        var cursor: UInt32 = 0
+        for extent in taken {
+            if extent.start > cursor { walls.append(Extent(start: cursor, length: extent.start - cursor)) }
+            cursor = max(cursor, extent.end)
+        }
+        if cursor < 1_000 { walls.append(Extent(start: cursor, length: 1_000 - cursor)) }
+        // La zone MFT est libre : les murs n'y vont pas.
+        walls = walls.flatMap { wall -> [Extent] in
+            guard wall.start < mftZone.upperBound, wall.end > mftZone.lowerBound else { return [wall] }
+            var kept: [Extent] = []
+            if wall.start < mftZone.lowerBound {
+                kept.append(Extent(start: wall.start, length: mftZone.lowerBound - wall.start))
+            }
+            if wall.end > mftZone.upperBound {
+                kept.append(Extent(start: mftZone.upperBound, length: wall.end - mftZone.upperBound))
+            }
+            return kept
+        }
+        var records = files.enumerated().map { position, extents in
+            DefragFile(id: UInt32(position), path: "\\Documents\\F\(position).dat", category: .document,
+                       walkOrder: position, extents: extents, isMovable: true)
+        }
+        records.append(DefragFile(id: 900, path: "\\SYSTEM", category: .system,
+                                  walkOrder: 900, extents: walls, isMovable: false))
+        return DefragVolume(partition: partition, files: records, mftZone: mftZone)
+    }
+
+    /// Vider la zone MFT s'arrête au premier fichier sans trou
+    /// (`dfrgntfs.cpp:3858-3866`, `bDefragMftZone`), alors qu'une région en
+    /// tolère dix. Le plus haut des trois fichiers de la zone ne tient nulle
+    /// part : les deux autres, qui auraient trouvé un trou derrière la zone,
+    /// restent.
+    @Test("Vider la zone MFT s'arrête au premier fichier sans trou")
+    func mftZoneStopsAtTheFirstFailure() throws {
+        let small1 = [Extent(start: 410, length: 5)]
+        let small2 = [Extent(start: 450, length: 5)]
+        let big = [Extent(start: 480, length: 100)]
+        let input = Self.walled(files: [small1, small2, big],
+                                free: [Extent(start: 700, length: 20)], mftZone: 400..<600)
+        let plan = input.planned(using: WindowsXPStrategy())
+        #expect(plan.arrangement.first { $0.id == 0 }?.extents == small1)
+        #expect(plan.arrangement.first { $0.id == 1 }?.extents == small2)
+        #expect(plan.evacuations == 0)
+    }
+
+    /// Un trou qui traverse toute la zone MFT n'en garde, dans les listes de
+    /// l'outil, que la partie d'avant (`freespace.cpp:305-318`) : la partie
+    /// d'après, pourtant libre et hors zone, n'est offerte à personne.
+    @Test("Un trou qui traverse la zone MFT n'en garde que la partie d'avant")
+    func holeAcrossTheZoneKeepsItsHead() throws {
+        // Le fichier cassé demande 150 clusters. Libre : 300..<700, zone MFT
+        // 400..<500 ; avant elle, 100 clusters ; après, 200.
+        let broken = [Extent(start: 100, length: 75), Extent(start: 800, length: 75)]
+        let input = Self.walled(files: [broken], free: [Extent(start: 300, length: 400)],
+                                mftZone: 400..<500)
+        let plan = input.planned(using: WindowsXPStrategy())
+        #expect(plan.arrangement.first { $0.id == 0 }?.extents == broken)
+    }
+
     // MARK: B#16
 
     /// `SendStatusData` (`dfrgntfs.cpp:981-985`) borne le pourcentage sur le
