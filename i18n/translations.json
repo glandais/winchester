@@ -331,8 +331,8 @@
         },
         "boot.drivers.nt.detail": {
           "translations": {
-            "en": "The drivers in registry order — the characteristic crackle",
-            "fr": "Les pilotes dans l'ordre du registre — le crépitement caractéristique"
+            "en": "The prefetcher's batches — MFT, directories, data, images — each in one sweep",
+            "fr": "Les lots du préchargeur — MFT, répertoires, données, images — chacun d'une course"
           }
         },
         "boot.drivers.vista.detail": {
@@ -433,8 +433,8 @@
         },
         "boot.logon.xp.detail": {
           "translations": {
-            "en": "Explorer, fonts, prefetch — very scattered accesses",
-            "fr": "Explorateur, polices, préchargement — accès très dispersés"
+            "en": "Explorer and fonts, already prefetched — computing and writes",
+            "fr": "L'Explorateur et les polices, déjà préchargés : du calcul et des écritures"
           }
         },
         "boot.mount": {
@@ -506,8 +506,8 @@
         },
         "boot.registry.xp.detail": {
           "translations": {
-            "en": "SYSTEM and SOFTWARE hives, logs — reads and writes mixed",
-            "fr": "Ruches SYSTEM et SOFTWARE, journaux — lectures et écritures mêlées"
+            "en": "SMSS and services, on pages already prefetched — writes only",
+            "fr": "SMSS et les services, sur des pages déjà préchargées : des écritures seulement"
           }
         },
         "boot.settled": {
@@ -1190,8 +1190,8 @@
         },
         "explanation.prefetch.text": {
           "translations": {
-            "en": "Windows XP and Vista sort the list of files read at boot by position on the disk, and read it back in a single sweep of the arm, together with the MFT records that describe them. Before XP there was no prefetcher: the arm follows the order in which the system asks for its files, not their position.",
-            "fr": "Windows XP et Vista rangent la liste des fichiers à lire au démarrage par position sur le disque, et la relisent d'une seule course du bras, avec les fiches de la MFT qui les décrivent. Avant XP, pas de préchargeur : le bras suit l'ordre dans lequel le système demande ses fichiers, pas leur position."
+            "en": "Windows XP rereads what the previous boots read, in the order it was first used, in large batches issued all at once — the MFT records first, then the data, then the executable images. The IDE driver serves each batch in position order on the disk: that is the sweep of the arm. Vista and 7 are modelled the same way, sorted by position. Before XP there was no prefetcher: the arm follows the order in which the system asks for its files, not their position.",
+            "fr": "Windows XP relit ce que les démarrages précédents ont lu, dans l'ordre du premier accès, par grands lots émis d'un coup — les fiches de la MFT d'abord, puis les données, puis les images exécutables. Le pilote IDE sert chaque lot dans l'ordre des positions sur le disque : c'est la course du bras. Vista et 7 sont modélisés de même, triés par position. Avant XP, pas de préchargeur : le bras suit l'ordre dans lequel le système demande ses fichiers, pas leur position."
           }
         },
         "explanation.prefetch.title": {
@@ -2987,8 +2987,8 @@
         },
         "pass.boot.prefetch": {
           "translations": {
-            "en": "%@ prefetcher: the read list is sorted by position on the disk, and read back in a single sweep of the arm.",
-            "fr": "Préchargeur de %@ : la liste de lecture est rangée par position sur le disque, et relue d'une seule course du bras."
+            "en": "%@ prefetcher: what the previous boots read is requested in batches, and read back in position order on the disk.",
+            "fr": "Préchargeur de %@ : ce que les démarrages précédents ont lu est demandé par lots, et relu dans l'ordre des positions sur le disque."
           }
         },
         "pass.boot.residentFiles": {

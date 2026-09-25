@@ -213,24 +213,31 @@ struct MachineWriter {
 
     // MARK: - Sortie
 
+    /// - Parameters:
+    ///   - flow: qui attend la requête (`RequestFlow`). Au premier plan et à
+    ///     une barrière, le calcul en attente part avec elle ; en arrière-plan,
+    ///     `backgroundThink` est ce que l'hôte calcule pendant qu'elle se sert,
+    ///     et le calcul en attente reste pour la suivante.
     mutating func emit(_ kind: DiskOperation.Kind, lba: Int, sectors: Int,
-                       isWrite: Bool, cluster: Int?) {
+                       isWrite: Bool, cluster: Int?,
+                       flow: RequestFlow = .foreground, backgroundThink: Double = 0) {
         let start = sink.mutationMark
         for mutation in pendingMutations { sink.record(mutation) }
         let count = Int32(pendingMutations.count)
         pendingMutations.removeAll(keepingCapacity: true)
 
+        let think = flow == .background ? backgroundThink : pendingThink
         sink.progress = progress
         sink.moves = moves
         sink.emit(DiskOperation(kind: kind, phase: phase, lba: lba, sectors: sectors,
                                 isWrite: isWrite, issueTime: 0, cluster: cluster,
                                 mutationStart: start, mutationCount: count,
-                                thinkTime: pendingThink))
-        thinkSeconds += pendingThink
-        clock += pendingThink
+                                thinkTime: think, flow: flow))
+        thinkSeconds += think
+        clock += think
             + Double(sectors * DriveGeometry.bytesPerSector) / diskBytesPerSecond
             + 0.012
-        pendingThink = 0
+        if flow != .background { pendingThink = 0 }
     }
 
     /// Une écriture d'un secteur, quand il reste des couleurs à poser mais plus

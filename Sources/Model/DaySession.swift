@@ -197,11 +197,13 @@ enum DayPlanner {
         plan.bootFiles = boot.filesRead
         for request in boot.requests {
             guard !isCancelled() else { return plan }
-            writer.think(min(request.thinkTime, script.maximumPause))
+            let think = min(request.thinkTime, script.maximumPause)
+            if request.flow != .background { writer.think(think) }
             let offset = request.lba - partition.dataStartLBA
             let cluster = offset >= 0 ? offset / partition.clusterSectors : nil
             writer.emit(request.isWrite ? .metadata : .scan, lba: request.lba,
-                        sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster)
+                        sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster,
+                        flow: request.flow, backgroundThink: think)
         }
         plan.bytesRead += boot.bytesRead
         writer.think(script.userPause)

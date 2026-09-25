@@ -105,12 +105,23 @@ enum BootOrder: Sendable {
     case declared
     /// Les plus gros d'abord : le noyau et sa couche d'abstraction.
     case largestFirst
-    /// Dans l'ordre du disque. C'est ce que fait le préchargeur de Windows XP,
-    /// puis SuperFetch : il retient ce qu'un démarrage a lu la fois d'avant, le
-    /// range par position et le relit d'une seule course du bras. Les systèmes
-    /// d'avant ne le faisaient pas — d'où le crépitement de 1995 et le
-    /// ronronnement de 2003 sur la même étape.
+    /// Dans l'ordre du disque : le préchargement de Vista (SuperFetch) et de
+    /// Windows 7 (ReadyBoot), tel que le modèle le suppose — il retient ce
+    /// qu'un démarrage a lu la fois d'avant, le range par position et le
+    /// relit d'une seule course du bras. **Sans source** : le code de XP ne
+    /// dit rien de ces deux systèmes, et le préchargeur de XP, lui, ne trie
+    /// pas par position (`firstAccess`).
     case byPosition
+    /// Le préchargeur de Windows XP, d'après son code : la trace des
+    /// démarrages précédents, rangée par **premier accès**
+    /// (`PfSvSortSectionNodesByFirstAccess`, `pfsvc.c:2631-2635`), relue
+    /// fichier après fichier par lots que le noyau émet d'un bloc
+    /// (`prefetch.c:5281`). Le balayage qu'on entend ne vient pas d'un tri :
+    /// c'est la file d'`atapi` qui sert chaque lot par LBA (`AtapiQueue`).
+    /// Le tirage est celui du système, comme pour `byPosition` ; seul l'ordre
+    /// diffère. Les systèmes d'avant n'avaient rien de tel — d'où le
+    /// crépitement de 1995 et le ronronnement de 2003 sur la même étape.
+    case firstAccess
 }
 
 /// Le filtre d'un acte : ce qu'il accepte de lire, et combien.
@@ -252,11 +263,19 @@ extension BootScript {
         ///
         /// Jusqu'à Windows 98 il n'y avait rien : les fichiers partaient dans
         /// l'ordre du registre, et le bras suivait. Windows XP a introduit le
-        /// préchargeur de démarrage, qui garde la trace des six derniers
-        /// démarrages, range la liste par position sur le disque et la relit
-        /// d'une seule course ; Vista a poussé la même idée avec SuperFetch.
-        /// C'est la différence la plus audible entre deux époques, et elle ne
-        /// tient pas au matériel.
+        /// préchargeur de démarrage. Il garde pour chaque page l'usage des
+        /// **huit** derniers démarrages (`PF_PAGE_HISTORY_SIZE`,
+        /// `public/internal/base/inc/prefetch.h:180`) et ne précharge que ce
+        /// qui a servi au moins deux fois — sa sensibilité ne descend jamais
+        /// sous 2 pour le démarrage (`pfsvc.c:4301-4311`) ; il relit la trace
+        /// par lots, dans l'ordre du premier accès, et la file d'`atapi` les
+        /// sert par position (`BootOrder.firstAccess`). Le modèle n'a pas
+        /// d'historique : il suppose une machine qui démarre chaque jour de
+        /// la même façon, dont la trace est donc celle du démarrage joué.
+        /// Vista et 7 ont poussé l'idée (SuperFetch, ReadyBoot) ; ils gardent
+        /// le tri par position du modèle, sans source (`byPosition`). C'est la
+        /// différence la plus audible entre deux époques, et elle ne tient pas
+        /// au matériel.
         let prefetch: BootOrder
         /// Étiquettes des huit actes, dans l'ordre.
         let labels: [(String, String, String)]
@@ -383,7 +402,7 @@ extension BootScript {
                 post: 5.0,
                 kernelFiles: 10, driverFiles: 600, serviceFiles: 110,
                 shellFiles: 180, appBytes: 120_000_000,
-                prefetch: .byPosition,
+                prefetch: .firstAccess,
                 labels: [
                     ("post", String(localized: "boot.post", defaultValue: "BIOS POST"),
                      String(localized: "boot.post.detail", defaultValue: "Memory count, disk detection — the platter spins up")),
@@ -392,11 +411,11 @@ extension BootScript {
                     ("kernel", String(localized: "boot.kernelHAL", defaultValue: "Kernel and HAL"),
                      String(localized: "boot.kernelHAL.xp.detail", defaultValue: "NTLDR, the kernel, the abstraction layer")),
                     ("drivers", String(localized: "boot.drivers", defaultValue: "Loading the drivers"),
-                     String(localized: "boot.drivers.nt.detail", defaultValue: "The drivers in registry order — the characteristic crackle")),
+                     String(localized: "boot.drivers.nt.detail", defaultValue: "The prefetcher's batches — MFT, directories, data, images — each in one sweep")),
                     ("services", String(localized: "boot.registry", defaultValue: "Registry and services"),
-                     String(localized: "boot.registry.xp.detail", defaultValue: "SYSTEM and SOFTWARE hives, logs — reads and writes mixed")),
+                     String(localized: "boot.registry.xp.detail", defaultValue: "SMSS and services, on pages already prefetched — writes only")),
                     ("shell", String(localized: "boot.logon", defaultValue: "Logging on"),
-                     String(localized: "boot.logon.xp.detail", defaultValue: "Explorer, fonts, prefetch — very scattered accesses")),
+                     String(localized: "boot.logon.xp.detail", defaultValue: "Explorer and fonts, already prefetched — computing and writes")),
                     ("app", String(localized: "boot.app", defaultValue: "Launching the application"),
                      String(localized: "boot.app.detail", defaultValue: "Executable and libraries, where the installer left them")),
                     ("settle", String(localized: "boot.desktop", defaultValue: "Desktop at rest"),
@@ -429,8 +448,10 @@ extension BootScript {
                 ]),
 
             // 2012 — la même mécanique que Vista, un peu plus de pilotes et de
-            // services. ReadyBoot relit la trace des démarrages précédents dans
-            // l'ordre du disque, comme le préchargeur de XP.
+            // services. ReadyBoot relit la trace des démarrages précédents ;
+            // le modèle la range par position, comme pour Vista — une
+            // hypothèse : le code de XP, le seul lu, ne trie pas, et c'est sa
+            // file de port qui sert par position.
             Era(os: "win7-sp1",
                 osName: "Windows 7",
                 post: 5.0,
@@ -599,6 +620,7 @@ enum BootPlanner {
         let app = launchesApplication ? launchedApplication(of: disk.spec) : nil
         let script = BootScript.forProfile(disk.spec, launching: app)
 
+        let numbering = partition.format.isFAT ? nil : MFTNumbering(disk: disk)
         var builder = Builder(partition: partition,
                               os: script.os,
                               think: script.think,
@@ -606,24 +628,36 @@ enum BootPlanner {
                               stampsAccess: script.stampsAccess && firstOfTheDay,
                               flushSeconds: script.metadataFlushSeconds,
                               directories: DirectoryPlacement(disk: disk),
-                              mftRecords: partition.format.isFAT ? [:] : MFTNumbering(disk: disk).files,
+                              mftRecords: numbering?.files ?? [:],
+                              directoryRecords: numbering?.directories ?? [:],
                               seed: disk.spec.seed &* 0x9E37_79B9)
         let walk = disk.catalog.directoryWalkOrder()
         // Le chemin d'un fichier se reconstruit en remontant l'arborescence :
         // on ne le demande qu'une fois, et seulement aux actes qui filtrent
         // par répertoire.
         var pathCache: [UInt32: String] = [:]
+        // Ce que chaque acte lit, tiré d'abord : le tirage ne dépend que de ce
+        // que les actes précédents ont déjà pris, pas de ce qu'ils émettent.
+        var chosen: [Int: [FileRecord]] = [:]
         for (index, act) in script.acts.enumerated() {
-            switch act.source {
-            case .idle:
-                break
-            case .mount:
-                builder.emitMount(phase: index)
-            case let .files(query):
-                let chosen = select(query, from: walk, catalog: disk.catalog,
-                                    consumed: &builder.consumed, paths: &pathCache,
-                                    seed: disk.spec.seed &+ UInt64(index))
-                builder.emit(files: chosen, query: query, phase: index)
+            guard case let .files(query) = act.source else { continue }
+            chosen[index] = select(query, from: walk, catalog: disk.catalog,
+                                   consumed: &builder.consumed, paths: &pathCache,
+                                   seed: disk.spec.seed &+ UInt64(index))
+        }
+        if builder.prefetchBursts, !partition.format.isFAT {
+            emitWithXPPrefetcher(script: script, chosen: chosen, catalog: disk.catalog,
+                                 builder: &builder)
+        } else {
+            for (index, act) in script.acts.enumerated() {
+                switch act.source {
+                case .idle:
+                    break
+                case .mount:
+                    builder.emitMount(phase: index)
+                case let .files(query):
+                    builder.emit(files: chosen[index] ?? [], query: query, phase: index)
+                }
             }
         }
         builder.flushStamps(phase: script.acts.count - 1)
@@ -644,6 +678,97 @@ enum BootPlanner {
                         thinkSeconds: builder.thinkSeconds,
                         post: script.post,
                         tail: script.tail)
+    }
+
+    /// Le démarrage de XP, tel que son préchargeur le joue
+    /// (`base/ntos/cache/prefboot.c`, `CcPfBootWorker`).
+    ///
+    /// Le noyau, la HAL, les ruches et les pilotes de démarrage sont lus par
+    /// NTLDR, avant que le préchargeur n'existe : l'acte du noyau garde son
+    /// modèle. Puis le fil du préchargeur, sur la trace des démarrages
+    /// précédents — le **scénario de démarrage**, rangé par ordre de premier
+    /// accès (`PfSvSortSectionNodesByFirstAccess`, `pfsvc.c:2631-2635`) :
+    ///
+    /// 1. les métadonnées, une fois pour tout le démarrage
+    ///    (`CcPfPrefetchMetadata`, `prefboot.c:722`) : les enregistrements de
+    ///    MFT des fichiers et des répertoires, par pages, d'un lot
+    ///    (`FSCTL_FILE_PREFETCH`, `ntfs/fsctrl.c:19228-19433`), puis le
+    ///    contenu de chaque répertoire, les parents avant les enfants
+    ///    (`prefetch.c:5455-5470`) ;
+    /// 2. la phase des pilotes système : un lot de pages de **données** — les
+    ///    pages d'en-tête des images y sont —, puis un lot de pages
+    ///    d'**images** (`prefboot.c:482-490, 855-929` ; `prefetch.c:4660-4668,
+    ///    4930-4960`). Le démarrage l'attend avant d'initialiser les pilotes ;
+    /// 3. tout le reste avant `SMSS`, en un passage — « si la mémoire le
+    ///    permet » (`prefboot.c:761-773`) : données, puis images. Les pilotes
+    ///    s'initialisent **pendant** ce lot, et `SMSS` l'attend
+    ///    (`PreSmssPrefetchingDone`, `prefboot.c:936-955`).
+    ///
+    /// Les services et l'ouverture de session se font ensuite sur des pages
+    /// déjà en mémoire : du calcul, des écritures, pas de lectures.
+    /// L'application lancée a son propre scénario, préchargé à son lancement
+    /// de la même façon — métadonnées, données, images (`CcPfPrefetchScenario`,
+    /// `prefetch.c:4605-4640`). Le dernier acte (fichier d'échange,
+    /// temporaires) reste hors trace : le fichier d'échange n'est pas une
+    /// section, et un temporaire n'est pas vu deux démarrages sur huit.
+    ///
+    /// Ce que le modèle ne joue pas, et le dit : la troncature par la mémoire
+    /// disponible (`prefboot.c:522-538, 776-810`) — la machine est supposée en
+    /// avoir assez pour un seul passage avant `SMSS` ; la phase parallèle à
+    /// l'initialisation vidéo (`prefboot.c:651-690`), qui demande la durée
+    /// mesurée au démarrage précédent ; la présence de l'application dans la
+    /// trace du démarrage, si elle est lancée dans les trente secondes.
+    private static func emitWithXPPrefetcher(script: BootScript, chosen: [Int: [FileRecord]],
+                                             catalog: FileCatalog, builder: inout Builder) {
+        var boot: [(files: [FileRecord], query: BootQuery, phase: Int)] = []
+        var drivers: Int?
+        for (index, act) in script.acts.enumerated() {
+            guard case let .files(query) = act.source,
+                  ["drivers", "services", "shell"].contains(act.id) else { continue }
+            if act.id == "drivers" { drivers = index }
+            boot.append((chosen[index] ?? [], query, index))
+        }
+        for (index, act) in script.acts.enumerated() {
+            switch act.source {
+            case .idle:
+                break
+            case .mount:
+                builder.emitMount(phase: index)
+            case let .files(query):
+                let files = chosen[index] ?? []
+                switch act.id {
+                case "drivers":
+                    // Toute la trace du démarrage, pendant l'acte des pilotes.
+                    builder.prefetchMetadata(files: boot.flatMap(\.files), catalog: catalog,
+                                             phase: index)
+                    builder.prefetchLots(builder.touched(files, query), phase: index,
+                                         flow: .foreground)
+                    // Les pilotes s'initialisent pendant le lot suivant : leur
+                    // calcul avance le fil de l'hôte sans retenir le disque.
+                    let initialization = builder.runOnPrefetchedPages(files: files, query: query,
+                                                                      phase: index, deferred: true)
+                    let rest = boot.filter { $0.phase != drivers }
+                        .flatMap { builder.touched($0.files, $0.query) }
+                    if !builder.prefetchLots(rest, phase: index, flow: .background,
+                                             think: initialization) {
+                        builder.pendThink(initialization)
+                    }
+                    builder.awaitPrefetch()
+                case "services", "shell":
+                    builder.runOnPrefetchedPages(files: files, query: query, phase: index,
+                                                 deferred: false)
+                case "app":
+                    builder.prefetchMetadata(files: files, catalog: catalog, phase: index)
+                    builder.prefetchLots(builder.touched(files, query), phase: index,
+                                         flow: .foreground)
+                    builder.runOnPrefetchedPages(files: files, query: query, phase: index,
+                                                 deferred: false)
+                default:
+                    builder.emit(files: files, query: query, phase: index,
+                                 inLayout: act.id == "kernel")
+                }
+            }
+        }
     }
 
     /// L'application qu'on lance après l'ouverture de session : la première
@@ -695,7 +820,7 @@ enum BootPlanner {
                 .sorted { ($0.element.logicalSize, UInt64($1.offset))
                         > ($1.element.logicalSize, UInt64($0.offset)) }
                 .map(\.element)
-        case .byPosition:
+        case .byPosition, .firstAccess:
             // Le tirage reste celui du système ; le rangement par position se
             // fait une fois les fichiers retenus.
             var rng = SeededGenerator(seed: seed)
@@ -800,6 +925,19 @@ enum BootPlanner {
         /// Dans l'ordre de création, les fichiers qu'un démarrage lit sont
         /// épars dans la MFT, et le bras y sautille.
         let mftRecords: [UInt32: Int]
+        /// Celui de chaque répertoire.
+        let directoryRecords: [UInt32: Int]
+        /// Sous XP, les pages de 4 Ko de `$MFT` — leur rang dans le fichier —
+        /// que le préchargeur a amenées en mémoire.
+        private var mftPagesResident: Set<Int> = []
+        /// Sous XP, les répertoires dont le préchargeur a lu tout le contenu.
+        private var enumerated: Set<UInt32> = []
+        /// Sous XP, la prochaine requête du premier plan attend la fin du lot
+        /// du préchargeur en cours (`RequestFlow.barrier`).
+        private var barrierPending = false
+        /// Ce que l'on lit entre dans `Layout.ini` (`readOrder`). Sous XP, ce
+        /// que le dernier acte lit hors trace n'y entre pas.
+        private var layoutOpen = true
         /// Où l'on a lu chaque répertoire sur FAT : c'est là que sa date
         /// d'accès se réécrit.
         private var directoryLBA: [UInt32: Int] = [:]
@@ -833,9 +971,11 @@ enum BootPlanner {
 
         init(partition: PartitionGeometry, os: String = "", think: ThinkModel, readGranularity: Int,
              stampsAccess: Bool, flushSeconds: Double, directories: DirectoryPlacement? = nil,
-             mftRecords: [UInt32: Int] = [:], seed: UInt64) {
+             mftRecords: [UInt32: Int] = [:], directoryRecords: [UInt32: Int] = [:],
+             seed: UInt64) {
             self.partition = partition
             self.mftRecords = mftRecords
+            self.directoryRecords = directoryRecords
             // Le cache du système : ce qu'il tient de la table FAT32 cède sous
             // les données sur Windows 9x ; NT garde tout un démarrage.
             vcachePages = VCache.pages(os: os)
@@ -873,8 +1013,13 @@ enum BootPlanner {
             pending += think.perFile * 4
         }
 
-        mutating func emit(files: [FileRecord], query: BootQuery, phase: Int) {
-            // Un acte préchargé lit ses métadonnées d'un bloc.
+        mutating func emit(files: [FileRecord], query: BootQuery, phase: Int,
+                           inLayout: Bool = true) {
+            layoutOpen = inLayout
+            defer { layoutOpen = true }
+            // Un acte préchargé lit ses métadonnées d'un bloc — le modèle de
+            // Vista et 7 (`BootOrder.byPosition`), sans source ; XP a son
+            // préchargeur à la lettre (`emitWithXPPrefetcher`).
             //
             // Le préchargeur ne retient pas que la liste des fichiers : il
             // retient aussi les enregistrements de MFT qui les décrivent, et
@@ -888,10 +1033,6 @@ enum BootPlanner {
             // suivent d'une seule requête : les fichiers d'un démarrage n'ont
             // pas été créés à la suite.
             let bulk = query.order == .byPosition && !partition.format.isFAT
-            if bulk, prefetchBursts, !files.isEmpty {
-                emitPrefetched(files: files, query: query, phase: phase)
-                return
-            }
             if bulk, !files.isEmpty {
                 var index = fileIndex
                 var numbers: [Int] = []
@@ -948,7 +1089,7 @@ enum BootPlanner {
                     residentFiles += 1
                 } else {
                     touched = min(Int(record.logicalSize), query.bytesPerFile)
-                    if readItems.insert(record.id).inserted { readOrder.append(record.id) }
+                    if layoutOpen, readItems.insert(record.id).inserted { readOrder.append(record.id) }
                     emitData(record.extents, limit: touched, isWrite: false, phase: phase)
                     bytesRead += touched
                     if rng.unitInterval() < query.writeBack {
@@ -969,88 +1110,6 @@ enum BootPlanner {
             }
         }
 
-        /// Un acte préchargé, sous XP : ce que `MmPrefetchPages` fait d'un
-        /// lot.
-        ///
-        /// Il met toutes les pages en transition, **émet toutes les lectures**
-        /// en asynchrone, puis seulement les attend (`pfsup.c:318-338,
-        /// 370-388`) : les requêtes du lot sont en file ensemble, et c'est
-        /// `atapi` qui les sert, par LBA croissante à partir de sa clé
-        /// courante (`AtapiQueue`). Le système, lui, attend la fin du lot
-        /// avant de se servir de ce qu'il a lu : le calcul de l'acte vient
-        /// après, fichier par fichier, avec ce qu'il écrit.
-        ///
-        /// Deux lots : les enregistrements de MFT d'abord, puis les données.
-        /// Le reste de l'acte — l'ordre, les pages, les phases — est encore
-        /// celui du modèle (`BootOrder.byPosition`).
-        private mutating func emitPrefetched(files: [FileRecord], query: BootQuery, phase: Int) {
-            var index = fileIndex
-            var numbers: [Int] = []
-            numbers.reserveCapacity(files.count)
-            for record in files {
-                numbers.append(mftRecord(of: record, readingRank: index))
-                index += 1
-            }
-            numbers.sort()
-            var metadata: [MetadataAccess] = []
-            var first = numbers[0]
-            var last = first
-            func readRun() {
-                var from = first
-                while from <= last {
-                    let start = partition.mftRecordLBA(from)
-                    var to = from
-                    while to < last,
-                          partition.mftRecordLBA(to + 1) == start + (to + 1 - from) * partition.mftRecordSectors {
-                        to += 1
-                    }
-                    metadata.append(MetadataAccess(lba: start, sectors: (to - from + 1) * partition.mftRecordSectors))
-                    from = to + 1
-                }
-            }
-            for number in numbers.dropFirst() where number != last {
-                if number == last + 1 {
-                    last = number
-                } else {
-                    readRun()
-                    first = number
-                    last = number
-                }
-            }
-            readRun()
-            issueBurst(metadata, isWrite: false, phase: phase)
-
-            var data: [MetadataAccess] = []
-            var touchedBytes: [Int] = []
-            touchedBytes.reserveCapacity(files.count)
-            for record in files {
-                guard !record.isResident else { touchedBytes.append(0); continue }
-                let touched = min(Int(record.logicalSize), query.bytesPerFile)
-                touchedBytes.append(touched)
-                if readItems.insert(record.id).inserted { readOrder.append(record.id) }
-                data += pieces(record.extents, limit: touched)
-                bytesRead += touched
-            }
-            issueBurst(data, isWrite: false, phase: phase)
-
-            for (record, touched) in zip(files, touchedBytes) {
-                if record.isResident {
-                    residentFiles += 1
-                } else if rng.unitInterval() < query.writeBack {
-                    emitData(record.extents, limit: touched, isWrite: true, phase: phase)
-                    bytesWritten += touched
-                }
-                if stampsAccess { stamp(record) }
-                filesRead += 1
-                fileIndex += 1
-                let cost = think.seconds(bytes: touched)
-                pending += cost
-                thinkSeconds += cost
-                sinceFlush += cost
-                if sinceFlush >= flushSeconds { flushStamps(phase: phase) }
-            }
-        }
-
         /// Les requêtes d'un lot, dans l'ordre où la file d'`atapi` les sert.
         /// Le calcul en attente part avec la première.
         private mutating func issueBurst(_ accesses: [MetadataAccess], isWrite: Bool, phase: Int) {
@@ -1060,13 +1119,15 @@ enum BootPlanner {
         }
 
         /// Les extents d'un fichier en requêtes, sans les émettre : le même
-        /// découpage que `emitData`.
-        private func pieces(_ extents: [Extent], limit: Int) -> [MetadataAccess] {
+        /// découpage que `emitData`, à partir de l'octet `skipping`.
+        private func pieces(_ extents: [Extent], skipping: Int = 0, limit: Int) -> [MetadataAccess] {
             var result: [MetadataAccess] = []
             var remaining = PartitionGeometry.readSectors(forBytes: limit, granularity: readGranularity)
+            var skip = skipping / DriveGeometry.bytesPerSector
             for extent in extents {
                 let length = Int(extent.length) * partition.clusterSectors
-                var offset = 0
+                var offset = min(skip, length)
+                skip -= offset
                 while offset < length && remaining > 0 {
                     let sectors = min(length - offset, maxRequestSectors, remaining)
                     result.append(MetadataAccess(lba: partition.lba(ofCluster: Int(extent.start)) + offset,
@@ -1145,10 +1206,19 @@ enum BootPlanner {
                 append(lba: lba, sectors: partition.clusterSectors, isWrite: false, phase: phase)
                 bytesRead += partition.clusterSectors * DriveGeometry.bytesPerSector
             }
-            for access in partition.openAccesses(fileIndex: mftRecord(of: record, readingRank: fileIndex)) {
+            let number = mftRecord(of: record, readingRank: fileIndex)
+            // Sous XP, la page de `$MFT` que le préchargeur a lue est en
+            // mémoire.
+            if mftPagesResident.contains(number / recordsPerMFTPage) { return }
+            for access in partition.openAccesses(fileIndex: number) {
                 append(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase)
                 bytesRead += access.sectors * DriveGeometry.bytesPerSector
             }
+        }
+
+        /// Enregistrements de MFT par page de 4 Ko.
+        private var recordsPerMFTPage: Int {
+            max(PartitionGeometry.logPageSectors / partition.mftRecordSectors, 1)
         }
 
         /// Trouver un nom, c'est lire chaque répertoire du chemin jusqu'à
@@ -1194,7 +1264,7 @@ enum BootPlanner {
                 range = indexBuffersRead.insert(UInt64(id) << 32 | UInt64(last)).inserted
                     ? last..<(last + 1) : last..<last
             }
-            if !range.isEmpty, readItems.insert(FileCatalog.itemID(ofDirectory: id)).inserted {
+            if !range.isEmpty, layoutOpen, readItems.insert(FileCatalog.itemID(ofDirectory: id)).inserted {
                 readOrder.append(FileCatalog.itemID(ofDirectory: id))
             }
             for access in partition.directoryAccesses(directory.extents, clusters: range) {
@@ -1314,14 +1384,239 @@ enum BootPlanner {
             issue(lba: lba, sectors: sectors, isWrite: isWrite, phase: phase)
         }
 
-        private mutating func issue(lba: Int, sectors: Int, isWrite: Bool, phase: Int) {
+        /// Une requête. Au premier plan, le calcul en attente part avec elle —
+        /// et, si un lot du préchargeur vient d'être émis, elle en attend la
+        /// fin. En arrière-plan, `think` est ce que le fil calcule pendant
+        /// qu'elle se sert, et le calcul en attente reste pour la suivante.
+        private mutating func issue(lba: Int, sectors: Int, isWrite: Bool, phase: Int,
+                                    flow: RequestFlow = .foreground, think: Double = 0) {
+            if flow == .background {
+                requests.append(BlockRequest(issueTime: 0, lba: lba, sectorCount: sectors,
+                                             isWrite: isWrite, phaseIndex: phase,
+                                             thinkTime: think, flow: .background))
+                return
+            }
             requests.append(BlockRequest(issueTime: 0,
                                          lba: lba,
                                          sectorCount: sectors,
                                          isWrite: isWrite,
                                          phaseIndex: phase,
-                                         thinkTime: pending))
+                                         thinkTime: pending,
+                                         flow: barrierPending ? .barrier : flow))
+            barrierPending = false
             pending = 0
+        }
+
+        // MARK: - Le préchargeur de XP
+
+        /// Les extensions d'une image — ce que le chargeur projette comme une
+        /// section exécutable (`SEC_IMAGE`). Le préchargeur sépare leurs pages
+        /// de celles des données.
+        static let imageExtensions: Set<String> = ["exe", "dll", "sys", "drv", "ocx", "cpl",
+                                                   "scr", "com", "ax", "acm", "ime", "tsp"]
+
+        static func isImage(_ record: FileRecord) -> Bool {
+            guard let dot = record.name.lastIndex(of: ".") else { return false }
+            return imageExtensions.contains(record.name[record.name.index(after: dot)...].lowercased())
+        }
+
+        /// Ce qu'un acte lit de chaque fichier : la trace n'a pas d'autre
+        /// mesure dans le modèle que le budget de l'acte.
+        func touched(_ files: [FileRecord], _ query: BootQuery) -> [(record: FileRecord, touched: Int)] {
+            files.map { ($0, $0.isResident ? 0 : min(Int($0.logicalSize), query.bytesPerFile)) }
+        }
+
+        mutating func pendThink(_ seconds: Double) { pending += seconds }
+
+        /// La prochaine requête du premier plan attendra la fin du lot émis.
+        mutating func awaitPrefetch() { barrierPending = true }
+
+        /// Les métadonnées d'un scénario, avant ses données
+        /// (`CcPfPrefetchMetadata`).
+        ///
+        /// D'abord les enregistrements de MFT des fichiers et de leurs
+        /// répertoires : NTFS les arrondit à la page de 4 Ko, les trie, ôte
+        /// les doublons et passe la liste à `MmPrefetchPages`
+        /// (`ntfs/fsctrl.c:19334-19362, 19433`), qui comble d'une page factice
+        /// un écart de 128 Ko au plus entre deux pages plutôt que de couper la
+        /// lecture (`SEEK_THRESHOLD`, `pfsup.c:55-61, 1103`) — un seul lot, que
+        /// la file sert par LBA. Puis le contenu de chaque répertoire, lu en
+        /// entier et dans l'ordre, les parents avant les enfants
+        /// (`CcPfPrefetchDirectoryContents`, `prefetch.c:5455-5470,
+        /// 5687-5800`) : une énumération synchrone.
+        mutating func prefetchMetadata(files: [FileRecord], catalog: FileCatalog, phase: Int) {
+            var folders = Set<UInt32>()
+            for record in files {
+                var current: UInt32? = record.directory
+                while let id = current, Int(id) < catalog.directories.count,
+                      folders.insert(id).inserted {
+                    current = catalog.directories[Int(id)].parent
+                }
+            }
+            var pages = Set<Int>()
+            var rank = fileIndex
+            for record in files {
+                pages.insert(mftRecord(of: record, readingRank: rank) / recordsPerMFTPage)
+                rank += 1
+            }
+            for id in folders {
+                if let number = directoryRecords[id] { pages.insert(number / recordsPerMFTPage) }
+            }
+            let wanted = pages.subtracting(mftPagesResident).sorted()
+            var runs: [(first: Int, last: Int)] = []
+            for page in wanted {
+                if let last = runs.last, page - last.last <= Self.seekThresholdPages {
+                    runs[runs.count - 1].last = page
+                } else {
+                    runs.append((page, page))
+                }
+            }
+            mftPagesResident.formUnion(wanted)
+            var lot: [MetadataAccess] = []
+            for run in runs {
+                lot += mftPieces(firstRecord: run.first * recordsPerMFTPage,
+                                 count: (run.last - run.first + 1) * recordsPerMFTPage)
+            }
+            bytesRead += lot.reduce(0) { $0 + $1.sectors } * DriveGeometry.bytesPerSector
+            issueBurst(lot, isWrite: false, phase: phase)
+
+            guard let placement = directories else { return }
+            let order = folders.filter { !enumerated.contains($0) }
+                .map { (id: $0, path: catalog.path(ofDirectory: $0).uppercased()) }
+                .sorted { ($0.path, $0.id) < ($1.path, $1.id) }
+            for folder in order { enumerate(folder.id, in: placement, phase: phase) }
+        }
+
+        /// `SEEK_THRESHOLD`, en pages : 128 Ko.
+        static let seekThresholdPages = 128 * 1_024 / 4_096
+
+        /// Les secteurs d'une suite d'enregistrements de MFT, coupés là où
+        /// la MFT change d'extent, puis à la taille d'une requête.
+        private func mftPieces(firstRecord: Int, count: Int) -> [MetadataAccess] {
+            var result: [MetadataAccess] = []
+            var from = firstRecord
+            let end = firstRecord + count
+            while from < end {
+                let start = partition.mftRecordLBA(from)
+                var to = from + 1
+                while to < end,
+                      partition.mftRecordLBA(to) == start + (to - from) * partition.mftRecordSectors {
+                    to += 1
+                }
+                var lba = start
+                var sectors = (to - from) * partition.mftRecordSectors
+                while sectors > 0 {
+                    let piece = min(sectors, maxRequestSectors)
+                    result.append(MetadataAccess(lba: lba, sectors: piece))
+                    lba += piece
+                    sectors -= piece
+                }
+                from = to
+            }
+            return result
+        }
+
+        /// Tout le contenu d'un répertoire, dans l'ordre de son index.
+        private mutating func enumerate(_ id: UInt32, in placement: DirectoryPlacement, phase: Int) {
+            enumerated.insert(id)
+            let directory = placement.directories[Int(id)]
+            let count = directory.entry.clusterCount
+            guard count > 0 else { return }
+            if readItems.insert(FileCatalog.itemID(ofDirectory: id)).inserted {
+                readOrder.append(FileCatalog.itemID(ofDirectory: id))
+            }
+            for access in partition.directoryAccesses(directory.extents, clusters: 0..<count) {
+                var offset = 0
+                while offset < access.sectors {
+                    let piece = min(access.sectors - offset, maxRequestSectors)
+                    append(lba: access.lba + offset, sectors: piece, isWrite: false, phase: phase)
+                    offset += piece
+                }
+                bytesRead += access.sectors * DriveGeometry.bytesPerSector
+            }
+            for cluster in 0..<count { indexBuffersRead.insert(UInt64(id) << 32 | UInt64(cluster)) }
+        }
+
+        /// Les deux lots d'une phase : les pages de données — avec la page
+        /// d'en-tête de chaque image —, puis les pages d'images
+        /// (`CcPfPrefetchSections`, `prefetch.c:4930-4960` ; `prefboot.c:870-929`).
+        /// Chaque lot est émis d'un bloc et servi par la file d'`atapi`. Les
+        /// fichiers sont pris dans l'ordre du scénario, celui du premier
+        /// accès : c'est cet ordre-là que `Layout.ini` retient.
+        ///
+        /// La trace n'existe pas dans le modèle : ce qu'on lit d'un fichier
+        /// est le budget de l'acte, depuis le début — lu d'un tenant, comme le
+        /// ferait `MmPrefetchPages` de pages tracées qu'aucun écart de plus de
+        /// 128 Ko ne sépare.
+        ///
+        /// - Returns: `false` si rien n'a été émis.
+        @discardableResult
+        mutating func prefetchLots(_ items: [(record: FileRecord, touched: Int)], phase: Int,
+                                   flow: RequestFlow, think: Double = 0) -> Bool {
+            var data: [MetadataAccess] = []
+            var image: [MetadataAccess] = []
+            let header = 4_096
+            for (record, touched) in items where touched > 0 {
+                if readItems.insert(record.id).inserted { readOrder.append(record.id) }
+                bytesRead += touched
+                if Self.isImage(record) {
+                    data += pieces(record.extents, skipping: 0, limit: min(header, touched))
+                    if touched > header {
+                        image += pieces(record.extents, skipping: header, limit: touched - header)
+                    }
+                } else {
+                    data += pieces(record.extents, skipping: 0, limit: touched)
+                }
+            }
+            var carried = think
+            var emitted = false
+            for lot in [data, image] where !lot.isEmpty {
+                for access in queue.serve(burst: lot, key: \.lba) {
+                    issue(lba: access.lba, sectors: access.sectors, isWrite: false, phase: phase,
+                          flow: flow, think: carried)
+                    carried = 0
+                    emitted = true
+                }
+            }
+            return emitted
+        }
+
+        /// Ce qu'un acte fait sur des pages déjà en mémoire : du calcul, ce
+        /// qu'il réécrit, les dates d'accès.
+        ///
+        /// - Parameter deferred: le calcul avance le fil de l'hôte pendant le
+        ///   lot suivant du préchargeur (les pilotes s'initialisent pendant
+        ///   que la phase d'avant `SMSS` se lit) : il est rendu, et non mis en
+        ///   attente devant la prochaine requête.
+        @discardableResult
+        mutating func runOnPrefetchedPages(files: [FileRecord], query: BootQuery, phase: Int,
+                                           deferred: Bool) -> Double {
+            var computed = 0.0
+            for record in files {
+                var touched = 0
+                if record.isResident {
+                    residentFiles += 1
+                } else {
+                    touched = min(Int(record.logicalSize), query.bytesPerFile)
+                    if rng.unitInterval() < query.writeBack {
+                        emitData(record.extents, limit: touched, isWrite: true, phase: phase)
+                        bytesWritten += touched
+                    }
+                }
+                if stampsAccess { stamp(record) }
+                filesRead += 1
+                fileIndex += 1
+                let cost = think.seconds(bytes: touched)
+                thinkSeconds += cost
+                sinceFlush += cost
+                if deferred {
+                    computed += cost
+                } else {
+                    pending += cost
+                    if sinceFlush >= flushSeconds { flushStamps(phase: phase) }
+                }
+            }
+            return computed
         }
     }
 }

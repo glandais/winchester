@@ -131,10 +131,25 @@ struct BootSessionTests {
             #expect(volume.mftRecord(of: position) == numbering.files[file.id])
         }
 
-        // Les enregistrements qu'ouvre le démarrage, dans l'ordre où il les lit.
-        let plan = BootPlanner.plan(disk: disk)
-        let partition = plan.partition
+        // Sous XP, le préchargeur lit la MFT par pages de 4 Ko, triées et
+        // sans doublon (`FSCTL_FILE_PREFETCH`, `ntfs/fsctrl.c:19334-19362`) ;
+        // les ouvertures une à une ne restent qu'aux actes hors de sa trace.
+        let xp = BootPlanner.plan(disk: disk)
+        let partition = xp.partition
         let mftEnd = partition.mftLBA + (records.max()! + 1) * partition.mftRecordSectors
+        let pages = xp.requests.filter {
+            !$0.isWrite && $0.lba >= partition.mftLBA && $0.lba < mftEnd
+                && $0.sectorCount != partition.mftRecordSectors
+        }
+        #expect(!pages.isEmpty)
+        #expect(pages.allSatisfy { ($0.lba - partition.mftLBA) % 8 == 0 && $0.sectorCount % 8 == 0 })
+
+        // Les ouvertures une à une, dans l'ordre où le démarrage les lit : le
+        // modèle de Vista, où les actes hors préchargement ouvrent chaque
+        // fichier.
+        var vistaDisk = disk
+        vistaDisk.spec.os = "vista"
+        let plan = BootPlanner.plan(disk: vistaDisk)
         let opened = plan.requests
             .filter { !$0.isWrite && $0.sectorCount == partition.mftRecordSectors
                       && $0.lba >= partition.mftLBA && $0.lba < mftEnd }
@@ -190,16 +205,21 @@ struct BootSessionTests {
 
     // MARK: - L'époque
 
-    /// Windows XP a introduit le préchargeur de démarrage, qui range par
-    /// position ce que les six derniers démarrages ont lu. C'est la seule
-    /// différence de comportement entre deux époques qui ne tienne pas au
-    /// matériel, et c'est la plus audible.
+    /// Windows XP a introduit le préchargeur de démarrage. Le sien relit ce
+    /// que les démarrages précédents ont lu dans l'ordre du **premier accès**
+    /// (`PfSvSortSectionNodesByFirstAccess`, `pfsvc.c:2631-2635`) — c'est la
+    /// file d'`atapi` qui en fait un balayage ; Vista et 7 gardent le tri par
+    /// position du modèle, sans source. C'est la seule différence de
+    /// comportement entre deux époques qui ne tienne pas au matériel, et
+    /// c'est la plus audible.
     @Test("Le préchargeur n'existe qu'à partir de Windows XP")
     func prefetchIsAnEra() {
         for era in BootScript.Era.all {
-            let expected: BootOrder = ["winxp-sp1", "vista", "win7-sp1"].contains(era.os)
-                ? .byPosition
-                : .declared
+            let expected: BootOrder = switch era.os {
+            case "winxp-sp1": .firstAccess
+            case "vista", "win7-sp1": .byPosition
+            default: .declared
+            }
             #expect(era.prefetch == expected, "\(era.os)")
         }
     }

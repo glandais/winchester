@@ -629,11 +629,12 @@ enum InstallPlanner {
                                         firstOfTheDay: false)
             pendingThink += boot.post
             for request in boot.requests {
-                pendingThink += request.thinkTime
+                if request.flow != .background { pendingThink += request.thinkTime }
                 let offset = request.lba - partition.dataStartLBA
                 let cluster = offset >= 0 ? offset / partition.clusterSectors : nil
                 emit(request.isWrite ? .metadata : .scan, lba: request.lba,
-                     sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster)
+                     sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster,
+                     flow: request.flow, backgroundThink: request.thinkTime)
             }
             pendingThink += boot.tail
             plan.reboots += 1
@@ -695,24 +696,27 @@ enum InstallPlanner {
 
         // MARK: Sortie
 
+        /// `flow` et `backgroundThink` : comme `MachineWriter.emit`.
         private mutating func emit(_ kind: DiskOperation.Kind, lba: Int, sectors: Int,
-                                   isWrite: Bool, cluster: Int?) {
+                                   isWrite: Bool, cluster: Int?,
+                                   flow: RequestFlow = .foreground, backgroundThink: Double = 0) {
             let start = sink.mutationMark
             for mutation in pendingMutations { sink.record(mutation) }
             let count = Int32(pendingMutations.count)
             pendingMutations.removeAll(keepingCapacity: true)
 
+            let think = flow == .background ? backgroundThink : pendingThink
             sink.progress = min(Double(bytesPlaced) / Double(totalBytes), 1)
             sink.moves = MoveCount(filesMoved: plan.filesWritten, evacuations: 0)
             sink.emit(DiskOperation(kind: kind, phase: phase, lba: lba, sectors: sectors,
                                     isWrite: isWrite, issueTime: 0, cluster: cluster,
                                     mutationStart: start, mutationCount: count,
-                                    thinkTime: pendingThink))
-            plan.thinkSeconds += pendingThink
-            clock += pendingThink
+                                    thinkTime: think, flow: flow))
+            plan.thinkSeconds += think
+            clock += think
                 + Double(sectors * DriveGeometry.bytesPerSector) / diskBytesPerSecond
                 + 0.012
-            pendingThink = 0
+            if flow != .background { pendingThink = 0 }
         }
     }
 }

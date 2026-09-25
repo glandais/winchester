@@ -814,13 +814,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The drivers in registry order — the characteristic crackle"
+            "value" : "The prefetcher's batches — MFT, directories, data, images — each in one sweep"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les pilotes dans l'ordre du registre — le crépitement caractéristique"
+            "value" : "Les lots du préchargeur — MFT, répertoires, données, images — chacun d'une course"
           }
         }
       }
@@ -1086,13 +1086,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Explorer, fonts, prefetch — very scattered accesses"
+            "value" : "Explorer and fonts, already prefetched — computing and writes"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Explorateur, polices, préchargement — accès très dispersés"
+            "value" : "L'Explorateur et les polices, déjà préchargés : du calcul et des écritures"
           }
         }
       }
@@ -1279,13 +1279,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SYSTEM and SOFTWARE hives, logs — reads and writes mixed"
+            "value" : "SMSS and services, on pages already prefetched — writes only"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ruches SYSTEM et SOFTWARE, journaux — lectures et écritures mêlées"
+            "value" : "SMSS et les services, sur des pages déjà préchargées : des écritures seulement"
           }
         }
       }
@@ -3073,13 +3073,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Windows XP and Vista sort the list of files read at boot by position on the disk, and read it back in a single sweep of the arm, together with the MFT records that describe them. Before XP there was no prefetcher: the arm follows the order in which the system asks for its files, not their position."
+            "value" : "Windows XP rereads what the previous boots read, in the order it was first used, in large batches issued all at once — the MFT records first, then the data, then the executable images. The IDE driver serves each batch in position order on the disk: that is the sweep of the arm. Vista and 7 are modelled the same way, sorted by position. Before XP there was no prefetcher: the arm follows the order in which the system asks for its files, not their position."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Windows XP et Vista rangent la liste des fichiers à lire au démarrage par position sur le disque, et la relisent d'une seule course du bras, avec les fiches de la MFT qui les décrivent. Avant XP, pas de préchargeur : le bras suit l'ordre dans lequel le système demande ses fichiers, pas leur position."
+            "value" : "Windows XP relit ce que les démarrages précédents ont lu, dans l'ordre du premier accès, par grands lots émis d'un coup — les fiches de la MFT d'abord, puis les données, puis les images exécutables. Le pilote IDE sert chaque lot dans l'ordre des positions sur le disque : c'est la course du bras. Vista et 7 sont modélisés de même, triés par position. Avant XP, pas de préchargeur : le bras suit l'ordre dans lequel le système demande ses fichiers, pas leur position."
           }
         }
       }
@@ -7760,13 +7760,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ prefetcher: the read list is sorted by position on the disk, and read back in a single sweep of the arm."
+            "value" : "%@ prefetcher: what the previous boots read is requested in batches, and read back in position order on the disk."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Préchargeur de %@ : la liste de lecture est rangée par position sur le disque, et relue d'une seule course du bras."
+            "value" : "Préchargeur de %@ : ce que les démarrages précédents ont lu est demandé par lots, et relu dans l'ordre des positions sur le disque."
           }
         }
       }
