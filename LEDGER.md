@@ -8759,3 +8759,272 @@ chantier 52.
   (98 s au lieu de 11, le rangement du démarrage au milieu d'un 80 Go),
   `SCENARIO=dev-2003 STRATEGY=windowsXP` (l'aller-retour par seconde vers le
   journal), et un tri de JkDefrag sur `secretaire-2003`.
+
+
+## Chantier 51 — XP à la lettre : démarrage, cache et pile d'E/S de XP
+
+**Fait** · branche `xp`, partie de `7a8c0ab` (chantier 50) · plan :
+`LEDGER-XP.md`
+
+### Le problème
+
+Le démarrage de XP, ses installations et ses journées reposaient sur un
+modèle que `WINDOWS_CHECK.md` contredit contre le code de XP SP1 : un
+préchargeur qui « range la liste par position » et relit les six derniers
+démarrages (`boot-01` à `03`), les « N premiers Ko » d'un fichier (`boot-05`),
+un acte des services lu au hasard après le préchargement (`boot-06`), une
+date d'accès qui ne salit que la page de MFT, sans journal (`boot-15`), un
+*lazy writer* qui écrit tout, chaque seconde, et seulement les tables
+(`io-cache-01`, `boot-16` — le chantier 50 l'avait posé ainsi pour les
+passes), pas de lecture anticipée du cache (`io-cache-05`), 64 Ko attribués
+au pilote de port (`io-cache-02` à `04`), une file FIFO (`io-cache-09`),
+aucun `FLUSH CACHE` (`io-cache-10`), et sur FAT, `FSCTL_MOVE_FILE` joué comme
+sur NTFS (`fat-20`, `xp-defrag-fat-bloc`). Huit lacunes du domaine
+« Démarrage », cinq du domaine « Cache et pile de stockage ».
+
+### Les décisions
+
+Chaque référence a été relue dans `base/ntos/cache`, `base/ntos/mm`,
+`base/fs/ntfs`, `base/fs/fastfat`, `base/ntos/config`, `base/ntos/ex`,
+`base/hals/halx86`, `drivers/storage/{ide,classpnp,disk}` et
+`admin/services/sched/service/daytona` (décision 1). Tout ce qui suit ne vaut
+que pour l'époque XP (`winxp-sp1`, et le pilote de XP pour les passes) ;
+Vista et 7 gardent leur modèle, dit comme tel.
+
+**L'ordre**, pour isoler les effets : la file d'abord (elle décide de
+l'ordre de tout ce qui est émis ensemble), puis le préchargeur, qui en est le
+premier client ; les tailles de requête, qui ne changent que le découpage ;
+le *lazy writer* des tables, avant celui des données qui partage son
+budget ; la date d'accès, qui passe par lui ; la lecture anticipée, qui
+suppose le cache ; le registre et `FLUSH CACHE`, dont `fastfat` se sert
+ensuite.
+
+- **51a — la file d'`atapi`** (`AtapiQueue`). Chaque SRB porte sa LBA pour
+  clé (`classpnp/xferpkt.c:399-406`) ; `atapi` insère par clé et, à chaque fin
+  de commande, retire la première de clé ≥ `CurrentKey`, sinon la première
+  (`KeRemoveByKeyDeviceQueue`, `internal.c:3877-3878`, `ke/devquobj.c:320-333`),
+  puis `CurrentKey` = clé + 1 (`3959-3965`) ; une requête arrivée disque au
+  repos part sans toucher la clé (`devpdo.c:2051-2056`) ; clé remise à zéro
+  à la mise sous tension (`pdopower.c:322`). Pas de NCQ ni de *tagged
+  queuing* (`init.c:207`, `chanfdo.c:1741`), pas d'AHCI. Le simulateur sert
+  une commande à la fois dans l'ordre du plan : **la file est jouée par le
+  planificateur**, sur ce qu'il sait émis ensemble (une rafale, ou des fils
+  synchrones dont chacun émet sa suivante après le retrait). Il gagne
+  `RequestFlow` : premier plan, arrière-plan (le calcul de l'hôte court
+  pendant que le disque sert ce qu'il n'attend pas), barrière. Sous XP, les
+  actes préchargés du modèle d'avant émettent leurs lots d'un bloc
+  (`MmPrefetchPages`, `pfsup.c:318-388`).
+- **51b — le préchargeur à la lettre** (`emitWithXPPrefetcher`,
+  `BootOrder.firstAccess`). `CcPfBootWorker` (`prefboot.c:440-1000`) : les
+  métadonnées une fois (`prefboot.c:722`) — pages de MFT des fichiers et
+  répertoires de la trace, arrondies, triées, sans doublon
+  (`ntfs/fsctrl.c:19334-19433`), écarts de 128 Ko comblés (`SEEK_THRESHOLD`,
+  `pfsup.c:55-61, 1103`), puis le contenu de chaque répertoire, les parents
+  d'abord (`prefetch.c:5455-5470, 5687-5800`) ; la phase des pilotes, puis
+  tout ce qui précède `SMSS` en un passage (« plenty of available memory »,
+  761-773), chacune en deux lots, données puis images, l'en-tête des images
+  avec les données (`prefetch.c:4930-4960`) ; les pilotes s'initialisent
+  pendant le second lot, `SMSS` l'attend (936-955). Services et session :
+  du calcul et des écritures. L'application : son propre scénario
+  (`CcPfPrefetchScenario`, `prefetch.c:4605-4640`). Ordre du premier accès
+  (`pfsvc.c:2631-2635`) : c'est la file qui balaie. `Layout.ini` :
+  répertoires puis fichiers, sans le dernier acte (`pfsvc.c:6149-6180`).
+  Historique de 8 démarrages, sensibilité ≥ 2 (`prefetch.h:180`,
+  `pfsvc.c:4301-4311`) : commentaire corrigé ; le modèle n'a pas
+  d'historique. Libellés corrigés en anglais et en français
+  (`explanation.prefetch.text`, `pass.boot.prefetch`, trois détails d'actes
+  de XP).
+- **51c — les tailles de requête.** `classpnp` coupe à `HwMaxXferLen` =
+  min(128 Ko, 31 pages) = **124 Ko** (`xferpkt.c:60-74` ; `idep.h:31`,
+  `atapi/init.c:198-209` ; la HAL donne 33 registres à un maître PCI de
+  128 Ko, `ixisasup.c:1006-1008`, `pciidex/bm.c:741`) : ce que le
+  préchargeur lit hors cache part par 124 Ko ; ce qui passe par le cache
+  reste à 64 Ko (`MAX_WRITE_BEHIND`, `cc.h:159, 175` ; `mm.h:62`) ; une image
+  lue hors préchargement fait des fautes de 32 Ko (`mminit.c:1511-1512`,
+  `pagfault.c:2852-2870`) — le modèle ne connaît pas les sections, et lit
+  tout comme du code (16 Ko pour les données) ; sans effet sur la galerie.
+  La doc d'`InstallEra` n'attribue plus les 64 Ko au pilote de port.
+- **51d — le *lazy writer*** (`LazyWriter`). Un passage par seconde
+  (`LAZY_WRITER_IDLE_DELAY`, `cc.h:380`) tant qu'il reste des pages sales ;
+  3 s après la sortie du repos (`CcFirstDelay`, `cachedat.c:65`,
+  `lazyrite.c:85-99`) ; un huitième du total, plus le rattrapage vers
+  `CcDirtyPageTarget` (`lazyrite.c:325-363`), **dépensé flux par flux** depuis
+  le curseur : un flux de métadonnées part en entier, celui qui épuise le
+  budget aussi, les suivants attendent (436-506) — le « un huitième des pages
+  de chaque flux » que suggérait `WINDOWS_CHECK.md` n'est pas ce que dit le
+  code ; trois fils de travail (`fssup.c:145-168`, `ex/worker.c:312-340`,
+  `mminit.c:1520-1530`) dans la file d'`atapi` ; le journal avant les tables
+  (`cachesub.c:3619-3622, 3696`) ; plages de 64 Ko. Pour les passes (50d),
+  les installations, les journées et les dates d'accès ; plus de vidage forcé
+  entre deux séances ou deux étapes, seulement à l'arrêt.
+- **51e — les données aussi.** Une écriture de programme salit des pages
+  (`CopyFile` par 64 Ko, `fileopcr.c:4847-4870`) ; un flux de données écrit
+  ce qui reste du budget, là où il s'était arrêté (`cachesub.c:3002-3007,
+  3296-3320, 3994-3998`) ; une lecture de pages sales est servie par le
+  cache ; un fichier effacé perd ses pages sans qu'elles soient écrites
+  (`ntfs/cleanup.c:1576, 1930, 2515`). `RequestFlow.backgroundBarrier` :
+  après un lot du préchargeur, les délais du *lazy writer* comptent de sa
+  fin. La fenêtre d'un démarrage s'arrête avec son silence final.
+- **51f — la date d'accès journalisée** (`stampXP`). À la fermeture
+  (`cleanup.c:2282-2348`) : la page de MFT, par `NtfsChangeAttributeValue`
+  (`UpdateResidentValue`, `attrsup.c:3398-3405`), et l'entrée `$FILE_NAME` du
+  répertoire parent (`FCB_INFO_DUPLICATE_FLAGS`, `ntfsstru.h:2587-2594` ;
+  `NtfsUpdateFileNameInIndex`, `attrsup.c:8172-8400`, `indexsup.c:611-830`),
+  journalisée ; fichiers système exclus (`FCB_STATE_SYSTEM_FILE`) — aucun au
+  catalogue. Deux enregistrements par date, seize par page de journal (huit
+  validations de deux, l'ordre de grandeur du modèle). Le nom court d'un
+  fichier, seconde entrée, n'est pas connu.
+- **51g — la lecture anticipée** (`CcReadAhead`). Activée au premier défaut
+  (`copysup.c:560-575`), décidée à chaque lecture sans lecture d'avance en
+  attente (149-150) : troisième lecture séquentielle, la première à l'offset
+  0 comprise ; la tranche de la taille de la lecture arrondie à 64 Ko après
+  la prochaine frontière, ou dès la page suivante après une première lecture
+  courte (`cachesub.c:1330-1520`, `ntfsdata.h:374`), bornée par la fin du
+  fichier. Archives des installations, lectures des journées, dernier acte du
+  démarrage. Le cas 2 (pas constant) n'est pas joué ; la taille d'une
+  lecture de programme est supposée de 64 Ko.
+- **51h — le registre et `FLUSH CACHE`.** `DiskMechanics` sert `FLUSH CACHE`
+  (une écriture de zéro secteur : tout ce qui est acquitté est posé avant la
+  réponse ; `disk.c:3406-3411`, `atapi.c:5564`). Sous XP, une ruche salie
+  part 5 s après la dernière modification (`cmworker.c:41, 523-535`, réarmé
+  par `HvMarkDirty`, `hivesync.c:659-662`), en arrière-plan, et avant chaque
+  redémarrage au premier plan ; son `.LOG` écrit trois fois, chaque fois
+  suivi de `ZwFlushBuffersFile` → `FLUSH CACHE` (`hivesync.c:2542-2810`,
+  `cmwrapr.c:1045-1048`), puis la ruche par le cache (1036-1040). Le catalogue
+  n'a pas de `.LOG` : seuls ses trois `FLUSH CACHE` sont joués. Installations
+  seulement.
+- **51i — `FSCTL_MOVE_FILE` sur FAT** (`fatMoveFile`). `FatMoveFile`
+  (`fastfat/fsctrl.c:5290-5645`) : tranches de 256 Kio alignées dans le
+  fichier (5959-5968) ; FAT de la cible écrite avant (les deux copies,
+  `write.c:749-790`) ; source lue par le cache ; la tranche d'une requête
+  synchrone en paquets de 124 Ko ; seconde soudure ; entrée de répertoire si
+  le premier cluster bouge, sinon première soudure ; source rendue sans
+  écriture immédiate ; `FLUSH CACHE`. Pour JkDefrag et UltraDefrag sur FAT ;
+  plus de validation par fichier. La première soudure d'un déplacement
+  partiel prend un secteur voisin de la source : le cluster qui précède
+  n'est pas connu du modèle.
+
+**Les témoins et les cibles de démarrage** (décision 1). `ThinkModel.boot`
+n'est pas recalé : ses cibles sont les durées du modèle d'avant la relecture,
+pas des mesures d'époque, et les retrouver serait aligner le modèle corrigé
+sur l'ancien. Le témoin (le même contenu d'un tenant) passe par le même
+préchargeur ; ses écarts se resserrent (tableau). La phrase du README qui
+donne l'ajustement (« 0,19 ») dit maintenant que la constante est restée à
+0,185.
+
+Tests neufs : `AtapiQueueTests` (C-LOOK, clé inchangée au repos, secteur
+répété, fils synchrones), `LazyWriterTests` (3 s puis 1 s, huitième par flux,
+reprise des données, lecture anticipée), `FatMoveFileTests` (tranches,
+`FLUSH CACHE`, soudures et entrée), `DriveCacheTests` (`FLUSH CACHE`).
+Retournés en citant la source : l'ordre du préchargeur par époque
+(`BootSessionTests`, XP en premier accès), les enregistrements de MFT lus
+par pages sous XP (Vista garde les ouvertures une à une), `InstallSessionTests`
+(une écriture de zéro secteur est un `FLUSH CACHE`), et **« 2003 horodate ses
+accès, 2007 non »** : sa borne, validée le 25 septembre 2026 (« moins
+d'écritures que de fichiers lus »), tombe à 51f — une date salit deux pages
+(MFT et index du parent) ; 994 dates, 1 028 écritures. La borne suit le
+mécanisme : moins d'écritures que de pages salies, et le journal en quelques
+pages, avant elles.
+
+### Ce qui valide
+
+Mesures sous `.build/measure-xp` ; `bin-50g` reconstruit depuis `7a8c0ab` :
+identique, binaire et ressources. Prédictions écrites avant chaque mesure
+(`prediction-51.md`). Les commits de 51b à 51i ont été faits avant leur
+mesure, puis amendés avec elle ; 51a a été reconstruit depuis `7a8c0ab` et
+prouvé par ses bilans (binaire différent de 4 Ko : les chemins).
+
+| étape | prédit | mesuré |
+|---|---|---|
+| 51a | 9 changent, 49 md5 ; démarrages de XP ±5 % | **9 / 391, 49 md5** ; −0,9 à +0,6 % : conforme |
+| 51b | 17 changent (dont les 8 passes de XP de 2003), 49 md5 ; démarrages −10 à −30 %, seeks en baisse | **17 / 383, 49 md5** ; démarrages **−0,7 à −5,8 %**, seeks **en hausse** (énumération des répertoires, deux balayages par phase) : faux sur l'ampleur |
+| 51c | 9 changent, 49 md5 ; requêtes −10 à −30 %, durées ±1 % | **9 / 391, 49 md5** ; requêtes −17 à −31 %, durées −0,3 % au plus : conforme |
+| 51d | 57 changent (48 passes), 49 md5 ; passes ±3 %, installations et journée −1 à −5 % | **57 / 343, 49 md5** ; passes −1,9 à +1,8 %, démarrages −0,3 % ; installations **−0,1 %**, journée **−10,1 %** : faux |
+| 51e | 9 changent, 49 md5 ; installations −5 à −12 % | première version (`out-51e-v1`) : démarrages +6 à +19 %, deux défauts corrigés avant de remesurer ; puis **9 / 391, 49 md5**, installations **−3,7 à −8,9 %**, journée −0,5 %, démarrages ±0,3 % |
+| 51f | 5 changent, 53 md5 ; écritures des dates +30 à +100 % | **5 / 395, 53 md5** ; +28 à +62 %, durées +0,6 % au plus : conforme (gamer juste dessous) |
+| 51g | 9 changent, 49 md5 ; installations −1 à −5 % | **7 / 393, 51 md5** : deux démarrages ne lisent rien que la lecture anticipée touche ; installations −1,0 à −2,1 % |
+| 51h | 4 changent, 54 md5 ; installations ±3 % | **4 / 396, 54 md5** ; +0,4 à +0,6 %, 72 à 90 `FLUSH CACHE` : conforme |
+| 51i | ≤ 120 changent, 58 md5 ; passes FAT de JkDefrag et UltraDefrag +30 à +150 % | **107 / 293, 58 md5** ; **−18,6 à +277,9 %** : faux sur l'ampleur |
+| contre 50g | — | 236 identiques, 164 changent ; 49 md5 identiques |
+
+**Démarrages et témoins, 50g → 51i** (secondes ; les vingt autres volumes
+sont identiques) :
+
+| volume | démarrage | témoin (écart) |
+|---|---|---|
+| `dev-2003` | 51,5 → 49,8 | 52,0 (−1 %) → 49,8 (−0 %) |
+| `famille-2003` | 34,6 → 32,4 | 36,3 (−5 %) → 32,6 (−1 %) |
+| `gamer-2003` | 66,3 → 66,0 | 67,6 (−2 %) → 66,3 (−0 %) |
+| `secretaire-2003` | 35,0 → 34,3 | 34,7 (+1 %) → 34,0 (+1 %) |
+
+Le calcul fait 67 à 72 % d'un démarrage de XP, et il ne rétrécit pas : le
+préchargeur ne gagne que ce que ses lots font gagner au disque, et le
+recouvrement du lot d'avant `SMSS`. Les seeks montent (`famille-2003` 868 →
+1 346) mais raccourcissent (14 584 → 2 264 cylindres en moyenne) : un
+démarrage de XP est une suite de balayages — métadonnées, répertoires,
+données, images —, plus une énumération de répertoires, puis du calcul.
+
+**Sessions, 50g → 51i** : installations `dev-2003` 657,5 → 621,6 s,
+`famille-2003` 459,8 → 440,0, `gamer-2003` 710,2 → 638,9,
+`secretaire-2003` 416,2 → 395,4 (les données posées par le *lazy writer*
+pendant que le CD se lit) ; journée `famille-2003:400` 97,4 → 79,9 s ; les
+autres installations et journées identiques. Passes : XP sur les 2003 +0,4
+à +2,4 % ; JkDefrag et UltraDefrag sur les 2003 −1,3 à +0,3 % ; sur les
+FAT, de −18,6 à +277,9 % (`dev-1999` JkDefrag 676 → 1 752 s, 15 782 `FLUSH
+CACHE`).
+
+**Le son** (rien n'est écouté ; rendu hors-ligne, `bin-50g` et `bin-51i`,
+trames de 10 ms, attaques au-dessus de trois fois la médiane) :
+`boot:famille-2003` 35,6 → 33,4 s, seeks 868 → 1 346 (moyenne 14 584 →
+2 264 cylindres), RMS médian −41,0 → −41,4 dBFS, p95 −26,7 → −29,8,
+attaques 6,6 → 4,8 par seconde : des balayages plus courts, moins
+d'attaques fortes. `dev-1993` JkDefrag : 254 → 354 s, requêtes 5 189 →
+12 363, seeks 5 042 → 8 724, RMS médian −31,5 → −31,2, attaques 0,4 → 0,8
+par seconde : les retours à la table deux ou trois fois par tranche, et le
+disque qui vide son cache.
+
+`swift test` : **177 + 346 tests, verts**. Calibration en Release
+(`calibration-51i.log`) : **15 tests, verts, les mêmes 4 known issues**.
+`GalleryAllocationAudit` en Release (`audit-51i.log`, 19 min 28) : **propre
+sur les vingt-quatre volumes** — il audite les plans des passes, donc le
+chemin FAT de 51i. Binaire reconstruit après la dernière retouche (un
+commentaire de `DiskSimulator`) : `bin-51final`, 400 bilans identiques à
+51i.
+Volumes : les vingt-quatre empreintes identiques à 50g (le chantier ne
+touche pas `DiskCore`) ; durées de génération à la mesure près (`dev-2003`
+3 281 → 3 279 ms, `famille-2003` 1 617 → 1 643, `dev-2007` 2 121 → 2 123,
+`dev-2012` 2 602 → 2 627).
+
+README : `readme-tables.py 51i --write`, la durée de génération de
+`dev-2007` rendue (1,7 s ; 2,1 mesurés) ; `--check` : un seul écart,
+celui-là. Prose corrigée : le préchargeur (ni tri, ni « six derniers »), la
+date d'accès journalisée, les tables et le registre des installations, le
+*lazy writer* de la passe de XP, `Layout.ini`, la constante de XP, « Ce qui
+ne l'est pas » (tailles de requête, file d'`atapi`, `FLUSH CACHE`, les trous
+du démarrage de XP, le registre sans `.LOG`). Le reste est au chantier 52.
+
+### Laissé ouvert
+
+- **La file d'`atapi` est jouée par le planificateur**, sur ce qu'il émet
+  ensemble. Une requête du premier plan arrivée pendant qu'un lot attend
+  passe après lui au lieu d'être triée avec lui ; il faudrait une vraie file
+  dans `DiskMechanics`, qui verrait les requêtes à venir.
+- **La trace du préchargeur n'existe pas** : on lit le budget de l'acte,
+  d'un tenant. La troncature par la mémoire, la phase parallèle à
+  l'initialisation vidéo, l'application dans la trace du démarrage, les
+  sections des images (des lectures coupées à chaque sous-section) ne sont
+  pas joués.
+- **La mémoire de la machine** n'est dite nulle part : le seuil de
+  rattrapage du *lazy writer* suppose plus de 220 Mo. Rien ne survit d'une
+  séance à l'autre (pas de pages propres en cache sous NT).
+- **Le `.LOG` des ruches** n'est pas au catalogue ; seuls les installations
+  vident le registre ; la ruche est réécrite en entier.
+- **Les dates d'accès des journées**, et l'index d'un répertoire où naît un
+  fichier, ne sont pas joués.
+- **Les tailles de lecture des programmes** : 64 Ko, faute de mieux.
+- **`ThinkModel`** garde ses constantes ; les cibles de démarrage restent
+  celles du modèle d'avant la relecture, qu'aucune mesure d'époque ne
+  remplace.
+- **Écoute proposée, non faite** : `boot:famille-2003` (lots puis silence),
+  `SCENARIO=dev-1999 STRATEGY=jkDefrag` (le va-et-vient de `fastfat`),
+  `install:gamer-2003` (les pulsations du *lazy writer* pendant la copie).

@@ -294,10 +294,12 @@ struct DiskTrace {
 /// Rejoue une liste de requêtes bloc sur la géométrie et le modèle de seek,
 /// et en déduit la chronologie mécanique exacte.
 ///
-/// File d'attente FIFO, sans réordonnancement des commandes : c'est volontaire,
-/// un contrôleur IDE de cette époque ne réordonnait quasiment rien, et c'est
-/// précisément ce qui rend le crépitement si dense. Seul le cache d'écriture du
-/// disque pose ce qu'il a acquitté dans l'ordre de l'ascenseur.
+/// Une commande à la fois, dans l'ordre de la liste : le disque d'un
+/// contrôleur IDE n'a pas de file (ni NCQ ni *tagged queuing*), et c'est ce
+/// qui rend le crépitement si dense. Seul le cache d'écriture du disque pose
+/// ce qu'il a acquitté dans l'ordre de l'ascenseur. La file logicielle du
+/// pilote de port de XP, qui trie ce qui attend par LBA, est jouée en amont,
+/// par le planificateur (`AtapiQueue`).
 enum DiskSimulator {
 
     /// Toute une passe d'un coup, et tout ce qu'elle a produit. C'est la

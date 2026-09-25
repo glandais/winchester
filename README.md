@@ -806,7 +806,7 @@ relocalise, initialise, et le disque attend. Ce temps de calcul est le
 qui **ne sont pas des mesures d'époque** : les durées que le modèle donnait
 avant la relecture de ses experts — et tout ce qui dépasse ce plancher est du
 disque. Sur les vingt-quatre profils il pèse entre 37 et 72 % du total, et les vingt-quatre
-démarrages tiennent entre 29,0 et 66,3 s.
+démarrages tiennent entre 29,0 et 66,0 s.
 
 Ces constantes vivent dans une seule table (`ThinkModel.boot`), et seul le coût
 de calcul **par mégaoctet** y bouge d'un calage à l'autre : ce que les
@@ -814,9 +814,12 @@ corrections du disque ont déplacé — un tour de plateau perdu à chaque requ�
 contiguë, une table FAT lue deux fois, les trois caches, les enregistrements de
 MFT épars — est un coût de lecture, au mégaoctet. Avec quatre profils par
 époque, les écarts ne départagent plus les deux constantes ; c'est la
-physique qui choisit. Pour 2003 et 2007, l'ajustement retombe sur 0,18 et
+physique qui choisit. Pour 2003 et 2007, l'ajustement retombe sur 0,19 et
 0,15 s par mégaoctet : un disque qui va chercher chaque enregistrement de MFT
-là où il est coûte ce que le plancher processeur ne coûtait pas. Le niveau
+là où il est coûte ce que le plancher processeur ne coûtait pas. La constante
+de XP, elle, n'a pas bougé depuis : 0,185. Le chantier 51 a refait le
+démarrage de XP d'après son code, et une cible qui n'est pas une mesure
+d'époque ne se recale pas sur le modèle qu'on vient de corriger. Le niveau
 reste injustifié — un Vista à peine plus rapide qu'un XP sur des processeurs
 trois ou quatre fois plus rapides — et c'est aux cibles de le dire : seules des
 mesures d'époque le trancheraient.
@@ -836,8 +839,8 @@ peu plus de pilotes et de services.
 | `gamer-1996` | Windows 95 | 346 | 35 Mo | 44,4 s | 48 % | +3 % |
 | `famille-1999` | Windows 98 SE | 620 | 110 Mo | 64,3 s | 53 % | +10 % |
 | `secretaire-1999` | Windows 98 SE | 533 | 98 Mo | 57,5 s | 53 % | +9 % |
-| `gamer-2003` | Windows XP | 912 | 229 Mo | 66,3 s | 72 % | −2 % |
-| `dev-2003` | Windows XP | 414 | 178 Mo | 51,5 s | 67 % | −1 % |
+| `gamer-2003` | Windows XP | 912 | 231 Mo | 66,0 s | 72 % | −0 % |
+| `dev-2003` | Windows XP | 414 | 183 Mo | 49,8 s | 70 % | −0 % |
 | `famille-2007` | Windows Vista | 683 | 136 Mo | 43,2 s | 58 % | +3 % |
 | `gamer-2012` | Windows 7 | 600 | 275 Mo | 43,6 s | 68 % | +2 % |
 
@@ -859,7 +862,7 @@ la même conclusion : défragmenter n'accélérait pas le démarrage, et c'est u
 rangement à part — `layout.ini` — qui s'en chargeait.
 
 **Sur NTFS, le témoin ne gagne pas toujours.** Sur les douze volumes, l'écart va
-de −5 % (`famille-2003`) à +6 %, et cinq volumes démarrent aussi vite ou plus vite
+de −1 % (`famille-2003`) à +6 %, et cinq volumes démarrent aussi vite ou plus vite
 que leur témoin. NTFS choisit le trou qui
 convient plutôt que le premier venu, et sa disposition réelle peut battre un
 rangement naïf qui empile tout dans l'ordre du répertoire. Le témoin garde donc
@@ -869,10 +872,19 @@ un majorant.
 **Le préchargeur est la première différence d'époque qui ne tienne pas au
 matériel.** Jusqu'à Windows 98, les fichiers partent dans l'ordre du registre et
 le bras suit : sur un volume étalé, c'est du va-et-vient pur. Windows XP a
-introduit le préchargeur de démarrage — il garde la trace des derniers
-démarrages et **range la liste par position sur le disque**, métadonnées
-comprises, pour tout relire d'une course ; Vista a poussé l'idée avec
-SuperFetch. Le modèle fait les deux, et le gain est là où on l'attend : sur
+introduit le préchargeur de démarrage, et il **ne trie rien** : il relit ce
+que les huit derniers démarrages ont lu — une page vue au moins deux fois —,
+dans l'ordre du **premier accès**, par lots qu'il émet d'un bloc. D'abord les
+enregistrements de MFT de toute la trace et le contenu de ses répertoires, une
+fois ; puis, pour les pilotes, les pages de données (avec l'en-tête de chaque
+image), puis les pages d'images ; puis, pendant que les pilotes
+s'initialisent, le même couple pour tout ce qui précède `SMSS`. Le balayage
+qu'on entend vient du **pilote de port** : `atapi` sert les requêtes en
+attente par LBA croissante, un ascenseur à sens unique. Les services et
+l'ouverture de session se font ensuite sur des pages en mémoire — du calcul et
+des écritures —, et l'application a son propre scénario, préchargé à son
+lancement. Vista a poussé l'idée avec SuperFetch ; le modèle y range la liste
+par position, **sans source**. Le gain est là où on l'attend : sur
 `famille-2007`, le seek moyen passe de 15 240 à 1 900 cylindres, le nombre
 de seeks de 1 448 à 1 148, et le démarrage de 45,2 à 43,2 s. La même étape crépite
 en 1995 et ronronne en 2003.
@@ -881,8 +893,11 @@ en 1995 et ronronne en 2003.
 réécrit — dans l'enregistrement de MFT sur NTFS, dans l'entrée de répertoire
 sous VFAT —, et Vista l'a désactivée par défaut. Au premier démarrage de la
 journée, chaque fichier lu salit donc ses métadonnées **ailleurs** que là où on
-vient de lire, et le cache les écrit par pages de 4 Ko : sur `gamer-2003`, 912
-dates réécrites en 385 écritures — les enregistrements des fichiers d'un
+vient de lire. Sous XP, à la fermeture du fichier, deux choses : la page de MFT
+qui porte son enregistrement, et l'entrée de son nom dans l'index de son
+répertoire — deux changements **journalisés**. Le *lazy writer* pose le journal
+d'abord, puis les pages, par passages d'une seconde : sur `gamer-2003`, 912
+dates réécrites en 885 écritures, et 9 du journal — les enregistrements des fichiers d'un
 démarrage sont épars dans la MFT, et une page en porte rarement plus de deux ou
 trois ; sur `famille-2007`, aucune. MS-DOS n'avait pas ce champ.
 
@@ -928,9 +943,16 @@ décrit par logiciel (`SetupStyle`) :
   revient au bord à chaque fois. Sous Windows, le cache les vide par salves
   triées. Sous NT, chaque vidage écrit aussi une page de `$LogFile`, le
   journal de 64 Mo que `FORMAT` pose juste devant la MFT sous XP, et
-  derrière le miroir au milieu du volume sous Vista et 7 ;
+  derrière le miroir au milieu du volume sous Vista et 7. Sous XP, c'est le
+  *lazy writer* tel que son code le joue : trois secondes après la première
+  page salie, puis chaque seconde, un huitième des pages sales, flux par
+  flux, le journal d'abord, sur trois fils que la file d'`atapi` croise — et
+  il écrit aussi **les données** : la copie ne fait que salir des pages, qui
+  partent par pulsations pendant que le CD se lit ;
 - **le registre** (`SYSTEM.DAT` et `USER.DAT`, les ruches de NT) est posé avec le
-  système et réécrit en bloc après chaque logiciel ;
+  système et réécrit en bloc après chaque logiciel ; sous XP, cinq secondes
+  après la dernière modification, avec trois `FLUSH CACHE` par ruche — ceux de
+  son `.LOG` —, et avant chaque redémarrage ;
 - **les redémarrages** — deux ou trois pour un système, un pour une application
   qui remplace des DLL partagées — sont de vrais démarrages, sur ce qui est
   posé jusque-là.
@@ -945,7 +967,7 @@ de l'attente ; sur CD et DVD, ce sont la décompression et les pauses.
 | `gamer-1993` | 21 disquettes | 373 fichiers, 39 Mo | 0 | 2 | 11 min 59 |
 | `secretaire-1996` | CD-ROM 8x | 1 008 fichiers, 222 Mo | 46 | 3 | 7 min 16 |
 | `famille-1999` | CD-ROM 32x | 2 412 fichiers, 574 Mo | 77 | 5 | 8 min 08 |
-| `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 7 min 40 |
+| `famille-2003` | CD-ROM 48x | 3 388 fichiers, 1,4 Go | 26 | 4 | 7 min 20 |
 | `gamer-2007` | DVD 16x | 10 398 fichiers, 13,5 Go | 23 | 3 | 17 min 16 |
 | `gamer-2012` | DVD 16x | 16 092 fichiers, 29,1 Go | 46 | 2 | 25 min 11 |
 
@@ -983,7 +1005,7 @@ de 1999 durerait la nuit.
 |---|---|---|---:|
 | `dev-1996`, jour 20 | navigation, compilation, archivage | 142 / 36 Mo | 5 min 24 |
 | `dev-1996`, jour 300 | idem | 156 / 65 Mo | 6 min 52 |
-| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 203 / 20 Mo | 1 min 37 |
+| `famille-2003`, jour 400 | navigation, bureautique, téléchargement, médias | 211 / 24 Mo | 1 min 20 |
 | `gamer-1999`, jour 365 | navigation, jeu | 532 / 6 Mo | 2 min 00 |
 
 **L'usure s'entend.** Sur `dev-1996`, la même journée de travail passe d'un seek
@@ -1022,7 +1044,8 @@ c'était faux, et **la source est le code de XP SP1** lui-même, tel qu'il a
 circulé en 2020 (`dfrgntfs.cpp`, `mftdefrag.cpp`, `deviosup.c` — pas une source
 ouverte, et le journal le dit, chantier 45). Sous XP, une passe commence
 par **ranger le démarrage** : les fichiers que le préchargeur a notés dans
-`Layout.ini` — ici l'ordre de lecture d'un démarrage planifié —, 32 Mo au plus
+`Layout.ini` — ici la trace d'un démarrage planifié, répertoires puis fichiers
+dans l'ordre du premier accès, comme `pfsvc` l'écrit —, 32 Mo au plus
 chacun, partent dans cet ordre au début du plus grand trou du volume, s'il en
 a un assez grand (sinon au début du volume, dont les intrus en morceaux sont
 chassés), et cette zone, aucune phase ne la touche ensuite. Elle recolle alors
@@ -1035,10 +1058,11 @@ pour en ouvrir un, puis la zone MFT, jusqu'au premier fichier qui n'y trouve
 pas de place ; et elle finit par **tasser vers l'avant** tout fichier contigu
 qui a un trou devant lui. Chaque bloc de 64 Kio est une transaction : ses
 enregistrements de journal attendent en mémoire, l'enregistrement de MFT et
-les pages de bitmap qu'il salit partent avec le *lazy writer*, groupés, chaque
-seconde — donc pas de « clac … clac … clac » après chaque fichier, mais un
-aller-retour vers le journal et les tables chaque seconde, et un long balayage
-à la fin. Vista et 7 gardent le modèle d'avant : pas de rangement du
+les pages de bitmap qu'il salit partent avec le *lazy writer* — trois secondes
+après la première page salie, puis à chaque passage d'une seconde, un huitième
+des pages sales, flux par flux, le journal d'abord — donc pas de « clac … clac
+… clac » après chaque fichier, mais un aller-retour vers le journal et les
+tables chaque seconde, et un long balayage à la fin. Vista et 7 gardent le modèle d'avant : pas de rangement du
 démarrage, une validation par fichier, là où il vit.
 
 Les deux autres ne sont d'aucune époque, et ne se choisissent jamais tout seuls.
@@ -1068,10 +1092,10 @@ passe de XP sur le même volume tient en **1 159 153 requêtes et 29 min 21**.
 
 | scénario NTFS     | plein | requêtes | durée      | déplacés | fragmentés avant → après | morceaux avant → après |
 |-------------------|------:|---------:|-----------:|---------:|--------------------------|------------------------|
-| `gamer-2003`      |   9 % |   26 420 |   1 min 38 |     1826 | 14 → **0**               | 109 → **0**            |
-| `secretaire-2003` |  91 % |  496 174 |  30 min 23 |    10304 | 5 912 → 286              | 36 327 → 4 166         |
-| `famille-2003`    |  88 % |   96 309 |   6 min 30 |     2829 | 689 → 35                 | 10 665 → 4 348         |
-| `dev-2003`        |  91 % |  699 495 |  39 min 00 |     9362 | 690 → **0**              | 3 472 → **0**          |
+| `gamer-2003`      |   9 % |   27 139 |   1 min 40 |     1829 | 14 → **0**               | 109 → **0**            |
+| `secretaire-2003` |  91 % |  495 879 |  30 min 32 |    10305 | 5 912 → 286              | 36 327 → 4 166         |
+| `famille-2003`    |  88 % |   95 955 |   6 min 31 |     2800 | 689 → 35                 | 10 665 → 4 348         |
+| `dev-2003`        |  91 % |  703 838 |  39 min 56 |     9348 | 690 → **0**              | 3 472 → **0**          |
 | `secretaire-2007` |  88 % | 2 146 170 |  51 min 03 |     5219 | 839 → 1                  | 15 720 → 2             |
 | `famille-2007`    |  97 % | 1 159 153 |  29 min 21 |    10130 | 2 752 → 169              | 71 575 → 29 960        |
 | `gamer-2007`      |  87 % | 6 973 481 |     2 h 19 |    12640 | 3 386 → 30               | 61 230 → 68            |
@@ -1134,9 +1158,9 @@ sujet : un fichier ramené de quarante morceaux à deux y reste « fragmenté »
 
 | scénario NTFS     | morceaux restants, XP | UltraDefrag |  requêtes XP → UD |    durée XP → UD |
 |-------------------|----------------------:|------------:|------------------:|-----------------:|
-| `secretaire-2003` |                 4 166 |         435 | 496 174 → 108 624 | 30 min 23 → 24 min 22 |
-| `famille-2003`    |                 4 348 |         627 |   96 309 → 31 309 | 6 min 30 → 7 min 47 |
-| `dev-2003`        |                     0 |           6 |  699 495 → 14 604 | 39 min 00 → 8 min 09 |
+| `secretaire-2003` |                 4 166 |         435 | 495 879 → 106 685 | 30 min 32 → 24 min 24 |
+| `famille-2003`    |                 4 348 |         627 |   95 955 → 31 262 | 6 min 31 → 7 min 48 |
+| `dev-2003`        |                     0 |           6 |  703 838 → 14 712 | 39 min 56 → 8 min 10 |
 | `secretaire-2007` |                     2 |           0 | 2 146 170 → 42 770 | 51 min 03 → 28 min 21 |
 | `famille-2007`    |                29 960 |       1 139 | 1 159 153 → 151 439 | 29 min 21 → 20 min 19 |
 | `gamer-2007`      |                    68 |         161 | 6 973 481 → 139 038 | 2 h 19 → 46 min 17 |
@@ -1166,7 +1190,7 @@ Cela ne fait pas d'UltraDefrag le meilleur outil partout. Des deux volumes que
 XP nettoie entièrement, il nettoie l'un aussi, et laisse 77 morceaux sur
 l'autre. Et sur un volume FAT de 1996, où presque aucun fichier n'atteint 40 Mo,
 la défragmentation partielle n'a rien à mordre : sur `dev-1996`, la passe tient
-en 1 min 03 contre 21 min 31 à l'outil de 95, parce qu'elle n'évacue personne. Elle
+en 1 min 24 contre 21 min 31 à l'outil de 95, parce qu'elle n'évacue personne. Elle
 laisse 1 085 morceaux — et l'outil de 95, sur ce volume-là, en laisse 602 : à
 87 % de remplissage, il ne trouve plus où évacuer non plus, et saute les places
 qu'il ne peut pas libérer. Elle ne touche pas aux répertoires FAT, que Windows
@@ -1189,10 +1213,10 @@ manquent :
 
 | scénario | plein | durée, 95 → JkDefrag | évacuations, 95 | morceaux restants, 95 → JkDefrag |
 |---|---:|---:|---:|---:|
-| `dev-1993` | 72 % | 24 min 42 → 4 min 14 | 3 090 | 0 → 15 |
-| `dev-1996` | 87 % | 21 min 31 → 5 min 00 | 4 060 | 602 → 393 |
-| `secretaire-1999` | 87 % | 28 min 05 → 6 min 44 | 1 640 | 58 → 1 277 |
-| `famille-1999` | 96 % | 59 min 57 → 7 min 38 | 2 542 | 19 → 2 140 |
+| `dev-1993` | 72 % | 24 min 42 → 5 min 54 | 3 090 | 0 → 15 |
+| `dev-1996` | 87 % | 21 min 31 → 9 min 15 | 4 060 | 602 → 393 |
+| `secretaire-1999` | 87 % | 28 min 05 → 16 min 22 | 1 640 | 58 → 1 277 |
+| `famille-1999` | 96 % | 59 min 57 → 15 min 24 | 2 542 | 19 → 2 140 |
 | `gamer-1996` | 99 % | 5 s → 5 s | 1 | 1 417 → 1 417 |
 
 À 99 %, il ne fait presque rien : un outil qui n'évacue personne a besoin de
@@ -1228,10 +1252,10 @@ tout le volume et déplace bien plus que les seuls fichiers cassés — 4,1 Go s
 
 | scénario | plein | morceaux restants, XP | UltraDefrag | JkDefrag | durée, XP → JkDefrag | Go déplacés, XP → JkDefrag |
 |---|---:|---:|---:|---:|---:|---:|
-| `secretaire-2003` | 91 % | 4 166 | 435 | 769 | 30 min 23 → 28 min 49 | 12,4 → 22,1 |
-| `famille-2003` | 88 % | 4 348 | 627 | 502 | 6 min 30 → 21 min 06 | 2,3 → 18,4 |
-| `dev-2003` | 91 % | 0 | 6 | 104 | 39 min 00 → 9 min 57 | 20,2 → 9,4 |
-| `gamer-2003` | 9 % | 0 | 0 | 0 | 1 min 38 → 3 min 54 | 0,7 → 4,1 |
+| `secretaire-2003` | 91 % | 4 166 | 435 | 769 | 30 min 32 → 28 min 47 | 12,4 → 22,1 |
+| `famille-2003` | 88 % | 4 348 | 627 | 502 | 6 min 31 → 21 min 10 | 2,3 → 18,4 |
+| `dev-2003` | 91 % | 0 | 6 | 104 | 39 min 56 → 9 min 57 | 20,2 → 9,4 |
+| `gamer-2003` | 9 % | 0 | 0 | 0 | 1 min 40 → 3 min 54 | 0,7 → 4,1 |
 | `famille-2007` | 97 % | 29 960 | 1 139 | 1 067 | 29 min 21 → 36 min 42 | 34,3 → 56,1 |
 | `gamer-2007` | 87 % | 68 | 161 | 30 | 2 h 19 → 1 h 54 | 219,3 → 195,1 |
 
@@ -1327,18 +1351,18 @@ passe laisse un volume cohérent.
 
 | scénario | plein | durée, 95 → JkDefrag → frontière | morceaux restants, 95 / JkDefrag / frontière | trous libres, 95 / JkDefrag / frontière |
 |---|---:|---:|---:|---:|
-| `dev-1993` | 72 % | 24 min 42 → 4 min 14 → **5 min 31** | 0 / 15 / **0** | 2 / 11 / **1** |
-| `secretaire-1993` | 92 % | 20 min 29 → 9 min 20 → **19 min 21** | 0 / 15 / **0** | 2 / 155 / **1** |
-| `poweruser-1993` | 84 % | 17 min 00 → 4 min 08 → **7 min 41** | 0 / 44 / **0** | 1 / 29 / **1** |
+| `dev-1993` | 72 % | 24 min 42 → 5 min 54 → **5 min 31** | 0 / 15 / **0** | 2 / 11 / **1** |
+| `secretaire-1993` | 92 % | 20 min 29 → 8 min 53 → **19 min 21** | 0 / 15 / **0** | 2 / 155 / **1** |
+| `poweruser-1993` | 84 % | 17 min 00 → 6 min 20 → **7 min 41** | 0 / 44 / **0** | 1 / 29 / **1** |
 | `gamer-1993` | 99 % | 7 s → 6 s → **32 min 30** | 838 / 836 / **0** | 5 / 7 / **1** |
-| `dev-1996` | 87 % | 21 min 31 → 5 min 00 → **9 min 12** | 602 / 393 / **334** | 212 / 282 / **115** |
-| `famille-1996` | 99 % | 48 s → 50 s → **14 min 03** | 5 108 / 4 605 / **5** | 32 / 388 / **1** |
-| `secretaire-1996` | 74 % | 10 min 52 → 6 min 08 → **5 min 53** | 3 / 9 / **3** | 2 / 120 / **1** |
+| `dev-1996` | 87 % | 21 min 31 → 9 min 15 → **9 min 12** | 602 / 393 / **334** | 212 / 282 / **115** |
+| `famille-1996` | 99 % | 48 s → 1 min 08 → **14 min 03** | 5 108 / 4 605 / **5** | 32 / 388 / **1** |
+| `secretaire-1996` | 74 % | 10 min 52 → 11 min 24 → **5 min 53** | 3 / 9 / **3** | 2 / 120 / **1** |
 | `gamer-1996` | 99 % | 5 s → 5 s → **59 min 45** | 1 417 / 1 417 / **46** | 1 / 1 / **1** |
-| `dev-1999` | 85 % | 46 min 38 → 11 min 16 → **42 min 34** | 3 / 350 / **3** | 4 / 285 / **2** |
-| `famille-1999` | 96 % | 59 min 57 → 7 min 38 → **27 min 48** | 19 / 2 140 / **19** | 20 / 989 / **1** |
-| `secretaire-1999` | 87 % | 28 min 05 → 6 min 44 → **15 min 52** | 58 / 1 277 / **58** | 59 / 1 046 / **1** |
-| `gamer-1999` | 89 % | 1 h 01 → 10 min 14 → **31 min 56** | 5 / 536 / **5** | 6 / 557 / **1** |
+| `dev-1999` | 85 % | 46 min 38 → 29 min 12 → **42 min 34** | 3 / 350 / **3** | 4 / 285 / **2** |
+| `famille-1999` | 96 % | 59 min 57 → 15 min 24 → **27 min 48** | 19 / 2 140 / **19** | 20 / 989 / **1** |
+| `secretaire-1999` | 87 % | 28 min 05 → 16 min 22 → **15 min 52** | 58 / 1 277 / **58** | 59 / 1 046 / **1** |
+| `gamer-1999` | 89 % | 1 h 01 → 26 min 40 → **31 min 56** | 5 / 536 / **5** | 6 / 557 / **1** |
 
 Les morceaux qui restent sont **tous ceux du fichier d'échange**, que personne
 ne déplace : aucun fichier déplaçable ne sort de la passe en morceaux. Les trous
@@ -1352,8 +1376,8 @@ Windows 95, et elle déplace à peu près autant de données (29,8 Go contre 40,
 Ce n'est pas la durée qui les sépare — elles sont à quelques minutes l'une de
 l'autre, et la moindre correction du modèle fait passer l'avantage de l'un à
 l'autre —, c'est ce qu'ils laissent : sur les volumes pleins de 1999, Windows 95
-laisse jusqu'à 58 morceaux, la frontière 58 au plus. Elle est 4,1 fois plus
-longue que JkDefrag (1 h 06), qui ne fait pas le même travail : sur les quatre
+laisse jusqu'à 58 morceaux, la frontière 58 au plus. Elle est 2,1 fois plus
+longue que JkDefrag (2 h 11), qui ne fait pas le même travail : sur les quatre
 volumes de 1999, il laisse entre 350 et 2 140 morceaux et de 285 à 1 046
 trous. Et c'est le seul des trois à ranger `gamer-1996`, plein à 99 %, où
 l'algorithme de 1995 ne trouve plus où évacuer et rend le volume tel quel : là,
@@ -1389,10 +1413,10 @@ bras par morceau. La zone MFT n'est jamais une destination.
 
 | scénario | plein | durée, XP / UltraDefrag / JkDefrag / recollage | morceaux restants | trous libres |
 |---|---:|---:|---:|---:|
-| `dev-2003` | 91 % | 39 min 00 / 8 min 09 / 9 min 57 / **1 min 55** | 0 / 6 / 104 / **272** | 205 / 943 / 224 / **31** |
-| `famille-2003` | 88 % | 6 min 30 / 7 min 47 / 21 min 06 / **7 min 30** | 4 348 / 627 / 502 / **612** | 3 746 / 3 389 / 667 / **147** |
-| `secretaire-2003` | 91 % | 30 min 23 / 24 min 22 / 28 min 49 / **11 min 26** | 4 166 / 435 / 769 / **618** | 3 888 / 2 412 / 1 417 / **197** |
-| `gamer-2003` | 9 % | 1 min 38 / 6 s / 3 min 54 / **7 s** | 0 / 0 / 0 / **0** | 202 / 93 / 20 / **76** |
+| `dev-2003` | 91 % | 39 min 56 / 8 min 10 / 9 min 57 / **1 min 55** | 0 / 6 / 104 / **272** | 207 / 943 / 224 / **31** |
+| `famille-2003` | 88 % | 6 min 31 / 7 min 48 / 21 min 10 / **7 min 30** | 4 348 / 627 / 502 / **612** | 3 739 / 3 389 / 667 / **147** |
+| `secretaire-2003` | 91 % | 30 min 32 / 24 min 24 / 28 min 47 / **11 min 26** | 4 166 / 435 / 769 / **618** | 3 895 / 2 412 / 1 417 / **197** |
+| `gamer-2003` | 9 % | 1 min 40 / 6 s / 3 min 54 / **7 s** | 0 / 0 / 0 / **0** | 228 / 93 / 20 / **76** |
 | `dev-2007` | 93 % | 2 h 22 / 45 min 25 / 1 h 21 / **12 min 37** | 2 / 77 / 63 / **868** | 1 847 / 7 845 / 798 / **79** |
 | `famille-2007` | 97 % | 29 min 21 / 20 min 19 / 36 min 42 / **12 min 24** | 29 960 / 1 139 / 1 067 / **1 525** | 12 272 / 8 499 / 1 177 / **234** |
 | `gamer-2007` | 87 % | 2 h 19 / 46 min 17 / 1 h 54 / **12 min 26** | 68 / 161 / 30 / **877** | 2 064 / 7 401 / 942 / **184** |
@@ -1402,11 +1426,11 @@ bras par morceau. La zone MFT n'est jamais une destination.
 | `gamer-2012` | 92 % | 3 h 57 / 27 min 49 / 1 h 11 / **9 min 44** | 202 / 562 / 467 / **892** | 5 378 / 10 291 / 906 / **294** |
 | `secretaire-2012` | 89 % | 1 h 01 / 23 min 10 / 36 min 43 / **3 min 31** | 0 / 2 / 0 / **144** | 2 051 / 4 743 / 206 / **89** |
 
-Sur les douze volumes, la passe dure 1 h 33, contre 16 h 18 pour XP, 4 h 57 pour
+Sur les douze volumes, la passe dure 1 h 33, contre 16 h 19 pour XP, 4 h 57 pour
 UltraDefrag et 9 h 24 pour JkDefrag, et laisse moins de morceaux (8 426) et
 moins de trous (1 855) que chacun d'eux. Sa durée tient à deux choses qui se
 compensent. Le cache d'écriture du disque pose les destinations de XP,
-contiguës, par salves de 4,6 à 93,3 écritures selon le volume, quand celles du
+contiguës, par salves de 4,4 à 93,3 écritures selon le volume, quand celles du
 recollage sont éparses, 1,2 par vidage. Mais les volumes de 2007 et 2012 portent les
 fichiers en quelques morceaux que leur donne un NTFS qui étend un fichier près
 de lui (`NTFSAllocator`), et XP les recopie en entier, quand le recollage ne
@@ -1518,21 +1542,39 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   64 Ko et le bloc de huit clusters de la MFT de Vista et 7, l'écriture de 4 Ko
   des programmes dont le code n'est pas lu sous XP (le `.pst` d'Outlook
   compris) et le pas de 16 Ko de Word, un minimum, huit validations — huit
-  blocs de 64 Kio sous XP — par page de journal, le *lazy writer* d'une passe
-  de XP qui écrit chaque seconde tout ce qui est sale (le vrai en écrit un
-  huitième, et commence à trois secondes), les quatre bornes de recherche de
-  `NTFSAllocator` hors XP,
+  blocs de 64 Kio sous XP, huit dates d'accès — par page de journal, la
+  mémoire d'une machine de XP (plus de 220 Mo : le seuil de rattrapage du
+  *lazy writer*), les 64 Ko d'une lecture de programme par le cache, les
+  quatre bornes de recherche de `NTFSAllocator` hors XP,
   le point de contrôle NTFS placé entre deux événements de l'histoire et le
   montage au premier de chaque journée, les bandes et le
   battement du roulement, la seconde avant la coupure et la redescente du
   plateau — ni les cibles de démarrage sur lesquelles `ThinkModel` est calé.
   `LEDGER-EXPERTS.md` en tient la liste.
 - **Les défragmenteurs écrivent par requêtes de 64 Kio** (XP, le bloc du noyau),
-  de 4 Mo (JkDefrag) et de 256 Ko (Windows 95), que personne ne découpe. Les installations et les
-  journées, elles, ne dépassent plus 256 secteurs — la limite d'une commande
-  ATA sans LBA48, 64 Ko sous XP —, et un découpage fait à l'interface du disque
-  vaudrait pour tous ; les passes le paieraient d'un coût de commande par
-  tranche, que la lecture anticipée et le cache d'écriture rendraient petit.
+  de 4 Mo (JkDefrag et UltraDefrag sur NTFS) et de 256 Ko (Windows 95, et
+  `fastfat` quand JkDefrag ou UltraDefrag tournent sur FAT, découpés en
+  paquets de 124 Ko), que personne d'autre ne découpe. Sous XP, `classpnp`
+  coupe à 124 Ko ce qui ne passe pas par le cache — les lots du préchargeur —
+  et le cache s'en tient à 64 Ko ; les installations et les journées d'avant ne
+  dépassent pas 256 secteurs, la limite d'une commande ATA sans LBA48, et Vista
+  et 7 gardent ce plafond faute de code.
+- **Le démarrage de XP suit son préchargeur, avec des trous.** Pas de trace :
+  ce qu'on lit d'un fichier reste le budget de l'acte, lu d'un tenant depuis
+  le début — ce que ferait `MmPrefetchPages` de pages tracées qu'aucun écart de
+  plus de 128 Ko ne sépare. La machine est supposée avoir assez de mémoire pour
+  un seul passage avant `SMSS` (la troncature par la mémoire disponible n'est
+  pas jouée), sans phase parallèle à l'initialisation vidéo, et l'application
+  lancée a son propre scénario, sans être dans la trace du démarrage. Le
+  dernier acte reste hors trace. Ce que le *lazy writer* n'a pas posé à la fin
+  du silence final est écrit après la fenêtre du démarrage. Seuls les
+  démarrages horodatent : une journée ne réécrit pas les dates de ce qu'elle
+  lit, ni l'index d'un répertoire où naît un fichier.
+- **Le registre n'a pas de `.LOG`** dans le catalogue : de son vidage, seuls les
+  trois `FLUSH CACHE` par ruche sont joués, et la ruche est réécrite en entier,
+  parce que rien ne dit ce qu'une installation en salit. Seules les
+  installations le vident : rien ne dit quelles réécritures d'un démarrage ou
+  d'une journée touchent le registre.
 - **La géométrie radiale est une convention.** Le rapport du rayon intérieur
   au rayon extérieur est figé à 0,42 (`normalizedRadius`), y compris pour les
   plateaux de 2,5 pouces du VelociRaptor, et c'est lui qui porte la course
@@ -1560,8 +1602,9 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
 - **La passe de XP est la première de sa machine.** `ProcessBootOptimise`
   lit la zone de démarrage au registre, à 0 tant qu'aucune passe ne l'a posée
   (`dfrg.inx`) : le modèle ne rejoue pas les passes `-b` que le préchargeur
-  lance à l'inactivité tous les trois jours, et `Layout.ini` y est l'ordre de
-  lecture d'un démarrage planifié, sans les programmes lancés ensuite. Sous
+  lance à l'inactivité tous les trois jours, et `Layout.ini` y est la trace
+  d'un démarrage planifié et de son application, sans les autres scénarios de
+  lancement que `pfsvc` y ajouterait. Sous
   les 15 % d'espace libre, la console pose une question en pausant le moteur
   (`WarnFutility`) : le modèle y répond oui sans attendre ; en ligne de
   commande, sans `-f`, l'outil refuserait, et ce n'est pas ce que l'app
@@ -1590,15 +1633,20 @@ SCENARIO=boot:dev-1993 /tmp/rendertrace boot1993.wav  # le démarrage
   nombreux pour un enregistrement de MFT n'y prend pas les enregistrements
   supplémentaires d'un `$ATTRIBUTE_LIST`, et les liens physiques de WinSxS sont
   comptés comme des copies.
-- Pas de réordonnancement des commandes, pas de NCQ. File FIFO : représentatif
-  d'un contrôleur IDE de l'époque, et c'est ce qui rend le crépitement si
-  dense. Seul le cache d'écriture du disque pose ce qu'il a acquitté dans l'ordre
-  de l'ascenseur ; les lectures, elles, partent dans l'ordre où on les demande.
-- **Le cache d'écriture n'est jamais vidé par le système.** Windows n'envoie ici
-  aucun `FLUSH CACHE` — ni aux points de contrôle de NTFS, ni à la validation
-  d'un déplacement : le disque pose quand il est libre ou quand il manque de
-  place. Si l'outil de XP vidait le cache à chaque point de contrôle, ses salves
-  seraient bornées à cinq secondes d'écritures.
+- **Pas de NCQ, pas de file dans le disque** : une commande à la fois. Sous XP,
+  la file logicielle d'`atapi` sert ce qui attend par LBA croissante depuis sa
+  clé courante (C-LOOK) ; le simulateur sert les requêtes dans l'ordre du plan,
+  si bien que cette file est jouée par le planificateur, sur ce qu'il sait émis
+  ensemble — un lot du préchargeur, les fils du *lazy writer*, la lecture
+  anticipée —, et qu'une requête du premier plan arrivée pendant qu'un lot
+  attend passe après lui au lieu d'être triée avec lui. Avant XP, et sous Vista
+  et 7 faute de code, la file suit l'ordre des demandes ; seul le cache
+  d'écriture du disque pose ce qu'il a acquitté dans l'ordre de l'ascenseur.
+- **Le cache d'écriture n'est vidé que par ce que XP vide.** Ni les points de
+  contrôle de NTFS ni la validation d'un déplacement n'envoient de `FLUSH
+  CACHE` : le disque pose quand il est libre ou quand il manque de place. Mais
+  le vidage du registre en envoie (les installations de XP), et `fastfat` à
+  chaque tranche d'un `FSCTL_MOVE_FILE` sur FAT.
 - **Un démarrage décrit en fichiers est moins dense qu'un scénario réglé à
   l'oreille** : 1 231 requêtes pour tout un démarrage de `dev-1996`, contre 90 à
   150 par seconde dans les phases écrites à la main du scénario que la démo a

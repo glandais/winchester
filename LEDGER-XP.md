@@ -248,29 +248,50 @@ verte, les mêmes 4 known issues.
 
 ## Chantier 51 : démarrage, cache et pile d'E/S de XP
 
-- **Préchargeur** : il lit dans l'ordre du premier accès, fichier après
+**Fait** le 25 septembre 2026, branche `xp` (`LEDGER.md`, chantier 51), en
+neuf étapes : 51a (la file) → 51b (le préchargeur) → 51c (tailles) → 51d (le
+*lazy writer*) → 51e (ses données) → 51f (date d'accès) → 51g (lecture
+anticipée) → 51h (registre et `FLUSH CACHE`) → 51i (FAT). Tout ce qui suit est
+livré, pour l'époque XP ; Vista et 7 gardent leur modèle. Écarts au plan : le
+simulateur ne sert qu'une commande à la fois dans l'ordre du plan, la file
+d'`atapi` est donc jouée par le planificateur sur ce qu'il émet ensemble ; le
+« huitième » du *lazy writer* est un budget dépensé flux par flux, et un flux
+de métadonnées part en entier ; le registre n'a pas de `.LOG` au catalogue ;
+la borne validée du test « 2003 horodate » change avec le mécanisme.
+Prédictions fausses sur l'ampleur à 51b (démarrages −0,7 à −5,8 %, seeks en
+hausse), 51d (installations, journée) et 51i (passes FAT −18,6 à +277,9 %).
+Calibration en Release : verte, les mêmes 4 known issues.
+
+- [x] **Préchargeur** : il lit dans l'ordre du premier accès, fichier après
   fichier. Le balayage entendu vient de la **file d'`atapi` triée par LBA**
   (C-LOOK), qui s'applique aussi à la lecture anticipée, au lazy writer et à
   toute rafale asynchrone (`boot-01`, `02`, `io-cache-09`). Les pages
   tracées sont lues, pas « les N premiers Ko » (`boot-05`). Il y a deux lots
   par phase : les données, puis les images (lacune). Historique de
-  8 démarrages (`boot-03`).
-- **Date d'accès** : elle est journalisée, et l'entrée `$FILE_NAME` de
-  l'index du répertoire parent est réécrite (`boot-15`).
-- **Lazy writer** : un réveil par seconde, qui vide un huitième des pages
+  8 démarrages (`boot-03`). *Fait (51a, 51b) : métadonnées une fois,
+  répertoires énumérés, phase des pilotes et phase d'avant `SMSS` (en
+  arrière-plan des pilotes), services et session sur pages préchargées,
+  l'application à son lancement ; la trace n'existant pas, le budget de
+  l'acte est lu d'un tenant (le comblement de 128 Ko le justifie, pas plus).*
+- [x] **Date d'accès** : elle est journalisée, et l'entrée `$FILE_NAME` de
+  l'index du répertoire parent est réécrite (`boot-15`). *Fait (51f).*
+- [x] **Lazy writer** : un réveil par seconde, qui vide un huitième des pages
   sales ; le premier passage attend 3 s ; il écrit aussi les données
-  (`io-cache-01`, `boot-16`).
-- **Lecture anticipée** dès la troisième lecture séquentielle, ou dès le
-  premier défaut à l'offset 0 (`io-cache-05`).
-- **Tailles de requête** : 64 Ko par le cache, 128 Ko par SRB côté
+  (`io-cache-01`, `boot-16`). *Fait (51d, 51e) : le huitième est un budget
+  dépensé flux par flux (`lazyrite.c:436-506`) ; trois fils dans la file.*
+- [x] **Lecture anticipée** dès la troisième lecture séquentielle, ou dès le
+  premier défaut à l'offset 0 (`io-cache-05`). *Fait (51g).*
+- [x] **Tailles de requête** : 64 Ko par le cache, 128 Ko par SRB côté
   `atapi`, et des fautes d'image par 32 Ko (code) ou 16 Ko (données)
-  (`io-cache-02` à `04`, lacune).
-- **Vidage du registre** : 5 s après une modification, jusqu'au `FLUSH
-  CACHE` du disque (lacune).
-- **FAT sous l'API de XP** : `FSCTL_MOVE_FILE` avance par tranches de
+  (`io-cache-02` à `04`, lacune). *Fait (51c) : `classpnp` coupe à 124 Ko
+  (31 pages) ; les fautes d'image n'ont pas d'occasion dans la galerie.*
+- [x] **Vidage du registre** : 5 s après une modification, jusqu'au `FLUSH
+  CACHE` du disque (lacune). *Fait (51h), pour les installations ; sans
+  `.LOG` au catalogue, ses trois `FLUSH CACHE` seuls.*
+- [x] **FAT sous l'API de XP** : `FSCTL_MOVE_FILE` avance par tranches de
   256 Kio ; il écrit la FAT avant et après chaque tranche, puis vide le cache
   du disque. Cela vaut pour JkDefrag et UltraDefrag sur FAT (`fat-20`,
-  `xp-defrag-fat-bloc`).
+  `xp-defrag-fat-bloc`). *Fait (51i).*
 
 ## Chantier 52 : les documents
 
