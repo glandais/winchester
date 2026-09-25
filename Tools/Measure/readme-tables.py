@@ -228,6 +228,44 @@ def share(part, whole):
     return rounded(part / whole * 100)
 
 
+def times(ratio, more="plus", less="moins"):
+    """« 1,4 fois plus », « 7,9 fois moins » : le sens d'une comparaison vient
+    du rapport, pas du gabarit."""
+    return f"{decimal(ratio)} fois {more}" if ratio >= 1 else f"{decimal(1 / ratio)} fois {less}"
+
+
+def que(name):
+    """« que XP », « qu'UltraDefrag » : l'élision devant une voyelle."""
+    return f"qu'{name}" if name[0] in "AEIOUaeiouÉé" else f"que {name}"
+
+
+def listing(items):
+    """« a », « a et b », « a, b et c »."""
+    items = list(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " et " + items[-1]
+
+
+def versus(mine, others, noun):
+    """Ce qu'une passe laisse contre chacune des autres : « moins de trous que
+    chacun d'eux », ou « moins de morceaux que XP mais plus qu'UltraDefrag et
+    JkDefrag »."""
+    less = [n for n, v in others if mine < v]
+    more = [n for n, v in others if mine > v]
+    same = [n for n, v in others if mine == v]
+    if not more and not same:
+        return f"moins de {noun} que chacun d'eux"
+    if not less and not same:
+        return f"plus de {noun} que chacun d'eux"
+    parts = []
+    if less:
+        parts.append(f"moins de {noun} {que(listing(less))}")
+    if more:
+        parts.append(("mais plus " if parts else f"plus de {noun} ") + que(listing(more)))
+    if same:
+        parts.append(f"autant {que(listing(same))}")
+    return " ".join(parts[:1]) + "".join(" " + x for x in parts[1:])
+
+
 def trail(profile):
     """Fichiers en deux à seize morceaux, parmi les fragmentables."""
     x = disk(step, profile)
@@ -361,7 +399,7 @@ prose("passe d'un seek moyen de {a} cylindres au jour 20 à {b} au jour 300",
       a=number(common(text(step, "day-dev-1996_20"))["meanSeek"]),
       b=number(common(text(step, "day-dev-1996_300"))["meanSeek"]))
 
-# Huit défragmenteurs.
+# Sept défragmenteurs.
 w, x = d("famille-2007", "windows95"), d("famille-2007", "windowsXP")
 prose("tampons de 256 Ko : {req95} requêtes et {dur95} de passe simulée pour ranger {frag} fichiers sur {files}. "
       "La passe de XP sur le même volume tient en **{req} requêtes et {dur}**.",
@@ -381,8 +419,9 @@ prose("sur `dev-2007`, XP laisserait alors {once} fichiers en morceaux au lieu d
       once=number(defrag(asides["cpend"], "dev-2007", "windowsXP")["fragmented"][1]) if "cpend" in asides else None,
       now=number(d("dev-2007", "windowsXP")["fragmented"][1]))
 dev, sec = d("dev-2003", "windowsXP"), d("secretaire-2003", "windowsXP")
-prose("remplis à {lo}-{hi} % : le premier répare {r1} fichiers sur {f1}, le second {r2} sur {f2}. La taille",
-      lo=str(min(dev["fill"], sec["fill"])), hi=str(max(dev["fill"], sec["fill"])),
+prose("remplis {fill} : le premier répare {r1} fichiers sur {f1}, le second {r2} sur {f2}. La taille",
+      fill=f"tous deux à {dev['fill']} %" if dev["fill"] == sec["fill"]
+      else f"à {min(dev['fill'], sec['fill'])} et {max(dev['fill'], sec['fill'])} %",
       r1=number(dev["fragmented"][0] - dev["fragmented"][1]), f1=number(dev["fragmented"][0]),
       r2=number(sec["fragmented"][0] - sec["fragmented"][1]), f2=number(sec["fragmented"][0]))
 prose("ne l'explique pas non plus — {m1} Mo par fichier déplacé chez le développeur, {m2} Mo chez la secrétaire",
@@ -393,12 +432,22 @@ prose("les {a} morceaux que XP laisse derrière lui tombent à **{b}** — {pct}
       "nombre de fichiers fragmentés, lui, reste à {c}.",
       a=number(x["fragments"][1]), b=number(u["fragments"][1]),
       pct=str(rounded((1 - u["fragments"][1] / x["fragments"][1]) * 100)), c=number(u["fragmented"][1]))
-prose("Le prix est {rq} fois plus de requêtes et {rt} fois plus de temps.",
-      rq=decimal(u["requests"] / x["requests"]), rt=decimal(u["duration"] / x["duration"]))
+prose("Il lui faut {rq} de requêtes et {rt} de temps.",
+      rq=times(u["requests"] / x["requests"]), rt=times(u["duration"] / x["duration"]))
 x, u = d("dev-2007", "windowsXP"), d("dev-2007", "ultraDefrag")
-prose("sur `dev-2007`, le seek moyen est de {ud} cylindres contre {xp} chez XP",
+prose("sur `dev-2007`, son seek moyen est {cmp} que chez XP : {ud} cylindres contre {xp}, le cache",
+      cmp="plus long" if u["meanSeek"] > x["meanSeek"] else "plus court",
       ud=number(u["meanSeek"]), xp=number(x["meanSeek"]))
-prose("il nettoie l'un aussi, et laisse {n} morceaux sur l'autre", n=number(u["fragments"][1]))
+# Là où XP fait mieux qu'UltraDefrag, et les volumes qu'il nettoie entièrement.
+rows = [(p, d(p, "windowsXP")["fragments"][1], d(p, "ultraDefrag")["fragments"][1]) for p in ORDER[1:]]
+better = [(p, xf, uf) for p, xf, uf in rows if xf < uf]
+clean = [(p, uf) for p, xf, uf in better if xf == 0]
+verdict = f"XP fait mieux sur {word(len(better))} des {word(len(rows))} volumes"
+if clean:
+    verdict += (f" : il nettoie entièrement {listing(f'`{p}`' for p, _ in clean)}, où UltraDefrag laisse "
+                f"{listing(number(uf) for _, uf in clean)} morceaux")
+prose("Cela ne fait pas d'UltraDefrag le meilleur outil partout. {verdict}. Et sur un volume FAT",
+      verdict=verdict)
 u, w = d("dev-1996", "ultraDefrag"), d("dev-1996", "windows95")
 prose("sur `dev-1996`, la passe tient en {u} contre {w} à l'outil de 95, parce qu'elle n'évacue personne. Elle "
       "laisse {uf} morceaux — et l'outil de 95, sur ce volume-là, en laisse {wf} : à {fill} % de remplissage",
@@ -410,8 +459,9 @@ table95 = [d(p, "windows95") for p in ["dev-1993", "dev-1996", "secretaire-1999"
 table95 = [x["duration"] for x in table95 if x["movedMB"] > 0]
 prose("ce que Windows 95 fait en {lo} à {hi}, et il laisse",
       lo=duration(min(table95)), hi=duration(max(table95)))
-prose("il n'évacue que {n} occupants avant de se retrouver bloqué partout",
-      n=word(d("gamer-1996", "windows95")["evacuations"]))
+evacuated = d("gamer-1996", "windows95")["evacuations"]
+prose("il n'évacue {n} avant de se retrouver bloqué partout",
+      n="personne" if evacuated == 0 else "qu'un occupant" if evacuated == 1 else f"que {word(evacuated)} occupants")
 worst = max(FAT, key=lambda p: d(p, "jkDefrag")["fragments"][1])
 prose("Sur `{worst}`, le volume FAT où JkDefrag fait son plus mauvais score, il laisse {n} morceaux.",
       worst=worst, n=number(d(worst, "jkDefrag")["fragments"][1]))
@@ -432,8 +482,12 @@ prose("le tri par nom déplace {go} Go en {ev} évacuations et {dur}, et laisse 
       left=number(s["fragments"][1]), before=number(s["fragments"][0]),
       g=number(d("gamer-2007", "jkDefragSortName")["fragments"][1]),
       j=number(d("gamer-2007", "jkDefrag")["fragments"][1]))
-# Un volume où l'outil « a de quoi travailler » : il y déplace des données. Sur
-# `gamer-1993` (plein) et `gamer-1996` (bloqué), il ne déplace rien.
+prose("sur `secretaire-2003`, il laisse {a} morceaux contre {b} au mode 2",
+      a=number(d("secretaire-2003", "jkDefragSortName")["fragments"][1]),
+      b=number(d("secretaire-2003", "jkDefrag")["fragments"][1]))
+# Un volume où l'outil « a de quoi travailler » : il y déplace des données.
+# Sur `gamer-1996` (bloqué), il ne déplace rien ; sur `gamer-1993`, presque
+# rien, mais quelque chose.
 working = [p for p in FAT if d(p, "windows95")["movedMB"] > 0]
 fastest = min(working, key=lambda p: d(p, "windows95")["duration"])
 slowest = max(working, key=lambda p: d(p, "windows95")["duration"])
@@ -449,29 +503,53 @@ prose("quand `dev-1996`, six fois plus gros, en prend {m}.", m=minutes(d("dev-19
 w = d("dev-1999", "windows95")
 prose("`dev-1999` déplace {mb} Mo pour un contenu de 6 Go, en {ev} évacuations",
       mb=number(w["movedMB"]), ev=number(w["evacuations"]))
-prose("`dev-1999` en sort avec {n} morceaux. C'est pour cela", n=number(w["fragments"][1]))
+# Le prix des volumes pleins : celui où l'outil de 95, ayant de quoi
+# travailler, laisse le plus de morceaux.
+stuck = max(working, key=lambda p: d(p, "windows95")["fragments"][1])
+prose("elle y trouve ses propres réfugiés et plus de place au-dessus, et `{p}`, plein à {fill} %, en sort avec "
+      "{n} morceaux. C'est pour cela",
+      p=stuck, fill=str(d(stuck, "windows95")["fill"]), n=number(d(stuck, "windows95")["fragments"][1]))
 
 # Tasser sans changer l'ordre.
 f = d("dev-1996", "frontierCompaction")
-prose("sur `dev-1996`, {frags} morceaux ne laissent plus {holes}. Une exception",
+prose("sur `dev-1996`, {frags} morceaux ne laissent plus {holes}.",
       frags=number(f["fragments"][1]),
       holes="qu'un trou" if f["holes"][1] == 1 else f"que {number(f['holes'][1])} trous")
+# Les volumes où la frontière laisse plus d'un fichier en morceaux : le fichier
+# d'échange n'est alors pas seul.
+others = [(p, d(p, "frontierCompaction")["fragmented"][1]) for p in FAT
+          if d(p, "frontierCompaction")["fragmented"][1] > 1]
+prose("aucun fichier déplaçable ne sort de la passe en morceaux{but}.",
+      but="" if not others else ", sauf sur " + listing(f"`{p}` ({number(n - 1)} de plus)" for p, n in others))
+g = d("gamer-1993", "frontierCompaction")
+prose("Même `gamer-1993`, plein à {fill} %, en sort {left} ({before} au départ)",
+      fill=str(g["fill"]), left="sans un morceau" if g["fragments"][1] == 0 else f"avec {number(g['fragments'][1])} morceaux",
+      before=number(g["fragments"][0]))
 sums = {t: [0.0, 0] for t in ("windows95", "jkDefrag", "frontierCompaction")}
 for p in FAT:
     for t in sums:
         x = d(p, t)
         sums[t][0] += x["duration"]
         sums[t][1] += x["movedMB"]
-prose("la passe dure {f} au total contre {w} pour Windows 95, et elle déplace à peu près autant de données "
+moved = sums["frontierCompaction"][1] / sums["windows95"][1]
+prose("la passe dure {f} au total contre {w} pour Windows 95, et elle déplace {amount} "
       "({fgo} Go contre {wgo})",
       f=total(sums["frontierCompaction"][0]), w=total(sums["windows95"][0]),
+      amount="à peu près autant de données" if 0.9 <= moved <= 1.1
+      else f"{times(moved)} de données",
       fgo=gigabytes(sums["frontierCompaction"][1]), wgo=gigabytes(sums["windows95"][1]))
+gap = abs(round(sums["frontierCompaction"][0] / 60) - round(sums["windows95"][0] / 60)) * 60
+prose("Ce n'est pas la durée qui les sépare — {gap} d'écart sur les douze volumes",
+      gap=f"{gap // 60} min" if gap < 3600 else total(gap))
 y1999 = [p for p in FAT if p.endswith("1999")]
-prose("Windows 95 laisse jusqu'à {w} morceaux, la frontière {f} au plus",
+prose("Windows 95 laisse jusqu'à {w} morceaux et {wh} trous, la frontière {f} morceaux et {fh} trous au plus",
       w=number(max(d(p, "windows95")["fragments"][1] for p in y1999)),
-      f=number(max(d(p, "frontierCompaction")["fragments"][1] for p in y1999)))
-prose("Elle est {r} fois plus longue que JkDefrag ({jk})",
-      r=decimal(round(sums["frontierCompaction"][0] / 60) / round(sums["jkDefrag"][0] / 60)),
+      wh=number(max(d(p, "windows95")["holes"][1] for p in y1999)),
+      f=number(max(d(p, "frontierCompaction")["fragments"][1] for p in y1999)),
+      fh=number(max(d(p, "frontierCompaction")["holes"][1] for p in y1999)))
+prose("Elle est {r} que JkDefrag ({jk})",
+      r=times(round(sums["frontierCompaction"][0] / 60) / round(sums["jkDefrag"][0] / 60),
+              "plus longue", "plus courte"),
       jk=total(sums["jkDefrag"][0]))
 jk99 = [d(p, "jkDefrag") for p in y1999]
 prose("il laisse entre {lo} et {hi} morceaux et de {hlo} à {hhi} trous",
@@ -487,14 +565,17 @@ x = d("famille-2007", "windowsXP")
 prose("sur `famille-2007`, {n} fichiers cassés en {m} morceaux",
       n=number(x["fragmented"][0]), m=number(x["fragments"][0]))
 merged = {t: [d(p, t) for p in NTFS] for t in MERGE_TOOLS}
-prose("la passe dure {m}, contre {xp} pour XP, {ud} pour UltraDefrag et {jk} pour JkDefrag, et laisse moins de "
-      "morceaux ({frags}) et moins de trous ({holes})",
+left = {t: (sum(x["fragments"][1] for x in merged[t]), sum(x["holes"][1] for x in merged[t])) for t in MERGE_TOOLS}
+names = {"windowsXP": "XP", "ultraDefrag": "UltraDefrag", "jkDefrag": "JkDefrag"}
+prose("la passe dure {m}, contre {xp} pour XP, {ud} pour UltraDefrag et {jk} pour JkDefrag. Elle laisse {frags} "
+      "morceaux et {holes} trous : {cmp}.",
       **{k: total(sum(x["duration"] for x in merged[t]))
          for k, t in (("m", "fragmentMerge"), ("xp", "windowsXP"), ("ud", "ultraDefrag"), ("jk", "jkDefrag"))},
-      frags=number(sum(x["fragments"][1] for x in merged["fragmentMerge"])),
-      holes=number(sum(x["holes"][1] for x in merged["fragmentMerge"])))
+      frags=number(left["fragmentMerge"][0]), holes=number(left["fragmentMerge"][1]),
+      cmp=versus(left["fragmentMerge"][0], [(names[t], left[t][0]) for t in names], "morceaux") + ", et "
+      + versus(left["fragmentMerge"][1], [(names[t], left[t][1]) for t in names], "trous"))
 busy = [d(p, "windowsXP") for p in NTFS if d(p, "windowsXP")["moved"] >= 100]
-prose("par salves de {lo} à {hi} écritures selon le volume, quand celles du recollage sont éparses, {m} par vidage.",
+prose("par salves de {lo} à {hi} écritures selon le volume, quand celles du recollage sont éparses, {m} par vidage",
       lo=decimal(min(x["cachedWrites"] / x["destages"] for x in busy)),
       hi=decimal(max(x["cachedWrites"] / x["destages"] for x in busy)),
       m=decimal(sum(x["cachedWrites"] for x in merged["fragmentMerge"])
@@ -502,7 +583,9 @@ prose("par salves de {lo} à {hi} écritures selon le volume, quand celles du re
 prose("ils les mènent à {xp} et {ud}, sans changer",
       xp=total(sum(d(p, "windowsXP", True)["duration"] for p in NTFS)),
       ud=total(sum(d(p, "ultraDefrag", True)["duration"] for p in NTFS)))
-prose("finissent sans un morceau, et elle en laisse {n}.", n=number(d("dev-2007", "fragmentMerge")["fragments"][1]))
+prose("sur `dev-2007`, où un grand trou accueille tout, XP en laisse {x}, JkDefrag {j}, et elle {n}.",
+      x=number(d("dev-2007", "windowsXP")["fragments"][1]), j=number(d("dev-2007", "jkDefrag")["fragments"][1]),
+      n=number(d("dev-2007", "fragmentMerge")["fragments"][1]))
 prose("contre {f} au tassage à la frontière et {w} à Windows 95",
       f=total(sums["frontierCompaction"][0]), w=total(sums["windows95"][0]))
 prose("quand le recollage économe s'en tient à {m}.", m=total(sum(x["duration"] for x in merged["fragmentMerge"])))
@@ -520,7 +603,7 @@ prose("se tassent en {f} à la frontière et en {w} sous l'outil de 95",
 # les passes du rangement (`pass-…`). Sans eux, la table et ses phrases sont
 # dites non vérifiées.
 
-SMART_ORDER = [f"{w}-{y}" for y in ("1993", "1996", "1999", "2003", "2007")
+SMART_ORDER = [f"{w}-{y}" for y in ("1993", "1996", "1999", "2003", "2007", "2012")
                for w in ("dev", "famille", "gamer", "secretaire", "poweruser")
                if not (w == "poweruser" and y != "1993") and not (w == "famille" and y == "1993")]
 SMART_TOOLS = {False: ["windows95", "jkDefrag", "ultraDefrag", "frontierCompaction"],
@@ -590,7 +673,7 @@ if smart_available():
     exception = dict(p=worse[0] if len(worse) == 1 else "?",
                      best=str(rows[worse[0]]["holes"]) if len(worse) == 1 else "?",
                      mine=str(rows[worse[0]]["smart"]["holes"]) if len(worse) == 1 else "?")
-    longest = max((p for p in NTFS), key=lambda p: rows[p]["duration"])
+    longest = max((p for p in rows if p in NTFS), key=lambda p: rows[p]["duration"])
     passes = dict(fat=total(sums(False, lambda r: r["duration"])),
                   tb=decimal(sums(True, lambda r: r["movedMB"]) / 1024 / 1024),
                   ntfs=total(sums(True, lambda r: r["duration"])),
@@ -600,16 +683,21 @@ else:
     holes = dict.fromkeys(["fh", "fhi", "nh", "nhi"])
     exception = dict.fromkeys(["p", "best", "mine"])
     passes = dict.fromkeys(["fat", "tb", "ntfs", "longest", "where"])
-prose("Sur les douze FAT, les démarrages passent de {fs} s livrés et {fb} s au mieux à **{fi} s** ; sur les huit "
+prose("Sur les douze FAT, les démarrages passent de {fs} s livrés et {fb} s au mieux à **{fi} s** ; sur les douze "
       "NTFS, de {ns} et {nb} s à **{ni} s**.", needs=("smart",), **fields)
 prose("Les trous tombent de {fh} à {fhi} sur FAT et de {nh} à {nhi} sur NTFS ;", needs=("smart",), **holes)
 prose("un volume fait exception, `{p}`, où la frontière seule en laisse {best} et le rangement {mine}.",
       needs=("smart",), **exception)
 prose("Sur FAT, elle dure {fat} pour les douze volumes", needs=("smart",), fat=passes["fat"])
-prose("Sur NTFS, c'est un tassage complet : {tb} To déplacés et {ntfs} pour les huit volumes, jusqu'à {longest} "
+prose("Sur NTFS, c'est un tassage complet : {tb} To déplacés et {ntfs} pour les douze volumes, jusqu'à {longest} "
       "sur `{where}`", needs=("smart",), **{k: passes[k] for k in ("tb", "ntfs", "longest", "where")})
-prose("entre les morceaux du fichier d'échange ou de petits métafichiers NTFS — {n} trous sur `famille-1996`.",
-      n=number(d("famille-1996", "frontierCompaction")["holes"][1]))
+# La retouche des fenêtres de la fin : le volume FAT où la frontière seule
+# laisse le plus de trous, et ce qu'en laisse le rangement.
+sown = max(FAT, key=lambda p: d(p, "frontierCompaction")["holes"][1])
+prose("entre les morceaux du fichier d'échange ou de petits métafichiers NTFS — sur `{p}`, {n} trous au tassage à "
+      "la frontière, {m} au rangement.", needs=("smart",),
+      p=sown, n=number(d(sown, "frontierCompaction")["holes"][1]),
+      m=number(rboot(sown, "smart")["holes"]) if smart_available() else None)
 if smart_available():
     asides["smart"] = step
 
@@ -629,7 +717,7 @@ def pattern(template):
         last = m.end()
     parts.append(template[last:])
     literal = lambda s: r"\s+".join(re.escape(w) for w in s.split(" ")) if s else ""
-    body = "".join(literal(p) + (r"(.{1,40}?)" if i < len(names) else "") for i, p in enumerate(parts))
+    body = "".join(literal(p) + (r"(.{1,240}?)" if i < len(names) else "") for i, p in enumerate(parts))
     return re.compile(body, re.S), names
 
 
