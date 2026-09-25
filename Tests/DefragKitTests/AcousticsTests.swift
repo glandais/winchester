@@ -74,11 +74,10 @@ struct AcousticsTests {
                     - (10 * (knee - bels[3]) / 2 + 10 * (bels[0] - knee) / 4)) < 1e-9)
     }
 
-    /// Le cœur du point 1 : à plein régime, deux disques de régime différent
-    /// n'ont plus le même souffle.
     /// Les manuels publient la puissance en seek ; le repos retranché, le
-    /// bras seul va de 3,20 B (U8) à 1,97 (7200.14), et la voix de la tête
-    /// suit — à moitié en décibels, comme le plateau, le U8 à 1.
+    /// bras seul va de 1,97 B (7200.14) à 3,64 (7200.10 SATA), le U8 à 3,20,
+    /// et la voix de la tête suit — à moitié en décibels, comme le plateau,
+    /// le U8 à 1, deux fiches au-dessus.
     @Test("Le niveau de la tête suit les manuels, le repos retranché")
     func seekLevelsFollowManuals() {
         func drive(_ shortName: String) -> DriveReference {
@@ -100,6 +99,8 @@ struct AcousticsTests {
         // petits plateaux au VelociRaptor.
         let conner = drive("Conner CFA170A")
         #expect(SeekCharacter(geometry: conner.geometry, year: 1993).seekBels == u8.seekBels)
+        let fireball = drive("Fireball 1080AT")
+        #expect(SeekCharacter(geometry: fireball.geometry, year: 1996).seekBels == u8.seekBels)
         let raptor = DriveCatalog.named.first!
         #expect(SeekCharacter(geometry: raptor.geometry, year: 2012).seekBels
                 == SeekCharacter(reference: raptor).seekBels)
@@ -107,6 +108,8 @@ struct AcousticsTests {
                 == barracuda14.seekBels)
     }
 
+    /// Le cœur du point 1 : à plein régime, deux disques de régime différent
+    /// n'ont plus le même souffle.
     @Test("Le souffle glisse et s'éclaircit avec le régime")
     func windageFollowsSpeed() {
         let slow = SpindleCharacter(rpm: 3_600, platters: 1, year: 2003)

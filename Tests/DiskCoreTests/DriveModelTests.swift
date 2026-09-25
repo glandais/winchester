@@ -138,8 +138,6 @@ struct DriveModelTests {
         #expect(late.cylinders < early.cylinders)
     }
 
-    /// Et à capacité d'époque, c'est la course qui explose : c'est elle qui
-    /// fixe la durée des seeks, donc tout le rythme d'une passe.
     /// Les manuels Seagate publient des « secteurs garantis » : la capacité
     /// d'une fiche en est le produit par 512, pas le chiffre rond de
     /// l'étiquette. Trois fiches l'ont contredit — le U8 à 8,42 Go pour
@@ -170,7 +168,8 @@ struct DriveModelTests {
     }
 
     /// À égalité d'écart, le disque déjà en vente ; et une machine de 2007
-    /// reçoit le 7200.10 SATA, daté 2007, ni le PATA de 2006 ni le 7200.11.
+    /// reçoit le 7200.10 SATA — daté 2006 comme le PATA, mais déclaré devant
+    /// lui —, pas le 7200.11 de 2008.
     @Test("Le disque le plus proche d'une année est celui déjà en vente")
     func nearestPrefersTheDriveAlreadySold() {
         #expect(DriveCatalog.nearest(year: 2007).model.hasSuffix("ST3320620AS"))
@@ -178,6 +177,8 @@ struct DriveModelTests {
         #expect(DriveCatalog.nearest(year: 2012).rpm == 7_200)
     }
 
+    /// Et à capacité d'époque, c'est la course qui explose : c'est elle qui
+    /// fixe la durée des seeks, donc tout le rythme d'une passe.
     @Test("La course s'allonge d'une époque à l'autre")
     func strokeGrowsWithTheYears() {
         let sizes: [(year: Int, bytes: UInt64, rpm: Int)] = [

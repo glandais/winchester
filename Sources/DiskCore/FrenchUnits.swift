@@ -20,14 +20,14 @@ public enum FrenchUnits {
     private static let thin = "\u{202F}"
     private static let nbsp = "\u{00A0}"
 
-    /// Le mégaoctet de ce projet : **2²⁰ octets**.
+    /// Le mégaoctet **affiché** : **2²⁰ octets**, celui du système de
+    /// fichiers, comme CHKDSK l'écrivait.
     ///
-    /// C'est celui du catalogue — `ProfileSpec.sizeBytes` vaut
-    /// `sizeMB × 1 024 × 1 024` —, donc le seul qui rende au disque étiqueté
-    /// « 210 Mo » ses 210 Mo à l'écran. Le choix entre le mégaoctet binaire et
-    /// le décimal reste posé au générateur, pas à l'affichage : si les fiches
-    /// d'époque annoncent des mégaoctets décimaux, c'est `sizeBytes` qu'il
-    /// faudra reprendre, et cette constante suivra.
+    /// Ce n'est pas celui de l'étiquette : `ProfileSpec.sizeBytes` vaut
+    /// `sizeMB × 1 000 000`, le mégaoctet décimal des fiches (« secteurs
+    /// garantis »). Un disque étiqueté « 210 Mo » en montre donc 200 une fois
+    /// formaté, comme il le faisait ; c'est l'étiquette que la galerie
+    /// affiche à côté.
     public static let bytesPerMegabyte: Double = 1_048_576
 
     public static func integer(_ value: Int) -> String {

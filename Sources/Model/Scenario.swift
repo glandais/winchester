@@ -598,7 +598,8 @@ enum ScenarioBuilder {
             setup: PassSetup(geometry: hardware.geometry, seekModel: hardware.seek,
                              // Une mise sous tension à froid, la même que
                              // celle du démarrage : la journée commence par
-                             // lui, et `DayPlanner` attend déjà le POST.
+                             // lui. Le POST, c'est cette montée en régime ;
+                             // `DayPlanner` ne le compte pas une seconde fois.
                              spinUpAt: 0.35,
                              spinUpDuration: BootScript.Era.matching(disk.spec).spinUpDuration,
                              // La machine s'allume le matin et s'éteint le

@@ -127,8 +127,11 @@ final class SpindleVoice {
         // Les tableaux ne sont refaits que quand le disque change. Pendant une
         // rampe, qui recalcule les coefficients à chaque bloc sur le fil audio,
         // ils sont réécrits en place : aucune allocation. Et seuls les
-        // coefficients le sont — l'état des résonateurs survit au bloc, sans
-        // quoi le grave, qui met un bloc à s'établir, ne monterait jamais.
+        // coefficients le sont — l'état des résonateurs survit au bloc
+        // (`Biquad.setBandpass`). Le remettre à zéro serait faux, mais
+        // presque inaudible : le recalage à chaque bloc n'a lieu que sous 37 %
+        // du régime, où la broche est encore presque muette (LEDGER.md,
+        // chantier 39 : niveau identique à 0,1 dB près).
         if coefficientVersion != characterVersion || bands.isEmpty {
             bands = character.bands
             bankL = Array(repeating: Biquad(), count: bands.count)

@@ -33,8 +33,9 @@ public struct SeekProfile: Sendable {
 /// `c + e·d` au-delà d'un cylindre de croisement. Les constantes publiées
 /// (HP C2200A : 3,45 + 0,597·√d / 10,8 + 0,012·d) valent pour des disques HP
 /// des années 90 ; **la forme fonctionnelle se généralise, pas les constantes**.
-/// Celles-ci sont recalibrées pour un disque de 2001 : ~1,1 ms piste-à-piste,
-/// ~8,7 ms en seek moyen (1/3 de course), ~18 ms en pleine course.
+/// Chaque disque reçoit les siennes de sa fiche (`calibrated`, trois durées :
+/// piste-à-piste, seek moyen pris comme une espérance, pleine course) — le
+/// Barracuda ATA IV de 2001, par exemple, 16,7 ms en pleine course.
 public struct SeekModel: Sendable {
 
     public let shortIntercept: Double     // ms
@@ -198,8 +199,8 @@ extension SeekModel {
     /// La **forme** dont dérivent toutes les lois de seek du projet.
     ///
     /// Ses constantes ont été calées sur un disque de 1996 de deux mille
-    /// cylindres : 3,0 ms piste-à-piste, ~12 ms en seek moyen (un tiers de
-    /// course), 22 ms en pleine course. Ce qui s'en généralise, ce sont les
+    /// cylindres : 3,0 ms piste-à-piste, ~12 ms en seek moyen (11,85 ms en
+    /// espérance, 12,2 au tiers de course), 22 ms en pleine course. Ce qui s'en généralise, ce sont les
     /// **rapports** entre ces trois durées et le découpage en quatre phases —
     /// pas les valeurs, que `calibrated` recale sur la fiche du disque décrit.
     ///
@@ -322,22 +323,6 @@ extension SeekModel {
 
 extension SeekModel {
 
-    /// Loi de seek calée sur les **deux** durées que publie une fiche : le seek
-    /// moyen et le piste-à-piste.
-    ///
-    /// Les deux réglages sont indépendants, et c'est ce qui rend l'exercice
-    /// possible. Le seek moyen — un tiers de course, par convention de fiche —
-    /// tombe toujours au-delà du cylindre de croisement, donc sur la branche
-    /// linéaire : c'est elle que règle `calibrated(averageSeekMs:cylinders:)`.
-    /// Le piste-à-piste, lui, est à l'autre bout de la branche en racine. On
-    /// résout donc ses deux constantes pour qu'elle passe par `(1, piste-à-
-    /// piste)` et rejoigne la branche longue au cylindre de croisement, sans
-    /// rien changer au reste de la courbe.
-    ///
-    /// Sans cela, le rapport entre les deux durées était figé à celui du disque
-    /// de 1996 quel que soit le disque décrit — un disque de 2003 se retrouvait
-    /// avec un piste-à-piste deux fois trop long, c'est-à-dire avec le
-    /// crépitement d'un disque d'une décennie plus tôt.
     /// Commutation de tête, rapportée au piste-à-piste.
     ///
     /// Elle n'a rien à voir avec le seek moyen, qui est ce que la mise à
@@ -437,7 +422,9 @@ extension SeekModel {
     /// la branche longue de la forme étirée, ramenée au seek moyen, puis la
     /// branche courte refaite pour passer par le piste-à-piste — ce qui
     /// décale l'espérance de ce que la branche courte pèse, un quart des
-    /// seeks aléatoires.
+    /// seeks aléatoires. Avant lui, le rapport entre piste-à-piste et seek
+    /// moyen était figé à celui du disque de 1996 : un disque de 2003 avait
+    /// un piste-à-piste deux fois trop long.
     static func roughlyCalibrated(averageSeekMs average: Double,
                                   trackToTrackMs trackToTrack: Double,
                                   cylinders: Int) -> SeekModel {
