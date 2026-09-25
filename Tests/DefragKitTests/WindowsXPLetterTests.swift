@@ -50,13 +50,108 @@ struct WindowsXPLetterTests {
         let before = input.partition
         let plan = input.planned(using: WindowsXPStrategy())
 
-        // La queue part d'un bloc vers le premier trou qui la tient : 16..<24.
+        // La queue part d'un bloc vers le premier trou qui tient toute la MFT
+        // (24 clusters) : 16..<24, contre le premier extent. Le pilote fond
+        // deux extents contigus en un (chantier 50) : la MFT est d'un tenant.
         var after = before
-        after.mftExtents = [mft[0], Extent(start: 16, length: 8)]
+        after.mftExtents = [Extent(start: 0, length: 24)]
         let writes = Self.recordWrites(plan)
         #expect(writes.contains(after.mftRecordLBA(70)), "l'enregistrement n'est pas écrit à la nouvelle place")
         #expect(!writes.contains(before.mftRecordLBA(70)), "l'enregistrement est écrit dans l'ancienne queue")
         #expect(plan.partition.mftExtents == after.mftExtents)
+    }
+
+    // MARK: Chantier 50 — MFTDefrag
+
+    /// Une MFT en deux extents, sa queue d'un seul tenant : l'ancien modèle
+    /// n'agissait qu'à partir de trois. XP agit dès deux (`lMFTFragments > 1`,
+    /// `mftdefrag.cpp:122`).
+    @Test("MFTDefrag agit dès deux extents")
+    func mftDefragActsOnTwoExtents() {
+        let mft = [Extent(start: 0, length: 16), Extent(start: 100, length: 4)]
+        let input = Self.volume(clusterCount: 2_000,
+                                files: [([Extent(start: 300, length: 5)], 40)], mft: mft)
+        let plan = input.planned(using: WindowsXPStrategy())
+        // Le premier trou qui tient toute la MFT (20 clusters) : 16..<100.
+        #expect(plan.partition.mftExtents == [Extent(start: 0, length: 20)])
+    }
+
+    /// Le trou cherché tient la MFT **entière**, et il est hors de la zone MFT
+    /// (`FindFreeSpaceChunk`, `MarkBitMapforNTFS`, `defragcommon.cpp:147-168`).
+    @Test("MFTDefrag cherche un trou de toute la MFT, hors de la zone")
+    func mftDefragTargetsAWholeMFTHoleOutsideTheZone() {
+        // La queue fait 8 clusters, la MFT 40. Un trou de 10 à 40..<50, un de
+        // 30 à 60..<90 : le premier tiendrait la queue, pas toute la MFT ; la
+        // zone MFT couvre 100..<400 ; le premier trou de 40 hors d'elle est
+        // à 400.
+        let mft = [Extent(start: 0, length: 32), Extent(start: 1_000, length: 8)]
+        let partition: PartitionGeometry = {
+            var partition = PartitionGeometry(startLBA: 0, clusterCount: 2_000,
+                                              clusterSectors: 8, format: .ntfs)
+            partition.mftExtents = mft
+            return partition
+        }()
+        let blockers = [Extent(start: 32, length: 8), Extent(start: 50, length: 10),
+                        Extent(start: 90, length: 10), Extent(start: 440, length: 560),
+                        Extent(start: 1_008, length: 992)]
+        let files = blockers.enumerated().map { position, extent in
+            DefragFile(id: UInt32(position), path: "\\S\(position)", category: .system,
+                       walkOrder: position, extents: [extent], isMovable: false)
+        }
+        let input = DefragVolume(partition: partition, files: files, mftZone: 100..<400,
+                                 systemExtents: mft, mftExtents: mft)
+        let plan = input.planned(using: WindowsXPStrategy())
+        #expect(plan.partition.mftExtents?.first == Extent(start: 0, length: 32))
+        #expect(plan.partition.mftExtents?.dropFirst().first?.start == 400)
+    }
+
+    /// Faute de trou assez grand, `FindFreeSpaceChunk` rend le début du
+    /// dernier trou examiné quand il touche la fin du volume, et l'outil tente
+    /// le déplacement quand même. `FSCTL_MOVE_FILE` pose des blocs de 64 Kio
+    /// jusqu'à buter sur la fin du volume (`deviosup.c:10515-10523`) : une
+    /// partie de la queue a bougé, le reste non.
+    @Test("Sans trou assez grand, MFTDefrag déplace ce qui tient jusqu'à la fin du volume")
+    func mftDefragFallsBackOnTheLastHole() {
+        // MFT de 128 clusters : 64 en tête, 64 en queue à 500. Le volume est
+        // plein, sauf 30 clusters au fond, 1970..<2000.
+        let mft = [Extent(start: 0, length: 64), Extent(start: 500, length: 64)]
+        let blockers = [Extent(start: 64, length: 436), Extent(start: 564, length: 1_406)]
+        var partition = PartitionGeometry(startLBA: 0, clusterCount: 2_000,
+                                          clusterSectors: 8, format: .ntfs)
+        partition.mftExtents = mft
+        let files = blockers.enumerated().map { position, extent in
+            DefragFile(id: UInt32(position), path: "\\S\(position)", category: .system,
+                       walkOrder: position, extents: [extent], isMovable: false)
+        }
+        let input = DefragVolume(partition: partition, files: files,
+                                 systemExtents: mft, mftExtents: mft)
+        let plan = input.planned(using: WindowsXPStrategy())
+        // Un bloc de 16 clusters à 1970 ; le suivant finirait à 2002. Le
+        // second appel, à la fin de la passe, trouve le même trou de 14
+        // clusters au fond, et son premier bloc ne tient déjà plus.
+        #expect(plan.partition.mftExtents == [Extent(start: 0, length: 64),
+                                              Extent(start: 1_970, length: 16),
+                                              Extent(start: 516, length: 48)])
+    }
+
+    /// Le dernier trou examiné ne touche pas la fin du volume : `FindFreeExtent`
+    /// rend zéro, et l'outil ne déplace rien.
+    @Test("Sans trou assez grand ni trou au fond, MFTDefrag ne fait rien")
+    func mftDefragGivesUpWithoutAnEndHole() {
+        let mft = [Extent(start: 0, length: 64), Extent(start: 500, length: 64)]
+        let blockers = [Extent(start: 64, length: 436), Extent(start: 564, length: 1_400),
+                        Extent(start: 1_994, length: 6)]
+        var partition = PartitionGeometry(startLBA: 0, clusterCount: 2_000,
+                                          clusterSectors: 8, format: .ntfs)
+        partition.mftExtents = mft
+        let files = blockers.enumerated().map { position, extent in
+            DefragFile(id: UInt32(position), path: "\\S\(position)", category: .system,
+                       walkOrder: position, extents: [extent], isMovable: false)
+        }
+        let input = DefragVolume(partition: partition, files: files,
+                                 systemExtents: mft, mftExtents: mft)
+        let plan = input.planned(using: WindowsXPStrategy())
+        #expect(plan.partition.mftExtents == mft)
     }
 
     // MARK: B#16

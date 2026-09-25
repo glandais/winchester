@@ -464,24 +464,52 @@ struct DefragVolume {
     /// place neuve, comme le fait `MFTDefrag` de XP. Ce qu'elle quitte suit la
     /// règle d'un fichier : récemment désalloué sous XP, retenu jusqu'au point
     /// de contrôle ailleurs.
+    ///
+    /// `extent` peut être plus court que la queue : `FSCTL_MOVE_FILE` avance
+    /// bloc par bloc et s'arrête au premier qu'il ne peut pas poser
+    /// (`deviosup.c:10499-10523`). Les premiers clusters de la queue sont alors
+    /// à `extent`, le reste où il était, derrière eux dans l'ordre des
+    /// enregistrements.
     mutating func relocateMFTTail(to extent: Extent) {
-        guard mftExtents.count > 1 else { return }
+        guard mftExtents.count > 1, !extent.isEmpty else { return }
         let tail = Array(mftExtents.dropFirst())
+        var moved: [Extent] = []
+        var kept: [Extent] = []
+        var remaining = extent.length
+        for old in tail {
+            if remaining >= old.length {
+                moved.append(old)
+                remaining -= old.length
+            } else if remaining > 0 {
+                moved.append(Extent(start: old.start, length: remaining))
+                kept.append(Extent(start: old.start + remaining, length: old.length - remaining))
+                remaining = 0
+            } else {
+                kept.append(old)
+            }
+        }
         for old in tail {
             bitmap.free(old)
             if let at = systemExtents.firstIndex(of: old) { systemExtents.remove(at: at) }
         }
+        for piece in kept {
+            bitmap.allocate(piece)
+            systemExtents.append(piece)
+        }
         if releaseWaitsForCheckpoint {
-            for old in tail where !old.isEmpty {
+            for old in moved where !old.isEmpty {
                 bitmap.allocate(old)
                 heldClusters.append(old)
             }
         } else {
-            noteDeallocated(tail)
+            noteDeallocated(moved)
         }
         bitmap.allocate(extent)
         systemExtents.append(extent)
-        mftExtents = [mftExtents[0], extent]
+        var extents = [mftExtents[0]]
+        extents.appendRun(start: extent.start, length: extent.length)
+        for piece in kept { extents.appendRun(start: piece.start, length: piece.length) }
+        mftExtents = extents
         // Les validations qui suivent écrivent les enregistrements là où la
         // MFT est maintenant, et non dans la queue qu'elle vient de quitter
         // (B#15) : c'est la partition qui les situe.

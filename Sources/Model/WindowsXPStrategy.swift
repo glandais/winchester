@@ -416,20 +416,50 @@ extension WindowsXPStrategy {
 
         // MARK: 1. La MFT
 
-        /// `MFTDefrag` : la queue de la MFT en plus d'un morceau part d'un bloc
-        /// vers le premier trou qui la tient — la zone MFT comprise, c'est sa
-        /// réserve.
+        /// `MFTDefrag` (`mftdefrag.cpp:78-160`), avant et après la passe.
+        ///
+        /// `GetMFTSize` (`277-330`) lit les extents de toute la MFT : leur
+        /// nombre, la taille du premier, et la taille de **toute** la MFT dès
+        /// qu'elle en a deux. L'outil agit dès **deux** extents
+        /// (`lMFTFragments > 1`, ligne 122 ; le commentaire d'en-tête dit
+        /// « in two fragments », le code non) et si le premier dépasse seize
+        /// enregistrements (`lMFTStartingVcn > ClustersPerFRS * 16`, ligne
+        /// 120) — mais `ClustersPerFRS` vaut `ClustersPerFileRecordSegment`,
+        /// que le pilote laisse à zéro quand un enregistrement est plus petit
+        /// qu'un cluster (`fsctrl.c:1283-1292`, `9148`) : sur des clusters de
+        /// 4 Ko, la condition se réduit à un premier extent non vide.
+        ///
+        /// Il cherche un trou de la taille de la MFT **entière**
+        /// (`FindFreeSpaceChunk`, ligne 126, `freeSpaceChunk`) et n'en retire
+        /// le premier extent qu'ensuite (131) ; puis `FSCTL_MOVE_FILE` pour la
+        /// queue, que le pilote accepte au-delà des seize premiers
+        /// enregistrements (`deviosup.c:10112-10125`) et copie bloc par bloc.
+        /// Recollée en deux extents, la MFT repart donc à chaque appel.
         mutating func defragmentMFT() {
             let extents = volume.mftExtents
-            guard extents.count > 2 else { return }
+            guard extents.count > 1 else { return }
+            let first = extents[0].length
+            let clustersPerFRS = UInt32(1_024 / partition.clusterBytes)
+            guard first > clustersPerFRS * 16 else { return }
+            // Le pilote refuse de déplacer les seize premiers enregistrements.
+            let firstUserVCN = UInt32(partition.clusters(forBytes: 16 * 1_024))
+            guard first >= firstUserVCN else { return }
+            let whole = extents.reduce(0) { $0 + $1.length }
+            guard let start = freeSpaceChunk(size: whole) else { return }
             let tail = Array(extents.dropFirst())
-            let need = tail.reduce(0) { $0 + $1.length }
-            guard need > 0,
-                  let target = DefragOperations.firstGap(in: volume, need: need, avoidingMFTZone: false)
-            else { return }
+            let movable = clustersMovable(tail, to: start)
+            guard movable > 0 else { return }
+            let target = Extent(start: start, length: movable)
+            var source: [Extent] = []
+            var left = movable
+            for piece in tail where left > 0 {
+                let length = min(piece.length, left)
+                source.append(Extent(start: piece.start, length: length))
+                left -= length
+            }
             DefragOperations.deletePending(target: [target], volume: &volume,
                                            phase: WindowsXPStrategy.defragPhase, into: sink)
-            DefragOperations.move(source: tail, destination: [target],
+            DefragOperations.move(source: source, destination: [target],
                                   category: .reserved, contiguous: true, phase: WindowsXPStrategy.defragPhase,
                                   partition: partition, bufferBytes: strategy.bufferBytes,
                                   fullBlocks: strategy.fullBlocks, into: sink)
@@ -437,7 +467,57 @@ extension WindowsXPStrategy {
                                     phase: WindowsXPStrategy.defragPhase, partition: partition, into: sink)
             volume.relocateMFTTail(to: target)
             checkpoints.afterCommit(&volume, sink: sink)
-            movedClusters += Int(need)
+            movedClusters += Int(movable)
+        }
+
+        /// `FindFreeSpaceChunk` (`defragcommon.cpp:80-168`) : la bitmap relue,
+        /// la zone MFT marquée occupée (`MarkBitMapforNTFS`, 147-168 ; la zone
+        /// de démarrage, elle, ne l'est pas), puis les trous dans l'ordre des
+        /// LCN depuis le début, jusqu'au premier d'au moins `size` clusters.
+        /// Faute de trou assez grand, l'outil rend le début du **dernier trou
+        /// examiné** si celui-ci touche la fin du volume (`FindFreeExtent`,
+        /// `freespace.cpp:1637-1765`, remet son résultat à zéro à chaque appel,
+        /// et zéro veut dire « rien ») ; sinon rien.
+        func freeSpaceChunk(size: UInt32) -> UInt32? {
+            let zone = volume.mftZone.flatMap { $0.isEmpty ? nil : $0 }
+            // `FindFreeExtent` ne reconnaît jamais le LCN 0 comme un début.
+            var cursor: UInt32 = 1
+            while cursor < total {
+                guard var run = volume.bitmap.nextFreeRun(from: cursor) else { return nil }
+                if let zone, run.start < zone.upperBound, run.end > zone.lowerBound {
+                    guard run.start < zone.lowerBound else { cursor = zone.upperBound; continue }
+                    run = Extent(start: run.start, length: zone.lowerBound - run.start)
+                }
+                if run.length >= size { return run.start }
+                if run.end >= total { return run.start }
+                cursor = run.end
+            }
+            return nil
+        }
+
+        /// Ce que `FSCTL_MOVE_FILE` pose de `source` à partir de `start` avant
+        /// de buter : bloc par bloc, chacun borné au tampon de 64 Kio et à
+        /// l'extent source, refusé s'il dépasse la fin du volume
+        /// (`STATUS_ALREADY_COMMITTED`, `deviosup.c:10499-10523`) ou s'il
+        /// tombe sur un cluster occupé (`NtfsRunIsClear`). L'outil n'en sait
+        /// rien : le déplacement « échoue », et ce qui a bougé a bougé.
+        func clustersMovable(_ source: [Extent], to start: UInt32) -> UInt32 {
+            let block = UInt32(max(strategy.bufferBytes / partition.clusterBytes, 1))
+            var destination = start
+            var moved: UInt32 = 0
+            for piece in source {
+                var offset: UInt32 = 0
+                while offset < piece.length {
+                    let length = min(block, piece.length - offset)
+                    guard destination + length <= total,
+                          volume.bitmap.isFree(Extent(start: destination, length: length))
+                    else { return moved }
+                    destination += length
+                    offset += length
+                    moved += length
+                }
+            }
+            return moved
         }
 
         // MARK: 2. Défragmenter
