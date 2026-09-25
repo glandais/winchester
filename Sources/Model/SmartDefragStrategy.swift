@@ -33,9 +33,12 @@ import DiskCore
 ///
 /// Une seule stratégie pour les deux formats, comme UltraDefrag et JkDefrag :
 /// ce qui change de l'un à l'autre se lit sur le volume au moment de planifier.
-/// Le tampon de l'époque — 256 Ko comme l'outil de Windows 95, 4 Mo comme celui
-/// de XP —, et sur NTFS les géants, et une zone MFT qu'on cesse de respecter
-/// quand les fichiers l'ont déjà prise (`withoutSpentZone`).
+/// Le tampon — 256 Ko comme l'outil de Windows 95, 4 Mo sur NTFS comme
+/// UltraDefrag sur un 40 Go (le noyau de XP, lui, copie par 64 Kio) —, et sur
+/// NTFS les géants, et une zone MFT qu'on cesse de respecter quand les
+/// fichiers l'ont déjà prise (`withoutSpentZone`). La zone de démarrage de
+/// l'outil de XP (`WindowsXPStrategy.processBootOptimise`) part du plus grand
+/// trou ; celle-ci, de la tête du volume : c'est un choix du projet.
 struct SmartDefragStrategy: DefragStrategy, BootLayoutConsumer {
 
     let id = "smart"

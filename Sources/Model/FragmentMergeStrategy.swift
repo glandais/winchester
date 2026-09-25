@@ -33,9 +33,11 @@ import DiskCore
 ///
 /// Deux choses tiennent au format :
 ///
-/// - **les points de contrôle.** Sur NTFS, les clusters qu'un déplacement
-///   quitte ne sont réutilisables qu'au point de contrôle suivant ; c'est la
-///   comptabilité qu'`UltraDefragStrategy` tient par tour. Ici un point de
+/// - **les points de contrôle.** Le recollage économe écrit lui-même ses
+///   tables et tient les clusters qu'il quitte jusqu'à les avoir écrites —
+///   un choix de l'outil, qui vaut aussi sous XP, dont le pilote les rendrait
+///   tout de suite à qui passe par `FSCTL_MOVE_FILE` ; c'est la comptabilité
+///   qu'`UltraDefragStrategy` tient par tour. Ici un point de
 ///   contrôle tombe tous les `checkpointMoves` déplacements : les
 ///   enregistrements de MFT et la bitmap sont écrits d'une traite, triés, et
 ///   ce qui était retenu redevient libre. Aucune écriture ne tombe sur un

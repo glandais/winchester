@@ -192,31 +192,59 @@ remplacées, avec leur source.
 
 ## Chantier 50 : le moteur de XP
 
-- **MFTDefrag** : il agit dès deux extents, cherche un trou de la taille de
-  la MFT entière, hors de la zone MFT, et agit avant et après la passe
-  (`xp-defrag-mft-condition`, `mft-zone-cible`).
-- **Pas de rétention de 5 s** pour un défragmenteur. Les clusters quittés
+**Fait** le 25 septembre 2026, branche `xp` (`LEDGER.md`, chantier 50),
+précédé d'une étape non prévue au plan : **50a**, la défragmentation de
+l'histoire qui laisse la zone MFT vide (`freespace.cpp:305-318`) — c'est
+elle qui envoyait la MFT de `dev-2003` dans une zone neuve à 94 % du
+volume ; cinq volumes changent, leur MFT d'un seul tenant. Tout ce qui
+suit est livré, dans l'ordre 50b (rétention) → 50c (MFTDefrag) → 50d
+(transactions) → 50e (consolidation) → 50f (démarrage) → 50g (15 %,
+B#22) : la rétention d'abord, parce qu'elle rendait les plans sensibles à
+l'horloge. Écarts au plan : le code du pilote (rétention, transactions,
+VDL) ne vaut que pour les volumes formatés par XP, Vista et 7 gardent le
+modèle d'avant ; celui de l'outil vaut pour le moteur commun, sauf
+l'optimisation du démarrage, XP seulement ; UltraDefrag garde sa propre
+rétention (`move.c`). Prédictions fausses sur les durées à 50b (tris de
+JkDefrag ×2 à ×7, qui vont maintenant au bout), 50c (aucun effet) et 50d
+(XP +2 à +23 %, le poids du journal par bloc). Calibration en Release :
+verte, les mêmes 4 known issues.
+
+- [x] **MFTDefrag** : il agit dès deux extents, cherche un trou de la taille
+  de la MFT entière, hors de la zone MFT, et agit avant et après la passe
+  (`xp-defrag-mft-condition`, `mft-zone-cible`). *Fait (50c) : le seuil de
+  seize enregistrements se réduit à un premier extent non vide sur des
+  clusters de 4 Ko (`ClustersPerFRS` vaut 0) ; faute de trou, le dernier
+  trou s'il touche la fin du volume, et `MOVE_FILE` pose ce qui tient.*
+- [x] **Pas de rétention de 5 s** pour un défragmenteur. Les clusters quittés
   sont libres dans la bitmap qu'il relit. Un `MOVE_FILE` vers eux produit
   `DELETE_PENDING`, puis un vidage du journal, puis la réussite
   (`xp-defrag-point-de-controle`, `ntfs-alloc-15`). Cela vaut pour XP,
   JkDefrag et UltraDefrag, et touche `relocateMFTTail` et `heldClusters`.
-- **Une transaction par bloc de 64 Kio** : commit dans `$LogFile`, USN,
+  *Fait (50b), sous XP : les décisions ne dépendent plus de l'horloge
+  (40 passes identiques sans point de contrôle).*
+- [x] **Une transaction par bloc de 64 Kio** : commit dans `$LogFile`, USN,
   pages de bitmap et *mapping pairs*. Les métadonnées sont écrites par le
-  lazy writer (`xp-defrag-validation`, `ntfs-alloc-14`).
-- **La copie s'arrête à `ValidDataLength`** : au-delà, les clusters sont
-  réalloués sans copie (lacune).
-- **Consolidation** : elle rend « région parcourue sans abandon ». Le vidage
+  lazy writer (`xp-defrag-validation`, `ntfs-alloc-14`). *Fait (50d) : le
+  journal part avec le lazy writer (une seconde), le point de contrôle, un
+  `DELETE_PENDING` ; LFS écrit paresseusement (`lfs/write.c:185-190`).*
+- [x] **La copie s'arrête à `ValidDataLength`** : au-delà, les clusters sont
+  réalloués sans copie (lacune). *Fait (50d) ; sans effet sur la galerie.*
+- [x] **Consolidation** : elle rend « région parcourue sans abandon ». Le vidage
   de la zone MFT s'arrête au premier échec (`xp-defrag-abandon-dix`,
   `zone-mft-une-fois`). Les listes rognent aussi la zone de démarrage
-  (`zone-mft-rognee`).
-- **`ProcessBootOptimise` ouvre la passe** sur le volume système :
+  (`zone-mft-rognee`). *Fait (50e, et 50f pour la zone de démarrage).*
+- [x] **`ProcessBootOptimise` ouvre la passe** sur le volume système :
   `Layout.ini`, fichiers de 32 Mo au plus, zone déplacée quand moins de 90 %
   des fichiers y sont déjà, avec une croissance de 150 % du manque
   (`xp-defrag-mft-avant-apres`, `boot-10` à `12`). Elle est à rapprocher de
-  `BootLayout` et du rangement intelligent.
-- **Les 15 %** : en ligne de commande, sans `-f`, l'outil refuse
-  (`xp-defrag-15pct`).
-- Les commentaires et les tests sur l'ancien XP (B#22) suivent.
+  `BootLayout` et du rangement intelligent. *Fait (50f), XP seulement :
+  `Layout.ini` est `BootLayout` ; la zone part du registre à 0 (première
+  passe) ; le rangement intelligent n'est pas touché.*
+- [x] **Les 15 %** : en ligne de commande, sans `-f`, l'outil refuse
+  (`xp-defrag-15pct`). *Tranché (50g) : l'app imite la console, qui pose
+  une question ; le modèle y répond oui.*
+- [x] Les commentaires et les tests sur l'ancien XP (B#22) suivent. *Fait
+  (50g).*
 
 ## Chantier 51 : démarrage, cache et pile d'E/S de XP
 

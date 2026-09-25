@@ -35,8 +35,9 @@ import DiskCore
 /// - **le grain du déplacement suit la capacité du volume**
 ///   (`adjust_move_at_once_parameter`), pas le tampon d'un outil.
 ///
-/// Comme la passe de XP, elle n'évacue personne : une destination est toujours
-/// un trou déjà libre. Ce qu'elle change n'est pas le va-et-vient, c'est la
+/// Elle n'évacue personne — contrairement à la passe de XP, qui vide une
+/// région pour ouvrir un trou : une destination est toujours un trou déjà
+/// libre. Ce qu'elle change n'est pas le va-et-vient, c'est la
 /// **taille de ce qui est déplacé** — des rafales courtes sur les bords d'un
 /// gros fichier, au lieu d'un transfert de deux cents mégaoctets ou de rien du
 /// tout.
@@ -67,7 +68,8 @@ struct UltraDefragStrategy: DefragStrategy {
     /// (`udefrag-internals.h:37`).
     ///
     /// C'est le seul réglage qui décide de ce que la passe fait vraiment. Trop
-    /// bas, elle ne trouve plus rien à recoller et redevient la passe de XP ;
+    /// bas, elle ne trouve plus rien à recoller et ne fait plus que recopier
+    /// les fichiers entiers, comme la réparation de XP ;
     /// trop haut, elle redéplace des fichiers entiers et en retrouve les
     /// échecs. Le commentaire du code d'origine l'appelle une constante
     /// magique, et c'en est une : rien dans UltraDefrag ne la justifie.
@@ -117,10 +119,11 @@ struct UltraDefragStrategy: DefragStrategy {
     /// vite pour qu'on puisse interrompre la passe en une demi-seconde — et
     /// c'est pour cela qu'elle grandit avec le disque : un volume plus gros est
     /// porté par un disque plus rapide. Les huit volumes NTFS de la galerie
-    /// s'échelonnent de 39 à 312 Gio et tombent donc sur 4, 8 ou 16 Mo, là où
-    /// `WindowsXPStrategy` retient 4 Mo pour `FSCTL_MOVE_FILE` quelle que soit
-    /// la capacité. L'écart est réel mais reste du même ordre : ce qui sépare
-    /// les deux passes n'est pas le grain.
+    /// s'échelonnent de 39 à 312 Gio et tombent donc sur 4, 8 ou 16 Mo. C'est
+    /// ce qu'UltraDefrag demande à chaque `FSCTL_MOVE_FILE` ; le noyau, lui,
+    /// copie par blocs de 64 Kio (`LARGE_BUFFER_SIZE`, `ntfsdata.h:345`), le
+    /// tampon que `WindowsXPStrategy` retient, et sous XP chaque bloc est une
+    /// transaction (`DefragOperations.moveFile`).
     static func moveAtOnce(capacityBytes: Int) -> Int {
         switch capacityBytes {
         case ..<(20 << 30):           return 256 * 1024
@@ -216,7 +219,7 @@ struct UltraDefragStrategy: DefragStrategy {
             filesMoved: moved.entirely.union(moved.partially).count,
             filesAlreadyInPlace: alreadyInPlace,
             // Une destination est toujours un trou libre : personne n'est
-            // délogé, exactement comme sur la passe de XP.
+            // délogé — là où la passe de XP vide des régions.
             evacuations: 0,
             arrangement: volume.arrangement
         )

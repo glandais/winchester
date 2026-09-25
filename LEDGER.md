@@ -8403,6 +8403,7 @@ pour 994 fichiers à 49, 656 à 49f, **666 à 49g** — la borne (662) tombait
 entre deux, selon les enregistrements que prennent documents et
 `index.dat`. Les deux tiers n'avaient pas de source ; la borne redevient ce
 que dit le mécanisme, moins d'écritures que de fichiers (décision 1).
+Gabriel a validé cette borne le 25 septembre 2026.
 Calibration en Release (`calibration-49g.log`) : **15 tests, verts, les
 mêmes 4 known issues**, la table des bornes de recherche identique (16,2 et
 64,0 %), `famille-2003` toujours à 88,7 %. `GalleryAllocationAudit` en
@@ -8442,3 +8443,319 @@ au chantier 49. Les tables des passes de 2003 bougent (XP sur
   au pas puis ramené.
 - Vista et 7 : inchangés, paquets de 64 Ko pour tous, sans source.
 
+
+## Chantier 50 — XP à la lettre : le moteur du défragmenteur de XP
+
+**Fait** · branche `xp`, partie de `e2b778c` (chantier 49 et sa reprise) ·
+plan : `LEDGER-XP.md`
+
+### Le problème
+
+Le moteur de `WindowsXPStrategy` suivait `DefragNtfs` depuis le chantier 45,
+mais `WINDOWS_CHECK.md` en relevait ce qui restait faux contre le code de
+XP SP1 : `MFTDefrag` qui n'agissait qu'à trois extents et cherchait la
+taille de la queue, zone MFT comprise (`xp-defrag-mft-condition`,
+`mft-zone-cible`) ; la rétention de cinq secondes de NT 4 appliquée au
+pilote de XP (`xp-defrag-point-de-controle`, `ntfs-alloc-15`) ; une
+validation par fichier écrite aussitôt au lieu d'une transaction par bloc
+de 64 Kio (`xp-defrag-validation`, `ntfs-alloc-14`) ; la copie au-delà de
+la `ValidDataLength` ; la consolidation (`abandon-dix`, `zone-mft-une-fois`,
+`zone-mft-rognee`) ; `ProcessBootOptimise`, absent (`xp-defrag-mft-avant-
+apres`, `boot-10` à `12`) ; les 15 % (`xp-defrag-15pct`) ; et les
+commentaires et tests de l'ancien XP (B#22). En tête, une enquête avait
+trouvé que la défragmentation de l'histoire tassait les fichiers à travers
+la zone MFT, et que c'était elle qui envoyait la MFT de `dev-2003` dans une
+zone neuve à 94 % du volume (la passe XP de 1 029 à 2 109 s au chantier 49).
+
+### Les décisions
+
+Chaque référence a été relue dans `base/fs/utils/dfrg` (`dfrgntfs/`,
+`defragcommon.cpp`, `freespace.cpp`, `fssubs.cpp`, `movefile.cpp`,
+`dfrgui/`), `base/fs/ntfs` et `base/fs/lfs`. Le code de l'outil
+(`dfrgntfs`) vaut pour le moteur commun, que Vista et 7 reprennent ici par
+hypothèse (chantier 45) ; le code du pilote (`ntfs`, `lfs`) vaut pour les
+volumes formatés par XP seulement — Vista et 7 gardent le modèle d'avant,
+dit comme tel (décision 1). Ordre des étapes : l'historique d'abord (il
+change les volumes), puis la rétention **avant** `MFTDefrag` et avant tout
+ce qui touche au temps — la rétention rendait les décisions dépendantes de
+l'horloge planifiée (chantier 48) ; retirée, chaque étape suivante se
+mesure sur des plans stables, et une étape qui ne change que des
+entrées-sorties (50d) se prouve par des décisions identiques.
+
+- **50a — la défragmentation de l'histoire laisse la zone MFT vide**
+  (`Simulator.defragment`) : un trou dans la zone fait reprendre la
+  recherche derrière elle, un trou qui y entre est coupé, comme les listes
+  de l'outil (`BuildFreeSpaceList`, `freespace.cpp:305-318`) et
+  `MftExcludes` de JkDefrag. La zone est celle que publie l'allocateur
+  (`Allocator.defragmentExcludedZone`, celle de
+  `FSCTL_GET_NTFS_VOLUME_DATA`) ; sous Vista et 7, celle du modèle. La
+  sonde de l'enquête (`bin-sonde-defragzone`, sur l'état de `572e37c`) a
+  été reprise proprement, sans ses traces.
+- **50b — sous XP, la place quittée est libre tout de suite.**
+  `NtfsDeallocateClusters` efface les bits sur-le-champ (`bitmpsup.c:1798`),
+  `FSCTL_GET_VOLUME_BITMAP` copie les pages brutes (`fsctrl.c:9222-9470`) ;
+  un `MOVE_FILE` vers ces clusters lève `STATUS_DELETE_PENDING`
+  (`bitmpsup.c:9046-9067`), que `NtfsDefragFile` intercepte dix fois au
+  plus (`deviosup.c:10303, 10745-10790`) : tous les fichiers pris,
+  `LfsFlushToLsn(LiMax)`, `NtfsFreeRecentlyDeallocated(CleanVolume)`, et le
+  bloc recommence (10360-10390). `DefragVolume.reusesWithDeletePending`,
+  `recentlyDeallocated`, `DefragOperations.deletePending` (le vidage, compté
+  au bilan : ligne `journal`) ; `NTFSCheckpoints` oublie ce que le pilote
+  suit toutes les 5 s (`logsup.c:902-906, 2260, 4500-4533`). XP, JkDefrag et
+  UltraDefrag s'y soumettent ; **UltraDefrag garde sa propre rétention**
+  jusqu'au tour suivant (`move.c:36-50, 719-727` : un choix de l'outil, sur
+  NTFS quel que soit le pilote). Windows 95 sur NTFS suit la bitmap, sans
+  vidage (`DEFRAG.EXE` n'a pas de `MOVE_FILE`) ; le tassage à la frontière
+  et le recollage économe gardent leur comptabilité. `relocateMFTTail` rend
+  la queue quittée comme un fichier.
+- **50c — `MFTDefrag`** (`mftdefrag.cpp:78-160`, `GetMFTSize` 277-330) :
+  dès deux extents (`lMFTFragments > 1`, 122 ; le commentaire d'en-tête dit
+  « in two fragments ») ; premier extent au-delà de `ClustersPerFRS × 16`
+  (120) — mais `ClustersPerFRS` est `ClustersPerFileRecordSegment`, que le
+  pilote laisse à zéro quand un enregistrement est plus petit qu'un cluster
+  (`fsctrl.c:1283-1292, 9148`) : sur des clusters de 4 Ko, un premier
+  extent non vide suffit ; le pilote refuse de toute façon les seize
+  premiers enregistrements (`deviosup.c:10112-10125`). Un trou de la taille
+  de **toute** la MFT, premier dans l'ordre des LCN, zone MFT marquée
+  occupée (`FindFreeSpaceChunk`, `MarkBitMapforNTFS`,
+  `defragcommon.cpp:80-168`) ; `FindFreeExtent` remet son résultat à zéro à
+  chaque appel et zéro veut dire « rien » (`freespace.cpp:1637-1765`) : faute
+  de trou, l'outil rend le début du dernier trou examiné **seulement s'il
+  touche la fin du volume**, et le déplacement est tenté — `MOVE_FILE` pose
+  des blocs de 64 Kio jusqu'à buter sur la fin du volume
+  (`STATUS_ALREADY_COMMITTED`, `deviosup.c:10499-10523`) : une partie de la
+  queue bouge, le reste non ; sinon rien. `relocateMFTTail` accepte un
+  déplacement partiel et fond deux extents contigus.
+- **50d — une transaction par bloc de 64 Kio**, sous XP, pour les outils
+  qui passent par `FSCTL_MOVE_FILE` (`DefragOperations.moveFile`) :
+  `NtfsReallocateRange` puis `NtfsCheckpointCurrentTransaction` par bloc
+  (`deviosup.c:10614-10618`, `logsup.c:2979-3014`, bits journalisés
+  `bitmpsup.c:3068-3080`) ; pas de *write-through* (`logsup.c:2951-2956`) :
+  l'enregistrement de MFT (sa page de 4 Ko) et les pages de `$Bitmap`
+  (source et destination) sont salis et écrits par un *lazy writer* chaque
+  seconde planifiée (la cadence qu'avaient déjà les installations de XP,
+  `InstallEra`) ; LFS écrit « paresseusement » (`lfs/write.c:185-190`) :
+  le journal part d'un trait avant le lazy writer (écriture anticipée), au
+  point de contrôle de 5 s avec la zone de redémarrage
+  (`LfsWriteRestartArea`, `lfs/restart.c:380-425`), avant un
+  `DELETE_PENDING` et en fin de passe ; huit transactions par page, l'ordre
+  de grandeur d'avant (`validationsPerLogPage`). Au-delà de la
+  `ValidDataLength`, un bloc réalloué sans copie (`deviosup.c:10530-10561`,
+  « `StartingVcn <= UpperBound` ») — sans effet sur la galerie, où aucun
+  fichier n'est alloué au-delà de sa taille (sonde sur six volumes).
+  `OperationSink.carry` porte les mutations d'un bloc sans écriture.
+- **50e — la consolidation** : `ConsolidateFreeSpace` rend `bSuccess`
+  (`dfrgntfs.cpp:3897`), « région parcourue sans abandon » ; vider la zone
+  MFT s'arrête au premier fichier sans trou (3858-3866) et ne prend que les
+  fichiers qui commencent dans la zone (3706-3712), retentée tant qu'elle
+  n'a pas réussi (4268-4272, 4297-4300) ; les listes rognent comme l'outil
+  — un trou qui traverse une zone n'en garde que la partie d'avant
+  (`freespace.cpp:305-318, 434-476`).
+- **50f — `ProcessBootOptimise` ouvre la passe de XP**
+  (`dfrgntfs.cpp:2007-2013, 2851-2861`, avant `MFTDefrag` à 2906 ;
+  `bootoptimizentfs.cpp:1664-2046`) : zone au registre, 0 et 0 à la
+  première passe (`dfrg.inx`) ; fichiers de `Layout.ini` — ici `BootLayout`,
+  l'ordre de lecture d'un démarrage planifié — qui existent, hors fichier
+  d'échange, 32 Mo au plus (`IsAValidFile`, 624-775) ; zone reposée au
+  début du plus grand trou (liste **sans** rognage de la zone MFT,
+  `bIgnoreMftZone`, 1797-1803) s'il dépasse leur total et que moins de 90 %
+  y sont (1817-1839) ; sinon intrus chassés au plus petit trou qui les
+  tient (`EvictFile`, 1067-1312) — n'est intrus qu'un fichier dont un
+  extent **autre que le premier** entre dans la zone : `CollapseExtentList`
+  ne teste pas le premier (`fssubs.cpp:325-347`) ; puis chaque fichier, dans
+  l'ordre, au premier trou de la zone qui le tient (`MoveBootOptimiseFile`,
+  `FindFreeSpaceWithMultipleTrees`, `freespace.cpp:698-816`) ; faute de
+  place, la zone grandit de 150 % du manque, 100 Mo au moins, sous 4 Go et
+  la moitié du volume, sinon elle finit au dernier fichier rangé
+  (1995-2031). Ensuite la zone est rognée de toutes les listes et de la
+  zone MFT à vider (3625-3643), et ses fichiers, quand ils commencent
+  **strictement** dans la zone, sont sautés par la consolidation et le
+  tassement (3758-3763, 4061-4066) — le premier, à la borne même, ne l'est
+  pas. `MFTDefrag` ne marque pas la zone de démarrage. XP seulement (Vista
+  et 7 : pas de source) ; phase affichée « Defragmenting », comme l'écran de
+  XP (`dfrgui/vollist.cpp:1242-1245`, `IDS_LABEL_DEFRAGMENTINGDDD`) : aucune
+  clé neuve. Le rangement intelligent (`SmartDefragStrategy`) n'est pas
+  touché : sa tête de volume reste un choix du projet, dit dans son
+  commentaire.
+- **50g — les 15 %, B#22, la doc.** La passe de l'app est celle de la
+  console (`dfrg.msc`, ce que le code et le README nomment) : sous le seuil
+  (`FreeSpaceErrorLevel`, 15, `fssubs.cpp:1239`, `dfrg.inx`),
+  `CVolume::WarnFutility` met le moteur en pause et pose une question
+  (`dfrgui/vollist.cpp:1329-1366`, appelé à `postmsgc.cpp:444-456`) ; le
+  modèle y répond oui sans jouer l'attente. La ligne de commande sans `-f`
+  refuserait (`dfrgntfs.cpp:2930-2965`) : ce n'est pas ce que l'app imite.
+  B#22 : UltraDefrag ne « n'évacue personne comme XP », le noyau copie par
+  64 Kio et non 4 Mo, `DefragStrategy`, le rangement intelligent, le
+  recollage économe, Windows 95 ; dans `DefragPlannerTests`, le test « n'est
+  pas défragmenté » renommé, « c'est une hypothèse » devenu la source,
+  « la MFT ne se réorganise pas à chaud » et « XP suit les numéros
+  d'enregistrement » corrigés, le message « une passe qui n'évacue rien ».
+
+Tests neufs : l'histoire qui laisse la zone vide (`SimulatorTests`) ; sous
+XP, la place quittée libre et le vidage, le point de contrôle qui oublie, la
+queue de MFT libérée (`CheckpointTests`, dont les tests de rétention passent
+sur un volume de Vista) ; `MFTDefrag` dès deux extents, vers un trou de
+toute la MFT hors zone, le dernier trou au fond puis rien ; la transaction
+par bloc et le lazy writer, la VDL et sa borne ; la zone MFT arrêtée au
+premier échec, le trou qui traverse la zone ; l'optimisation du démarrage
+(zone reposée, premier fichier ramené, intrus en morceaux seuls chassés)
+(`WindowsXPLetterTests`). Ceux de 50a et de 50e échouent sur le code
+d'avant (vérifié en y remettant l'ancien fichier) ; les autres n'ont pas
+été rejoués contre lui. Retournés en
+citant la source : le test de XP qui ne se pose pas sur la place quittée
+(Vista seulement), « faute de trou », le recollage en blocs pleins,
+`commitStaysAwayFromTheEdge` (Vista), la nuance de la carte
+(`ClusterMapTests`, jugée en fin de passe sous XP), `MFTGrowthTests`
+(dev-2003 et secretaire-2007 gardent leur MFT d'un tenant).
+
+### Ce qui valide
+
+Mesures sous `.build/measure-xp` (dépôt principal) ; `bin-49g` reconstruit
+depuis `e2b778c` : identique, binaire et ressources. Prédictions écrites
+avant chaque mesure dans `prediction-50.md` (sauf 50f, dont une sonde avait
+imprimé les chiffres avant : dit dans le fichier).
+
+| étape | prédit | mesuré |
+|---|---|---|
+| 50a | 85 changent, 53 md5 ; dev-2003 XP 1 100-1 250 s ; Vista et 7 à ±1 point | **85 / 315, 53 md5** ; MFT d'un tenant sur les cinq ; dev-2003 2 175 → **1 839 s** (la sonde tournait sur le volume de 49) ; secretaire-2007 3,5 → **5,0 %**, secretaire-2012 1,7 → **5,0 %**, dev-2012 7,2 → **5,6 %** : faux |
+| 50b | 48-52 changent ; UltraDefrag : décisions identiques ; vidages par centaines ou milliers ; ±25-30 % | **43 / 357** (remplissage forcé jamais sur une place quittée) ; UltraDefrag conforme ; vidages 0 à 776 ; tris de JkDefrag **+130 à +620 %** : faux |
+| horloge | sans point de contrôle, mêmes décisions sous XP | **40 / 40** identiques (`bin-50b-nocp`) ; seuls les vidages changent |
+| 50c | 4 changent ; XP famille +0 à +15 % | **4 / 396** ; durées ±0,2 s : faux (le premier extent tient tous les enregistrements) |
+| 50d | 48 changent, décisions identiques ; durées en baisse | **48 / 352**, décisions identiques ; XP **+2 à +23 %** : faux (160 Mo de journal sur les 20 Go de dev-2003) |
+| 50e | 18 à 24 changent | **12 / 388** : faux ; sous Vista et 7, sens opposés entre une passe et sa variante en blocs pleins (l'horloge) |
+| 50f | 8 changent ; gamer ×5-10, secretaire +10-30 % | **8 / 392** ; gamer ×8,2, secretaire +26 % : conforme (sonde vue avant) |
+| 50g | 400 identiques ; 58 md5 à 50a | **400 / 400**, **58 / 58** |
+| contre 49g | — | 268 identiques, 132 changent ; 53 md5 identiques (les 5 démarrages de 50a) |
+
+Deux versions de 50d ont été mesurées puis reprises : la première écrivait
+la page de journal pleine sur-le-champ, une par huit blocs (XP +15 à +23 %
+par des allers-retours que le code ne montre pas : LFS écrit
+paresseusement) ; la deuxième revidait en fin de passe le journal des
+outils hors `MOVE_FILE` (+7 Mo pour le tassage à la frontière). Les
+chiffres ci-dessus sont ceux de la troisième.
+
+**Les volumes à défragmentations d'histoire, 49g → 50** (fragmentés parmi
+les fragmentables, MFT, trous libres) :
+
+| volume | 49g | 50 |
+|---|---|---|
+| `dev-2003` | 7,6 %, 3 extents, 1 595 | 7,6 %, 1 extent (`786432+4644`, zone 791 072..1 094 464 au lieu de 9 232 288..9 498 816), 1 743 |
+| `dev-2007` | 9,2 %, 25 extents, 1 753 | 9,0 %, 1 extent, 2 039 |
+| `secretaire-2007` | 3,5 %, 3 extents, 756 | 5,0 %, 1 extent, 615 |
+| `dev-2012` | 7,2 %, 3 extents, 4 425 | 5,6 %, 1 extent, 4 206 |
+| `secretaire-2012` | 1,7 %, 6 extents, 1 527 | 5,0 %, 1 extent, 893 |
+
+Sur Vista et 7, les fichiers qui passent en morceaux sont des documents
+réenregistrés et des fichiers système (sonde `DUMP`) : l'allocateur du
+modèle, sans source, sur un paysage libre changé — la zone de 200 Mo
+restée à 3 Gio au lieu de tranches renouvelées derrière le vierge. Non
+isolé plus avant.
+
+**Les passes, 49g → 50** (défragmentation seule ; blocs pleins dans les
+bilans) :
+
+| volume | XP | JkDefrag | UltraDefrag |
+|---|---|---|---|
+| `dev-2003` | 36 min 15 → 39 min 00 (+8 %) | 10 min 26 → 9 min 57 (−5 %) | 9 min 00 → 8 min 09 (−9 %) |
+| `famille-2003` | 5 min 40 → 6 min 30 (+15 %) | 17 min 32 → 21 min 06 (+20 %) | 7 min 31 → 7 min 47 (+4 %) |
+| `gamer-2003` | 11 s → 1 min 38 (×8,9) | 3 min 56 → 3 min 54 (−1 %) | 6 s → 6 s |
+| `secretaire-2003` | 18 min 16 → 30 min 23 (+66 %) | 26 min 46 → 28 min 49 (+8 %) | 23 min 34 → 24 min 22 (+3 %) |
+| `dev-2007` | 2 h 04 → 2 h 22 (+14 %) | 57 min 29 → 1 h 21 (+42 %) | 33 min 14 → 45 min 25 (+37 %) |
+| `famille-2007` | 30 min 18 → 29 min 21 (−3 %) | 36 min 42 → 36 min 42 | 20 min 19 → 20 min 19 |
+| `gamer-2007` | 2 h 40 → 2 h 19 (−13 %) | 1 h 54 → 1 h 54 | 46 min 17 → 46 min 17 |
+| `secretaire-2007` | 48 min 05 → 51 min 03 (+6 %) | 36 min 48 → 40 min 24 (+10 %) | 24 min 27 → 28 min 21 (+16 %) |
+| `dev-2012` | 55 min 57 → 55 min 48 (−0 %) | 50 min 29 → 48 min 30 (−4 %) | 22 min 26 → 25 min 25 (+13 %) |
+| `famille-2012` | 2 h 10 → 3 h 03 (+40 %) | 1 h 10 → 1 h 10 | 40 min 05 → 40 min 05 |
+| `gamer-2012` | 2 h 53 → 3 h 57 (+36 %) | 1 h 11 → 1 h 11 | 27 min 49 → 27 min 49 |
+| `secretaire-2012` | 52 min 25 → 1 h 01 (+18 %) | 34 min 59 → 36 min 43 (+5 %) | 20 min 18 → 23 min 10 (+14 %) |
+
+Et les tris de JkDefrag sur les 2003 (par nom, date d'accès, taille) :
+`dev-2003` 9 min 06 → 57 min 02, 7 min 01 → 26 min 31, 6 min 33 →
+28 min 29 ; `famille-2003` 11 min 01 → 35 min 04, 12 min 09 → 46 min 16,
+10 min 57 → 36 min 55 ; `secretaire-2003` 6 min 41 → 28 min 56, 7 min 16 →
+43 min 50, 9 min 49 → 23 min 23 ; `gamer-2003` +4 à +10 %. La rétention
+empêchait `Vacate` de libérer la place d'un fichier avant de l'y poser : le
+tri s'arrêtait à mi-course ; sous XP il va au bout (secretaire, tri par
+date d'accès : 32 770 → 3 015 morceaux après).
+
+**XP sur les 2003, étape par étape** (secondes) : `dev-2003` 2 175 (49g),
+1 839 (50a), 1 838, 1 838, 2 251 (50d), 2 251, 2 340 (50f) ;
+`famille-2003` 340, 340, 344, 343, 396, 396, 390 ; `gamer-2003` 11 jusqu'à
+50e, 98 à 50f ; `secretaire-2003` 1 096, 1 096, 1 275 (50b), 1 275, 1 462,
+1 449, 1 823. Ce que dit l'arrivée (49g → 50) : `dev-2003` fragmentés
+après 1 → 0, trous 260 → 205, 27 vidages forcés ; `famille-2003` trous
+3 689 → 3 746 ; `gamer-2003` trous 99 → 202 (916 fichiers de démarrage
+posés à 9 766 256, au début du grand trou de la fin du volume) ;
+`secretaire-2003` fragmentés 365 → 286, morceaux 4 787 → 4 166, trous
+3 034 → 3 888, 83 vidages, sa zone de démarrage posée **dans la zone MFT**
+(788 980), parce que la liste de `ProcessBootOptimise` ne rogne pas celle-ci.
+
+**La sensibilité à l'horloge** (chantier 48) : sous XP, les décisions des
+outils ne dépendent plus du temps planifié. Un binaire jetable sans aucun
+point de contrôle (`NTFSCheckpoints.interval` = 10¹², `bin-50b-nocp`) donne
+les mêmes décisions sur les 40 passes de XP, UltraDefrag, JkDefrag et
+Windows 95 des 2003 ; seuls les vidages (XP secretaire 76 → 137) et la
+durée, de 0 à 2 s, changent. Sous Vista et 7, la rétention du modèle reste,
+et avec elle la sensibilité : à 50e, la même correction allonge la passe de
+`famille-2012` de 40 % et raccourcit sa variante en blocs pleins de 3 %.
+
+**Durées de génération** (release, `run.sh 50g`, machine au calme ; 50a
+mesuré sous une charge de 40 à 80) : `dev-2003` 3 195 → 3 281 ms,
+`dev-2007` 2 103 → 2 121 ms, `secretaire-2007` 473 → 488 ms, `dev-2012`
+3 024 → **2 602 ms** (volume changé à 50a), `secretaire-2012` 664 →
+606 ms ; les autres à la mesure près. Pas d'explosion ; côte à côte, 49g et
+50a font 3 749 / 3 826 et 3 658 / 3 897 ms sur `dev-2003`.
+
+**Le son** (rien n'est écouté ; rendu hors-ligne `SCENARIO=dev-2003
+STRATEGY=windowsXP`, `bin-49g` et `bin-50g`) : 2 176 → 2 340 s ; seeks
+40 183 → 75 569, moyenne 29 961 → 20 611 cylindres ; repères audio 44 982
+→ 49 145 ; RMS médian −33,9 → −32,5 dBFS (p95 −32,5 → −31,5) ; attaques
+(trames de 10 ms au-dessus de trois fois la médiane) 10,0 → 13,6 par
+seconde. Deux fois plus de seeks, plus courts : un aller-retour par
+seconde vers le journal et les tables, à 3 Gio, et le rangement du
+démarrage à 3 695 443.
+
+`swift test` : 177 + 334 tests, verts. Calibration en Release
+(`calibration-50g.log`) : **15 tests, verts, les mêmes 4 known issues**.
+`GalleryAllocationAudit` en Release (`audit-50g.log`, 19 min 24) :
+**propre sur les vingt-quatre volumes**. Binaire reconstruit après la
+dernière retouche : identique à `bin-50g`, binaire et ressources.
+md5 : 53 identiques à 49g (les cinq démarrages des volumes de 50a), 58 à
+50a. README : `readme-tables.py 50g --write`, la durée de génération de
+`dev-2007` rendue (1,7 s ; 2,1 mesurés) ; `--check`, un seul écart,
+celui-là. La description de l'outil de XP (« Huit défragmenteurs »), la
+règle du volume sous XP et hors XP, et « Ce qui ne l'est pas » (le lazy
+writer d'une seconde, huit blocs par page, la première passe de sa
+machine, les 15 %, Vista et 7) suivent ; le reste de la prose est au
+chantier 52.
+
+### Laissé ouvert
+
+- **Vista et 7** : rétention de 5 s, validation par fichier, allocateur
+  sans source ; leurs passes restent sensibles à l'horloge. Le moteur de
+  l'outil y est celui de XP par hypothèse (MFTDefrag, consolidation), sans
+  l'optimisation du démarrage.
+- **Le lazy writer** : chaque seconde, tout ce qui est sale ; le vrai en
+  écrit un huitième par passage et commence à 3 s (chantier 51). Le poids
+  du journal (huit transactions par page) reste un ordre de grandeur, et
+  il fait l'allongement des passes de XP à 50d.
+- **La zone de démarrage d'une vraie machine** : le préchargeur lance
+  `defrag -b` à l'inactivité, au plus tous les trois jours ; le modèle ne
+  le rejoue pas, et chaque passe manuelle est une première passe. `Layout.ini`
+  est l'ordre d'un démarrage planifié, sans les programmes lancés ensuite
+  (chantier 51).
+- **La question des 15 %** met le moteur en pause jusqu'à la réponse ;
+  l'attente n'est pas jouée.
+- **Deux nuances de `FindRegionToConsolidate`** (une région commence
+  toujours par un trou ; la coupure sur un fichier trop gros recule d'un
+  cluster, `xp-defrag-region`) ne sont pas reprises ; la zone de démarrage
+  y coupe une région comme la zone MFT, là où l'outil peut y prolonger une
+  région par des fichiers contigus à sa borne.
+- **`NtfsAcquireAllFiles`** à chaque bloc de la MFT, et la dernière
+  retentative de `DELETE_PENDING` qui échoue, ne sont pas joués.
+- **Le rangement intelligent** et sa table du README (douze non vérifiées)
+  ne sont pas remesurés ; `SmartDefragStrategy` est inchangé.
+- **Écoute proposée, non faite** : `SCENARIO=gamer-2003 STRATEGY=windowsXP`
+  (98 s au lieu de 11, le rangement du démarrage au milieu d'un 80 Go),
+  `SCENARIO=dev-2003 STRATEGY=windowsXP` (l'aller-retour par seconde vers le
+  journal), et un tri de JkDefrag sur `secretaire-2003`.

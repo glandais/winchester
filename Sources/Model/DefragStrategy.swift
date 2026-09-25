@@ -59,9 +59,11 @@ protocol DefragStrategy: Sendable {
     /// Les mêmes nombres ne racontent pas la même histoire selon l'outil.
     /// « 921 évacuations » est la mécanique normale d'un tassage ; « 0
     /// évacuation » n'est pas un tassage qui aurait échoué, c'est le principe
-    /// d'un outil qui ne déloge personne. Laisser l'écran commenter lui-même
-    /// revenait à lui faire dire, sur une passe XP, que la destination est
-    /// « presque toujours occupée » juste au-dessus d'un zéro.
+    /// d'un outil qui ne déloge personne, comme UltraDefrag. Laisser l'écran
+    /// commenter lui-même revenait à lui faire dire, sur une passe sans
+    /// évacuation, que la destination est « presque toujours occupée » juste
+    /// au-dessus d'un zéro ; et sur une passe XP, qui évacue pour consolider,
+    /// rien de ce que XP fait.
     func summary(of plan: DefragPlan) -> String
 }
 

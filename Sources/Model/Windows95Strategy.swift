@@ -27,9 +27,10 @@ import DiskCore
 /// Le fichier d'échange n'est pas déplaçable : Windows l'a ouvert, et le
 /// défragmenteur tasse tout autour de lui.
 ///
-/// Sur NTFS, hors de son époque, elle subit la règle du volume : ce qu'elle
-/// quitte attend le point de contrôle (`NTFSCheckpoints`), et une destination
-/// que ses occupants viennent de libérer n'est prise qu'après lui.
+/// Sur NTFS, hors de son époque, elle subit la règle du volume : hors XP, ce
+/// qu'elle quitte attend le point de contrôle (`NTFSCheckpoints`), et une
+/// destination que ses occupants viennent de libérer n'est prise qu'après
+/// lui ; sous XP, c'est libre tout de suite.
 ///
 /// Tout le travail se fait en **extents** et jamais cluster par cluster : c'est
 /// ce qui permet de planifier une passe sur un volume de 320 Go, où quatre-vingts

@@ -607,8 +607,9 @@ struct WindowsXPStrategyTests {
     }
 
     /// Conséquence directe : un fichier décrit en deux extents jointifs ne
-    /// donne aucun travail au défragmenteur, et n'est pas compté comme cassé.
-    @Test("Un fichier en deux extents jointifs n'est pas défragmenté")
+    /// donne aucun travail à la réparation, et n'est pas compté comme cassé.
+    /// Le tassement vers l'avant, lui, le déplace comme tout fichier contigu.
+    @Test("Un fichier en deux extents jointifs n'est pas compté comme cassé")
     func adjacentExtentsAreNotWorthMoving() {
         let input = ntfsVolume(clusterCount: 1_000, files: [
             TestFile(category: .document,
@@ -629,8 +630,9 @@ struct WindowsXPStrategyTests {
     /// de 320 Go elle fait quarante gigaoctets d'un seul tenant, donc le plus
     /// grand trou disponible et de très loin. Un défragmenteur qui s'y range
     /// condamne la MFT à se fragmenter dès la création de fichier suivante.
-    /// L'outil de XP, par défaut sur NTFS, s'en garde — c'est une hypothèse,
-    /// voir `WindowsXPStrategy.avoidsMFTZone`.
+    /// L'outil de XP, par défaut sur NTFS, s'en garde : c'est un fait de la
+    /// source, `BuildFreeSpaceList` rogne la zone de toutes ses listes
+    /// (`freespace.cpp:305-318`, `WindowsXPStrategy.avoidsMFTZone`).
     @Test("L'outil de XP ne range rien dans la zone réservée à la MFT")
     func theMftZoneIsNotAPlayground() {
         // Tout le volume est occupé sauf la zone MFT (100..<400) et un trou
@@ -691,7 +693,7 @@ struct WindowsXPStrategyTests {
         #expect(plan.strategy.label == "Windows XP Defragmenter")
         #expect(text.contains("repairs 1 files out of 1"))
         #expect(!text.contains("presque toujours occupée"),
-                "la phrase de 1995 a resurgi sur une passe qui n'évacue rien")
+                "la phrase de 1995 a resurgi sur une passe XP")
         // Tout est réparé : l'écran n'a pas à parler de ce qui resterait.
         #expect(plan.after.fragmentedFiles == 0)
         #expect(!text.contains("restent en morceaux"))
@@ -875,9 +877,12 @@ struct WindowsXPStrategyTests {
         #expect(plan.arrangement.first { $0.id == 0 }?.extents == occupied)
     }
 
-    /// Le fichier d'échange est ouvert par Windows, et la MFT ne se réorganise
-    /// pas à chaud : le défragmenteur de XP les signalait et passait son
-    /// chemin.
+    /// Le fichier d'échange est ouvert par Windows — `NtfsDefragFile` refuse
+    /// un `FCB_STATE_PAGING_FILE` (`deviosup.c:10112-10125`) — et un fichier
+    /// réservé n'est pas dans les tables de l'outil (`ScanNtfs` part du
+    /// premier enregistrement d'utilisateur). La MFT, elle, se recolle à
+    /// chaud, mais par `MFTDefrag`, qui la lit dans `mftExtents` et non parmi
+    /// les fichiers (`WindowsXPLetterTests`).
     @Test("Ni le fichier d'échange ni les métadonnées ne bougent")
     func swapAndMetadataAreLeftAlone() {
         let swap = [Extent(start: 100, length: 20), Extent(start: 300, length: 20)]
@@ -1079,8 +1084,9 @@ struct UltraDefragStrategyTests {
     }
 
     /// L'ordre de `fragmented_files_compare` (`analyze.c:756`) : décroissant sur
-    /// le nombre de morceaux, là où XP suit les numéros d'enregistrement de la
-    /// MFT. Il ne décide de rien tant qu'il y a de la place pour tout le monde ;
+    /// le nombre de morceaux, là où XP prend les plus petits d'abord,
+    /// départagés par numéro d'enregistrement (`FileEntrySizeCompareRoutine`,
+    /// `dfrgntfs.cpp:395-432`). Il ne décide de rien tant qu'il y a de la place pour tout le monde ;
     /// ici il n'y a qu'un trou, et les deux outils n'y mettent pas le même
     /// fichier.
     @Test("Le fichier le plus fragmenté passe en premier")

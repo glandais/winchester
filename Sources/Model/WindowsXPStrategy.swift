@@ -14,11 +14,18 @@ import DiskCore
 /// « n'évacuait personne » : c'était une hypothèse énoncée comme un fait, et
 /// elle était fausse (`LEDGER-REALISME.md`).
 ///
-/// Ce que fait une passe, dans l'ordre de `DefragNtfs` :
+/// Ce que fait une passe, dans l'ordre de `DefragThread` puis de
+/// `DefragNtfs` :
 ///
-/// 1. **la MFT d'abord** (`MFTDefrag`, avant et après) : si sa queue — tout
-///    sauf le premier extent — est en plus d'un morceau, elle part d'un bloc
-///    vers le premier trou qui la tient. En ligne, dès XP ;
+/// 0. **ranger le démarrage**, sous XP, sur le volume système
+///    (`ProcessBootOptimise`, `processBootOptimise`) : les fichiers de
+///    `Layout.ini` — ici `BootLayout` —, 32 Mo au plus chacun, dans une zone
+///    reposée au plus grand trou s'il les tient, et qu'aucune phase suivante
+///    ne touche ;
+/// 1. **la MFT** (`MFTDefrag`, avant et après) : dès deux extents, sa queue —
+///    tout sauf le premier — part vers le premier trou qui tiendrait toute la
+///    MFT, hors de la zone MFT ; faute de trou, vers le dernier trou s'il
+///    touche la fin du volume, bloc par bloc jusqu'à buter ;
 /// 2. **défragmenter** (`DefragmentFiles`) : les fichiers et répertoires en
 ///    plus d'un extent, par taille croissante puis numéro d'enregistrement ;
 ///    chacun va entier dans **le plus petit trou qui le tient** (*best fit*,
@@ -50,24 +57,30 @@ import DiskCore
 /// modèle en met un, hors d'atteinte, pour ne jamais boucler sur un volume
 /// pathologique.
 ///
-/// Ce qui ne change pas : `FSCTL_MOVE_FILE` confie la copie au système de
-/// fichiers, qui la fait par blocs de **64 Kio** (`LARGE_BUFFER_SIZE`,
-/// `ntfsdata.h`), une lecture puis une écriture synchrones par bloc — et non
-/// les 4 Mo empruntés à UltraDefrag ; valider un déplacement réécrit un
-/// enregistrement de MFT et un secteur de `$Bitmap`, jamais le cluster 0. Sous
-/// XP, ce qu'un déplacement quitte est libre tout de suite dans la bitmap que
-/// l'outil relit, et s'y poser coûte un vidage du journal
-/// (`DefragVolume.reusesWithDeletePending`) ; sous Vista et 7, le modèle le
-/// retient jusqu'au point de contrôle (`NTFSCheckpoints`). La liste des trous
-/// d'une phase est bâtie une fois, à son début, et consommée : ce qu'une
-/// phase libère ne sert qu'à la suivante, comme l'outil relisait la bitmap.
+/// Ce que fait le noyau (`DefragOperations.moveFile`) : `FSCTL_MOVE_FILE`
+/// confie la copie au système de fichiers, qui la fait par blocs de
+/// **64 Kio** (`LARGE_BUFFER_SIZE`, `ntfsdata.h:345`), une lecture puis une
+/// écriture synchrones par bloc — et non les 4 Mo empruntés à UltraDefrag.
+/// Sous XP, chaque bloc est une transaction dont le journal attend un vidage
+/// et dont l'enregistrement de MFT et les pages de `$Bitmap` partent avec le
+/// *lazy writer* ; ce qu'un déplacement quitte est libre tout de suite dans
+/// la bitmap que l'outil relit, et s'y poser coûte un vidage du journal
+/// (`DefragVolume.reusesWithDeletePending`) ; au-delà de la `ValidDataLength`,
+/// rien n'est copié. Sous Vista et 7, le modèle d'avant : une validation par
+/// fichier — un enregistrement de MFT et un secteur de `$Bitmap`, jamais le
+/// cluster 0 —, et ce que quitte un déplacement retenu jusqu'au point de
+/// contrôle (`NTFSCheckpoints`). La liste des trous d'une phase est bâtie une
+/// fois, à son début, et consommée : ce qu'une phase libère ne sert qu'à la
+/// suivante, comme l'outil relisait la bitmap.
 ///
-/// Ce que la source donne aussi, et que le modèle **ne fait pas** : la zone
-/// d'optimisation du démarrage (`layout.ini`, 32 Mo par fichier au plus, hors
-/// de portée des trois mécanismes) — `BootLayout` la range à part ; les
-/// « 15 % d'espace libre » ne sont qu'un seuil d'avertissement
-/// (`FreeSpaceErrorLevel`), le moteur ne change rien en dessous, et le modèle
-/// non plus.
+/// **Les 15 % d'espace libre** (`FreeSpaceErrorLevel`, `fssubs.cpp:1239`,
+/// 15 par défaut, `dfrg.inx`) : la passe de l'app est celle de la console
+/// (`dfrg.msc`), où `CVolume::WarnFutility` met le moteur en pause et pose
+/// une question (`dfrgui/vollist.cpp:1329-1366`, `postmsgc.cpp:444-456`) ; le
+/// modèle y répond oui, sans jouer l'attente. En ligne de commande sans
+/// `-f`, l'outil refuserait (`ENGERR_LOW_FREESPACE`, `dfrgntfs.cpp:2930-2965`) :
+/// ce n'est pas ce que l'app imite. Le moteur, lui, ne change rien sous le
+/// seuil.
 ///
 /// **Vista et Windows 7** (KB 942092) : les fragments de 64 Mo et plus ne sont
 /// pas déplacés. Le modèle laisse en place tout fichier dont le plus petit
