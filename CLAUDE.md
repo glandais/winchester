@@ -373,11 +373,13 @@ Les vingt-quatre captures (six écrans × deux langues × `IPHONE_65` et
 `--replace --confirm` : la carte des outils affichait les durées d'avant le
 chantier 52. **État au 25 septembre 2026** : build 5 rattaché à la 1.0.0 (il
 porte les chantiers 37 à 53), notes de revue poussées, métadonnées identiques
-au dépôt, `asc validate` sans erreur. **La version n'est pas soumise.** À la
-soumission, joindre les trois pourboires (`READY_TO_SUBMIT`, premiers achats
-intégrés de l'app : ils partent avec la version), et confirmer dans le
-navigateur que l'App Privacy est publiée. L'envoi prend
-L'envoi prend
+au dépôt, `asc validate` sans erreur. **Soumise en revue le 25 septembre
+2026** (`WAITING_FOR_REVIEW`), publication automatique après approbation, avec
+les trois pourboires dans la même soumission. Dans cette interface, la page de
+version n'a pas de section achats intégrés : « Ajouter pour vérification » sur
+la version crée un brouillon, puis le même bouton sur la page de chaque achat
+l'y ajoute (« Brouillons de soumissions iOS »), et « Envoyer pour vérification »
+part du panneau du brouillon. L'envoi des captures prend
 parfois une erreur 500 d'App Store Connect sur un fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
 ne renvoie que ce qui manque.
 
