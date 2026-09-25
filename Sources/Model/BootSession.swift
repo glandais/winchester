@@ -607,6 +607,29 @@ enum BootPlanner {
     /// contigu et un fichier haché produiraient le même nombre de requêtes.
     private static let maxRequestSectors = 128
 
+    /// Sous XP, la plus grande requête qui part au disque pour une lecture
+    /// **hors cache** — celles du préchargeur, que `MmPrefetchPages` émet par
+    /// suites de pages de n'importe quelle longueur : `classpnp` la découpe
+    /// en paquets de `HwMaxXferLen`, le plus petit de la longueur maximale du
+    /// port et de ses pages physiques moins une (`classpnp/xferpkt.c:60-74`).
+    /// `atapi` annonce 128 Ko par SRB, en LBA48 comme sans
+    /// (`MAX_TRANSFER_SIZE_PER_SRB`, `ide/inc/idep.h:31` ; `atapi/init.c:198-209`),
+    /// et 32 pages — la HAL donne 33 registres à un maître PCI de 128 Ko
+    /// (`halx86/i386/ixisasup.c:1006-1008`), `pciidex` en garde 32
+    /// (`pciidex/bm.c:741`) : 31 pages, **124 Ko**. Ce qui passe par le
+    /// cache, lui, reste à 64 Ko (`MAX_WRITE_BEHIND`, `MM_MAXIMUM_DISK_IO_SIZE`,
+    /// `cache/cc.h:159, 175` ; une faute de vue du cache, 16 pages,
+    /// `mm.h:62`) : `maxRequestSectors`.
+    static let classPacketSectors = 248
+
+    /// Sous XP, une faute de page dans une image hors préchargement lit la
+    /// page fautive et au plus `MmCodeClusterSize` pages de plus — 7 sur une
+    /// machine de plus de 19 Mo, soit 32 Ko (`mm/mminit.c:1511-1512`,
+    /// `pagfault.c:2852-2870`). Les pages de données d'une image en lisent
+    /// 16 Ko (`MmDataClusterSize`, 3) ; le modèle ne connaît pas les
+    /// sections d'un exécutable, et lit tout comme du code.
+    static let imageFaultSectors = 64
+
     /// - Parameters:
     ///   - launchesApplication: `false` pour un redémarrage en cours
     ///     d'installation, où l'on s'arrête au bureau ;
@@ -764,8 +787,10 @@ enum BootPlanner {
                     builder.runOnPrefetchedPages(files: files, query: query, phase: index,
                                                  deferred: false)
                 default:
+                    // Le noyau est lu par NTLDR, avant Mm ; le dernier acte,
+                    // par fautes de page.
                     builder.emit(files: files, query: query, phase: index,
-                                 inLayout: act.id == "kernel")
+                                 inLayout: act.id == "kernel", imageFaults: act.id != "kernel")
                 }
             }
         }
@@ -1013,8 +1038,10 @@ enum BootPlanner {
             pending += think.perFile * 4
         }
 
+        /// - Parameter imageFaults: sous XP, un acte hors préchargement lit
+        ///   ses images par fautes de page (`imageFaultSectors`).
         mutating func emit(files: [FileRecord], query: BootQuery, phase: Int,
-                           inLayout: Bool = true) {
+                           inLayout: Bool = true, imageFaults: Bool = false) {
             layoutOpen = inLayout
             defer { layoutOpen = true }
             // Un acte préchargé lit ses métadonnées d'un bloc — le modèle de
@@ -1090,7 +1117,9 @@ enum BootPlanner {
                 } else {
                     touched = min(Int(record.logicalSize), query.bytesPerFile)
                     if layoutOpen, readItems.insert(record.id).inserted { readOrder.append(record.id) }
-                    emitData(record.extents, limit: touched, isWrite: false, phase: phase)
+                    emitData(record.extents, limit: touched, isWrite: false, phase: phase,
+                             requestSectors: imageFaults && Self.isImage(record)
+                                 ? BootPlanner.imageFaultSectors : maxRequestSectors)
                     bytesRead += touched
                     if rng.unitInterval() < query.writeBack {
                         emitData(record.extents, limit: touched, isWrite: true, phase: phase)
@@ -1120,7 +1149,8 @@ enum BootPlanner {
 
         /// Les extents d'un fichier en requêtes, sans les émettre : le même
         /// découpage que `emitData`, à partir de l'octet `skipping`.
-        private func pieces(_ extents: [Extent], skipping: Int = 0, limit: Int) -> [MetadataAccess] {
+        private func pieces(_ extents: [Extent], skipping: Int = 0, limit: Int,
+                            packet: Int = maxRequestSectors) -> [MetadataAccess] {
             var result: [MetadataAccess] = []
             var remaining = PartitionGeometry.readSectors(forBytes: limit, granularity: readGranularity)
             var skip = skipping / DriveGeometry.bytesPerSector
@@ -1129,7 +1159,7 @@ enum BootPlanner {
                 var offset = min(skip, length)
                 skip -= offset
                 while offset < length && remaining > 0 {
-                    let sectors = min(length - offset, maxRequestSectors, remaining)
+                    let sectors = min(length - offset, packet, remaining)
                     result.append(MetadataAccess(lba: partition.lba(ofCluster: Int(extent.start)) + offset,
                                                  sectors: sectors))
                     offset += sectors
@@ -1287,13 +1317,14 @@ enum BootPlanner {
         /// arrêtés au bout de `limit` octets, arrondis à la granularité de
         /// lecture de l'époque et non au cluster.
         private mutating func emitData(_ extents: [Extent], limit: Int,
-                                       isWrite: Bool, phase: Int) {
+                                       isWrite: Bool, phase: Int,
+                                       requestSectors: Int = maxRequestSectors) {
             var remaining = PartitionGeometry.readSectors(forBytes: limit, granularity: readGranularity)
             for extent in extents {
                 let length = Int(extent.length) * partition.clusterSectors
                 var offset = 0
                 while offset < length && remaining > 0 {
-                    let sectors = min(length - offset, maxRequestSectors, remaining)
+                    let sectors = min(length - offset, requestSectors, remaining)
                     if !isWrite {
                         let first = Int(extent.start) + offset / partition.clusterSectors
                         let last = Int(extent.start) + (offset + sectors - 1) / partition.clusterSectors
@@ -1506,7 +1537,7 @@ enum BootPlanner {
                 var lba = start
                 var sectors = (to - from) * partition.mftRecordSectors
                 while sectors > 0 {
-                    let piece = min(sectors, maxRequestSectors)
+                    let piece = min(sectors, BootPlanner.classPacketSectors)
                     result.append(MetadataAccess(lba: lba, sectors: piece))
                     lba += piece
                     sectors -= piece
@@ -1560,12 +1591,15 @@ enum BootPlanner {
                 if readItems.insert(record.id).inserted { readOrder.append(record.id) }
                 bytesRead += touched
                 if Self.isImage(record) {
-                    data += pieces(record.extents, skipping: 0, limit: min(header, touched))
+                    data += pieces(record.extents, skipping: 0, limit: min(header, touched),
+                                   packet: BootPlanner.classPacketSectors)
                     if touched > header {
-                        image += pieces(record.extents, skipping: header, limit: touched - header)
+                        image += pieces(record.extents, skipping: header, limit: touched - header,
+                                        packet: BootPlanner.classPacketSectors)
                     }
                 } else {
-                    data += pieces(record.extents, skipping: 0, limit: touched)
+                    data += pieces(record.extents, skipping: 0, limit: touched,
+                                   packet: BootPlanner.classPacketSectors)
                 }
             }
             var carried = think

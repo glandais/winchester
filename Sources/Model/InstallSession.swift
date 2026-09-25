@@ -61,10 +61,15 @@ struct InstallEra: Sendable {
     ///
     /// Une commande ATA sans LBA48 porte son compte de secteurs sur huit bits,
     /// zéro valant 256 : 128 Ko par commande, quoi que le cache ait à vider.
-    /// Le pilote de port de Windows XP découpait même à 64 Ko
-    /// (`DISK_EXPERT_REVIEW.md` §3.3) ; MS-DOS écrit par ses tampons de
-    /// 64 Ko. Vista garde ici le plafond de l'ATA : les disques de 2007 sont en
-    /// LBA48, qui le lève, mais rien ne dit ce que faisait son pilote.
+    /// Sous XP, les 64 Ko ne viennent pas du pilote de port — `atapi`
+    /// accepte 128 Ko par SRB, en LBA48 aussi (`ide/inc/idep.h:31`), et
+    /// `classpnp` coupe à 124 Ko (`BootPlanner.classPacketSectors`) : ils
+    /// viennent du cache, dont le *lazy writer* écrit par 64 Ko au plus
+    /// (`MAX_WRITE_BEHIND`, `cache/cc.h:159, 175`), et de `CopyFile`, qui copie
+    /// par 64 Ko (`BASE_COPY_FILE_CHUNK`, `win32/client/basedll.h:129`) ;
+    /// MS-DOS écrit par ses tampons de 64 Ko. Vista garde ici le plafond de
+    /// l'ATA : les disques de 2007 sont en LBA48, qui le lève, mais rien ne
+    /// dit ce que faisait son pilote.
     ///
     /// Écrire un DVD par morceaux de 64 Ko ne fait pas attendre un demi-tour de
     /// plateau à chaque morceau : le disque a son cache d'écriture, il acquitte
