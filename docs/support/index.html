@@ -144,14 +144,18 @@
         <div class="sheet__body">
           <h2>What is the difference between the defragmenters?</h2>
           <p>
-            They do not do the same job. A FAT volume from the 1990s gets the
-            Windows 95/98 Defragmenter by default; an NTFS volume from the 2000s
-            gets the Windows XP one. The others are there to compare on exactly
-            the same volume.
+            They do not do the same job. Each disk gets the tool of its era by
+            default: on FAT, <b>MS-DOS 6 DEFRAG</b> for a 1993 disk and the
+            <b>Windows 95/98 Defragmenter</b> after that — the same engine; on
+            NTFS, the <b>Windows XP Defragmenter</b> for 2003, the
+            <b>Windows Vista Defragmenter</b> for 2007 and the
+            <b>Windows 7 Defragmenter</b> for 2012 — the XP engine, which
+            leaves fragments of 64 MB and more where they are. The others are
+            there to compare on exactly the same volume.
           </p>
           <ul>
-            <li><b>Windows 95/98 Defragmenter</b> packs everything to the start of the disk, evicting whatever is in the way. Constant back-and-forth, and a “clack” at the edge of the platter for every file.</li>
-            <li><b>Windows XP Defragmenter</b> only repairs files in pieces, by copying them into a hole that is already free. Short and calm; it gives up when no hole is the right size.</li>
+            <li><b>Windows 95/98 Defragmenter</b> packs everything to the start of the disk, in tree order, evicting whatever is in the way. Constant back-and-forth, and a “clack” at the edge of the platter for every file.</li>
+            <li><b>Windows XP Defragmenter</b> repairs files in pieces, smallest first, into the smallest hole that fits; empties a region when none does; then packs everything towards the start. Bursts of small 64 KB copies, a quiet stretch, then the long sweep of the packing.</li>
             <li><b>JkDefrag 3.36</b> tidies by zones and fills the holes without evicting; its seven other modes — sorts by name, size or date, packing to the start or the end — are under <span class="ui">Advanced options</span>.</li>
             <li><b>UltraDefrag 7.1.1</b> merges the small splinters without moving the big blocks.</li>
             <li><b>Frontier compaction</b> (FAT), <b>Thrifty merge</b> (NTFS) and <b>Smart tidying</b> (both) were written for Winchester; Smart tidying aims at what is measured after the pass — the boot, the pieces, the holes.</li>
