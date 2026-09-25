@@ -198,13 +198,13 @@ enum DayPlanner {
         for request in boot.requests {
             guard !isCancelled() else { return plan }
             let think = min(request.thinkTime, script.maximumPause)
-            if request.flow != .background { writer.think(think) }
+            if !request.flow.isBackground { writer.think(think) }
             let offset = request.lba - partition.dataStartLBA
             let cluster = offset >= 0 ? offset / partition.clusterSectors : nil
             writer.emit(request.isWrite ? .metadata : .scan, lba: request.lba,
                         sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster,
                         flow: request.flow,
-                        delay: request.flow == .background ? think : 0,
+                        delay: request.flow.isBackground ? think : 0,
                         hostWork: request.hostWork)
         }
         plan.bytesRead += boot.bytesRead
@@ -247,6 +247,7 @@ enum DayPlanner {
             case .delete:
                 if let record = step.before {
                     writer.free(record.extents)
+                    writer.discard(file: record.id)
                     plan.filesDeleted += 1
                 }
             default:
@@ -257,7 +258,11 @@ enum DayPlanner {
                     let bytes = step.written.clusterCount == record.extents.clusterCount
                         ? Int(record.logicalSize)
                         : Int(step.written.clusterCount) * Int(partition.clusterBytes)
-                    writer.write(step.written, bytes: bytes) { chunk in
+                    let pagesPerCluster = max(Int(partition.clusterBytes) / 4_096, 1)
+                    let firstPage = Int(record.extents.clusterCount - step.written.clusterCount)
+                        * pagesPerCluster
+                    writer.write(step.written, bytes: bytes,
+                                 file: (record.id, firstPage)) { chunk in
                         reader.sourceTime(chunk, activity: activity, plan: &plan)
                     }
                     plan.filesWritten += 1

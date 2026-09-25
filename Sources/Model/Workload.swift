@@ -25,6 +25,11 @@ enum RequestFlow: UInt8, Sendable {
     /// avant elle — un événement qu'il attend, la fin d'un lot du
     /// préchargeur (`prefboot.c:936-955`) —, puis calcule, puis émet.
     case barrier
+    /// En arrière-plan, mais le fil a d'abord attendu, comme à `barrier`, la
+    /// fin de ce qui a été émis avant : les délais comptent de là.
+    case backgroundBarrier
+
+    var isBackground: Bool { self == .background || self == .backgroundBarrier }
 }
 
 struct BlockRequest {

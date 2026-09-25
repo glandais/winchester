@@ -86,16 +86,64 @@ struct MachineWriter {
     ///
     /// - Parameter sourceTime: ce que coûte, hors disque, la préparation de
     ///   chaque tampon : lire la source, décompresser, calculer.
+    ///
+    /// - Parameters:
+    ///   - file: le fichier, et le rang de la première page écrite. Sous XP,
+    ///     une écriture de programme passe par le cache : elle ne fait que
+    ///     salir des pages, que le *lazy writer* écrira (`LazyWriter`). Sans
+    ///     fichier, l'écriture part tout de suite, comme avant XP.
     mutating func write(_ extents: [Extent], bytes: Int, cluster kind: DiskOperation.Kind = .writeExtent,
+                        file: (id: UInt32, firstPage: Int)? = nil,
                         sourceTime: (Int) -> Double = { _ in 0 }) {
-        transfer(extents, bytes: bytes, isWrite: true, kind: kind,
-                 perRequestSectors: era.writeRequestSectors, cost: sourceTime)
+        guard usesLazyWriter, let file, kind == .writeExtent else {
+            transfer(extents, bytes: bytes, isWrite: true, kind: kind,
+                     perRequestSectors: era.writeRequestSectors, cost: sourceTime)
+            return
+        }
+        var remaining = PartitionGeometry.readSectors(forBytes: bytes, granularity: era.granularity)
+        var page = file.firstPage
+        let pageSectors = LazyWriter.pageSectors
+        for extent in extents {
+            let length = Int(extent.length) * partition.clusterSectors
+            var offset = 0
+            while offset < length && remaining > 0 {
+                let sectors = min(length - offset, era.writeRequestSectors, remaining)
+                think(sourceTime(min(sectors * DriveGeometry.bytesPerSector, bytes)))
+                let lba = partition.lba(ofCluster: Int(extent.start)) + offset
+                var piece = 0
+                while piece < sectors {
+                    lazy.dirty(.data(file.id), rank: page, lba: lba + piece, at: clock + pendingThink)
+                    page += 1
+                    piece += pageSectors
+                }
+                bytesWritten += min(sectors * DriveGeometry.bytesPerSector, bytes)
+                offset += sectors
+                remaining -= sectors
+                runLazyWriter(at: clock + pendingThink)
+            }
+            if remaining == 0 { break }
+        }
+    }
+
+    /// Un fichier effacé : ses pages sales sont purgées sans être écrites
+    /// (`CcUninitializeCacheMap` à une taille nulle, `ntfs/cleanup.c:1576,
+    /// 1930, 2515`).
+    mutating func discard(file: UInt32) {
+        guard usesLazyWriter else { return }
+        lazy.discard(.data(file))
     }
 
     /// Lit le contenu d'un fichier, ou ce qu'on en touche.
     mutating func read(_ extents: [Extent], bytes: Int, cost: (Int) -> Double = { _ in 0 }) {
         transfer(extents, bytes: bytes, isWrite: false, kind: .readExtent,
                  perRequestSectors: Self.maxRequestSectors, cost: cost)
+    }
+
+    /// Sous XP, ce qu'une lecture trouve sale dans le cache n'est pas relu.
+    func inCache(lba: Int, sectors: Int) -> Bool {
+        guard usesLazyWriter else { return false }
+        let page = LazyWriter.pageSectors
+        return stride(from: lba / page * page, to: lba + sectors, by: page).allSatisfy { lazy.holds(lba: $0) }
     }
 
     private mutating func transfer(_ extents: [Extent], bytes: Int, isWrite: Bool,
@@ -112,8 +160,10 @@ struct MachineWriter {
                 let chunk = min(sectors * DriveGeometry.bytesPerSector, bytes)
                 think(cost(chunk))
                 let cluster = Int(extent.start) + offset / partition.clusterSectors
-                emit(kind, lba: partition.lba(ofCluster: Int(extent.start)) + offset, sectors: sectors,
-                     isWrite: isWrite, cluster: cluster)
+                let lba = partition.lba(ofCluster: Int(extent.start)) + offset
+                if isWrite || !inCache(lba: lba, sectors: sectors) {
+                    emit(kind, lba: lba, sectors: sectors, isWrite: isWrite, cluster: cluster)
+                }
                 if isWrite { bytesWritten += chunk } else { bytesRead += chunk }
                 offset += sectors
                 remaining -= sectors
@@ -212,7 +262,7 @@ struct MachineWriter {
             : lazy.due(at: time)
         for scan in scans where !scan.streams.isEmpty {
             var log: [LazyWriter.Write] = []
-            if era.journaled {
+            if era.journaled, scan.streams.contains(where: { $0.first?.stream.isMetadata ?? false }) {
                 let page = partition.logPage(journalPages)
                 journalPages += 1
                 log = [LazyWriter.Write(lba: page.lba, sectors: page.sectors, stream: .other(0))]
@@ -221,11 +271,12 @@ struct MachineWriter {
             // premier plan ; l'arrêt, lui, l'attend.
             let delay = shutdown ? 0 : max(scan.time - foregroundEnd, 0)
             for write in LazyWriter.served(scan.streams, log: log, queue: &queue) {
-                emitBackground(lba: write.lba, sectors: write.sectors, delay: delay,
-                               waited: shutdown)
-                metadataSectors += write.sectors
+                emitBackground(write, delay: delay, waited: shutdown)
+                if write.stream.isMetadata { metadataSectors += write.sectors }
             }
-            metadataFlushes += 1
+            if scan.streams.contains(where: { $0.first?.stream.isMetadata ?? false }) {
+                metadataFlushes += 1
+            }
         }
     }
 
@@ -291,20 +342,20 @@ struct MachineWriter {
                        flow: RequestFlow = .foreground, delay: Double = 0,
                        hostWork: Double = 0) {
         // Ce que le lazy writer a écrit pendant le calcul qui précède.
-        if usesLazyWriter, flow != .background { runLazyWriter(at: clock + pendingThink) }
+        if usesLazyWriter, !flow.isBackground { runLazyWriter(at: clock + pendingThink) }
         let start = sink.mutationMark
         for mutation in pendingMutations { sink.record(mutation) }
         let count = Int32(pendingMutations.count)
         pendingMutations.removeAll(keepingCapacity: true)
 
-        let think = flow == .background ? delay : pendingThink
+        let think = flow.isBackground ? delay : pendingThink
         sink.progress = progress
         sink.moves = moves
         sink.emit(DiskOperation(kind: kind, phase: phase, lba: lba, sectors: sectors,
                                 isWrite: isWrite, issueTime: 0, cluster: cluster,
                                 mutationStart: start, mutationCount: count,
                                 thinkTime: think, flow: flow, hostWork: hostWork))
-        guard flow != .background else {
+        guard !flow.isBackground else {
             // Le fil de l'hôte n'attend pas : seul son calcul avance l'heure.
             thinkSeconds += hostWork
             clock += hostWork
@@ -320,10 +371,23 @@ struct MachineWriter {
 
     /// Une écriture du *lazy writer* : en arrière-plan, sans calcul, et sans
     /// les mutations de la carte, qui attendent l'opération du premier plan.
-    private mutating func emitBackground(lba: Int, sectors: Int, delay: Double, waited: Bool) {
-        sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: lba, sectors: sectors,
-                                isWrite: true, issueTime: 0, cluster: nil,
-                                mutationStart: sink.mutationMark, mutationCount: 0,
+    ///
+    /// Les couleurs en attente partent avec elle : sous XP, les données
+    /// n'arrivent au disque que par le *lazy writer*.
+    private mutating func emitBackground(_ write: LazyWriter.Write, delay: Double, waited: Bool) {
+        let start = sink.mutationMark
+        for mutation in pendingMutations { sink.record(mutation) }
+        let count = Int32(pendingMutations.count)
+        pendingMutations.removeAll(keepingCapacity: true)
+        let data = !write.stream.isMetadata
+        let offset = write.lba - partition.dataStartLBA
+        sink.progress = progress
+        sink.moves = moves
+        sink.emit(DiskOperation(kind: data ? .writeExtent : .metadata, phase: phase,
+                                lba: write.lba, sectors: write.sectors,
+                                isWrite: true, issueTime: 0,
+                                cluster: data && offset >= 0 ? offset / partition.clusterSectors : nil,
+                                mutationStart: start, mutationCount: count,
                                 thinkTime: delay, flow: waited ? .foreground : .background))
     }
 

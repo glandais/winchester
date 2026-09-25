@@ -88,6 +88,12 @@ struct LazyWriter: Sendable {
     private var dirtyPagesLastScan = 0
     private(set) var pagesWritten = 0
     private(set) var scans = 0
+    /// Les pages sales, par leur LBA : ce qu'une lecture trouve dans le
+    /// cache sans aller au disque.
+    private var dirtyLBAs: Set<Int> = []
+
+    /// La page de 4 Ko qui commence à `lba` est-elle sale — donc en mémoire ?
+    func holds(lba: Int) -> Bool { dirtyLBAs.contains(lba) }
 
     var isClean: Bool { dirty.isEmpty }
     var dirtyPages: Int { dirty.values.reduce(0) { $0 + $1.count } }
@@ -100,6 +106,7 @@ struct LazyWriter: Sendable {
             order.append(stream)
         }
         dirty[stream]?[rank] = lba
+        dirtyLBAs.insert(lba)
         if !active {
             active = true
             nextScan = time + Self.firstDelay
@@ -119,7 +126,8 @@ struct LazyWriter: Sendable {
     /// Des pages rendues sans avoir été écrites : un fichier effacé, dont le
     /// cache est purgé.
     mutating func discard(_ stream: Stream) {
-        guard dirty.removeValue(forKey: stream) != nil else { return }
+        guard let pages = dirty.removeValue(forKey: stream) else { return }
+        for lba in pages.values { dirtyLBAs.remove(lba) }
         remove(stream)
     }
 
@@ -150,6 +158,7 @@ struct LazyWriter: Sendable {
             if !writes.isEmpty { streams.append(writes) }
         }
         dirty.removeAll()
+        dirtyLBAs.removeAll()
         order.removeAll()
         cursor = 0
         active = false
@@ -238,6 +247,7 @@ struct LazyWriter: Sendable {
             }
             previous = (rank, lba)
             pages.removeValue(forKey: rank)
+            dirtyLBAs.remove(lba)
             taken += 1
         }
         pagesWritten += taken

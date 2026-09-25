@@ -483,6 +483,9 @@ enum InstallPlanner {
         }
 
         private mutating func delete(_ record: FileRecord) {
+            // Sous XP, ses pages sales sont purgées sans être écrites
+            // (`ntfs/cleanup.c:1576, 1930, 2515`).
+            if usesLazyWriter { lazy.discard(.data(record.id)) }
             markDirty(record)
             placed.removeValue(forKey: record.id)
             for extent in record.extents where !extent.isEmpty {
@@ -536,9 +539,13 @@ enum InstallPlanner {
             return seconds
         }
 
+        /// Sous XP, `CopyFile` écrit par le cache (`BaseCopyStream`,
+        /// 64 Ko à la fois, `win32/client/fileopcr.c:4847-4870`) : les pages
+        /// sont salies, et c'est le *lazy writer* qui les pose (`LazyWriter`).
         private mutating func writeData(of record: FileRecord, compressed: Bool) {
             var remaining = PartitionGeometry.readSectors(forBytes: Int(record.logicalSize),
                                                           granularity: era.granularity)
+            var page = 0
             for extent in record.extents {
                 let length = Int(extent.length) * partition.clusterSectors
                 var offset = 0
@@ -548,8 +555,19 @@ enum InstallPlanner {
                     pendingThink += sourceTime(bytes: min(bytes, Int(record.logicalSize)),
                                                compressed: compressed)
                     let cluster = Int(extent.start) + offset / partition.clusterSectors
-                    emit(.writeExtent, lba: partition.lba(ofCluster: Int(extent.start)) + offset,
-                         sectors: sectors, isWrite: true, cluster: cluster)
+                    let lba = partition.lba(ofCluster: Int(extent.start)) + offset
+                    if usesLazyWriter {
+                        var piece = 0
+                        while piece < sectors {
+                            lazy.dirty(.data(record.id), rank: page, lba: lba + piece,
+                                       at: clock + pendingThink)
+                            page += 1
+                            piece += LazyWriter.pageSectors
+                        }
+                        runLazyWriter(at: clock + pendingThink, shutdown: false)
+                    } else {
+                        emit(.writeExtent, lba: lba, sectors: sectors, isWrite: true, cluster: cluster)
+                    }
                     offset += sectors
                     remaining -= sectors
                 }
@@ -569,8 +587,14 @@ enum InstallPlanner {
                 let length = Int(extent.length) * partition.clusterSectors
                 let take = min(length - cabinetCursor.offset, sectors, maxRequestSectors)
                 let cluster = Int(extent.start) + cabinetCursor.offset / partition.clusterSectors
-                emit(.readExtent, lba: partition.lba(ofCluster: Int(extent.start)) + cabinetCursor.offset,
-                     sectors: take, isWrite: false, cluster: cluster)
+                let lba = partition.lba(ofCluster: Int(extent.start)) + cabinetCursor.offset
+                // Sous XP, une archive que le lazy writer n'a pas encore posée
+                // se relit dans le cache.
+                let cached = usesLazyWriter
+                    && stride(from: lba / 8 * 8, to: lba + take, by: 8).allSatisfy { lazy.holds(lba: $0) }
+                if !cached {
+                    emit(.readExtent, lba: lba, sectors: take, isWrite: false, cluster: cluster)
+                }
                 plan.temporaryBytesRead += take * DriveGeometry.bytesPerSector
                 sectors -= take
                 cabinetCursor.offset += take
@@ -642,13 +666,13 @@ enum InstallPlanner {
                                         firstOfTheDay: false)
             pendingThink += boot.post
             for request in boot.requests {
-                if request.flow != .background { pendingThink += request.thinkTime }
+                if !request.flow.isBackground { pendingThink += request.thinkTime }
                 let offset = request.lba - partition.dataStartLBA
                 let cluster = offset >= 0 ? offset / partition.clusterSectors : nil
                 emit(request.isWrite ? .metadata : .scan, lba: request.lba,
                      sectors: request.sectorCount, isWrite: request.isWrite, cluster: cluster,
                      flow: request.flow,
-                     delay: request.flow == .background ? request.thinkTime : 0,
+                     delay: request.flow.isBackground ? request.thinkTime : 0,
                      hostWork: request.hostWork)
             }
             pendingThink += boot.tail
@@ -683,21 +707,37 @@ enum InstallPlanner {
             let scans = shutdown ? [LazyWriter.Scan(time: time, streams: lazy.flushAll())]
                 : lazy.due(at: time)
             for scan in scans where !scan.streams.isEmpty {
-                let page = partition.logPage(journalPages)
-                journalPages += 1
-                let log = [LazyWriter.Write(lba: page.lba, sectors: page.sectors, stream: .other(0))]
+                let metadata = scan.streams.contains { $0.first?.stream.isMetadata ?? false }
+                var log: [LazyWriter.Write] = []
+                if metadata {
+                    let page = partition.logPage(journalPages)
+                    journalPages += 1
+                    log = [LazyWriter.Write(lba: page.lba, sectors: page.sectors, stream: .other(0))]
+                }
                 // Le passage tombe tant de secondes après la dernière requête
                 // du premier plan ; l'arrêt, lui, l'attend.
                 let delay = shutdown ? 0 : max(scan.time - foregroundEnd, 0)
                 for write in LazyWriter.served(scan.streams, log: log, queue: &queue) {
-                    sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: write.lba,
-                                            sectors: write.sectors, isWrite: true, issueTime: 0,
-                                            cluster: nil, mutationStart: sink.mutationMark,
-                                            mutationCount: 0, thinkTime: delay,
+                    // Les couleurs en attente partent avec l'écriture : les
+                    // données n'arrivent au disque que par le lazy writer.
+                    let start = sink.mutationMark
+                    for mutation in pendingMutations { sink.record(mutation) }
+                    let count = Int32(pendingMutations.count)
+                    pendingMutations.removeAll(keepingCapacity: true)
+                    let data = !write.stream.isMetadata
+                    let offset = write.lba - partition.dataStartLBA
+                    sink.progress = min(Double(bytesPlaced) / Double(totalBytes), 1)
+                    sink.moves = MoveCount(filesMoved: plan.filesWritten, evacuations: 0)
+                    sink.emit(DiskOperation(kind: data ? .writeExtent : .metadata, phase: phase,
+                                            lba: write.lba, sectors: write.sectors, isWrite: true,
+                                            issueTime: 0,
+                                            cluster: data && offset >= 0 ? offset / partition.clusterSectors : nil,
+                                            mutationStart: start, mutationCount: count,
+                                            thinkTime: delay,
                                             flow: shutdown ? .foreground : .background))
-                    plan.metadataSectors += write.sectors
+                    if !data { plan.metadataSectors += write.sectors }
                 }
-                plan.metadataFlushes += 1
+                if metadata { plan.metadataFlushes += 1 }
             }
         }
 
@@ -753,7 +793,7 @@ enum InstallPlanner {
                                    flow: RequestFlow = .foreground, delay: Double = 0,
                        hostWork: Double = 0) {
             // Ce que le lazy writer a écrit pendant le calcul qui précède.
-            if usesLazyWriter, flow != .background {
+            if usesLazyWriter, !flow.isBackground {
                 runLazyWriter(at: clock + pendingThink, shutdown: false)
             }
             let start = sink.mutationMark
@@ -761,14 +801,14 @@ enum InstallPlanner {
             let count = Int32(pendingMutations.count)
             pendingMutations.removeAll(keepingCapacity: true)
 
-            let think = flow == .background ? delay : pendingThink
+            let think = flow.isBackground ? delay : pendingThink
             sink.progress = min(Double(bytesPlaced) / Double(totalBytes), 1)
             sink.moves = MoveCount(filesMoved: plan.filesWritten, evacuations: 0)
             sink.emit(DiskOperation(kind: kind, phase: phase, lba: lba, sectors: sectors,
                                     isWrite: isWrite, issueTime: 0, cluster: cluster,
                                     mutationStart: start, mutationCount: count,
                                     thinkTime: think, flow: flow, hostWork: hostWork))
-            guard flow != .background else {
+            guard !flow.isBackground else {
                 plan.thinkSeconds += hostWork
                 clock += hostWork
                 return

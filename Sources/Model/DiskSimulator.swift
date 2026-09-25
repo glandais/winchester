@@ -580,12 +580,17 @@ struct DiskMechanics {
         case .background:
             computed = foregroundEnd + request.thinkTime
             hostReady += request.hostWork
+        case .backgroundBarrier:
+            hostReady = max(hostReady, clock)
+            foregroundEnd = hostReady
+            computed = foregroundEnd + request.thinkTime
+            hostReady += request.hostWork
         }
         let issued = max(clock, computed, request.issueTime)
         // Le calcul ne compte que ce qui s'est écoulé disque arrêté, avant la
         // prise en charge ; le reste de l'écart est un disque qui attend
         // qu'on lui demande.
-        let thought = request.flow == .background ? 0 : max(min(issued, computed) - clock, 0)
+        let thought = request.flow.isBackground ? 0 : max(min(issued, computed) - clock, 0)
         stats.thinkSeconds += thought
         stats.waitSeconds += max(issued - clock - thought, 0)
 
@@ -601,7 +606,7 @@ struct DiskMechanics {
         if request.isWrite { stats.bytesWritten += bytes } else { stats.bytesRead += bytes }
         stats.requestCount += 1
         clock = end
-        if request.flow != .background {
+        if !request.flow.isBackground {
             hostReady = end
             foregroundEnd = end
         }

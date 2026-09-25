@@ -686,7 +686,9 @@ enum BootPlanner {
                 }
             }
         }
-        builder.flushStamps(phase: script.acts.count - 1, draining: true)
+        // Sous XP, le démarrage finit avec le silence final : ce que le lazy
+        // writer n'a pas posé d'ici là part après lui.
+        builder.flushStamps(phase: script.acts.count - 1, until: script.tail)
 
         return BootPlan(partition: partition,
                         osName: script.osName,
@@ -1126,7 +1128,7 @@ enum BootPlanner {
                                  ? BootPlanner.imageFaultSectors : maxRequestSectors)
                     bytesRead += touched
                     if rng.unitInterval() < query.writeBack {
-                        emitData(record.extents, limit: touched, isWrite: true, phase: phase)
+                        writeBack(record, touched: touched, phase: phase)
                         bytesWritten += touched
                     }
                 }
@@ -1206,18 +1208,22 @@ enum BootPlanner {
         /// Le temps de calcul à la dernière requête du premier plan.
         private var thinkAtForeground = 0.0
 
-        /// Sous XP, les passages du *lazy writer* échus — tous, en fin de
-        /// démarrage : ils partent en arrière-plan, sans retenir le fil.
-        private mutating func runLazyWriter(phase: Int, draining: Bool) {
-            for scan in lazy.due(at: draining ? .infinity : thinkSeconds) {
+        /// Sous XP, les passages du *lazy writer* échus — en fin de démarrage,
+        /// jusqu'à la fin du silence final : ils partent en arrière-plan, sans
+        /// retenir le fil. Ce qui reste sale est écrit après la fenêtre.
+        private mutating func runLazyWriter(phase: Int, until extra: Double) {
+            for scan in lazy.due(at: thinkSeconds + extra) {
                 // Le passage tombe tant de secondes de calcul après la
                 // dernière requête du premier plan.
                 let delay = max(min(scan.time, thinkSeconds) - thinkAtForeground, 0)
                 for write in LazyWriter.served(scan.streams, log: [], queue: &queue) {
                     issue(lba: write.lba, sectors: write.sectors, isWrite: true, phase: phase,
                           flow: .background, delay: delay)
-                    bytesWritten += write.sectors * DriveGeometry.bytesPerSector
-                    stampWrites += 1
+                    // Les données sont comptées quand l'acte les réécrit.
+                    if write.stream.isMetadata {
+                        bytesWritten += write.sectors * DriveGeometry.bytesPerSector
+                        stampWrites += 1
+                    }
                 }
             }
         }
@@ -1230,10 +1236,13 @@ enum BootPlanner {
         /// ne l'étaient. Aucune page de journal ne les accompagne : le modèle
         /// suppose, sans source qui le tranche, que NTFS ne journalise pas une
         /// simple date.
-        mutating func flushStamps(phase: Int, draining: Bool = false) {
+        ///
+        /// - Parameter until: sous XP, en fin de démarrage, les passages du
+        ///   lazy writer jusqu'à la fin du silence final ; ailleurs, tout.
+        mutating func flushStamps(phase: Int, until: Double? = nil) {
             sinceFlush = 0
             if prefetchBursts, !partition.format.isFAT {
-                runLazyWriter(phase: phase, draining: draining)
+                runLazyWriter(phase: phase, until: until ?? 0)
                 return
             }
             guard !dirtyStamps.isEmpty else { return }
@@ -1345,6 +1354,25 @@ enum BootPlanner {
             }
             let cluster = partition.directoryAccesses(directory.extents, clusters: last..<(last + 1)).first?.lba
             return cluster.map { $0 + Int(offset % UInt64(partition.clusterBytes) / sectorBytes) }
+        }
+
+        /// Ce qu'un acte réécrit d'un fichier qu'il a lu. Sous XP, par le
+        /// cache : les pages sont salies, et le *lazy writer* les pose
+        /// (`LazyWriter`) ; ailleurs, tout de suite.
+        private mutating func writeBack(_ record: FileRecord, touched: Int, phase: Int) {
+            guard prefetchBursts, !partition.format.isFAT else {
+                emitData(record.extents, limit: touched, isWrite: true, phase: phase)
+                return
+            }
+            var page = 0
+            for access in pieces(record.extents, limit: touched) {
+                var offset = 0
+                while offset < access.sectors {
+                    lazy.dirty(.data(record.id), rank: page, lba: access.lba + offset, at: thinkSeconds)
+                    page += 1
+                    offset += LazyWriter.pageSectors
+                }
+            }
         }
 
         /// Les extents d'un fichier, découpés en requêtes de taille bornée et
@@ -1459,8 +1487,10 @@ enum BootPlanner {
             if flow == .background {
                 requests.append(BlockRequest(issueTime: 0, lba: lba, sectorCount: sectors,
                                              isWrite: isWrite, phaseIndex: phase,
-                                             thinkTime: delay, flow: .background,
+                                             thinkTime: delay,
+                                             flow: barrierPending ? .backgroundBarrier : .background,
                                              hostWork: hostWork))
+                barrierPending = false
                 return
             }
             thinkAtForeground = thinkSeconds
@@ -1496,8 +1526,12 @@ enum BootPlanner {
 
         mutating func pendThink(_ seconds: Double) { pending += seconds }
 
-        /// La prochaine requête du premier plan attendra la fin du lot émis.
-        mutating func awaitPrefetch() { barrierPending = true }
+        /// La prochaine requête attendra la fin du lot émis ; le calcul qui
+        /// suit — et les délais du lazy writer — comptent de là.
+        mutating func awaitPrefetch() {
+            barrierPending = true
+            thinkAtForeground = thinkSeconds
+        }
 
         /// Les métadonnées d'un scénario, avant ses données
         /// (`CcPfPrefetchMetadata`).
@@ -1670,7 +1704,7 @@ enum BootPlanner {
                 } else {
                     touched = min(Int(record.logicalSize), query.bytesPerFile)
                     if rng.unitInterval() < query.writeBack {
-                        emitData(record.extents, limit: touched, isWrite: true, phase: phase)
+                        writeBack(record, touched: touched, phase: phase)
                         bytesWritten += touched
                     }
                 }
