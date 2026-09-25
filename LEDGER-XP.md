@@ -1,5 +1,13 @@
 # XP à la lettre : plan des chantiers 47 à 52
 
+**État au 25 septembre 2026 : les six chantiers sont livrés sur la branche
+`xp`** (47 à 52, `LEDGER.md`), ni poussés ni fusionnés. Avant la soumission
+de la 1.0.0 restent : la fusion de `xp` dans `develop`, un nouveau build
+(le build 4 ne porte ni la section « À propos » ni les pourboires, dont les
+trois achats intégrés partent avec la version), et les corrections laissées
+hors de ce plan — B#31 à B#34, B#36 et B#45 (« sans achat intégré », Ko-fi,
+« no network access », le commentaire d'`AboutLink`).
+
 Ce fichier n'est pas un chantier : **aucune ligne du modèle n'a bougé**. Il
 range en chantiers trois retours du 22 septembre 2026, pris sur `develop` à
 `96c8778` :
@@ -295,22 +303,39 @@ Calibration en Release : verte, les mêmes 4 known issues.
 
 ## Chantier 52 : les documents
 
-- **`readme-tables.py`** : corriger d'abord les gabarits (B#20, B#38 à B#44 :
+**Fait** le 25 septembre 2026, branche `xp` (`LEDGER.md`, chantier 52). Aucune
+ligne du modèle n'a bougé : 400 bilans et 58 md5 identiques à `51i`. Écarts
+au plan : la table du rangement intelligent est **remesurée** (sur le modèle
+de `51i`, 2012 compris), pas seulement signalée ; les remarques de l'assistant
+passent toutes par le catalogue (treize clés), pas seulement l'anachronisme ;
+la liste « Commentaires faux » de `WINDOWS_CHECK.md` était déjà soldée par les
+chantiers 48 à 51. B#29 n'est fait qu'à moitié : l'assistant et `CLAUDE.md`
+disent le même nom, mais ce nom s'affiche encore en français dans l'app
+anglaise.
+
+- [x] **`readme-tables.py`** : corriger d'abord les gabarits (B#20, B#38 à B#44 :
   « 91-91 % », « que un occupants », « 1 trous », les comparatifs retournés),
-  puis régénérer.
-- **README** : la table du rangement intelligent (B#39), l'arborescence
+  puis régénérer. *Fait : verbes et comparatifs calculés (`times`, `versus`,
+  élision) ; `--check` : un seul écart, la durée de génération de `dev-2007`.*
+- [x] **README** : la table du rangement intelligent (B#39), l'arborescence
   (B#46) et « Ce qui ne l'est pas », qui perd tout ce que les chantiers 48
-  à 51 ont sourcé.
-- **Fiches d'outils** : durées « measured » (B#19, B#26).
-- **Site** : l'ancien XP, les outils de 1993, de Vista et de 7 (B#18, B#27,
-  B#49), et la page « how it works ».
-- **Commentaires** : B#1 à B#4, B#11, B#14, B#28, B#48, et la liste
-  « Commentaires faux » de `WINDOWS_CHECK.md` qui reste.
-- **Traduction** : les pluriels de `summary.windowsXP` (B#23),
-  l'avertissement d'anachronisme en français seul (B#13).
-- **`CLAUDE.md`** : le nom de système « MS-DOS 6 » (B#29), et l'état de la
-  soumission (B#47) une fois les chantiers livrés.
-- `LEDGER.md:7459` : le renvoi au chantier 37 devient un renvoi au
+  à 51 ont sourcé. *Fait ; « Ce qui ne l'est pas » gagne ce qui manquait
+  (le découpage de 64 Kio que JkDefrag et UltraDefrag ne suivent pas sous
+  XP, les nuances du moteur, le pas de Word).*
+- [x] **Fiches d'outils** : durées « measured » (B#19, B#26). *Fait, les
+  vingt-quatre, d'après `51i`.*
+- [x] **Site** : l'ancien XP, les outils de 1993, de Vista et de 7 (B#18, B#27,
+  B#49), et la page « how it works ». *Fait ; section « The system » neuve.*
+- [x] **Commentaires** : B#1 à B#4, B#11, B#14, B#28, B#48, et la liste
+  « Commentaires faux » de `WINDOWS_CHECK.md` qui reste. *Fait ; la liste
+  était vide.*
+- [x] **Traduction** : les pluriels de `summary.windowsXP` (B#23),
+  l'avertissement d'anachronisme en français seul (B#13). *Fait : quatre
+  substitutions plurielles, vérifiées sur le catalogue compilé.*
+- [x] **`CLAUDE.md`** : le nom de système « MS-DOS 6 » (B#29), et l'état de la
+  soumission (B#47) une fois les chantiers livrés. *Fait, et les suites
+  `Calibration` et `GalleryAllocationAudit`.*
+- [x] `LEDGER.md:7459` : le renvoi au chantier 37 devient un renvoi au
   chantier 40 (B#50).
 
 **Hors plan, plus tard** : B#31 à B#34 et B#45 (« sans achat intégré »,

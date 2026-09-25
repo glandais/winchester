@@ -7457,7 +7457,7 @@ recalage.
 - **Le recalage** : `perMegabyte` seul, par époque, sur `f0` — 1993 0,65 →
   0,93, 1996 0,42 → 0,41, 1999 0,24, 2003 0,19 → 0,185, 2007 0,15 → 0,146.
   Le 0,93 de 1993 est **le prix des cibles** : la fiche du Conner (chantier
-  37) a rendu au disque ses 79 secteurs par piste et quatre secondes de
+  40) a rendu au disque ses 79 secteurs par piste et quatre secondes de
   démarrage, que la cible n'accorde pas ; le processeur les reprend, et le
   plancher de calcul de 1993 passe de 15 à 19 s sur 42. Le commentaire de
   `ThinkModel.boot` le dit.
@@ -8924,7 +8924,7 @@ accès, 2007 non »** : sa borne, validée le 25 septembre 2026 (« moins
 d'écritures que de fichiers lus »), tombe à 51f — une date salit deux pages
 (MFT et index du parent) ; 994 dates, 1 028 écritures. La borne suit le
 mécanisme : moins d'écritures que de pages salies, et le journal en quelques
-pages, avant elles.
+pages, avant elles. Gabriel a validé cette borne le 25 septembre 2026.
 
 ### Ce qui valide
 
@@ -9028,3 +9028,171 @@ du démarrage de XP, le registre sans `.LOG`). Le reste est au chantier 52.
 - **Écoute proposée, non faite** : `boot:famille-2003` (lots puis silence),
   `SCENARIO=dev-1999 STRATEGY=jkDefrag` (le va-et-vient de `fastfat`),
   `install:gamer-2003` (les pulsations du *lazy writer* pendant la copie).
+
+
+## Chantier 52 — XP à la lettre : les documents
+
+**Fait** · branche `xp`, partie de `20e38ea` (chantier 51) · plan :
+`LEDGER-XP.md`
+
+### Le problème
+
+Les chantiers 47 à 51 ont fait suivre au modèle le code de XP SP1 ; les
+documents, eux, décrivaient encore le modèle d'avant, ou se contredisaient
+avec leurs propres tables. `AUDIT_REALISME.md` en relevait une vingtaine de
+constats (B#1 à B#4, B#11, B#13, B#14, B#18 à B#20, B#23, B#26 à B#29, B#38
+à B#44, B#46 à B#50), `WINDOWS_CHECK.md` une liste de « Commentaires faux ».
+Le dernier chantier du plan ne touche pas au modèle.
+
+### Ce qui a été corrigé, par constat
+
+- **B#20, B#38 à B#44 — `readme-tables.py`** : les gabarits calculent
+  maintenant leurs verbes et leurs comparatifs d'après les chiffres —
+  `times` (« 7,7 fois moins », jamais « 0,1 fois plus »), `versus` (« moins
+  de morceaux que XP mais plus qu'UltraDefrag et JkDefrag »), l'élision
+  (« qu'un occupant »), « tous deux à 91 % » au lieu de « 91-91 % », le
+  volume que XP nettoie et qu'UltraDefrag ne nettoie pas, l'exception de la
+  frontière (`gamer-1996`, quatre fichiers de plus en morceaux), le volume
+  plein où l'outil de 95 laisse le plus de morceaux (`famille-1996`, 5 108),
+  le volume FAT où la frontière laisse le plus de trous (`dev-1996`, 115,
+  contre 2 au rangement). Un champ capturé peut porter une proposition entière
+  (240 caractères au lieu de 40) ; deux gabarits qui finissaient sur un champ
+  ont gagné un mot d'ancrage. La prose qui les entoure a été récrite là où
+  elle contredisait ses tables : le recollage économe (« qui se compensent »,
+  « la qualité à durée voisine », « XP et JkDefrag finissent sans un
+  morceau »), la frontière contre Windows 95 (1,4 fois moins de données,
+  19 min d'écart, les mêmes morceaux mais 59 trous contre 2), `gamer-1993`
+  (99 %, rangé par la frontière : 838 morceaux à 0), le prix des volumes
+  pleins de 95, UltraDefrag contre XP (« plus lointaines » devant un seek plus
+  court). Le tri de JkDefrag dit maintenant la règle de XP (la place quittée
+  est libre, le tri va au bout ; `secretaire-2003`, 15 875 morceaux contre 769
+  au mode 2) à côté de celle de Vista et 7.
+- **B#39 — le rangement intelligent, remesuré.** `smart.sh` et
+  `passes.py <étape>:smart` rejoués sur `bin-51i` (le binaire mesuré du
+  chantier 51, les 400 bilans de 52 le prouvent identique), par un script du
+  scratchpad restreint aux profils — `smart.sh` n'a pas de filtre —, en
+  environnement propre : 168 bilans (`rboot-`, `pass-`) rangés dans
+  `out-51i`. La table passe aux **vingt-quatre** volumes, 2012 compris
+  (`SMART_ORDER`), et la prose suit : douze NTFS, 3,7 To déplacés et 26 h 45
+  de passes ; démarrages FAT 596,7 → 569,0 → **516,3 s**, NTFS 485,5 →
+  471,6 → **446,6 s** ; trous 127 → 14 (FAT), 1 799 → 42 (NTFS) ;
+  l'exception n'est plus `gamer-1999` mais `famille-1999` (1 trou au mieux,
+  2 au rangement). La clé `max` sur les NTFS plantait sur un volume absent de la
+  table : corrigée. Le README dit d'où vient la table et que l'ancienne datait
+  d'avant les lots réalisme.
+- **B#46 — l'arborescence** : `WindowsXPStrategy` décrit comme au chantier
+  50 ; `NTFSAllocator+XP`, `NTFSFreeRunCache`, `AtapiQueue`, `LazyWriter`,
+  `SeekCharacter`, `SpindleCharacter`, `ProfileIssues`, `RearrangedDisk`,
+  `CellPartition`, `CellContents`, `FrenchUnits`, `MapZones`, `SoundMix`,
+  `PassRecord`, `PassDigest`, `PassHistory`, `CustomDiskStore`,
+  `DiskLibraryModel`, `DisplayFormat`, `NowPlaying`, `Sources/Tips/TipJar`,
+  `AboutLinks` et `TipSheet` y entrent, et les deux dossiers de tests, avec
+  `WindowsXPLetterTests`, `NTFSXPAllocationTests`, `AtapiQueueTests`,
+  `LazyWriterTests`, `FatMoveFileTests`. Le catalogue compte douze fiches.
+- **README, le reste** : « Huit défragmenteurs » devient « Sept » (il y en a
+  sept, et « les six outils précédents » le disait déjà) et nomme MS-DOS 6
+  DEFRAG, Vista et 7 ; le seek (B#2) n'est plus « 8,7 ms, un tiers de
+  course » ; « Ce qui ne l'est pas » relu en entier contre 47-51 : rien n'y
+  était devenu sourcé qui n'en fût déjà sorti ; y entrent le découpage de
+  64 Kio de `NtfsDefragFile` que JkDefrag et UltraDefrag ne suivent pas sous
+  XP (le modèle leur garde une requête et une transaction par 4 Mo), les
+  nuances du moteur de XP laissées au chantier 50, la MFT jamais trouée, et
+  Word, dont le document grossit comme sous l'enregistrement rapide ; sur FAT,
+  l'outil de XP n'est plus parmi ceux qui passent par l'API. La section
+  « Mesurer un changement » donne la vraie commande de `smart.sh`.
+- **B#19, B#26 — les fiches d'outils** : les vingt-quatre durées
+  « measured » recalculées sur les bilans de `51i` (toute la galerie de leur
+  format, arrondies aux cinq minutes au-delà d'une heure) : XP « 2 min to
+  3 h 55 » au lieu de « a few seconds to 45 min », Windows 95 « a few
+  seconds to 1 h » au lieu de « 6 min to 1 h », le rangement intelligent
+  « 5 min to 4 h 20 » (2012 compris). Le commentaire des clés dit
+  « vingt-quatre disques, bilans du chantier 51 ».
+- **B#18, B#27, B#49 — le site** : la page support décrit l'outil de XP par
+  l'unité `en` du catalogue et dit l'outil de chaque époque ; la table de
+  l'accueil gagne MS-DOS 6 DEFRAG, Vista et 7, et chaque cellule y est
+  maintenant le texte exact du catalogue (origines et principes, qui étaient
+  abrégés) ; « How it works » gagne une section « The system » (préchargeur,
+  file d'`atapi`, *lazy writer*, défragmenteur de XP), l'allocateur de XP et
+  le niveau de la tête pris aux manuels. Liens relatifs vérifiés (aucun
+  cassé, ancres comprises) ; chaque `<span class="ui">` est une valeur `en`
+  du catalogue.
+- **Commentaires** : B#1 (la plage des niveaux, 1,97 à 3,64 B, 16,7 dB),
+  B#2 (`SeekModel` : le paragraphe orphelin du « tiers de course » retiré,
+  son histoire rendue à `roughlyCalibrated`), B#3 (`SpindleVoice`, d'après la
+  mesure du chantier 39), B#4 (la doc de `windageFollowsSpeed` rendue ; le
+  test des niveaux vérifie enfin 1996), B#11 (la doc de `writeSeek` rendue),
+  B#14 (`ProfileIssuesTests`, `DriveModelTests`), B#28 (le POST de la
+  journée), B#48 (`FrenchUnits` et `DisplayFormat` : le 2²⁰ est celui de
+  l'affichage, l'étiquette est décimale). **La liste « Commentaires faux » de
+  `WINDOWS_CHECK.md` était déjà soldée** : les huit y sont corrigés par les
+  chantiers 48 à 51 (vérifié un par un).
+- **B#13 — les remarques de l'assistant** : `ProfileIssue` porte sa nature
+  (`Kind`), plus de phrase ; `DiskCore` ne se traduit pas. La phrase est
+  composée dans `DisplayFormat.swift` (`ProfileIssue.message`), treize clés
+  `profile.issue.*`, en et fr, tailles et date formatées par la langue ;
+  l'assistant l'affiche par `Text(verbatim:)`. Les tests vérifient la nature,
+  plus la phrase française.
+- **B#23 — `summary.windowsXP`** : quatre substitutions plurielles
+  (`%#@repaired@`, `broken`, `evicted`, `moved`), en et fr, et
+  `summary.windowsXP.remaining` au pluriel ; vérifié sur le catalogue
+  compilé par `xcstringstool` : « repairs 1 file out of 1 … 1 file moved in
+  all », « 1 fichier déplacé en tout », « 1 reste en morceaux ». Le test ne
+  fige plus « 1 files » : il lit les nombres, la forme `other` étant ce que
+  rend `defaultValue` hors de l'app.
+- **B#29** : l'assistant propose « MS-DOS 6 et Windows 3.1 », le nom du
+  démarrage ; `CLAUDE.md` dit que ce nom s'affiche.
+- **B#47 et la construction — `CLAUDE.md`** : la 1.0.0 n'est pas prête ; ce
+  qui manque avant (fusion, nouveau build, hors plan) ; `Calibration` et
+  `GalleryAllocationAudit` et comment les lancer ; `swift test` ne voit pas
+  un fichier oublié dans `build-render.sh`, et `xcb.sh gen` après un fichier
+  neuf.
+- **B#50** : le renvoi au chantier 40. Et, dans l'entrée du chantier 51, la
+  validation de la borne de « 2003 horodate ses accès » par Gabriel.
+
+Clés de traduction : treize neuves (`profile.issue.*`), vingt-six modifiées
+(`summary.windowsXP`, `summary.windowsXP.remaining`, les vingt-quatre
+`tool.*.measured`). `xcb.sh strings` a aussi retiré
+`extractionState: extracted_with_value` de onze clés existantes (`phase.*`,
+`strategy.vista`, `strategy.win7`, `tool.vista.*`, `tool.win7.*`) : c'est ce
+que rend `xcstringstool` sur le code actuel, laissé tel quel.
+
+### Ce qui valide
+
+Prédiction (`prediction-52.md`, écrite pendant que la mesure tournait, avant de
+la lire) : 400 bilans et 58 md5 identiques à `51i`, un binaire différent.
+
+- `snapshot.sh 52` après la dernière retouche d'une source, rien touché
+  pendant la compilation ; `run.sh 52 full` : **400 bilans, identiques à
+  `51i`** (`compare.py --identical` par préfixe : `boot-` 24, `install-` 24,
+  `day-` 4, `defrag-` 300, `full-` 24, `disk-` 24) ; `wav-md5.py 52` : **58
+  md5 identiques**. Aucune chaîne de bilan ne change.
+- `swift test` : **177 + 346 tests, verts**.
+- `./scripts/xcb.sh gen` puis `./scripts/xcb.sh build` : réussi.
+- `./scripts/i18n.py check` : aller-retour exact ; `export` : 0 chaîne pas
+  encore migrée, 955 clés, 1 910 localisations.
+- `readme-tables.py 51i --check` : 101 lignes de table, 76 phrases ; **un
+  écart**, la durée de génération de `dev-2007` (1,7 s au README, rendue
+  comme aux chantiers 47 à 51 ; 2,1 s mesurés, 2,14 et 2,16 s rejoués sur
+  `bin-52`) : `--check` sort donc en erreur sur cette seule ligne.
+  `readme-tables.py 52 --check` : le même écart, et la table du rangement
+  non vérifiée (ses bilans sont dans `out-51i`).
+- Calibration et `GalleryAllocationAudit` : non relancées (aucun allocateur
+  ni stratégie touchés, et les bilans le prouvent).
+
+### Laissé ouvert
+
+- **Le nom de système de 1993** s'affiche en français (« et ») dans l'app
+  anglaise, comme les jours de la journée (« Jour N », `NowPlaying`,
+  `SimulationModel`) et le « puis » des installations (`Scenario`) : à
+  traduire à l'affichage sans toucher au nom que relit `readme-tables.py`.
+- **Les autres bilans de stratégie** (`summary.*`) gardent des `%lld` sans
+  pluriel (« 1 files ») : B#23 ne visait que XP ; l'audit en comptait 42.
+- **JkDefrag et UltraDefrag sous XP** : le pilote découpe tout `MOVE_FILE`
+  par 64 Kio, une transaction chacun ; le modèle leur garde 4 Mo. Dit dans
+  « Ce qui ne l'est pas » ; un changement de modèle, hors de ce chantier.
+- **La durée de génération de `dev-2007`** (1,7 s au README, 2,1 s mesurés
+  depuis le chantier 48) : à remesurer machine au repos, ou à réécrire.
+- **Hors plan** : B#31 à B#34, B#36 et B#45 (« sans achat intégré », Ko-fi,
+  « no network access », le commentaire d'`AboutLink`), que Gabriel corrigera.
+- **Rien n'a été vu dans le simulateur** : les remarques de l'assistant et
+  les fiches d'outils dans les deux langues restent à regarder.
