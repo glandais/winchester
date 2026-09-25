@@ -368,16 +368,16 @@ l'archive. Ne rien lancer d'autre sur le simulateur pendant une capture —
 titres des cartes se traduisent par `i18n/translations.json` (table `Koubou`),
 dont les clés sont la phrase anglaise elle-même.
 
-Les vingt-quatre captures sont envoyées depuis le 21 septembre 2026 (six
-écrans × deux langues × `IPHONE_65` et `IPAD_PRO_3GEN_129`), et `asc validate`
-ne remontait plus aucune erreur le 21 septembre 2026. **La 1.0.0 n'est pas
-prête à être soumise** : le build 4 ne porte ni la section « À propos »
-(chantier 37) ni les pourboires (chantier 38), dont les trois achats intégrés
-partent avec la version ; il faut un nouveau build, fait après la fusion de la
-branche `xp` (chantiers 47 à 52, `LEDGER-XP.md`, puis 53 : les pourboires
-dits partout, B#31 à B#34, B#36 et B#45 d'`AUDIT_REALISME.md`) dans
-`develop`. Avant la soumission reste à pousser les notes de revue
-(`asc review details-update`). L'envoi prend
+Les vingt-quatre captures (six écrans × deux langues × `IPHONE_65` et
+`IPAD_PRO_3GEN_129`) ont été refaites et renvoyées le 25 septembre 2026, par
+`--replace --confirm` : la carte des outils affichait les durées d'avant le
+chantier 52. **État au 25 septembre 2026** : build 5 rattaché à la 1.0.0 (il
+porte les chantiers 37 à 53), notes de revue poussées, métadonnées identiques
+au dépôt, `asc validate` sans erreur. **La version n'est pas soumise.** À la
+soumission, joindre les trois pourboires (`READY_TO_SUBMIT`, premiers achats
+intégrés de l'app : ils partent avec la version), et confirmer dans le
+navigateur que l'App Privacy est publiée. L'envoi prend
+L'envoi prend
 parfois une erreur 500 d'App Store Connect sur un fichier : relancer le même `asc screenshots upload` avec `--skip-existing`, qui
 ne renvoie que ce qui manque.
 
@@ -428,7 +428,9 @@ l'affiche se choisit à 2 s, titre posé. Les médias d'une version se figent
 quand elle part en revue : une vidéo pour la 1.0.0 s'envoie avant de soumettre,
 sinon elle attend la version suivante.
 
-Les quatre vidéos sont envoyées depuis le 21 septembre 2026, affiche à 2 s
+Les quatre vidéos ont été refaites et renvoyées le 25 septembre 2026, après
+les lots réalisme et les chantiers 47 à 53 ; leur synchronisation n'a pas été
+remesurée à la main cette fois (même `LATENCY`). Affiche à 2 s
 (Apple la pose d'office à 5 s, titre déjà parti), et `asc validate` ne remonte
 aucune erreur. Pour les renvoyer : `--replace --confirm` au lieu de
 `--skip-existing`, puis reposer l'affiche.
