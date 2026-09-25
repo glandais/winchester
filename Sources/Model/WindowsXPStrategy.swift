@@ -394,14 +394,12 @@ extension WindowsXPStrategy {
         /// et le réemployer coûte un vidage du journal.
         mutating func move(_ position: Int, to target: Extent, phase: Int) {
             let file = volume.files[position]
-            DefragOperations.deletePending(target: [target], volume: &volume, phase: phase, into: sink)
-            DefragOperations.move(source: file.extents, destination: [target],
-                                  category: file.category, contiguous: true, phase: phase,
-                                  partition: partition, bufferBytes: strategy.bufferBytes,
-                                  fullBlocks: strategy.fullBlocks, into: sink)
-            DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: position),
-                                    entrySector: volume.entrySector(of: position),
-                                    phase: phase, partition: partition, into: sink)
+            DefragOperations.moveFile(source: file.extents, destination: [target],
+                                      category: file.category, contiguous: true, phase: phase,
+                                      volume: &volume, fileIndex: volume.mftRecord(of: position),
+                                      entrySector: volume.entrySector(of: position),
+                                      bufferBytes: strategy.bufferBytes, fullBlocks: strategy.fullBlocks,
+                                      validBytes: file.bytes, into: sink)
             if volume.releaseWaitsForCheckpoint {
                 volume.relocateHoldingReleased(position, to: [target])
             } else {
@@ -457,14 +455,12 @@ extension WindowsXPStrategy {
                 source.append(Extent(start: piece.start, length: length))
                 left -= length
             }
-            DefragOperations.deletePending(target: [target], volume: &volume,
-                                           phase: WindowsXPStrategy.defragPhase, into: sink)
-            DefragOperations.move(source: source, destination: [target],
-                                  category: .reserved, contiguous: true, phase: WindowsXPStrategy.defragPhase,
-                                  partition: partition, bufferBytes: strategy.bufferBytes,
-                                  fullBlocks: strategy.fullBlocks, into: sink)
-            DefragOperations.commit(extents: [target], fileIndex: 0, entrySector: nil,
-                                    phase: WindowsXPStrategy.defragPhase, partition: partition, into: sink)
+            DefragOperations.moveFile(source: source, destination: [target],
+                                      category: .reserved, contiguous: true,
+                                      phase: WindowsXPStrategy.defragPhase,
+                                      volume: &volume, fileIndex: 0,
+                                      bufferBytes: strategy.bufferBytes, fullBlocks: strategy.fullBlocks,
+                                      firstVCN: first, into: sink)
             volume.relocateMFTTail(to: target)
             checkpoints.afterCommit(&volume, sink: sink)
             movedClusters += Int(movable)

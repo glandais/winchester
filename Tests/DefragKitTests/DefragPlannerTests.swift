@@ -552,9 +552,11 @@ struct AgedVolumeTests {
 
 /// Un volume NTFS de test, dont on choisit exactement le placement.
 private func ntfsVolume(clusterCount: Int, files: [TestFile],
-                        mftZone: Range<UInt32>? = nil) -> DefragVolume {
-    let partition = PartitionGeometry(startLBA: 0, clusterCount: clusterCount,
+                        mftZone: Range<UInt32>? = nil,
+                        formatting: NTFSAllocator.Formatting = .xp) -> DefragVolume {
+    var partition = PartitionGeometry(startLBA: 0, clusterCount: clusterCount,
                                       clusterSectors: 8, format: .ntfs)
+    partition.ntfsFormatting = formatting
     let records: [DefragFile] = files.enumerated().map { position, file in
         DefragFile(id: UInt32(position), path: "\\Documents\\F\(position).dat",
                    category: file.category, walkOrder: position,
@@ -774,14 +776,16 @@ struct WindowsXPStrategyTests {
 
     /// La signature sonore, vérifiée là où elle se décide : une validation NTFS
     /// écrit l'enregistrement de MFT du fichier et un secteur de bitmap, pas
-    /// trois fois au tout début de la partition.
+    /// trois fois au tout début de la partition. Sur un volume de Vista, où
+    /// le modèle valide chaque fichier aussitôt ; sous XP, c'est le lazy
+    /// writer qui écrit ces pages (`WindowsXPLetterTests`, chantier 50).
     @Test("Valider un déplacement ne ramène pas le bras au cluster 0")
     func commitStaysAwayFromTheEdge() {
         let input = ntfsVolume(clusterCount: 200_000, files: [
             TestFile(category: .document,
                      extents: [Extent(start: 150_000, length: 8),
                                Extent(start: 180_000, length: 8)]),
-        ])
+        ], formatting: .vista)
         let plan = DefragPlanner.plan(volume: input)
         let commits = plan.operations.filter { $0.kind == .metadata && (1...3).contains($0.phase) }
 

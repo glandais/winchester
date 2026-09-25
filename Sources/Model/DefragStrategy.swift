@@ -207,6 +207,13 @@ enum DefragOperations {
     /// simulé, pas une constante.
     ///
     /// `fullBlocks` remplace ce découpage par celui de `gatheredMove`.
+    ///
+    /// `validClusters` : les clusters du fichier qui portent des données
+    /// valides, comptés depuis le début du fichier ; `firstVCN`, le rang dans
+    /// le fichier du premier cluster de `source`. Un tronçon qui commence
+    /// au-delà n'est ni lu ni écrit, seulement réalloué (`moveFile`).
+    /// `afterBlock` est appelé après chaque tronçon posé : c'est là que le
+    /// pilote de XP valide sa transaction.
     static func move(source: [Extent],
                      destination: [Extent],
                      category: ClusterCategory,
@@ -215,11 +222,14 @@ enum DefragOperations {
                      partition: PartitionGeometry,
                      bufferBytes: Int,
                      fullBlocks: Bool = false,
+                     firstVCN: UInt32 = 0,
+                     validClusters: UInt32? = nil,
+                     afterBlock: ((MoveChunk) -> Void)? = nil,
                      into sink: OperationSink) {
         if fullBlocks {
             gatheredMove(source: source, destination: destination, category: category,
                          contiguous: contiguous, phase: phase, partition: partition,
-                         bufferBytes: bufferBytes, into: sink)
+                         bufferBytes: bufferBytes, afterBlock: afterBlock, into: sink)
             return
         }
         let buffer = UInt32(max(bufferBytes / partition.clusterBytes, 1))
@@ -235,6 +245,8 @@ enum DefragOperations {
 
         // 1. Les tronçons, dans l'ordre du fichier.
         var chunks: [MoveChunk] = []
+        var vcns: [UInt32] = []
+        var vcn = firstVCN
         var sourceIndex = 0
         var sourceOffset: UInt32 = 0
         var destinationIndex = 0
@@ -246,6 +258,8 @@ enum DefragOperations {
             guard length > 0 else { break }
             chunks.append(MoveChunk(read: from.start + sourceOffset,
                                     write: to.start + destinationOffset, length: length))
+            vcns.append(vcn)
+            vcn += length
             sourceOffset += length
             destinationOffset += length
             if sourceOffset == from.length { sourceIndex += 1; sourceOffset = 0 }
@@ -254,14 +268,30 @@ enum DefragOperations {
 
         // 2. Dans l'ordre où ils peuvent l'être sans rien perdre.
         let (order, unordered) = safeOrder(chunks)
-        func read(_ chunk: MoveChunk) {
+        // Au-delà des données valides, le pilote de XP réalloue sans copier
+        // (`deviosup.c:10530-10561`) : la carte change, le disque se tait.
+        func copies(_ index: Int) -> Bool {
+            guard let validClusters else { return true }
+            return vcns[index] <= validClusters
+        }
+        func read(_ index: Int) {
+            guard copies(index) else { return }
+            let chunk = chunks[index]
             sink.emit(DiskOperation(
                 kind: .readExtent, phase: phase,
                 lba: partition.lba(ofCluster: Int(chunk.read)),
                 sectors: Int(chunk.length) * partition.clusterSectors,
                 isWrite: false, issueTime: 0, cluster: Int(chunk.read)))
         }
-        func write(_ chunk: MoveChunk) {
+        func write(_ index: Int) {
+            let chunk = chunks[index]
+            guard copies(index) else {
+                sink.carry(MapMutation(start: Int(chunk.write), count: Int(chunk.length),
+                                       category: category, contiguous: contiguous))
+                recordFreed(start: chunk.read, length: chunk.length, kept: kept, carried: true, into: sink)
+                afterBlock?(chunk)
+                return
+            }
             let first = sink.mutationMark
             sink.record(MapMutation(start: Int(chunk.write), count: Int(chunk.length),
                                     category: category, contiguous: contiguous))
@@ -272,16 +302,17 @@ enum DefragOperations {
                 sectors: Int(chunk.length) * partition.clusterSectors,
                 isWrite: true, issueTime: 0, cluster: Int(chunk.write),
                 mutationStart: first, mutationCount: sink.mutationMark - first))
+            afterBlock?(chunk)
         }
         for index in order {
-            read(chunks[index])
-            write(chunks[index])
+            read(index)
+            write(index)
         }
         // Un cycle — deux morceaux qui s'écrasent l'un l'autre — ne se
         // résout pas tronçon par tronçon : tout ce qui en reste est lu, puis
         // écrit.
-        for index in unordered { read(chunks[index]) }
-        for index in unordered { write(chunks[index]) }
+        for index in unordered { read(index) }
+        for index in unordered { write(index) }
     }
 
     /// Un tronçon de `move` : ce qu'il lit, où il l'écrit.
@@ -376,6 +407,7 @@ enum DefragOperations {
                              phase: Int,
                              partition: PartitionGeometry,
                              bufferBytes: Int,
+                             afterBlock: ((MoveChunk) -> Void)? = nil,
                              into sink: OperationSink) {
         let buffer = UInt32(max(bufferBytes / partition.clusterBytes, 1))
         let kept = destination.count > 1
@@ -421,6 +453,8 @@ enum DefragOperations {
                     sectors: Int(gathered) * partition.clusterSectors,
                     isWrite: true, issueTime: 0, cluster: Int(writeStart),
                     mutationStart: first, mutationCount: sink.mutationMark - first))
+                afterBlock?(MoveChunk(read: freed.first?.start ?? writeStart, write: writeStart,
+                                      length: gathered))
                 written += gathered
             }
         }
@@ -437,7 +471,8 @@ enum DefragOperations {
     /// appelé à chaque tronçon déplacé, un demi-million de fois sur une passe
     /// de `dev-1999`, et les allocations y coûtaient plus que le calcul.
     private static func recordFreed(start: UInt32, length: UInt32,
-                                    kept: [Extent], into sink: OperationSink) {
+                                    kept: [Extent], carried: Bool = false,
+                                    into sink: OperationSink) {
         var cursor = start
         let end = start + length
 
@@ -460,8 +495,8 @@ enum DefragOperations {
             // n'est jamais vide, et la boucle avance toujours.
             let next = low < kept.count ? kept[low].start : end
             let stop = min(next, end)
-            sink.record(MapMutation(start: Int(cursor), count: Int(stop - cursor),
-                                    category: .free))
+            let freed = MapMutation(start: Int(cursor), count: Int(stop - cursor), category: .free)
+            if carried { sink.carry(freed) } else { sink.record(freed) }
             cursor = stop
         }
     }
@@ -525,9 +560,15 @@ enum DefragOperations {
                        repaint: (extents: [Extent], category: ClusterCategory, contiguous: Bool)? = nil,
                        into sink: OperationSink) {
         var pending = repaint
+        let validation = sink.nextValidation()
+        // La page de journal que cette validation remplit part avec elle :
+        // tout ce qui la précède est sur le disque.
+        if partition.format == .ntfs, (validation + 1) % PartitionGeometry.validationsPerLogPage == 0 {
+            sink.loggedValidations = validation + 1
+        }
         for access in partition.commitAccesses(for: extents, fileIndex: fileIndex,
                                                entrySector: entrySector,
-                                               validation: sink.nextValidation()) {
+                                               validation: validation) {
             let first = sink.mutationMark
             if let file = pending {
                 for extent in file.extents where !extent.isEmpty {
@@ -543,10 +584,204 @@ enum DefragOperations {
         }
     }
 
+    // MARK: - Un `FSCTL_MOVE_FILE`
+
+    /// Si le pilote qui porte ce volume est celui de XP SP1, dont le code
+    /// fait foi : une transaction par bloc de 64 Kio, des métadonnées écrites
+    /// par le *lazy writer*. Vista et 7 gardent le modèle d'avant : une
+    /// validation par fichier, écrite aussitôt.
+    static func journalsEachBlock(_ partition: PartitionGeometry) -> Bool {
+        partition.format == .ntfs && partition.ntfsFormatting == .xp
+    }
+
+    /// Le passage du *lazy writer*, en secondes de temps planifié. Le modèle
+    /// l'avait déjà pour les installations et les journées de XP
+    /// (`InstallEra`, une seconde) ; le détail du vrai — un réveil par
+    /// seconde, un huitième des pages sales, le premier passage à 3 s — est
+    /// au chantier 51.
+    static let lazyWriterInterval = 1.0
+
+    /// Un déplacement demandé par un outil qui passe par `FSCTL_MOVE_FILE` —
+    /// XP, JkDefrag, UltraDefrag —, tel que le pilote le joue.
+    ///
+    /// D'abord `deletePending` : sous XP, se poser sur des clusters tout
+    /// juste quittés vide le journal. Puis la copie.
+    ///
+    /// **Sous XP**, `NtfsDefragFile` copie par blocs de 64 Kio, et chaque bloc
+    /// est une transaction : `NtfsReallocateRange` — clusters rendus et pris,
+    /// dont les bits sont journalisés page de bitmap par page
+    /// (`bitmpsup.c:3068-3080`), *mapping pairs* réécrits — puis
+    /// `NtfsCheckpointCurrentTransaction`, un enregistrement de validation
+    /// dans `$LogFile` et les raisons USN (`deviosup.c:10614-10618`,
+    /// `logsup.c:2979-3014`). Le commit n'est pas écrit en *write-through*
+    /// (`logsup.c:2951-2956`) : l'enregistrement de MFT et les pages de
+    /// `$Bitmap` sont salis dans le cache, et c'est le *lazy writer* qui les
+    /// écrit (`lazyFlush`). LFS, lui, garde les enregistrements en tampon
+    /// jusqu'au prochain vidage (`flushLog`). Le modèle compte donc une
+    /// validation par bloc — huit remplissent une page de journal, l'ordre de
+    /// grandeur d'avant — et marque les pages sales au lieu de les écrire ; le
+    /// journal part avec le lazy writer, le point de contrôle de cinq secondes
+    /// ou un `DELETE_PENDING`. Au-delà de `validBytes`, la
+    /// `ValidDataLength`, un bloc est réalloué sans être lu ni écrit
+    /// (`deviosup.c:10530-10561`, « `StartingVcn <= UpperBound` »).
+    ///
+    /// **Ailleurs** : la copie, puis la validation par fichier (`commit`).
+    static func moveFile(source: [Extent], destination: [Extent],
+                         category: ClusterCategory, contiguous: Bool, phase: Int,
+                         volume: inout DefragVolume, fileIndex: Int, entrySector: Int? = nil,
+                         bufferBytes: Int, fullBlocks: Bool = false,
+                         firstVCN: UInt32 = 0, validBytes: UInt64? = nil,
+                         repaint: (extents: [Extent], category: ClusterCategory, contiguous: Bool)? = nil,
+                         into sink: OperationSink) {
+        deletePending(target: destination, volume: &volume, phase: phase, into: sink)
+        let partition = volume.partition
+        guard journalsEachBlock(partition) else {
+            move(source: source, destination: destination, category: category,
+                 contiguous: contiguous, phase: phase, partition: partition,
+                 bufferBytes: bufferBytes, fullBlocks: fullBlocks, into: sink)
+            commit(extents: destination, fileIndex: fileIndex, entrySector: entrySector,
+                   phase: phase, partition: partition, repaint: repaint, into: sink)
+            return
+        }
+        let clusterBytes = UInt64(partition.clusterBytes)
+        let validClusters = validBytes.map { UInt32(($0 + clusterBytes - 1) / clusterBytes) }
+        let record = fileIndex
+        move(source: source, destination: destination, category: category,
+             contiguous: contiguous, phase: phase, partition: partition,
+             bufferBytes: bufferBytes, fullBlocks: fullBlocks,
+             firstVCN: firstVCN, validClusters: validClusters,
+             afterBlock: { chunk in
+                 blockTransaction(chunk, fileIndex: record, phase: phase,
+                                  partition: partition, into: sink)
+             },
+             into: sink)
+        // Le recoloriage d'un fichier que la transaction recolle ou coupe :
+        // avec la prochaine opération, puisqu'aucune écriture de métadonnées
+        // ne suit aussitôt.
+        if let repaint {
+            for extent in repaint.extents where !extent.isEmpty {
+                sink.carry(MapMutation(start: Int(extent.start), count: Int(extent.length),
+                                       category: repaint.category, contiguous: repaint.contiguous))
+            }
+        }
+    }
+
+    /// Un bloc de `NtfsDefragFile` validé : ses enregistrements de journal,
+    /// que LFS garde en tampon, et les pages sales — l'enregistrement de MFT
+    /// du fichier, les pages de `$Bitmap` des clusters rendus et pris. Puis
+    /// ce que le temps a amené : le point de contrôle, le *lazy writer*.
+    private static func blockTransaction(_ chunk: MoveChunk, fileIndex: Int, phase: Int,
+                                         partition: PartitionGeometry, into sink: OperationSink) {
+        _ = sink.nextValidation()
+        sink.journalsLazily = true
+        let pageSectors = PartitionGeometry.logPageSectors
+        // Quatre enregistrements d'un kilo-octet par page de 4 Ko.
+        let recordsPerPage = max(pageSectors / partition.mftRecordSectors, 1)
+        let mftPage = partition.mftRecordLBA(fileIndex - fileIndex % recordsPerPage)
+        sink.lazyDirty[mftPage] = max(sink.lazyDirty[mftPage] ?? 0, pageSectors)
+        // Une page de bitmap couvre 32 768 clusters.
+        let clustersPerPage = pageSectors * DriveGeometry.bytesPerSector * 8
+        for range in [(chunk.read, chunk.length), (chunk.write, chunk.length)] {
+            let first = Int(range.0) / clustersPerPage
+            let last = (Int(range.0) + Int(range.1) - 1) / clustersPerPage
+            for page in first...last {
+                let lba = partition.bitmapLBA + page * pageSectors
+                sink.lazyDirty[lba] = max(sink.lazyDirty[lba] ?? 0, pageSectors)
+            }
+        }
+        kernelTick(partition: partition, phase: phase, into: sink)
+    }
+
+    /// Ce que le pilote de XP fait de lui-même pendant qu'un outil déplace :
+    /// toutes les cinq secondes le **point de contrôle** — le minuteur est
+    /// armé tant que le volume est sale (`logsup.c:902-906`,
+    /// `verfysup.c:1470-1490`) ; `LfsWriteRestartArea` vide le journal et
+    /// réécrit la zone de redémarrage (`restart.c:380-425`) — et chaque
+    /// seconde le *lazy writer* (`lazyFlush`).
+    static func kernelTick(partition: PartitionGeometry, phase: Int, into sink: OperationSink) {
+        let tick = Int(sink.plannedSeconds / NTFSCheckpoints.interval)
+        if tick > sink.kernelCheckpoints {
+            sink.kernelCheckpoints = tick
+            flushLog(partition: partition, phase: phase, into: sink)
+            sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: partition.logFileLBA,
+                                    sectors: PartitionGeometry.logPageSectors, isWrite: true,
+                                    issueTime: 0, cluster: nil))
+        }
+        lazyFlush(partition: partition, phase: phase, force: false, into: sink)
+    }
+
+    /// Ce que LFS n'a pas encore posé : les pages de journal que les
+    /// validations ont remplies ou entamées depuis le dernier vidage, d'un
+    /// trait dans le fichier circulaire. `LfsWrite` écrit « paresseusement » :
+    /// un enregistrement n'est sur le disque qu'après un `LfsFlushToLsn`, un
+    /// `LfsForceWrite` ou une réécriture de la zone de redémarrage
+    /// (`lfs/write.c:185-190`). La page entamée est réécrite au vidage
+    /// suivant.
+    static func flushLog(partition: PartitionGeometry, phase: Int, into sink: OperationSink) {
+        let validations = sink.validations
+        guard validations > sink.loggedValidations else { return }
+        let perPage = PartitionGeometry.validationsPerLogPage
+        let firstPage = sink.loggedValidations / perPage
+        let lastPage = (validations - 1) / perPage
+        var page = firstPage
+        while page <= lastPage {
+            let start = partition.logPage(page)
+            var count = 1
+            // D'un trait tant que les pages se suivent sur le disque : le
+            // journal reboucle à sa fin.
+            while page + count <= lastPage,
+                  partition.logPage(page + count).lba == start.lba + count * start.sectors {
+                count += 1
+            }
+            sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: start.lba,
+                                    sectors: count * start.sectors, isWrite: true,
+                                    issueTime: 0, cluster: nil))
+            page += count
+        }
+        sink.loggedValidations = validations
+    }
+
+    /// Le *lazy writer* : toutes les `lazyWriterInterval` secondes planifiées,
+    /// les pages sales partent dans l'ordre du disque, fusionnées quand elles
+    /// se touchent, après le journal — un enregistrement doit être sur le
+    /// disque avant la page qu'il décrit (le vidage d'un flux journalisé
+    /// passe par `LfsFlushToLsn`).
+    static func lazyFlush(partition: PartitionGeometry, phase: Int, force: Bool,
+                          into sink: OperationSink) {
+        guard !sink.lazyDirty.isEmpty else { return }
+        if !force, sink.plannedSeconds - sink.lastLazyFlush < lazyWriterInterval { return }
+        var runs: [(lba: Int, sectors: Int)] = []
+        for lba in sink.lazyDirty.keys.sorted() {
+            let sectors = sink.lazyDirty[lba] ?? 1
+            if let last = runs.last, lba <= last.lba + last.sectors {
+                runs[runs.count - 1].sectors = max(last.sectors, lba + sectors - last.lba)
+            } else {
+                runs.append((lba, sectors))
+            }
+        }
+        sink.lazyDirty.removeAll(keepingCapacity: true)
+        flushLog(partition: partition, phase: phase, into: sink)
+        for run in runs {
+            sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: run.lba,
+                                    sectors: run.sectors, isWrite: true,
+                                    issueTime: 0, cluster: nil))
+        }
+        sink.lastLazyFlush = sink.plannedSeconds
+    }
+
     /// Réécriture complète des tables, en fin de passe.
     static func final(partition: PartitionGeometry, phase: Int, into sink: OperationSink) {
-        sink.emit(contentsOf: final(partition: partition, phase: phase,
-                                    validations: sink.validations))
+        // Sous XP, ce que le lazy writer n'a pas encore écrit part d'abord.
+        guard sink.journalsLazily else {
+            sink.emit(contentsOf: final(partition: partition, phase: phase,
+                                        validations: sink.validations))
+            return
+        }
+        // Sous XP, le journal et ce que le lazy writer n'a pas encore écrit
+        // partent d'abord ; la page entamée avec eux.
+        lazyFlush(partition: partition, phase: phase, force: true, into: sink)
+        flushLog(partition: partition, phase: phase, into: sink)
+        sink.emit(contentsOf: final(partition: partition, phase: phase, validations: 0))
     }
 
     /// - Parameter validations: validations de la passe. Sur NTFS, la page de
@@ -662,19 +897,15 @@ extension DefragOperations {
     /// réussit ; un seul vidage suffit, puisque tout est rendu.
     ///
     /// À appeler **avant** d'émettre le déplacement : le vidage le précède.
-    /// Le vidage écrit la page de journal entamée, là où tombe la dernière
-    /// validation (`PartitionGeometry.logPage(forValidation:)`) ; une page
-    /// de 4 Ko, sans savoir ce que LFS garde encore en tampon au-delà.
+    /// Il écrit ce que LFS n'a pas encore posé (`flushLog`) — rien, si le
+    /// *lazy writer* vient de le faire.
     ///
     /// - Returns: `true` si le journal a été vidé.
     @discardableResult
     static func deletePending(target: [Extent], volume: inout DefragVolume,
                               phase: Int, into sink: OperationSink) -> Bool {
         guard volume.reusesWithDeletePending, volume.touchesRecentlyDeallocated(target) else { return false }
-        let page = volume.partition.logPage(forValidation: max(sink.validations - 1, 0))
-        sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: page.lba,
-                                sectors: page.sectors, isWrite: true,
-                                issueTime: 0, cluster: nil))
+        flushLog(partition: volume.partition, phase: phase, into: sink)
         volume.forgetRecentlyDeallocated()
         sink.logFlushes += 1
         return true

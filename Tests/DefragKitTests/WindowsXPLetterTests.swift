@@ -55,9 +55,11 @@ struct WindowsXPLetterTests {
         // deux extents contigus en un (chantier 50) : la MFT est d'un tenant.
         var after = before
         after.mftExtents = [Extent(start: 0, length: 24)]
+        // Sous XP, c'est le lazy writer qui écrit l'enregistrement, avec sa
+        // page de 4 Ko : celle des enregistrements 68 à 71 (chantier 50).
         let writes = Self.recordWrites(plan)
-        #expect(writes.contains(after.mftRecordLBA(70)), "l'enregistrement n'est pas écrit à la nouvelle place")
-        #expect(!writes.contains(before.mftRecordLBA(70)), "l'enregistrement est écrit dans l'ancienne queue")
+        #expect(writes.contains(after.mftRecordLBA(68)), "l'enregistrement n'est pas écrit à la nouvelle place")
+        #expect(!writes.contains(before.mftRecordLBA(68)), "l'enregistrement est écrit dans l'ancienne queue")
         #expect(plan.partition.mftExtents == after.mftExtents)
     }
 
@@ -152,6 +154,78 @@ struct WindowsXPLetterTests {
                                  systemExtents: mft, mftExtents: mft)
         let plan = input.planned(using: WindowsXPStrategy())
         #expect(plan.partition.mftExtents == mft)
+    }
+
+    // MARK: Chantier 50 — une transaction par bloc de 64 Kio
+
+    /// Un fichier de 256 Ko en deux morceaux, recollé à 1 000 sur un volume
+    /// formaté par `formatting` : les opérations d'un seul `FSCTL_MOVE_FILE`,
+    /// puis celles de la fin de passe.
+    private static func oneMove(formatting: NTFSAllocator.Formatting,
+                                bytes: UInt64? = nil) -> (partition: PartitionGeometry,
+                                                          move: [DiskOperation], final: [DiskOperation]) {
+        var partition = PartitionGeometry(startLBA: 0, clusterCount: 4_000,
+                                          clusterSectors: 8, format: .ntfs)
+        partition.ntfsFormatting = formatting
+        let source = [Extent(start: 100, length: 32), Extent(start: 200, length: 32)]
+        var file = DefragFile(id: 0, path: "\\Documents\\F.dat", category: .document,
+                              walkOrder: 0, extents: source, isMovable: true)
+        file.mftRecord = 70
+        file.bytes = bytes
+        var volume = DefragVolume(partition: partition, files: [file])
+        let sink = OperationSink()
+        DefragOperations.moveFile(source: source, destination: [Extent(start: 1_000, length: 64)],
+                                  category: .document, contiguous: true, phase: 1,
+                                  volume: &volume, fileIndex: 70, bufferBytes: 64 * 1_024,
+                                  validBytes: bytes, into: sink)
+        let moved = sink.operations.count
+        DefragOperations.final(partition: partition, phase: 2, into: sink)
+        return (partition, Array(sink.operations[..<moved]), Array(sink.operations[moved...]))
+    }
+
+    /// Sous XP, `NtfsDefragFile` valide chaque bloc de 64 Kio
+    /// (`NtfsCheckpointCurrentTransaction`, `deviosup.c:10617-10618`) sans
+    /// écrire l'enregistrement de MFT ni la bitmap : le *lazy writer* les
+    /// écrit plus tard, par pages de 4 Ko. Sous Vista, le modèle d'avant :
+    /// une validation par fichier, écrite aussitôt.
+    @Test("Sous XP, une transaction par bloc, et la MFT écrite par le lazy writer")
+    func xpCommitsEachBlockLazily() {
+        let xp = Self.oneMove(formatting: .xp)
+        let vista = Self.oneMove(formatting: .vista)
+        // 256 Ko, soit quatre blocs de 64 Kio, des deux côtés.
+        #expect(xp.move.filter { $0.kind == .writeExtent }.count == 4)
+        #expect(vista.move.filter { $0.kind == .writeExtent }.count == 4)
+        // Vista écrit l'enregistrement juste après la copie.
+        #expect(vista.move.contains { $0.kind == .metadata && $0.lba == vista.partition.mftRecordLBA(70) })
+        // XP : rien pendant le déplacement — quatre transactions ne
+        // remplissent pas une page de journal, et le lazy writer n'est pas
+        // encore passé —, puis la page de 4 Ko des enregistrements 68 à 71
+        // en fin de passe, avec celles de la bitmap.
+        #expect(!xp.move.contains { $0.kind == .metadata })
+        let page = xp.partition.mftRecordLBA(68)
+        #expect(xp.final.contains { $0.kind == .metadata && $0.lba == page && $0.sectors == 8 })
+        #expect(xp.final.contains { $0.kind == .metadata && $0.lba == xp.partition.bitmapLBA })
+    }
+
+    /// Au-delà de la `ValidDataLength`, les blocs sont réalloués sans être lus
+    /// ni écrits (`deviosup.c:10530-10561`). Le test du pilote est
+    /// `StartingVcn <= UpperBound`, `UpperBound` arrondi au cluster : le bloc
+    /// qui commence juste à la borne est encore copié.
+    @Test("Sous XP, au-delà des données valides, un bloc est réalloué sans copie")
+    func xpSkipsBlocksBeyondValidData() {
+        // 64 clusters alloués, 20 Ko de données valides : 5 clusters. Seul le
+        // premier bloc (VCN 0) commence avant la borne ; les trois autres
+        // (VCN 16, 32, 48) sont au-delà.
+        let short = Self.oneMove(formatting: .xp, bytes: 20 * 1_024)
+        #expect(short.move.filter { $0.kind == .writeExtent }.count == 1)
+        #expect(short.move.filter { $0.kind == .readExtent }.count == 1)
+        // 64 Ko tout juste : la borne tombe sur le VCN 16, dont le bloc est
+        // encore copié.
+        let edge = Self.oneMove(formatting: .xp, bytes: 64 * 1_024)
+        #expect(edge.move.filter { $0.kind == .writeExtent }.count == 2)
+        // Vista, rien de tel : le modèle copie tout ce qui est alloué.
+        let vista = Self.oneMove(formatting: .vista, bytes: 20 * 1_024)
+        #expect(vista.move.filter { $0.kind == .writeExtent }.count == 4)
     }
 
     // MARK: B#16

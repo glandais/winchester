@@ -288,14 +288,12 @@ struct UltraDefragStrategy: DefragStrategy {
                 guard let target = DefragOperations.firstGap(in: volume, need: file.clusterCount,
                                                              avoidingMFTZone: Self.avoidsMFTZone)
                 else { continue }
-                DefragOperations.deletePending(target: [target], volume: &volume, phase: phase, into: sink)
-                DefragOperations.move(source: file.extents, destination: [target],
-                                      category: file.category, contiguous: true, phase: phase,
-                                      partition: partition, bufferBytes: bufferBytes,
-                                      fullBlocks: fullBlocks, into: sink)
-                DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: position),
-                                        entrySector: volume.entrySector(of: position),
-                                        phase: phase, partition: partition, into: sink)
+                DefragOperations.moveFile(source: file.extents, destination: [target],
+                                          category: file.category, contiguous: true, phase: phase,
+                                          volume: &volume, fileIndex: volume.mftRecord(of: position),
+                                          entrySector: volume.entrySector(of: position),
+                                          bufferBytes: bufferBytes, fullBlocks: fullBlocks,
+                                          validBytes: file.bytes, into: sink)
                 apply(position, to: [target], in: &volume, sink: sink, moved: &moved)
                 moved.clusters += Int(file.clusterCount)
                 moved.clustersThisPass += Int(file.clusterCount)
@@ -449,18 +447,16 @@ struct UltraDefragStrategy: DefragStrategy {
                                                                     vcn: vcn, length: length, to: target)
                 let extents = result.coalesced()
                 let contiguous = extents.count <= 1
-                DefragOperations.deletePending(target: [target], volume: &volume, phase: phase, into: sink)
-                DefragOperations.move(source: source, destination: [target],
-                                      category: category, contiguous: contiguous, phase: phase,
-                                      partition: partition, bufferBytes: bufferBytes,
-                                      fullBlocks: fullBlocks, into: sink)
-                DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: position),
-                                        entrySector: volume.entrySector(of: position),
-                                        phase: phase, partition: partition,
-                                        repaint: contiguous == volume.files[position].isContiguous
-                                            || length >= volume.files[position].clusterCount
-                                            ? nil : (extents, category, contiguous),
-                                        into: sink)
+                let repaint = contiguous == volume.files[position].isContiguous
+                    || length >= volume.files[position].clusterCount
+                    ? nil : (extents: extents, category: category, contiguous: contiguous)
+                DefragOperations.moveFile(source: source, destination: [target],
+                                          category: category, contiguous: contiguous, phase: phase,
+                                          volume: &volume, fileIndex: volume.mftRecord(of: position),
+                                          entrySector: volume.entrySector(of: position),
+                                          bufferBytes: bufferBytes, fullBlocks: fullBlocks,
+                                          firstVCN: vcn, validBytes: volume.files[position].bytes,
+                                          repaint: repaint, into: sink)
                 apply(position, to: extents, in: &volume, sink: sink, moved: &moved)
                 moved.clusters += Int(length)
                 moved.clustersThisPass += Int(length)

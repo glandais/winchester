@@ -746,20 +746,18 @@ extension JKDefragStrategy {
                                                               length: length, to: target)
             let extents = result.coalesced()
             let contiguous = extents.count <= 1
-            DefragOperations.deletePending(target: [target], volume: &volume, phase: phase, into: sink)
-            DefragOperations.move(source: source, destination: [target],
-                                  category: file.category, contiguous: contiguous, phase: phase,
-                                  partition: volume.partition,
-                                  bufferBytes: strategy.bufferBytes,
-                                  fullBlocks: strategy.fullBlocks, into: sink)
-            DefragOperations.commit(extents: [target], fileIndex: volume.mftRecord(of: index),
-                                    entrySector: volume.entrySector(of: index), phase: phase,
-                                    partition: volume.partition,
-                                    // Un fichier déplacé en entier est déjà tout
-                                    // entier de sa nouvelle teinte.
-                                    repaint: contiguous == file.isContiguous || length >= file.clusterCount
-                                        ? nil : (extents, file.category, contiguous),
-                                    into: sink)
+            DefragOperations.moveFile(source: source, destination: [target],
+                                      category: file.category, contiguous: contiguous, phase: phase,
+                                      volume: &volume, fileIndex: volume.mftRecord(of: index),
+                                      entrySector: volume.entrySector(of: index),
+                                      bufferBytes: strategy.bufferBytes,
+                                      fullBlocks: strategy.fullBlocks,
+                                      firstVCN: vcn, validBytes: file.bytes,
+                                      // Un fichier déplacé en entier est déjà tout
+                                      // entier de sa nouvelle teinte.
+                                      repaint: contiguous == file.isContiguous || length >= file.clusterCount
+                                          ? nil : (extents, file.category, contiguous),
+                                      into: sink)
             // Hors XP, sur NTFS, ce que la tranche quitte n'est libre qu'au
             // point de contrôle suivant : `FindGap` relit le bitmap, qui le
             // montre occupé d'ici là. Sous XP, il le montre libre tout de

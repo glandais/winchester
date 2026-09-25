@@ -75,13 +75,15 @@ struct CheckpointTests {
         let gap = DefragOperations.firstGap(in: volume, need: 10, avoidingMFTZone: true)
         #expect(gap == Extent(start: 0, length: 10))
 
-        // Ailleurs, rien à vider.
+        // Une validation dont LFS garde l'enregistrement en tampon.
         let sink = OperationSink()
+        _ = sink.nextValidation()
+        // Ailleurs, rien à vider.
         #expect(!DefragOperations.deletePending(target: [Extent(start: 95, length: 1)],
                                                 volume: &volume, phase: 1, into: sink))
         #expect(sink.operations.isEmpty)
-        // Sur la place quittée : une page de journal écrite, avant le
-        // déplacement, et le pilote ne suit plus rien.
+        // Sur la place quittée : le journal est vidé — la page entamée —
+        // avant le déplacement, et le pilote ne suit plus rien.
         #expect(DefragOperations.deletePending(target: [Extent(start: 5, length: 3)],
                                                volume: &volume, phase: 1, into: sink))
         #expect(sink.operations.count == 1)
