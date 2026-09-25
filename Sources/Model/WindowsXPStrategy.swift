@@ -280,11 +280,16 @@ struct WindowsXPStrategy: DefragStrategy, BootLayoutConsumer {
 
     func summary(of plan: DefragPlan) -> String {
         let repaired = plan.before.fragmentedFiles - plan.after.fragmentedFiles
+        // Quatre nombres, trois noms qui s'accordent : le catalogue porte une
+        // substitution plurielle par nombre. Hors de l'app, c'est la forme
+        // `other` de `defaultValue` qui sort, même pour un seul fichier.
         var text = String(localized: "summary.windowsXP",
-                          defaultValue: "The pass repairs \(repaired) files out of \(plan.before.fragmentedFiles), each copied whole into the smallest hole that fits, evicts \(plan.evacuations) files to open a hole big enough, and packs the rest towards the start of the volume — \(plan.filesMoved) files moved in all.")
+                          defaultValue: "The pass repairs \(repaired) files out of \(plan.before.fragmentedFiles), each copied whole into the smallest hole that fits, evicts \(plan.evacuations) files to open a hole big enough, and packs the rest towards the start of the volume — \(plan.filesMoved) files moved in all.",
+                          comment: "Bilan d'une passe de XP : réparés, fichiers cassés au départ, délogés, déplacés en tout ; chacun a sa variation de pluriel")
         if plan.after.fragmentedFiles > 0 {
             text += " " + String(localized: "summary.windowsXP.remaining",
-                                 defaultValue: "\(plan.after.fragmentedFiles) stay in pieces, for want of a big enough hole — that is what the tool listed at the end of a pass.")
+                                 defaultValue: "\(plan.after.fragmentedFiles) stay in pieces, for want of a big enough hole — that is what the tool listed at the end of a pass.",
+                                 comment: "Suite du bilan de XP : les fichiers restés en morceaux, au pluriel de la langue")
         }
         return text
     }

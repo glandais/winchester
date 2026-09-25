@@ -689,14 +689,18 @@ struct WindowsXPStrategyTests {
         let plan = DefragPlanner.plan(volume: input)
         let text = plan.strategy.summary(of: plan)
 
-        // Hors de l'app, `String(localized:)` retombe sur la langue source.
+        // Hors de l'app, `String(localized:)` retombe sur la langue source,
+        // et sur la forme `other` de sa phrase : les pluriels (« 1 file »)
+        // vivent dans le catalogue. Le test lit donc les nombres, pas
+        // l'accord.
         #expect(plan.strategy.label == "Windows XP Defragmenter")
-        #expect(text.contains("repairs 1 files out of 1"))
+        #expect(text.hasPrefix("The pass repairs 1 "))
+        #expect(text.contains(" out of 1, "))
         #expect(!text.contains("presque toujours occupée"),
                 "la phrase de 1995 a resurgi sur une passe XP")
         // Tout est réparé : l'écran n'a pas à parler de ce qui resterait.
         #expect(plan.after.fragmentedFiles == 0)
-        #expect(!text.contains("restent en morceaux"))
+        #expect(!text.contains("in pieces"))
     }
 
     /// Et le plan porte bien la stratégie qui l'a produit, y compris une fois

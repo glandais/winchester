@@ -9,7 +9,7 @@ struct ProfileIssuesTests {
     @Test("Les vingt scénarios du bundle se fabriquent sans remarque bloquante")
     func bundledScenariosAreBuildable() throws {
         for spec in try ScenarioLibrary.loadAll() {
-            #expect(spec.isBuildable, "\(spec.id) : \(spec.issues.map(\.message))")
+            #expect(spec.isBuildable, "\(spec.id) : \(spec.issues.map(\.kind))")
         }
     }
 
@@ -34,33 +34,43 @@ struct ProfileIssuesTests {
         spec.fileSystem = FileSystemSpec(type: .fat16, clusterKB: 4)
         spec.disk.sizeMB = 2_000
         #expect(spec.isBuildable)
-        #expect(spec.issues.contains { $0.severity == .warning && $0.message.contains("n'adresse que") })
+        #expect(spec.issues.contains {
+            if case .formatAddressesLess(.fat16, _, 4) = $0.kind { return $0.severity == .warning }
+            return false
+        })
 
         spec = try ScenarioLibrary.load("secretaire-1993")
         spec.fileSystem = FileSystemSpec(type: .ntfs)
         #expect(spec.isBuildable)
-        #expect(spec.issues.contains { $0.message.contains("n'arrive qu'en 2001") })
+        #expect(spec.issues.contains { $0.kind == .formatTooEarly(.ntfs, year: 2001) })
 
         spec = try ScenarioLibrary.load("secretaire-1993")
         spec.installs.append("inconnu")
-        #expect(spec.issues.contains { $0.message.contains("inconnu") })
+        #expect(spec.issues.contains { $0.kind == .unknownSoftware(["inconnu"]) })
     }
 
-    /// Quatre logiciels de la galerie sont installés avant leur sortie — MS-DOS
+    /// Le README promet que l'anachronisme avertit. La galerie, elle, n'en a
+    /// plus : quatre logiciels y étaient installés avant leur sortie — MS-DOS
     /// 6.22 en avril 1993, Quake et Netscape 3 en mars 1996, Crysis en avril
-    /// 2007. Le README promet que l'anachronisme avertit : il le fait, et
-    /// il le fait donc sur ces profils-là, jusqu'à ce que leurs dates bougent.
+    /// 2007 —, et les dates de ces profils ont été déplacées (lot F). Le test
+    /// vérifie donc les deux : aucun profil de la galerie n'avertit, et un
+    /// profil ramené avant la sortie de Quake, si.
     @Test("Un logiciel installé avant sa sortie avertit")
     func anachronisticSoftwareWarns() throws {
         // La galerie n'avertit plus : ses dates ont été déplacées après la
         // sortie des logiciels qu'elle installe.
         for spec in try ScenarioLibrary.loadAll() {
-            #expect(!spec.issues.contains { $0.message.contains("ne sort que") }, "\(spec.id)")
+            #expect(!spec.issues.contains {
+                if case .installedBeforeRelease = $0.kind { return true }
+                return false
+            }, "\(spec.id)")
         }
         var early = try ScenarioLibrary.load("gamer-1996")
         early.timeline.start = CivilDate("1996-03-01")!
         #expect(early.isBuildable)
-        #expect(early.issues.contains { $0.message.contains("« Quake » ne sort que le 1996-06-22") })
+        #expect(early.issues.contains {
+            $0.kind == .installedBeforeRelease(app: "Quake", released: CivilDate("1996-06-22")!)
+        })
     }
 
     @Test("Un profil anachronique mais valide se fabrique")

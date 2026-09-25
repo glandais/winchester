@@ -3596,14 +3596,12 @@
           }
         },
         "phase.consolidate": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "Consolidating free space",
             "fr": "Consolidation de l’espace libre"
           }
         },
         "phase.consolidate.detail": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "A region is emptied, file by file, to open one hole big enough",
             "fr": "Une région est vidée, fichier par fichier, pour ouvrir un trou assez grand"
@@ -3641,7 +3639,6 @@
           }
         },
         "phase.defragFiles.xp.detail": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "Every broken file, smallest first, copied whole into the smallest hole that fits",
             "fr": "Chaque fichier cassé, du plus petit au plus gros, recopié entier dans le plus petit trou qui le tient"
@@ -3744,14 +3741,12 @@
           }
         },
         "phase.forward": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "Moving files forward",
             "fr": "Tassement vers l’avant"
           }
         },
         "phase.forward.detail": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "From the end of the volume, every file that fits in a hole before it moves there",
             "fr": "Depuis la fin du volume, chaque fichier qui tient dans un trou devant lui y part"
@@ -3885,6 +3880,103 @@
           "translations": {
             "en": "The big files and the archives sent back to the far end of the volume",
             "fr": "Les gros fichiers et les archives renvoyés au fond du volume"
+          }
+        },
+        "profile.issue.clusterNotPowerOfTwo": {
+          "comment": "Remarque bloquante de l'assistant ; l'argument est une taille déjà formatée (« 12 Ko »)",
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "A cluster size is a power of two: %@ is not one.",
+            "fr": "Une taille de cluster est une puissance de deux : %@ n'en est pas une."
+          }
+        },
+        "profile.issue.clusterTooLarge": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "No format of the era takes clusters larger than 64 KB.",
+            "fr": "Aucun format de l'époque ne prend des clusters de plus de 64 Ko."
+          }
+        },
+        "profile.issue.defragOutsidePeriod": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "A scheduled defragmentation falls outside the period of use: it will be brought back within it.",
+            "fr": "Une défragmentation planifiée tombe hors de la période d'usage : elle sera ramenée à ses bornes."
+          }
+        },
+        "profile.issue.diskTooSmall": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "A disk under 10 MB has no room for a system.",
+            "fr": "Un disque de moins de 10 Mo n'a pas de place pour un système."
+          }
+        },
+        "profile.issue.formatAddressesLess": {
+          "comment": "Avertissement de l'assistant : le format (FAT16…), la capacité adressée, la taille de cluster, toutes deux déjà formatées",
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "%1$@ only addresses %2$@ with %3$@ clusters: the rest of the disk will go unused.",
+            "fr": "%1$@ n'adresse que %2$@ avec des clusters de %3$@ : le reste du disque ne servira pas."
+          }
+        },
+        "profile.issue.formatTooEarly": {
+          "comment": "Avertissement de l'assistant : le format (NTFS…), puis l'année, en chiffres",
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "%1$@ only reaches home computers in %2$@.",
+            "fr": "%1$@ n'arrive qu'en %2$@ sur les machines grand public."
+          }
+        },
+        "profile.issue.installedBeforeRelease": {
+          "comment": "Avertissement d'anachronisme de l'assistant : le logiciel, puis sa date de sortie, déjà formatée",
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "“%1$@” only comes out on %2$@: it is installed before.",
+            "fr": "« %1$@ » ne sort que le %2$@ : il est installé avant."
+          }
+        },
+        "profile.issue.nonPositiveRPM": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "The spindle speed must be positive.",
+            "fr": "Le régime doit être positif."
+          }
+        },
+        "profile.issue.nonPositiveSeek": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "The average seek must be positive.",
+            "fr": "Le seek moyen doit être positif."
+          }
+        },
+        "profile.issue.periodEndsBeforeStart": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "The period of use must end after it begins.",
+            "fr": "La période d'usage doit finir après avoir commencé."
+          }
+        },
+        "profile.issue.uninstallOutsidePeriod": {
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "An uninstall falls outside the period of use: it will be brought back within it.",
+            "fr": "Une désinstallation tombe hors de la période d'usage : elle sera ramenée à ses bornes."
+          }
+        },
+        "profile.issue.uninstalledWithoutInstall": {
+          "comment": "Avertissement de l'assistant ; l'argument est un identifiant de logiciel",
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "“%@” is uninstalled without having been installed.",
+            "fr": "« %@ » est désinstallé sans avoir été installé."
+          }
+        },
+        "profile.issue.unknownSoftware": {
+          "comment": "Avertissement de l'assistant ; l'argument est une liste d'identifiants",
+          "extractionState": "extracted_with_value",
+          "translations": {
+            "en": "Unknown software, ignored: %@.",
+            "fr": "Logiciels inconnus, ignorés : %@."
           }
         },
         "refusal.clusterTooSmall": {
@@ -4631,14 +4723,12 @@
           }
         },
         "strategy.vista": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "Windows Vista Defragmenter",
             "fr": "Défragmenteur de Windows Vista"
           }
         },
         "strategy.win7": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "Windows 7 Defragmenter",
             "fr": "Défragmenteur de Windows 7"
@@ -4730,15 +4820,119 @@
           }
         },
         "summary.windowsXP": {
+          "comment": "Bilan d'une passe de XP : réparés, fichiers cassés au départ, délogés, déplacés en tout ; chacun a sa variation de pluriel",
           "translations": {
-            "en": "The pass repairs %1$lld files out of %2$lld, each copied whole into the smallest hole that fits, evicts %3$lld files to open a hole big enough, and packs the rest towards the start of the volume — %4$lld files moved in all.",
-            "fr": "La passe répare %1$lld fichiers sur %2$lld, chacun recopié entier dans le plus petit trou qui le tient, en déloge %3$lld pour ouvrir un trou assez grand, et tasse le reste vers le début du volume — %4$lld fichiers déplacés en tout."
+            "en": {
+              "value": "The pass repairs %#@repaired@ out of %#@broken@, each copied whole into the smallest hole that fits, evicts %#@evicted@ to open a hole big enough, and packs the rest towards the start of the volume — %#@moved@ in all.",
+              "substitutions": {
+                "broken": {
+                  "argNum": 2,
+                  "formatSpecifier": "lld",
+                  "variations": {
+                    "plural": {
+                      "one": "%arg",
+                      "other": "%arg"
+                    }
+                  }
+                },
+                "evicted": {
+                  "argNum": 3,
+                  "formatSpecifier": "lld",
+                  "variations": {
+                    "plural": {
+                      "one": "%arg file",
+                      "other": "%arg files"
+                    }
+                  }
+                },
+                "moved": {
+                  "argNum": 4,
+                  "formatSpecifier": "lld",
+                  "variations": {
+                    "plural": {
+                      "one": "%arg file moved",
+                      "other": "%arg files moved"
+                    }
+                  }
+                },
+                "repaired": {
+                  "argNum": 1,
+                  "formatSpecifier": "lld",
+                  "variations": {
+                    "plural": {
+                      "one": "%arg file",
+                      "other": "%arg files"
+                    }
+                  }
+                }
+              }
+            },
+            "fr": {
+              "value": "La passe répare %#@repaired@ sur %#@broken@, chacun recopié entier dans le plus petit trou qui le tient, en déloge %#@evicted@ pour ouvrir un trou assez grand, et tasse le reste vers le début du volume — %#@moved@ en tout.",
+              "substitutions": {
+                "broken": {
+                  "argNum": 2,
+                  "formatSpecifier": "lld",
+                  "variations": {
+                    "plural": {
+                      "one": "%arg",
+                      "other": "%arg"
+                    }
+                  }
+                },
+                "evicted": {
+                  "argNum": 3,
+                  "formatSpecifier": "lld",
+                  "variations": {
+                    "plural": {
+                      "one": "%arg",
+                      "other": "%arg"
+                    }
+                  }
+                },
+                "moved": {
+                  "argNum": 4,
+                  "formatSpecifier": "lld",
+                  "variations": {
+                    "plural": {
+                      "one": "%arg fichier déplacé",
+                      "other": "%arg fichiers déplacés"
+                    }
+                  }
+                },
+                "repaired": {
+                  "argNum": 1,
+                  "formatSpecifier": "lld",
+                  "variations": {
+                    "plural": {
+                      "one": "%arg fichier",
+                      "other": "%arg fichiers"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "summary.windowsXP.remaining": {
+          "comment": "Suite du bilan de XP : les fichiers restés en morceaux, au pluriel de la langue",
           "translations": {
-            "en": "%lld stay in pieces, for want of a big enough hole — that is what the tool listed at the end of a pass.",
-            "fr": "%lld restent en morceaux, faute d'un trou assez grand — c'est ce que l'outil listait en fin de passe."
+            "en": {
+              "variations": {
+                "plural": {
+                  "one": "%lld stays in pieces, for want of a big enough hole — that is what the tool listed at the end of a pass.",
+                  "other": "%lld stay in pieces, for want of a big enough hole — that is what the tool listed at the end of a pass."
+                }
+              }
+            },
+            "fr": {
+              "variations": {
+                "plural": {
+                  "one": "%lld reste en morceaux, faute d'un trou assez grand — c'est ce que l'outil listait en fin de passe.",
+                  "other": "%lld restent en morceaux, faute d'un trou assez grand — c'est ce que l'outil listait en fin de passe."
+                }
+              }
+            }
           }
         },
         "tab.disks": {
@@ -4853,10 +5047,10 @@
           }
         },
         "tool.fragmentMerge.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "a few seconds to 20 min",
-            "fr": "de quelques secondes à 20 min"
+            "en": "a few seconds to 13 min",
+            "fr": "de quelques secondes à 13 min"
           }
         },
         "tool.fragmentMerge.origin": {
@@ -4878,10 +5072,10 @@
           }
         },
         "tool.frontierCompaction.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "6 to 55 min",
-            "fr": "de 6 à 55 min"
+            "en": "6 min to 1 h",
+            "fr": "de 6 min à 1 h"
           }
         },
         "tool.frontierCompaction.name": {
@@ -4915,10 +5109,10 @@
           }
         },
         "tool.jkDefrag.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "a few seconds to 10 min",
-            "fr": "de quelques secondes à 10 min"
+            "en": "a few seconds to 29 min",
+            "fr": "de quelques secondes à 29 min"
           }
         },
         "tool.jkDefrag.name": {
@@ -4928,10 +5122,10 @@
           }
         },
         "tool.jkDefrag.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "4 min to 1 h 15",
-            "fr": "de 4 min à 1 h 15"
+            "en": "4 min to 1 h 55",
+            "fr": "de 4 min à 1 h 55"
           }
         },
         "tool.jkDefrag.origin": {
@@ -4953,10 +5147,10 @@
           }
         },
         "tool.jkDefragForcedFill.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "up to 2 min",
-            "fr": "jusqu'à 2 min"
+            "en": "up to 13 min",
+            "fr": "jusqu'à 13 min"
           }
         },
         "tool.jkDefragForcedFill.name": {
@@ -4966,10 +5160,10 @@
           }
         },
         "tool.jkDefragForcedFill.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "up to 25 min",
-            "fr": "jusqu'à 25 min"
+            "en": "up to 24 min",
+            "fr": "jusqu'à 24 min"
           }
         },
         "tool.jkDefragForcedFill.principle": {
@@ -4985,10 +5179,10 @@
           }
         },
         "tool.jkDefragMoveUp.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "1 to 6 min",
-            "fr": "de 1 à 6 min"
+            "en": "up to 10 min",
+            "fr": "jusqu'à 10 min"
           }
         },
         "tool.jkDefragMoveUp.name": {
@@ -4998,10 +5192,10 @@
           }
         },
         "tool.jkDefragMoveUp.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "2 to 25 min",
-            "fr": "de 2 à 25 min"
+            "en": "3 to 31 min",
+            "fr": "de 3 à 31 min"
           }
         },
         "tool.jkDefragMoveUp.principle": {
@@ -5017,10 +5211,10 @@
           }
         },
         "tool.jkDefragSortAccess.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "10 to 30 min",
-            "fr": "de 10 à 30 min"
+            "en": "a few seconds to 1 h 25",
+            "fr": "de quelques secondes à 1 h 25"
           }
         },
         "tool.jkDefragSortAccess.name": {
@@ -5030,10 +5224,10 @@
           }
         },
         "tool.jkDefragSortAccess.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "3 min to 3 h 50",
-            "fr": "de 3 min à 3 h 50"
+            "en": "7 min to 7 h 20",
+            "fr": "de 7 min à 7 h 20"
           }
         },
         "tool.jkDefragSortAccess.principle": {
@@ -5049,10 +5243,10 @@
           }
         },
         "tool.jkDefragSortChange.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "10 to 35 min",
-            "fr": "de 10 à 35 min"
+            "en": "a few seconds to 1 h 30",
+            "fr": "de quelques secondes à 1 h 30"
           }
         },
         "tool.jkDefragSortChange.name": {
@@ -5062,10 +5256,10 @@
           }
         },
         "tool.jkDefragSortChange.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "3 min to 4 h 05",
-            "fr": "de 3 min à 4 h 05"
+            "en": "7 min to 4 h",
+            "fr": "de 7 min à 4 h"
           }
         },
         "tool.jkDefragSortChange.principle": {
@@ -5081,10 +5275,10 @@
           }
         },
         "tool.jkDefragSortCreation.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "10 to 35 min",
-            "fr": "de 10 à 35 min"
+            "en": "a few seconds to 1 h 30",
+            "fr": "de quelques secondes à 1 h 30"
           }
         },
         "tool.jkDefragSortCreation.name": {
@@ -5094,10 +5288,10 @@
           }
         },
         "tool.jkDefragSortCreation.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "3 min to 4 h 10",
-            "fr": "de 3 min à 4 h 10"
+            "en": "7 min to 4 h",
+            "fr": "de 7 min à 4 h"
           }
         },
         "tool.jkDefragSortCreation.principle": {
@@ -5113,10 +5307,10 @@
           }
         },
         "tool.jkDefragSortName.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "6 to 32 min",
-            "fr": "de 6 à 32 min"
+            "en": "a few seconds to 1 h 20",
+            "fr": "de quelques secondes à 1 h 20"
           }
         },
         "tool.jkDefragSortName.name": {
@@ -5126,10 +5320,10 @@
           }
         },
         "tool.jkDefragSortName.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "3 min to 3 h 30",
-            "fr": "de 3 min à 3 h 30"
+            "en": "7 min to 5 h 40",
+            "fr": "de 7 min à 5 h 40"
           }
         },
         "tool.jkDefragSortName.principle": {
@@ -5145,10 +5339,10 @@
           }
         },
         "tool.jkDefragSortSize.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "7 to 21 min",
-            "fr": "de 7 à 21 min"
+            "en": "a few seconds to 1 h 25",
+            "fr": "de quelques secondes à 1 h 25"
           }
         },
         "tool.jkDefragSortSize.name": {
@@ -5158,10 +5352,10 @@
           }
         },
         "tool.jkDefragSortSize.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "4 min to 1 h 15",
-            "fr": "de 4 min à 1 h 15"
+            "en": "9 min to 1 h 55",
+            "fr": "de 9 min à 1 h 55"
           }
         },
         "tool.jkDefragSortSize.principle": {
@@ -5220,10 +5414,10 @@
           }
         },
         "tool.smart.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "8 min to 1 h",
-            "fr": "de 8 min à 1 h"
+            "en": "7 min to 1 h 05",
+            "fr": "de 7 min à 1 h 05"
           }
         },
         "tool.smart.name": {
@@ -5233,10 +5427,10 @@
           }
         },
         "tool.smart.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "5 min to 4 h",
-            "fr": "de 5 min à 4 h"
+            "en": "5 min to 4 h 20",
+            "fr": "de 5 min à 4 h 20"
           }
         },
         "tool.smart.origin": {
@@ -5264,10 +5458,10 @@
           }
         },
         "tool.ultraDefrag.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "a few seconds to 9 min",
-            "fr": "de quelques secondes à 9 min"
+            "en": "a few seconds to 7 min",
+            "fr": "de quelques secondes à 7 min"
           }
         },
         "tool.ultraDefrag.name": {
@@ -5277,10 +5471,10 @@
           }
         },
         "tool.ultraDefrag.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "a few seconds to 40 min",
-            "fr": "de quelques secondes à 40 min"
+            "en": "a few seconds to 46 min",
+            "fr": "de quelques secondes à 46 min"
           }
         },
         "tool.ultraDefrag.origin": {
@@ -5302,38 +5496,34 @@
           }
         },
         "tool.vista.name": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "Windows Vista Defragmenter",
             "fr": "Défragmenteur de Windows Vista"
           }
         },
         "tool.vista.origin": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "2007 · NTFS only · same engine as XP, fragments under 64 MB",
             "fr": "2007 · NTFS seulement · le moteur de XP, morceaux de moins de 64 Mo"
           }
         },
         "tool.win7.name": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "Windows 7 Defragmenter",
             "fr": "Défragmenteur de Windows 7"
           }
         },
         "tool.win7.origin": {
-          "extractionState": "extracted_with_value",
           "translations": {
             "en": "2009 · NTFS only · same engine as XP, fragments under 64 MB",
             "fr": "2009 · NTFS seulement · le moteur de XP, morceaux de moins de 64 Mo"
           }
         },
         "tool.windows95.fat.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "6 min to 1 h",
-            "fr": "de 6 min à 1 h"
+            "en": "a few seconds to 1 h",
+            "fr": "de quelques secondes à 1 h"
           }
         },
         "tool.windows95.name": {
@@ -5367,10 +5557,10 @@
           }
         },
         "tool.windowsXP.ntfs.measured": {
-          "comment": "Fourchette mesurée sur les vingt disques de la galerie",
+          "comment": "Fourchette mesurée sur les vingt-quatre disques de la galerie (bilans du chantier 51)",
           "translations": {
-            "en": "a few seconds to 45 min",
-            "fr": "de quelques secondes à 45 min"
+            "en": "2 min to 3 h 55",
+            "fr": "de 2 min à 3 h 55"
           }
         },
         "tool.windowsXP.origin": {
