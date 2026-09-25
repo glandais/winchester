@@ -298,6 +298,84 @@ struct WindowsXPLetterTests {
         #expect(plan.arrangement.first { $0.id == 0 }?.extents == broken)
     }
 
+    // MARK: Chantier 50 — l'optimisation du démarrage
+
+    /// Un volume de XP de 2 000 ou 3 000 clusters : des fichiers déplaçables,
+    /// des murs immobiles partout ailleurs sauf dans `free`.
+    private static func bootVolume(clusterCount: Int, files: [[Extent]], free: [Extent]) -> DefragVolume {
+        let partition = PartitionGeometry(startLBA: 0, clusterCount: clusterCount,
+                                          clusterSectors: 8, format: .ntfs)
+        var taken = files.flatMap { $0 } + free
+        taken.sort { $0.start < $1.start }
+        var walls: [Extent] = []
+        var cursor: UInt32 = 0
+        for extent in taken {
+            if extent.start > cursor { walls.append(Extent(start: cursor, length: extent.start - cursor)) }
+            cursor = max(cursor, extent.end)
+        }
+        if cursor < UInt32(clusterCount) { walls.append(Extent(start: cursor, length: UInt32(clusterCount) - cursor)) }
+        var records = files.enumerated().map { position, extents in
+            var file = DefragFile(id: UInt32(position), path: "\\WINDOWS\\F\(position).dll", category: .system,
+                                  walkOrder: position, extents: extents, isMovable: true)
+            file.mftRecord = 16 + position
+            return file
+        }
+        records.append(DefragFile(id: 900, path: "\\MUR", category: .archive,
+                                  walkOrder: 900, extents: walls, isMovable: false))
+        return DefragVolume(partition: partition, files: records)
+    }
+
+    /// `ProcessBootOptimise` ouvre la passe : la zone part de 0 à la première
+    /// passe (registre), moins de 90 % des fichiers y sont, et un trou plus
+    /// grand que leur total existe — la zone est reposée à son début
+    /// (`bootoptimizentfs.cpp:1817-1839`), et les fichiers y vont dans l'ordre
+    /// de `Layout.ini`. Le tassement saute ensuite ceux qui commencent
+    /// **strictement** dans la zone (`dfrgntfs.cpp:4061-4066`) : le premier,
+    /// à sa borne même, est ramené vers l'avant.
+    @Test("Sous XP, la passe s'ouvre sur Layout.ini, dans le plus grand trou")
+    func bootOptimiseRelocatesTheZone() throws {
+        let a = [Extent(start: 100, length: 10)]
+        let b = [Extent(start: 300, length: 5), Extent(start: 400, length: 5)]
+        let c = [Extent(start: 600, length: 20)]
+        let input = Self.bootVolume(clusterCount: 2_000, files: [a, b, c],
+                                    free: [Extent(start: 1_000, length: 1_000)])
+        var strategy = WindowsXPStrategy()
+        strategy.year = 2003
+        strategy = strategy.informed(by: BootLayout(files: [0, 1, 2]))
+        let plan = input.planned(using: strategy)
+        #expect(plan.arrangement.first { $0.id == 1 }?.extents == [Extent(start: 1_010, length: 10)])
+        #expect(plan.arrangement.first { $0.id == 2 }?.extents == [Extent(start: 1_020, length: 20)])
+        #expect(plan.arrangement.first { $0.id == 0 }?.extents == [Extent(start: 100, length: 10)])
+
+        // Vista et 7 n'ouvrent pas leur passe par elle.
+        var vista = WindowsXPStrategy.dated(2007)
+        vista = vista.informed(by: BootLayout(files: [0, 1, 2]))
+        #expect(!vista.optimisesBoot)
+    }
+
+    /// Sans trou assez grand, la zone reste à 0 et ses intrus en sont
+    /// chassés (`EvictFile`) — mais n'est intrus qu'un fichier dont un extent
+    /// **autre que le premier** y entre : `CollapseExtentList` ne teste pas
+    /// le premier (`fssubs.cpp:325-347`). Un fichier contigu dans la zone y
+    /// reste.
+    @Test("Sous XP, seuls les fichiers en morceaux sont chassés de la zone de démarrage")
+    func bootOptimiseEvictsOnlyFragmentedIntruders() throws {
+        let layoutFile = [Extent(start: 2_000, length: 50)]
+        let contiguousIntruder = [Extent(start: 10, length: 10)]
+        let brokenIntruder = [Extent(start: 2_100, length: 5), Extent(start: 30, length: 5)]
+        let input = Self.bootVolume(clusterCount: 3_000,
+                                    files: [layoutFile, contiguousIntruder, brokenIntruder],
+                                    free: [Extent(start: 20, length: 10), Extent(start: 35, length: 15),
+                                           Extent(start: 2_500, length: 40)])
+        var strategy = WindowsXPStrategy()
+        strategy.year = 2003
+        strategy = strategy.informed(by: BootLayout(files: [0]))
+        let plan = input.planned(using: strategy)
+        #expect(plan.arrangement.first { $0.id == 1 }?.extents == contiguousIntruder)
+        #expect(plan.arrangement.first { $0.id == 2 }?.extents == [Extent(start: 2_500, length: 10)])
+        #expect(plan.evacuations >= 1)
+    }
+
     // MARK: B#16
 
     /// `SendStatusData` (`dfrgntfs.cpp:981-985`) borne le pourcentage sur le

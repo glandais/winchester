@@ -703,10 +703,16 @@ enum ScenarioBuilder {
             dated.year = disk.spec.timeline.start.year
             return dated
         }
-        if var dated = strategy as? WindowsXPStrategy, dated.year == nil {
-            let year = disk.spec.timeline.start.year
-            dated.year = year
-            if year >= 2007 { dated.fragmentCeilingBytes = WindowsXPStrategy.vistaFragmentCeilingBytes }
+        if var dated = strategy as? WindowsXPStrategy {
+            if dated.year == nil {
+                let year = disk.spec.timeline.start.year
+                dated.year = year
+                if year >= 2007 { dated.fragmentCeilingBytes = WindowsXPStrategy.vistaFragmentCeilingBytes }
+            }
+            // Sous XP, la passe s'ouvre sur `Layout.ini` (`processBootOptimise`).
+            if dated.year.map({ $0 < 2007 }) ?? false, dated.layout == nil {
+                dated = dated.informed(by: BootLayout(disk: disk))
+            }
             return dated
         }
         guard let consumer = strategy as? any BootLayoutConsumer else { return strategy }

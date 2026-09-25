@@ -73,7 +73,7 @@ import DiskCore
 /// pas déplacés. Le modèle laisse en place tout fichier dont le plus petit
 /// fragment atteint `fragmentCeilingBytes`, et déplace les autres entiers —
 /// une approximation, l'outil ne recollant que les petits morceaux.
-struct WindowsXPStrategy: DefragStrategy {
+struct WindowsXPStrategy: DefragStrategy, BootLayoutConsumer {
 
     let id = "windowsXP"
 
@@ -112,6 +112,22 @@ struct WindowsXPStrategy: DefragStrategy {
     /// Vista et 7 : les fragments qui atteignent cette taille restent en
     /// place. `nil` sous XP, qui recolle tout.
     var fragmentCeilingBytes: Int? = nil
+
+    /// Ce que le préchargeur a écrit dans `Layout.ini` : sous XP, la passe
+    /// commence par y ranger ces fichiers (`processBootOptimise`). `nil`
+    /// quand on ne le lui donne pas — les volumes d'essai.
+    var layout: BootLayout? = nil
+
+    func informed(by layout: BootLayout) -> WindowsXPStrategy {
+        var copy = self
+        copy.layout = layout
+        return copy
+    }
+
+    /// L'optimisation du démarrage n'est sourcée que pour XP
+    /// (`bootoptimizentfs.cpp`) ; Vista et 7, dont le moteur est ici celui de
+    /// XP par hypothèse, n'ouvrent pas leur passe par elle.
+    var optimisesBoot: Bool { layout != nil && (year.map { $0 < 2007 } ?? true) }
 
     /// Le seuil de Vista et de Windows 7 : 64 Mo (KB 942092).
     static let vistaFragmentCeilingBytes = 64 << 20
@@ -184,6 +200,10 @@ struct WindowsXPStrategy: DefragStrategy {
         let initialRuns = pass.volume.categoryRuns()
 
         DefragOperations.analysis(volume: pass.volume, into: sink)
+        // Sur le volume de démarrage, `DefragThread` range d'abord les
+        // fichiers de `Layout.ini` (`dfrgntfs.cpp:2007-2013, 2851-2861`),
+        // avant `MFTDefrag` (2906).
+        if optimisesBoot, let layout { pass.processBootOptimise(layout) }
         pass.defragmentMFT()
 
         // `DefragNtfs`, à la lettre : la boucle intérieure alterne
@@ -289,6 +309,14 @@ extension WindowsXPStrategy {
         var volume: DefragVolume
         let sink: OperationSink
         var checkpoints = NTFSCheckpoints()
+        /// La zone d'optimisation du démarrage (`BootOptimizeBeginClusterExclude`
+        /// et `…End…`) que `processBootOptimise` a posée : rognée de toutes les
+        /// listes de trous. `nil` sans elle.
+        var bootZone: Range<UInt32>?
+        /// Les fichiers de `Layout.ini` trouvés à l'analyse (`FLE_BOOTOPTIMISE`) :
+        /// la consolidation et le tassement ne les déplacent pas tant qu'ils
+        /// commencent dans la zone.
+        var bootFiles = Set<Int>()
         var movedClusters = 0
         var filesMoved = 0
         var evacuations = 0
@@ -350,7 +378,7 @@ extension WindowsXPStrategy {
         func holes(excluding region: Range<UInt32>? = nil) -> [Hole] {
             var result: [Hole] = []
             let zone = WindowsXPStrategy.avoidsMFTZone ? volume.mftZone : nil
-            let cuts = [zone, region].compactMap { $0 }.filter { !$0.isEmpty }
+            let cuts = [zone, bootZone, region].compactMap { $0 }.filter { !$0.isEmpty }
             var cursor: UInt32 = 0
             while cursor < total, let run = volume.bitmap.nextFreeRun(from: cursor) {
                 cursor = run.end
@@ -420,6 +448,169 @@ extension WindowsXPStrategy {
             filesMoved += 1
             moved.insert(position)
             sink.moves.filesMoved = filesMoved
+        }
+
+        // MARK: 0. L'optimisation du démarrage
+
+        /// Un fichier de `Layout.ini` qui commence **strictement** dans la zone
+        /// de démarrage : la consolidation et le tassement le sautent
+        /// (`dfrgntfs.cpp:3758-3763, 4061-4066`). Le premier de la zone, qui
+        /// commence à sa borne même, ne l'est pas.
+        func isBootOptimised(_ position: Int) -> Bool {
+            guard let boot = bootZone, bootFiles.contains(position),
+                  let first = volume.files[position].firstCluster else { return false }
+            return first > boot.lowerBound && first < boot.upperBound
+        }
+
+        /// Les trous du volume pour `ProcessBootOptimise` : la zone de
+        /// démarrage rognée, **pas la zone MFT** (`BuildFreeSpaceList(…, TRUE)`,
+        /// `bIgnoreMftZone`, `bootoptimizentfs.cpp:1797-1803`).
+        private func bootHoles(zone: Range<UInt32>) -> [Hole] {
+            var result: [Hole] = []
+            var cursor: UInt32 = 0
+            while cursor < total, let run = volume.bitmap.nextFreeRun(from: cursor) {
+                cursor = run.end
+                var start = run.start, end = run.end
+                if !zone.isEmpty, start < zone.upperBound, end > zone.lowerBound {
+                    if start < zone.lowerBound { end = zone.lowerBound }
+                    else if end <= zone.upperBound { continue }
+                    else { start = zone.upperBound }
+                }
+                if end > start { result.append(Hole(start: start, length: end - start)) }
+            }
+            return result
+        }
+
+        /// `ProcessBootOptimise` (`bootoptimizentfs.cpp:1750-2046`), qui ouvre
+        /// toute défragmentation manuelle du volume de démarrage.
+        ///
+        /// `InitialiseBootOptimise` (1664-1748) lit la zone au registre
+        /// (`LcnStartLocation`, `LcnEndLocation`) : **0 et 0** à la première
+        /// passe (`dfrg.inx`) — le modèle ne rejoue pas les passes `-b` que le
+        /// préchargeur lance à l'inactivité, et chaque passe est une première
+        /// passe. La zone va de là à la somme des fichiers de `Layout.ini`
+        /// (`BuildBootOptimiseFileList`, 777-943) : ceux qui existent, pas le
+        /// fichier d'échange, 32 Mo au plus (`IsAValidFile`, 624-775). Ici
+        /// `Layout.ini` est `BootLayout`, l'ordre de lecture d'un démarrage
+        /// planifié — ce que le préchargeur y écrit aussi, sans les
+        /// programmes lancés ensuite.
+        ///
+        /// Puis : si le plus grand trou — zone MFT **comprise** — dépasse le
+        /// total et que moins de 90 % des fichiers sont déjà dans la zone, la
+        /// zone est reposée au début de ce trou (1817-1839). Sinon, les
+        /// intrus en sont chassés, chacun vers le plus petit trou qui le tient
+        /// (`EvictFile`, 1067-1312 ; ne sont intrus que les fichiers dont un
+        /// extent **autre que le premier** entre dans la zone,
+        /// `fssubs.cpp:333-347`). Enfin chaque fichier, dans l'ordre de
+        /// `Layout.ini`, va au premier trou de la zone qui le tient
+        /// (`MoveBootOptimiseFile`, 1314-1539) : d'office s'il est en morceaux
+        /// ou hors de la zone, plus tôt dans la zone sinon. Faute de place, la
+        /// zone grandit pour la passe suivante — 150 % du manque, 100 Mo au
+        /// moins, sous 4 Go et la moitié du volume (1995-2031) ; sinon elle
+        /// finit au dernier fichier rangé.
+        mutating func processBootOptimise(_ layout: BootLayout) {
+            let clusterBytes = UInt64(partition.clusterBytes)
+            let maxClusters = UInt32((32 * 1_024 * 1_024) / clusterBytes)
+            let positions = Dictionary(volume.files.indices.map { (volume.files[$0].id, $0) },
+                                       uniquingKeysWith: { first, _ in first })
+            var list: [Int] = []
+            var listed = Set<Int>()
+            for id in layout.files {
+                guard let position = positions[id], !listed.contains(position) else { continue }
+                let file = volume.files[position]
+                guard file.category != .swap, file.clusterCount > 0,
+                      file.clusterCount <= maxClusters else { continue }
+                list.append(position)
+                listed.insert(position)
+            }
+            guard !list.isEmpty else { return }
+            let needed = list.reduce(UInt32(0)) { $0 + volume.files[$1].clusterCount }
+            var begin: UInt32 = 0
+            var end: UInt32 = needed
+
+            // L'analyse : ce qui est déjà dans la zone, et qui en est intrus.
+            func inZone(_ position: Int) -> Bool {
+                let file = volume.files[position]
+                guard file.isContiguous, let first = file.firstCluster else { return false }
+                return first >= begin && first + file.clusterCount <= end
+            }
+            let total = needed
+            let already = list.filter(inZone).reduce(UInt32(0)) { $0 + volume.files[$1].clusterCount }
+            bootFiles = listed
+
+            let holes = bootHoles(zone: begin..<end)
+            var biggest: Hole?
+            for hole in holes where hole.length > (biggest?.length ?? 0) { biggest = hole }
+            if let biggest, biggest.length > total, UInt64(already) * 100 / UInt64(total) < 90 {
+                begin = biggest.start
+                end = begin + total
+            } else {
+                // `EvictFile` : dans l'ordre des enregistrements.
+                let zone = begin..<end
+                let intruders = volume.files.indices.filter { position in
+                    let file = volume.files[position]
+                    guard strategy.canTouch(file, partition: partition),
+                          !(listed.contains(position) && file.isContiguous),
+                          file.extents.count > 1 else { return false }
+                    return file.extents.dropFirst().contains { $0.start < zone.upperBound && $0.end > zone.lowerBound }
+                }.sorted { volume.mftRecord(of: $0) < volume.mftRecord(of: $1) }
+                var bySize = holes.sorted { $0.length < $1.length }
+                for position in intruders {
+                    guard let target = Pass.takeBestFit(volume.files[position].clusterCount, from: &bySize)
+                    else { continue }
+                    move(position, to: target, phase: WindowsXPStrategy.defragPhase)
+                    evacuations += 1
+                    sink.moves.evacuations = evacuations
+                }
+            }
+
+            // Les fichiers de `Layout.ini`, dans son ordre, vers la zone.
+            let zone = begin..<end
+            var inside: [Hole] = []
+            var cursor = zone.lowerBound
+            while cursor < zone.upperBound, let run = volume.bitmap.nextFreeRun(from: cursor, before: zone.upperBound) {
+                let stop = min(run.end, zone.upperBound)
+                if stop > run.start { inside.append(Hole(start: run.start, length: stop - run.start)) }
+                cursor = stop
+            }
+            var missing: UInt32 = 0
+            var retry = false
+            var lastEnd: UInt32 = 0
+            for position in list {
+                let file = volume.files[position]
+                let need = file.clusterCount
+                guard let first = file.firstCluster else { continue }
+                let force = !file.isContiguous || first < zone.lowerBound || first + need > zone.upperBound
+                let limit = force ? self.total : first
+                if let index = inside.firstIndex(where: { $0.length >= need && $0.start < limit }) {
+                    let hole = inside[index]
+                    let target = Extent(start: hole.start, length: need)
+                    if hole.length > need {
+                        inside[index] = Hole(start: hole.start + need, length: hole.length - need)
+                    } else {
+                        inside.remove(at: index)
+                    }
+                    move(position, to: target, phase: WindowsXPStrategy.defragPhase)
+                    lastEnd = max(lastEnd, target.end)
+                } else {
+                    if force {
+                        retry = true
+                        missing += need
+                    }
+                    let lowest = volume.files[position].extents.map(\.start).min() ?? first
+                    lastEnd = max(lastEnd, lowest + need)
+                }
+            }
+            if retry {
+                let maxZone = UInt32(min(UInt64(4 * 1_024) * 1_024 * 1_024 / clusterBytes, UInt64(self.total) / 2))
+                if end - begin <= maxZone {
+                    let minimum = UInt32((100 * 1_024 * 1_024) / clusterBytes)
+                    end += max(missing, minimum) * 150 / 100
+                }
+            } else {
+                end = lastEnd
+            }
+            if end > begin { bootZone = begin..<end }
         }
 
         // MARK: 1. La MFT
@@ -611,6 +802,7 @@ extension WindowsXPStrategy {
 
             while cursor < total {
                 if let zone, zone.contains(cursor) { close(); cursor = zone.upperBound; continue }
+                if let boot = bootZone, boot.contains(cursor) { close(); cursor = boot.upperBound; continue }
                 if volume.bitmap.isFree(cursor) {
                     let run = volume.bitmap.nextFreeRun(from: cursor) ?? Extent(start: cursor, length: 1)
                     let end = zone.map { min(run.end, $0.lowerBound > cursor ? $0.lowerBound : run.end) } ?? run.end
@@ -670,7 +862,19 @@ extension WindowsXPStrategy {
         /// faux (3858-3866) : la zone reste à vider, et la boucle de
         /// `DefragNtfs` la retentera au tour suivant (4268-4272, 4297-4300).
         mutating func consolidateMFTZone() -> Bool {
-            guard let zone = volume.mftZone, !zone.isEmpty else { return true }
+            guard var zone = volume.mftZone, !zone.isEmpty else { return true }
+            // La région est la zone MFT rognée de la zone de démarrage ; si
+            // celle-ci la couvre, rien à faire, et l'appel échoue
+            // (`dfrgntfs.cpp:3625-3643`).
+            if let boot = bootZone, zone.lowerBound < boot.upperBound, zone.upperBound > boot.lowerBound {
+                if zone.lowerBound < boot.lowerBound {
+                    zone = zone.lowerBound..<boot.lowerBound
+                } else if zone.upperBound <= boot.upperBound {
+                    return false
+                } else {
+                    zone = boot.upperBound..<zone.upperBound
+                }
+            }
             let inside = volume.occupants(of: zone).filter {
                 let file = volume.files[$0]
                 guard let first = file.firstCluster, zone.contains(first) else { return false }
@@ -688,6 +892,7 @@ extension WindowsXPStrategy {
             var failures = 0
             for (rank, position) in order.enumerated() {
                 advance(to: 0.3 + 0.4 * Double(rank) / Double(order.count))
+                if isBootOptimised(position) { continue }
                 guard let target = Pass.takeBestFit(volume.files[position].clusterCount, from: &bySize) else {
                     // « Unable to move file out » : la zone MFT abandonne au
                     // premier, une région au onzième (`++iCount > 10`).
@@ -726,6 +931,7 @@ extension WindowsXPStrategy {
                 let need = file.clusterCount
                 guard let start = file.firstCluster else { continue }
                 if need >= maximumUseful { continue }
+                if isBootOptimised(position) { continue }
                 var found: Int?
                 for (index, hole) in byStart.enumerated() {
                     if hole.start >= start { break }
