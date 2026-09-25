@@ -270,4 +270,23 @@ struct DriveCacheTests {
         #expect(mechanics.stats.readAheadSectors == 0)
         #expect(mechanics.idleAt == mechanics.clock)
     }
+
+    /// `FLUSH CACHE` : le disque pose tout ce qu'il a acquitté avant de
+    /// rendre la commande (chantier 51h ; `disk/disk.c:3406-3411`).
+    @Test("FLUSH CACHE pose tout ce que le cache tenait, puis rend la main")
+    func flushCacheDestagesEverything() {
+        let drive = Self.barracuda
+        var mechanics = Self.mechanics(drive)
+        var events: [DiskEvent] = []
+        for index in 0..<8 {
+            _ = mechanics.serve(Self.write(1_000 + index * 50_000, 8), events: &events)
+        }
+        let before = mechanics.stats.destageWrites
+        let flushed = mechanics.serve(Self.write(0, 0), events: &events)
+        #expect(mechanics.stats.cacheFlushes == 1)
+        #expect(mechanics.stats.destageWrites > before)
+        // Rien ne reste à poser : la commande a attendu le bras.
+        let settled = mechanics.idleAt
+        #expect(flushed.timing.end >= settled - 1e-9)
+    }
 }

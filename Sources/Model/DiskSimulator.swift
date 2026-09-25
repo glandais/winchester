@@ -104,6 +104,8 @@ struct TraceStats {
     var readAheadSeconds = 0.0
     var cachedWrites = 0
     var destageWrites = 0
+    /// Commandes `FLUSH CACHE` servies.
+    var cacheFlushes = 0
 
     var averageSeekDistance: Int {
         seekCount > 0 ? totalSeekDistance / seekCount : 0
@@ -678,6 +680,9 @@ struct DiskMechanics {
     private mutating func serveWrite(_ request: BlockRequest, at issued: Double,
                                      events: inout [DiskEvent],
                                      samples: inout [HeadSample]) -> Double {
+        if request.sectorCount == 0 {
+            return flushCache(at: issued, events: &events, samples: &samples)
+        }
         let first = request.lba
         let last = request.lba + request.sectorCount
         let overhead = drive.commandOverhead
@@ -715,6 +720,31 @@ struct DiskMechanics {
                                              readAhead: false, origin: first,
                                              events: &events, samples: &samples)
         return max(hostFloor, mediaEnd)
+    }
+
+    /// `FLUSH CACHE` (ATA 0xE7, 0xEA en LBA48) : le disque pose tout ce qu'il
+    /// a acquitté sans l'écrire, dans l'ordre de son ascenseur, et ne rend
+    /// la commande qu'ensuite. Une écriture de zéro secteur la porte
+    /// (`BlockRequest.isCacheFlush`) : sous XP, `disk.sys` en fait un
+    /// `SYNCHRONIZE_CACHE` quand le cache d'écriture est actif
+    /// (`disk/disk.c:3406-3411`), qu'`atapi` traduit (`atapi.c:5564`).
+    private mutating func flushCache(at issued: Double,
+                                     events: inout [DiskEvent],
+                                     samples: inout [HeadSample]) -> Double {
+        advanceBackground(until: issued, events: &events, samples: &samples)
+        continueStream(until: issued, events: &events, samples: &samples)
+        abandonStream()
+        var t = max(issued + drive.commandOverhead, armFree)
+        while !pending.isEmpty {
+            guard let done = destage(at: t, events: &events, samples: &samples) else {
+                // Ce qui n'est pas encore acquitté l'est à son heure.
+                t = max(t, pending.map(\.acceptedAt).min() ?? t)
+                continue
+            }
+            t = done
+        }
+        stats.cacheFlushes += 1
+        return max(t, armFree)
     }
 
     // MARK: - Le bras

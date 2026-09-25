@@ -671,11 +671,71 @@ enum InstallPlanner {
                 for id in step.settingsIDs {
                     guard let record = placed[id], !record.extents.isEmpty else { continue }
                     pendingThink += era.think.perFile
-                    readWhole(record, isWrite: true)
+                    if usesLazyWriter {
+                        // Sous XP, la ruche est salie, et le vidage paresseux
+                        // du registre part 5 s après la dernière modification
+                        // (`CmpLazyFlush`, `config/cmworker.c:41, 523-535` :
+                        // la minuterie est réarmée à chaque `HvMarkDirty`,
+                        // `hivesync.c:659-662`).
+                        dirtyHives.insert(id)
+                        registryFlushAt = clock + pendingThink + Self.registryFlushDelay
+                    } else {
+                        readWhole(record, isWrite: true)
+                    }
                     rewrote = true
                 }
             }
             if rewrote { plan.settingsRewrites += 1 }
+        }
+
+        /// `LAZY_FLUSH_INTERVAL_IN_SECONDS` (`config/cmworker.c:41`).
+        static let registryFlushDelay = 5.0
+        /// Sous XP, les ruches salies, et l'heure de leur vidage paresseux.
+        private var dirtyHives: Set<UInt32> = []
+        private var registryFlushAt = Double.infinity
+
+        /// Sous XP, le vidage des ruches salies (`CmpDoFlushAll`, puis
+        /// `HvSyncHive`, `config/hivesync.c:1759-2500, 2542-2810`) : pour
+        /// chacune, son `.LOG` — en-tête, secteurs sales, en-tête —, chaque
+        /// écriture suivie d'un `ZwFlushBuffersFile` qui descend jusqu'au
+        /// `FLUSH CACHE` du disque (`cmwrapr.c:1045-1048` ; `ntfs/flush.c:596-611` ;
+        /// `disk/disk.c:3406-3411`) ; puis la ruche elle-même, par le cache
+        /// (`CcFlushCache`, sans vidage du disque, `cmwrapr.c:1036-1040`).
+        ///
+        /// Le catalogue n'a pas de `.LOG` : ses écritures ne sont pas posées,
+        /// seuls ses trois `FLUSH CACHE` le sont. La ruche est réécrite en
+        /// entier, comme le modèle le faisait : ce qu'une installation salit
+        /// d'une ruche n'est dit nulle part.
+        ///
+        /// - Parameter now: à l'arrêt ou avant un redémarrage
+        ///   (`CmShutdownSystem`), l'hôte l'attend ; sinon c'est un fil de
+        ///   travail, en arrière-plan, à son heure.
+        private mutating func flushRegistry(now: Bool) {
+            guard !dirtyHives.isEmpty else { return }
+            let delay = now ? 0 : max(registryFlushAt - foregroundEnd, 0)
+            let flow: RequestFlow = now ? .foreground : .background
+            for step in installed.steps {
+                for id in step.settingsIDs where dirtyHives.contains(id) {
+                    guard let record = placed[id] else { continue }
+                    for _ in 0..<3 {
+                        sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: partition.startLBA,
+                                                sectors: 0, isWrite: true, issueTime: 0, cluster: nil,
+                                                mutationStart: sink.mutationMark, mutationCount: 0,
+                                                thinkTime: delay, flow: flow))
+                    }
+                    for piece in CcReadAhead.pieces(of: record.extents,
+                                                    bytes: 0..<Int(record.logicalSize),
+                                                    partition: partition) {
+                        sink.emit(DiskOperation(kind: .metadata, phase: phase, lba: piece.lba,
+                                                sectors: piece.sectors, isWrite: true, issueTime: 0,
+                                                cluster: (piece.lba - partition.dataStartLBA) / partition.clusterSectors,
+                                                mutationStart: sink.mutationMark, mutationCount: 0,
+                                                thinkTime: delay, flow: flow))
+                    }
+                }
+            }
+            dirtyHives.removeAll()
+            registryFlushAt = .infinity
         }
 
         private mutating func readWhole(_ record: FileRecord, isWrite: Bool) {
@@ -793,6 +853,9 @@ enum InstallPlanner {
         ///   XP, rien d'autre ne force le *lazy writer*.
         private mutating func flushMetadata(force: Bool, shutdown: Bool = false) {
             if usesLazyWriter {
+                if shutdown || registryFlushAt <= clock + pendingThink {
+                    flushRegistry(now: shutdown)
+                }
                 runLazyWriter(at: clock + pendingThink, shutdown: shutdown)
                 return
             }
@@ -840,8 +903,10 @@ enum InstallPlanner {
                                    isWrite: Bool, cluster: Int?,
                                    flow: RequestFlow = .foreground, delay: Double = 0,
                        hostWork: Double = 0) {
-            // Ce que le lazy writer a écrit pendant le calcul qui précède.
+            // Ce que le lazy writer — et le vidage du registre — ont écrit
+            // pendant le calcul qui précède.
             if usesLazyWriter, !flow.isBackground {
+                if registryFlushAt <= clock + pendingThink { flushRegistry(now: false) }
                 runLazyWriter(at: clock + pendingThink, shutdown: false)
             }
             let start = sink.mutationMark

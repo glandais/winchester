@@ -56,6 +56,10 @@ struct BlockRequest {
     /// requête se sert (`RequestFlow.background`).
     let hostWork: Double
 
+    /// Une écriture de zéro secteur : la commande `FLUSH CACHE`
+    /// (`DiskMechanics.flushCache`).
+    var isCacheFlush: Bool { isWrite && sectorCount == 0 }
+
     init(issueTime: Double, lba: Int, sectorCount: Int, isWrite: Bool,
          phaseIndex: Int, thinkTime: Double = 0, flow: RequestFlow = .foreground,
          hostWork: Double = 0) {
