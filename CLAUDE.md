@@ -375,7 +375,11 @@ chantier 52. **État au 25 septembre 2026** : build 5 rattaché à la 1.0.0 (il
 porte les chantiers 37 à 53), notes de revue poussées, métadonnées identiques
 au dépôt, `asc validate` sans erreur. **Soumise en revue le 25 septembre
 2026** (`WAITING_FOR_REVIEW`), publication automatique après approbation, avec
-les trois pourboires dans la même soumission. Dans cette interface, la page de
+les trois pourboires dans la même soumission. **En vente depuis le 30 septembre
+2026** (`READY_FOR_SALE`), les trois pourboires encore `IN_REVIEW` ce jour-là :
+Apple les juge à part, et la feuille des pourboires reste vide tant qu'ils ne
+sont pas approuvés. La prochaine version porte un `whatsNew`
+(`metadata/version/<version>/`). Dans cette interface, la page de
 version n'a pas de section achats intégrés : « Ajouter pour vérification » sur
 la version crée un brouillon, puis le même bouton sur la page de chaque achat
 l'y ajoute (« Brouillons de soumissions iOS »), et « Envoyer pour vérification »
