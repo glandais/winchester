@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Simulating a hard disk at the block level to hear it defragment</title>
+  <meta name="description" content="No recordings: a volume generated from years of use, a defragmenter planning block requests, a drive simulated sector by sector, and a synthesiser driven by the arm. With sounds and films rendered by the model itself.">
+  <link rel="canonical" href="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/">
+  <link rel="alternate" hreflang="en" href="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/">
+  <link rel="alternate" hreflang="fr" href="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/fr/">
+  <link rel="icon" type="image/png" sizes="180x180" href="../../assets/appicon-180.png">
+  <link rel="apple-touch-icon" href="../../assets/appicon-180.png">
+  <meta name="theme-color" content="#0E0F12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F2F1EC" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Simulating a hard disk at the block level to hear it defragment">
+  <meta property="og:description" content="No recordings: a volume generated from years of use, a defragmenter planning block requests, a drive simulated sector by sector, and a synthesiser driven by the arm.">
+  <meta property="og:url" content="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/">
+  <meta property="og:image" content="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/media/defrag-frontier-1993.jpg">
+  <link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="masthead">
+    <div class="container masthead__inner">
+      <a class="wordmark" href="../../index.html"><b>Winchester</b> <span>Defrag Sounds</span></a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../../index.html">Overview</a>
+        <a href="../../how-it-works/index.html">How it works</a>
+        <a href="index.html" aria-current="page">Writing</a>
+        <a href="../../support/index.html">Support</a>
+        <a href="../../privacy/index.html">Privacy</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="doc-head container">
+      <p class="lang-switch">English · <a href="fr/index.html" hreflang="fr" lang="fr">Français</a></p>
+      <p class="doc-meta">Writing — 30 September 2026</p>
+      <h1>Simulating a hard disk at the block level to hear it defragment</h1>
+      <p>
+        Anyone who ran DEFRAG in the nineties remembers the sound before the
+        screen: a dry crackle that went on for twenty minutes, then a long
+        whirr, then silence. Winchester is an iPhone and iPad app that makes
+        that sound again, and it has no recording of it. It generates a volume
+        that has lived, runs a defragmenter on it, simulates the drive that
+        receives the block requests, and listens to the arm.
+      </p>
+      <p class="byline">
+        Gabriel Landais ·
+        <a href="https://github.com/glandais/winchester">source on GitHub</a> ·
+        <span class="sound-on">every sound here is rendered by the model — turn the sound on</span>
+      </p>
+      <ul class="toc">
+        <li><a href="#chain">The chain</a></li>
+        <li><a href="#residue">Fragmentation</a></li>
+        <li><a href="#defrag">Defragmenters</a></li>
+        <li><a href="#xp">Windows XP</a></li>
+        <li><a href="#drive">The drive</a></li>
+        <li><a href="#sound">The sound</a></li>
+        <li><a href="#deterministic">Determinism</a></li>
+        <li><a href="#estimates">Estimates</a></li>
+      </ul>
+    </section>
+
+    <section class="sheet container" id="chain">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The chain</h2>
+        <div class="sheet__body">
+          <h2>Nothing recorded, from the file system to the speaker.</h2>
+          <p>
+            Here is Windows 98 starting on a 4 GB, 5,400 rpm drive, as the
+            model hears it: power-on, the motor spinning up, the heads leaving
+            the landing zone, the kernel read in one long run, then the
+            drivers, scattered all over the platter.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">Windows 98 boot · 1999 · 20 s</p>
+            <audio controls preload="none" src="media/boot-1999.m4a">
+              <a href="media/boot-1999.m4a">Download the sound (M4A)</a>
+            </audio>
+            <figcaption>
+              At about six seconds the kernel is read sequentially, and
+              sounds like a note; from about nine, the drivers are a crackle,
+              one seek per file.
+            </figcaption>
+          </figure>
+          <p>Five stages produce that sound, and none of them plays a sample:</p>
+          <ol class="steps">
+            <li>
+              <b class="steps__name">A volume, generated from a history</b>
+              <span class="steps__note">Years of use replayed through the allocator of the disk’s file system: which files exist, and exactly which clusters each one holds.</span>
+            </li>
+            <li>
+              <b class="steps__name">A planner</b>
+              <span class="steps__note">A boot, an installation, a day of use or a defragmentation decides which files to read or write, in which order, and how long the computer computes between two requests.</span>
+            </li>
+            <li>
+              <b class="steps__name">Block requests, one at a time</b>
+              <span class="steps__note">A date, a logical block address, a number of sectors, read or write — what an operating system actually sends a disk.</span>
+            </li>
+            <li>
+              <b class="steps__name">The drive’s mechanics</b>
+              <span class="steps__note">Buffer and bus, the block address turned into cylinder, head and sector on a zoned platter, the seek, the rotational latency, the transfer.</span>
+            </li>
+            <li>
+              <b class="steps__name">Sound, map and haptics</b>
+              <span class="steps__note">The timeline of seeks, head switches, track steps and transfers drives the synthesiser, the cluster map and the Taptic Engine, on one clock.</span>
+            </li>
+          </ol>
+          <p>
+            The app ships twenty-four such disks — four users in each of six
+            eras from 1993 to 2012: a developer, a family, a gamer and a
+            secretary, with a power user standing in for the family in
+            1993 — and lets you build more. The rest of this page follows the
+            chain from the top.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="residue">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Fragmentation</h2>
+        <div class="sheet__body">
+          <h2>Fragmentation is not a setting. It is a residue.</h2>
+          <p>
+            The obvious way to build a fragmented disk is to ask for one: so
+            many files, so many pieces each. It sounds wrong, because real
+            fragmentation has a texture — the system files in one piece at
+            the start, the compiler’s objects chopped into the holes the
+            previous build left, a swap file nobody moves. That texture comes
+            from what happened to the disk, in what order.
+          </p>
+          <p>
+            So nobody asks for a fragmentation. A disk is written as a story —
+            an installation, builds, downloads, documents saved over and over,
+            updates — and the story is replayed, write by write and delete by
+            delete, through the allocator of the file system it lives on. The
+            story is written before any allocation and knows nothing of the
+            format, which makes a clean experiment possible: the same
+            developer history, replayed on three allocators over the same
+            512 MB.
+          </p>
+          <div class="scroll-x">
+            <table class="spec">
+              <caption>One history, three allocators, 512 MB</caption>
+              <thead>
+                <tr><th scope="col"></th><th scope="col">FAT16, 32 KB</th><th scope="col">FAT32, 4 KB</th><th scope="col">NTFS, 4 KB</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Files fragmented</th><td class="num">14.5 %</td><td class="num">3.1 %</td><td class="num">1.4 %</td></tr>
+                <tr><th scope="row">Worst file</th><td class="num">7 pieces</td><td class="num">98 pieces</td><td class="num">4 pieces</td></tr>
+                <tr><th scope="row">Holes in free space</th><td class="num">3</td><td class="num">502</td><td class="num">78</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            None of those numbers is a parameter. MS-DOS FAT serves the first
+            free cluster from the start of the volume at every write: holes are
+            plugged at once, the front of the disk becomes a dense Swiss cheese
+            and recent files are chopped up. FAT32 resumes at the last cluster
+            it allocated: writing is clean while the cursor advances, then it
+            wraps round and finds the holes left months before — fragmentation
+            arrives in waves, and one file ends in 98 pieces. NTFS looks for a
+            hole that fits.
+          </p>
+          <p>
+            One detail matters more than the distribution of sizes: deletes are
+            interleaved with writes. A build that created all its objects and
+            then deleted them all would reopen one large contiguous space and
+            fragment nothing. In reality the compiler writes while the linker
+            reads, the precompiled header is rebuilt in the middle, and
+            whatever is written at that moment falls into the holes that are
+            still open.
+          </p>
+          <p>
+            Directories exist and grow like files, away from their first
+            cluster. Files whose size is not known in advance — a compiler’s
+            output, a browser cache, a document being saved — grow as they are
+            written rather than getting their space at once. On NTFS that one
+            distinction produces the long tail of files in two to sixteen pieces.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="defrag">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Defragmenters</h2>
+        <div class="sheet__body">
+          <h2>What you hear is the algorithm.</h2>
+          <p>
+            A defragmenter is a planner like any other: it reads the volume’s
+            map, decides what to move where, and emits reads and writes. The
+            drive does not care why. So two tools on the same volume sound
+            different for the same reason they take different times — they do
+            not ask the disk for the same things.
+          </p>
+          <p>
+            The volume below is the 1993 developer’s: a 210 MB FAT16 drive at
+            3,600 rpm, 72 % full after two years of Borland C++ builds, with
+            342 of its 4,027 files in pieces. On the left, the defragmenter of
+            the time, MS-DOS 6 DEFRAG, which the model runs on the same engine as
+            the Windows 95 defragmenter: they did the same thing in the same
+            order. On the right, a strategy written for this project.
+          </p>
+        </div>
+      </div>
+      <div class="films">
+        <figure class="film">
+          <video controls preload="none" playsinline poster="media/defrag-dos-1993.jpg" src="media/defrag-dos-1993.mp4">
+            <a href="media/defrag-dos-1993.mp4">Download the film (MP4)</a>
+          </video>
+          <figcaption>
+            <b>MS-DOS 6 DEFRAG</b>, 24 min 42 s sped up to one minute. The
+            sound is not sped up: it is a chain of four-second excerpts, taken
+            where the picture is.
+          </figcaption>
+        </figure>
+        <figure class="film">
+          <video controls preload="none" playsinline poster="media/defrag-frontier-1993.jpg" src="media/defrag-frontier-1993.mp4">
+            <a href="media/defrag-frontier-1993.mp4">Download the film (MP4)</a>
+          </video>
+          <figcaption>
+            <b>Frontier compaction</b>, 5 min 31 s sped up to one minute. Same
+            volume, same result: no file in pieces at the end.
+          </figcaption>
+        </figure>
+      </div>
+      <div class="sheet__grid">
+        <div class="sheet__label" aria-hidden="true"></div>
+        <div class="sheet__body">
+          <p>
+            DEFRAG packs every file against the start of the volume, in the
+            order of the directory tree. Whatever stands where the next file
+            should go is evacuated to the end of the volume, to be brought back
+            when the sweep gets there. On this disk it moves 3,997 files, makes
+            3,090 evacuations and moves 229 MB — more than the volume holds —
+            in 41,703 seeks. Twenty of its twenty-five minutes go into the
+            temporary files and caches: thousands of one-cluster fragments.
+            That is the hammering.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">MS-DOS 6 DEFRAG · 10 min into the pass · 15 s</p>
+            <audio controls preload="none" src="media/defrag-dos-1993.m4a">
+              <a href="media/defrag-dos-1993.m4a">Download the sound (M4A)</a>
+            </audio>
+            <figcaption>One cluster, one seek: the sound most people remember.</figcaption>
+          </figure>
+          <p>
+            Frontier compaction starts from one rule: the order on the disk is
+            the order to keep. A frontier sweeps the volume from its start, and
+            everything below it is in place. A file in one piece that begins at
+            the frontier stays where it is. A small hole is filled by a file
+            that had to move anyway; otherwise the file after the hole slides
+            down, in chunks the size of the hole, each written into the space
+            the previous one just left. Two free clusters are enough to pack a
+            whole volume, and the hole grows as it climbs. The tables are
+            written once per batch, and no write in a batch lands on a cluster
+            the batch has just freed — so no write ever lands on data still in
+            use, and a power cut mid-pass leaves a consistent volume.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">Frontier compaction · 3 min 20 into the pass · 15 s</p>
+            <audio controls preload="none" src="media/defrag-frontier-1993.m4a">
+              <a href="media/defrag-frontier-1993.m4a">Download the sound (M4A)</a>
+            </audio>
+            <figcaption>7,288 seeks in the whole pass, 623 cylinders long on average against 824 for DEFRAG: the arm works near the frontier instead of shuttling to the end of the disk.</figcaption>
+          </figure>
+          <p>
+            It moves 1,484 files and 120 MB, and takes 5 min 31 s. Across the
+            twelve FAT volumes of the gallery the difference in time is small
+            and fragile — 4 h 32 in all against 4 h 51, and the smallest change
+            to the model can swap them — but it moves 1.4 times less data and on
+            the 1999 volumes leaves at most two holes in the free space, where
+            Windows 95 leaves up to 59. It is also the only one of the three FAT tools that tidies
+            a volume 99 % full: where DEFRAG finds nowhere to evacuate and gives
+            the volume back as it was.
+          </p>
+          <p>
+            On large NTFS volumes the gap is not a matter of degree. The
+            Windows 95 strategy on the 320 GB family disk of 2007 would pack
+            hundreds of gigabytes through a 256 KB buffer: 4.8 million requests
+            and 5 h 47 of simulated pass. The Windows XP defragmenter on the
+            same volume issues 1.2 million and takes 29 min 21 s.
+          </p>
+          <p>
+            The app has seven tools in all: the two of the era (DEFRAG and the
+            XP defragmenter, renamed for Vista and 7), JkDefrag 3.36 and
+            UltraDefrag 7.1.1 modelled on their source code, and three written
+            here. The <a href="https://github.com/glandais/winchester#readme">README</a>
+            has a table per tool and per volume.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="xp">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Windows XP</h2>
+        <div class="sheet__body">
+          <h2>Between the files and the disk, an operating system.</h2>
+          <p>
+            A boot is not a list of files read in turn. For everything dated
+            Windows XP, the model reproduces what the system did between the
+            file system and the drive, down to its constants:
+          </p>
+          <ul>
+            <li>The prefetcher reads the boot back in the order it was first used, in large batches issued at once — MFT records first, then data, then executable images.</li>
+            <li>The IDE driver serves what is waiting in increasing block order from its current position, so a batch is heard as one sweep of the arm.</li>
+            <li>The cache’s lazy writer wakes once a second, three seconds after the first page is dirtied, and writes an eighth of the dirty pages, stream by stream, the log first.</li>
+            <li>The NTFS allocator takes the smallest free run that fits, from a cache of free runs rebuilt at mount; freed clusters stay masked until the next checkpoint.</li>
+            <li>The defragmenter lays out the boot files first, pulls the MFT back together, repairs broken files into the smallest hole that holds them, empties a region when none does, then packs, in 64 KB blocks, each a transaction.</li>
+          </ul>
+          <figure class="listen">
+            <p class="listen__name">Windows XP boot · 2003 · 7,200 rpm, fluid bearing · 15 s</p>
+            <audio controls preload="none" src="media/boot-xp-2003.m4a">
+              <a href="media/boot-xp-2003.m4a">Download the sound (M4A)</a>
+            </audio>
+            <figcaption>
+              The drivers phase. Each prefetch batch is sorted by block
+              address and swept across the platter in one direction.
+            </figcaption>
+          </figure>
+          <p>
+            Windows 95 and 98, Vista and 7 do not get that treatment. They keep
+            a model built from their documented behaviour, and the README says,
+            point by point, where it is an assumption.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="drive">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The drive</h2>
+        <div class="sheet__body">
+          <h2>Deduced from real datasheets, and from the year.</h2>
+          <p>
+            A capacity alone does not describe a disk: the same gigabyte is a
+            whole drive in 1996 and a corner of a platter, read five times
+            faster, in 2003. So the model interpolates in time between eight
+            drives that were really sold — from a Conner CFA170A of 1993 with a
+            64 KB buffer to a Seagate Barracuda 7200.14 of 2012 with 64 MB —
+            taking from their manuals the number of tracks per surface, which
+            sets the stroke of the arm and so the acoustics of a seek, and the
+            capacity of a surface, which sets the number of platters.
+          </p>
+          <ul>
+            <li>The seek follows the two-regime law of Ruemmler and Wilkes (<i>IEEE Computer</i>, 1994) — a square root of the distance for short seeks, a straight line beyond — split into speed-up, coast, slow-down and settle. A seek before a write settles longer, as the datasheets publish.</li>
+            <li>Rotation and transfer are simulated sector by sector on a zoned platter, with track steps and head switches at the end of a cylinder.</li>
+            <li>The buffer reads ahead after a read; the write cache acknowledges a write at once and lays it down later, in elevator order — so the disk works while the computer computes.</li>
+            <li>Power-on has three stages: the motor spins up, the heads unstick from the platter, the drive seeks track 0. Drives of 2012 park on a ramp instead, and neither unstick nor land.</li>
+            <li>Drives from before 1997 recalibrate two minutes after they are ready, then every four minutes: a second of crackle, the signature of that generation — and the reason “AV” drives without recalibration were sold for video editing.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="sound">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">The sound</h2>
+        <div class="sheet__body">
+          <h2>Resonators that do not change pitch, excited by a moving arm.</h2>
+          <p>
+            The first idea is to map seek distance to a sample and pitch it.
+            It sounds like a toy. An actuator is a mechanical structure with
+            its own modes; a longer seek does not transpose them, it excites
+            them differently. So the head is a bank of resonators at fixed
+            frequencies — modes near 4.5 kHz (the arm’s sway) and 5.5 kHz, and
+            five more — driven by a current profile drawn from the four phases
+            of each seek. A short seek has no coasting phase, so the shape of
+            the sound changes with the distance, not only its loudness. Its
+            level follows the manual: the seek sound power the manufacturer
+            publishes, less the idle level.
+          </p>
+          <p>
+            Then the rule that made it sound like a disk rather than a
+            typewriter. Two seeks close together never fire two separate
+            sounds: they are merged into one continuous excitation passed once
+            through the resonators. The idea comes from MAME’s floppy-drive
+            emulation, where retriggering the step sample sounded “much too
+            loud”. Head switches and track steps less than 30 ms apart are
+            treated the same way — which is why a long sequential read is heard
+            as a pitch rather than a string of ticks, as in the kernel read of
+            the first sound on this page.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">The same boot · head only</p>
+            <audio controls preload="none" src="media/boot-1999-head.m4a">
+              <a href="media/boot-1999-head.m4a">Download the sound (M4A)</a>
+            </audio>
+            <figcaption>The arm alone, on the same twenty seconds: the note of the kernel, then the drivers.</figcaption>
+          </figure>
+          <figure class="listen">
+            <p class="listen__name">The same boot · spindle only</p>
+            <audio controls preload="none" src="media/boot-1999-spindle.m4a">
+              <a href="media/boot-1999-spindle.m4a">Download the sound (M4A)</a>
+            </audio>
+            <figcaption>The platters alone: spin-up, then the steady voice of 5,400 rpm.</figcaption>
+          </figure>
+          <p>
+            The spindle is filtered noise shaped by three figures from the
+            datasheet: speed, number of platters, and bearing. Ball bearings,
+            used until about 2000, whistle and beat once per revolution; fluid
+            bearings leave only the breath of air around the platters.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">Spindle · 1996 · 5,400 rpm, ball bearing</p>
+            <audio controls preload="none" src="media/spindle-1996-ball.m4a">
+              <a href="media/spindle-1996-ball.m4a">Download the sound (M4A)</a>
+            </audio>
+          </figure>
+          <figure class="listen">
+            <p class="listen__name">Spindle · 2003 · 7,200 rpm, fluid bearing</p>
+            <audio controls preload="none" src="media/spindle-2003-fluid.m4a">
+              <a href="media/spindle-2003-fluid.m4a">Download the sound (M4A)</a>
+            </audio>
+            <figcaption>Higher, and smoother: no beat at the revolution.</figcaption>
+          </figure>
+          <p>
+            The Taptic Engine receives the same cues. A single seek is played
+            as its four phases; a dense train becomes one continuous event,
+            because at 150 seeks a second a burst of transients is mush to the
+            hand.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="deterministic">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Determinism</h2>
+        <div class="sheet__body">
+          <h2>Live on the phone, bit-exact on the desk.</h2>
+          <p>
+            In the app nothing is computed in advance. The planner runs on its
+            own thread and emits its requests one by one; each goes straight
+            through the drive simulation into a buffer, and the thread sleeps
+            once it is about eight seconds ahead of what you hear. A pass has
+            no known length before it ends, there is no rewind, and a block on
+            the map changes colour exactly when its write is heard.
+          </p>
+          <p>
+            The same code builds as a command-line renderer. Its output is
+            streamed too — a pass of several hours renders without holding more
+            than a few seconds in memory — and it keeps the order of the
+            additions of the live mix, so the WAV is identical to the bit. That
+            property carries the whole project:
+          </p>
+          <ul>
+            <li>A refactor that should change nothing is checked by hashing 58 renders before and after.</li>
+            <li>A change to a planner is measured on a few hundred pass reports — requests, seeks, files moved, pieces and holes left — in a handful of minutes, without rendering a note.</li>
+            <li>Every figure the README quotes from a report is regenerated by a script, which says which one no longer holds.</li>
+            <li>The App Store previews are filmed on a simulator, which records no sound; the sound is rendered offline for the same seconds of the same pass, and lands within a frame.</li>
+          </ul>
+          <p>
+            Every sound and film on this page comes out of that renderer. None
+            was recorded from a device.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="estimates">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Estimates</h2>
+        <div class="sheet__body">
+          <h2>What is measured, and what is tuned by ear.</h2>
+          <p>
+            Geometry, seek times, buffers, spindle speeds and bearings come from
+            manufacturers’ manuals. The timbre does not: no manual publishes the
+            spectrum of its drive, so the frequencies of the spindle bands, the
+            depth of the bearing’s beat and the way the head’s modes are dosed
+            with distance are set by listening. The hum is the weakest link —
+            computed from the spindle speed, for lack of a recording.
+          </p>
+          <p>
+            Some behaviours are choices too, and are labelled as such in the
+            code: where DEFRAG evacuates to — the end of the volume, a choice
+            calibrated on the pass durations of the period; the order in which a
+            recalibrating drive visits its reference tracks; and, for NT 4,
+            Vista and 7, four constants that bound the NTFS allocator’s search
+            for holes. On the 2007 family disk, one of them alone moves the
+            share of fragmented files from 22 % to 35 %.
+          </p>
+          <p>
+            If you know a drive or a defragmenter of that era better than its
+            manual does, the issues are open.
+          </p>
+          <dl class="contact">
+            <dt>The app</dt>
+            <dd><a href="https://apps.apple.com/app/id6814382619">Winchester: Defrag Sounds</a>, free, iPhone and iPad</dd>
+            <dt>Source code</dt>
+            <dd><a href="https://github.com/glandais/winchester">github.com/glandais/winchester</a></dd>
+            <dt>The mechanism, stage by stage</dt>
+            <dd><a href="../../how-it-works/index.html">How it works</a></dd>
+            <dt>Questions and corrections</dt>
+            <dd><a href="https://github.com/glandais/winchester/issues">github.com/glandais/winchester/issues</a></dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__inner">
+        <span>Winchester: Defrag Sounds — an app by Gabriel Landais. Requires iOS 17 or later.</span>
+        <nav aria-label="Footer">
+          <a href="../../index.html">Overview</a>
+          <a href="../../how-it-works/index.html">How it works</a>
+          <a href="../../writing/simulating-a-hard-disk/index.html">Writing</a>
+          <a href="../../support/index.html">Support</a>
+          <a href="../../privacy/index.html">Privacy</a>
+          <a href="https://apps.apple.com/app/id6814382619">App Store</a>
+          <a href="https://github.com/glandais/winchester">Source</a>
+          <a href="https://ko-fi.com/gabylandais" rel="noopener">Buy me a coffee</a>
+        </nav>
+      </div>
+      <p class="footer__apps">
+        Other apps by the same developer:
+        <a href="https://glandais.github.io/aether/">Aether</a> ·
+        <a href="https://glandais.github.io/DepthWeaver/">DepthWeaver</a> ·
+        <a href="https://glandais.github.io/WhereIWas/">WhereIWas</a> ·
+        <a href="https://apps.apple.com/developer/id1891310404">all of them on the App Store</a>
+      </p>
+      <p>
+        Drive and software names belong to their owners. They are named here
+        because the app imitates them for listening; Winchester is not
+        affiliated with, or endorsed by, their makers.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

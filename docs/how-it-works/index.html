@@ -25,6 +25,7 @@
       <nav class="nav" aria-label="Primary">
         <a href="../index.html">Overview</a>
         <a href="index.html" aria-current="page">How it works</a>
+        <a href="../writing/simulating-a-hard-disk/index.html">Writing</a>
         <a href="../support/index.html">Support</a>
         <a href="../privacy/index.html">Privacy</a>
       </nav>
@@ -38,7 +39,9 @@
         Winchester has no recordings of a hard disk. It has a model of one —
         its geometry, its arm, its buffer, its file system — and it listens to
         what that model does. This page follows a request from the file system
-        down to the speaker.
+        down to the speaker. For the story behind it, with sounds to hear,
+        read <a href="../writing/simulating-a-hard-disk/index.html">Simulating
+        a hard disk at the block level to hear it defragment</a>.
       </p>
       <ul class="toc">
         <li><a href="#chain">The chain</a></li>
@@ -118,11 +121,11 @@
       <div class="sheet__grid">
         <h2 class="sheet__label">The system</h2>
         <div class="sheet__body">
-          <h2>Windows XP, as its own source code does it.</h2>
+          <h2>Windows XP, down to its constants.</h2>
           <p>
             Between the files and the disk sits an operating system, and for
-            everything dated Windows XP the model follows the XP SP1 source
-            code rather than a description of it: where <code>FORMAT</code>
+            everything dated Windows XP the model reproduces what the system
+            did, in detail: where <code>FORMAT</code>
             lays out an NTFS volume, how the driver allocates clusters, how the
             defragmenter moves files, how a boot is prefetched, and how the
             cache writes behind.
@@ -295,6 +298,7 @@
         <nav aria-label="Footer">
           <a href="../index.html">Overview</a>
           <a href="index.html">How it works</a>
+          <a href="../writing/simulating-a-hard-disk/index.html">Writing</a>
           <a href="../support/index.html">Support</a>
           <a href="../privacy/index.html">Privacy</a>
           <a href="https://apps.apple.com/app/id6814382619">App Store</a>

@@ -1945,6 +1945,14 @@ d'images par seconde.
 Les vidéos vont dans `.build/videos/`, avec le journal de chaque rendu. Une
 vidéo déjà présente n'est pas refaite.
 
+`VIDEO_LANG=en` écrit en anglais ce que l'image écrit elle-même, sans bilan
+final (il reprend le rapport, en français), et `VIDEO_TITLE` /
+`VIDEO_SUBTITLE` remplacent l'en-tête. C'est ce que prend
+`./Tools/make-article-media.sh`, qui refait les extraits sonores et les deux
+films du billet du site (`docs/writing/simulating-a-hard-disk/media/`) :
+découpés dans des rendus complets, sans normalisation, et versionnés, puisque
+Pages ne sert que le dépôt.
+
 ## Structure
 
 ```

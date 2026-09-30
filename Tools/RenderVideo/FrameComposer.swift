@@ -146,33 +146,33 @@ final class FrameComposer {
         switch layout {
         case .landscape:
             let clockWidth: CGFloat = 300
-            canvas.text(label.title, at: rect.origin, font: font(54, .semibold), color: Palette.text,
+            canvas.text(VideoText.title ?? label.title, at: rect.origin, font: font(54, .semibold), color: Palette.text,
                         maxWidth: rect.width - clockWidth)
-            canvas.paragraph(label.summary, at: CGPoint(x: rect.minX, y: rect.minY + 76),
+            canvas.paragraph(VideoText.subtitle ?? label.summary, at: CGPoint(x: rect.minX, y: rect.minY + 76),
                              width: rect.width - clockWidth, font: font(26), color: Palette.dim, maxLines: 2)
             canvas.text(French.clock(time), at: CGPoint(x: rect.maxX, y: rect.minY),
                         font: mono(54, .medium), color: Palette.text, alignment: .right)
             if speed > 1 {
-                canvas.text("accéléré ×\(Self.speedLabel(speed))", at: CGPoint(x: rect.maxX, y: rect.minY + 76),
+                canvas.text(VideoText.pick("accéléré ×", "sped up ×") + Self.speedLabel(speed), at: CGPoint(x: rect.maxX, y: rect.minY + 76),
                             font: mono(26, .semibold), color: Palette.read, alignment: .right)
             }
         case .short:
-            canvas.text(label.title, at: rect.origin, font: font(64, .semibold), color: Palette.text,
+            canvas.text(VideoText.title ?? label.title, at: rect.origin, font: font(64, .semibold), color: Palette.text,
                         maxWidth: rect.width)
-            canvas.paragraph(label.summary, at: CGPoint(x: rect.minX, y: rect.minY + 88),
+            canvas.paragraph(VideoText.subtitle ?? label.summary, at: CGPoint(x: rect.minX, y: rect.minY + 88),
                              width: rect.width, font: font(32), color: Palette.dim, maxLines: 2)
             let y = rect.minY + 190
             canvas.text(French.clock(time), at: CGPoint(x: rect.minX, y: y), font: mono(48, .medium),
                         color: Palette.text)
             if speed > 1 {
-                canvas.text("accéléré ×\(Self.speedLabel(speed))", at: CGPoint(x: rect.maxX, y: y + 8),
+                canvas.text(VideoText.pick("accéléré ×", "sped up ×") + Self.speedLabel(speed), at: CGPoint(x: rect.maxX, y: y + 8),
                             font: mono(34, .semibold), color: Palette.read, alignment: .right)
             }
         }
     }
 
     static func speedLabel(_ speed: Double) -> String {
-        speed >= 10 ? French.integer(Int(speed.rounded())) : French.decimal(speed)
+        speed >= 10 ? VideoText.integer(Int(speed.rounded())) : VideoText.decimal(speed)
     }
 
     private func drawMap(_ live: LivePass) {
@@ -292,13 +292,15 @@ final class FrameComposer {
 
         var rows: [(String, String)] = []
         if let moves = live.moves {
-            rows.append(("Fichiers déplacés", French.integer(moves.filesMoved)))
-            rows.append(("Évacuations", French.integer(moves.evacuations)))
+            rows.append((VideoText.pick("Fichiers déplacés", "Files moved"), VideoText.integer(moves.filesMoved)))
+            rows.append((VideoText.pick("Évacuations", "Evacuations"), VideoText.integer(moves.evacuations)))
         }
-        rows.append(("Débit", "\(French.decimal(throughputMBs(live, at: time))) Mo/s"))
+        rows.append((VideoText.pick("Débit", "Throughput"),
+                     "\(VideoText.decimal(throughputMBs(live, at: time))) \(VideoText.pick("Mo/s", "MB/s"))"))
         if scenario.map == nil || layout == .landscape {
-            rows.append(("Seeks", French.integer(live.totals.seeks)))
-            rows.append(("Course moyenne", "\(French.integer(live.totals.averageSeekDistance)) cyl."))
+            rows.append(("Seeks", VideoText.integer(live.totals.seeks)))
+            rows.append((VideoText.pick("Course moyenne", "Average seek"),
+                         "\(VideoText.integer(live.totals.averageSeekDistance)) cyl."))
         }
 
         let size: CGFloat = large ? 30 : 26
@@ -315,7 +317,7 @@ final class FrameComposer {
     /// d'activité de l'application.
     private func drawActivity(_ live: LivePass, at time: Double) {
         let rect = frames.activity
-        let title = "Activité, dernière minute"
+        let title = VideoText.pick("Activité, dernière minute", "Activity, last minute")
         let titleFont = font(layout == .short ? 28 : 24)
         canvas.text(title, at: rect.origin, font: titleFont, color: Palette.dim)
         let top = rect.minY + Canvas.lineHeight(titleFont) + 10
@@ -341,7 +343,7 @@ final class FrameComposer {
         let rect = frames.progress
         let value = live.progress ?? 0
         let textFont = mono(layout == .short ? 32 : 28, .medium)
-        let label = French.percent(value)
+        let label = VideoText.percent(value)
         let labelWidth: CGFloat = 110
         let bar = CGRect(x: rect.minX, y: rect.midY - 6, width: rect.width - labelWidth, height: 12)
         canvas.fill(roundedRect: bar, radius: 6, CGColor(gray: 1, alpha: 0.08))

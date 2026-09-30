@@ -168,6 +168,34 @@ enum Palette {
     }
 }
 
+/// La langue de l'image. Français par défaut, comme les bilans ; `VIDEO_LANG=en`
+/// met en anglais ce que l'image écrit elle-même — libellés et nombres —, pour
+/// les vidéos du billet du site, qui est en anglais. Les phases et la légende
+/// le sont déjà : hors de l'app, le modèle rend l'anglais de `defaultValue`.
+/// `VIDEO_TITLE` et `VIDEO_SUBTITLE` remplacent l'en-tête, que le profil
+/// donne en français.
+enum VideoText {
+    static let english = ProcessInfo.processInfo.environment["VIDEO_LANG"] == "en"
+    static let title = ProcessInfo.processInfo.environment["VIDEO_TITLE"]
+    static let subtitle = ProcessInfo.processInfo.environment["VIDEO_SUBTITLE"]
+
+    static func pick(_ french: String, _ english: String) -> String {
+        self.english ? english : french
+    }
+
+    static func integer(_ value: Int) -> String {
+        english ? value.formatted(.number.locale(Locale(identifier: "en_US"))) : French.integer(value)
+    }
+
+    static func decimal(_ value: Double, digits: Int = 1) -> String {
+        english ? String(format: "%.\(digits)f", value) : French.decimal(value, digits: digits)
+    }
+
+    static func percent(_ value: Double) -> String {
+        english ? "\(Int((value * 100).rounded()))%" : French.percent(value)
+    }
+}
+
 /// Les nombres tels qu'on les écrit en français, comme `FrenchFormat` dans
 /// l'application.
 enum French {

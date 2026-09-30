@@ -25,6 +25,9 @@ import AVFAudio
 //   SNIPPET      durée d'un extrait sonore en vidéo accélérée (4)
 //   ENCODER      videotoolbox (défaut) ou x264, plus lent et plus fin
 //   KEEP_WAV     garde le WAV à côté de la vidéo
+//   VIDEO_LANG   en : libellés et nombres de l'image en anglais, sans bilan
+//                final (il reprend le rapport, en français)
+//   VIDEO_TITLE, VIDEO_SUBTITLE   remplacent l'en-tête du scénario
 //
 // Tout est en flux : les images partent dans `ffmpeg` à mesure que la passe se
 // planifie, et une passe de plusieurs heures ne tient jamais en mémoire.
@@ -43,7 +46,7 @@ guard let layout = VideoLayout(rawValue: environment["LAYOUT"] ?? "landscape") e
 }
 let fps = Double(environment["FPS"] ?? "") ?? 30
 let maxSeconds = Double(environment["MAX_SECONDS"] ?? "")
-let endCard = Double(environment["END_CARD"] ?? "") ?? 8
+let endCard = Double(environment["END_CARD"] ?? "") ?? (VideoText.english ? 0 : 8)
 let snippet = Double(environment["SNIPPET"] ?? "") ?? 4
 
 var speed = max(Double(environment["SPEED"] ?? "") ?? 1, 1)

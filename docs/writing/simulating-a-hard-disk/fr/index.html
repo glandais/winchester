@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Simuler un disque dur au niveau bloc pour l’entendre défragmenter</title>
+  <meta name="description" content="Aucun enregistrement : un volume fabriqué par des années d’usage, un défragmenteur qui planifie des requêtes de blocs, un disque simulé secteur par secteur et un synthétiseur mû par le bras. Avec des sons et des films rendus par le modèle lui-même.">
+  <link rel="canonical" href="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/fr/">
+  <link rel="alternate" hreflang="en" href="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/">
+  <link rel="alternate" hreflang="fr" href="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/fr/">
+  <link rel="icon" type="image/png" sizes="180x180" href="../../../assets/appicon-180.png">
+  <link rel="apple-touch-icon" href="../../../assets/appicon-180.png">
+  <meta name="theme-color" content="#0E0F12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F2F1EC" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:title" content="Simuler un disque dur au niveau bloc pour l’entendre défragmenter">
+  <meta property="og:description" content="Aucun enregistrement : un volume fabriqué par des années d’usage, un défragmenteur qui planifie des requêtes de blocs, un disque simulé secteur par secteur et un synthétiseur mû par le bras.">
+  <meta property="og:url" content="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/fr/">
+  <meta property="og:image" content="https://glandais.github.io/winchester/writing/simulating-a-hard-disk/media/defrag-frontier-1993.jpg">
+  <link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Aller au contenu</a>
+  <header class="masthead">
+    <div class="container masthead__inner">
+      <a class="wordmark" href="../../../index.html"><b>Winchester</b> <span>Defrag Sounds</span></a>
+      <nav class="nav" aria-label="Navigation principale">
+        <a href="../../../index.html" hreflang="en">Overview</a>
+        <a href="../../../how-it-works/index.html" hreflang="en">How it works</a>
+        <a href="index.html" aria-current="page">Writing</a>
+        <a href="../../../support/index.html" hreflang="en">Support</a>
+        <a href="../../../privacy/index.html" hreflang="en">Privacy</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="doc-head container">
+      <p class="lang-switch"><a href="../index.html" hreflang="en" lang="en">English</a> · Français</p>
+      <p class="doc-meta">Billet — 30 septembre 2026</p>
+      <h1>Simuler un disque dur au niveau bloc pour l’entendre défragmenter</h1>
+      <p>
+        Qui a lancé DEFRAG dans les années quatre-vingt-dix se souvient du son
+        avant de se souvenir de l’écran : un crépitement sec qui durait vingt
+        minutes, puis un long ronronnement, puis le silence. Winchester est une
+        application pour iPhone et iPad qui refait ce son, et elle n’en a aucun
+        enregistrement. Elle fabrique un volume qui a vécu, lance dessus un
+        défragmenteur, simule le disque qui reçoit les requêtes de blocs, et
+        écoute le bras.
+      </p>
+      <p class="byline">
+        Gabriel Landais ·
+        <a href="https://github.com/glandais/winchester">code source sur GitHub</a> ·
+        <span class="sound-on">chaque son de cette page est rendu par le modèle — montez le son</span>
+      </p>
+      <ul class="toc">
+        <li><a href="#chain">La chaîne</a></li>
+        <li><a href="#residue">La fragmentation</a></li>
+        <li><a href="#defrag">Les défragmenteurs</a></li>
+        <li><a href="#xp">Windows XP</a></li>
+        <li><a href="#drive">Le disque</a></li>
+        <li><a href="#sound">Le son</a></li>
+        <li><a href="#deterministic">Le déterminisme</a></li>
+        <li><a href="#estimates">Les estimations</a></li>
+      </ul>
+    </section>
+
+    <section class="sheet container" id="chain">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">La chaîne</h2>
+        <div class="sheet__body">
+          <h2>Rien d’enregistré, du système de fichiers au haut-parleur.</h2>
+          <p>
+            Voici Windows 98 qui démarre sur un disque de 4 Go à 5 400 tr/min,
+            tel que le modèle l’entend : la mise sous tension, le moteur qui
+            prend sa vitesse, les têtes qui quittent la zone d’atterrissage, le
+            noyau lu d’un seul tenant, puis les pilotes, éparpillés sur tout le
+            plateau.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">Démarrage de Windows 98 · 1999 · 20 s</p>
+            <audio controls preload="none" src="../media/boot-1999.m4a">
+              <a href="../media/boot-1999.m4a">Télécharger le son (M4A)</a>
+            </audio>
+            <figcaption>
+              Vers six secondes, le noyau est lu séquentiellement et sonne comme
+              une note ; à partir de neuf, les pilotes sont un crépitement, un
+              seek par fichier.
+            </figcaption>
+          </figure>
+          <p>Cinq étages fabriquent ce son, et aucun ne joue d’échantillon :</p>
+          <ol class="steps">
+            <li>
+              <b class="steps__name">Un volume, issu d’une histoire</b>
+              <span class="steps__note">Des années d’usage rejouées à travers l’allocateur du système de fichiers du disque : quels fichiers existent, et quels clusters exactement chacun occupe.</span>
+            </li>
+            <li>
+              <b class="steps__name">Un planificateur</b>
+              <span class="steps__note">Un démarrage, une installation, une journée d’usage ou une défragmentation décide quels fichiers lire ou écrire, dans quel ordre, et combien de temps l’ordinateur calcule entre deux requêtes.</span>
+            </li>
+            <li>
+              <b class="steps__name">Des requêtes de blocs, une à une</b>
+              <span class="steps__note">Une date, une adresse de bloc logique, un nombre de secteurs, lecture ou écriture — ce qu’un système d’exploitation envoie réellement à un disque.</span>
+            </li>
+            <li>
+              <b class="steps__name">La mécanique du disque</b>
+              <span class="steps__note">Le tampon et le bus, l’adresse de bloc traduite en cylindre, tête et secteur sur un plateau à zones, le seek, la latence de rotation, le transfert.</span>
+            </li>
+            <li>
+              <b class="steps__name">Le son, la carte et les vibrations</b>
+              <span class="steps__note">La chronologie des seeks, changements de tête, pas de piste et transferts pilote le synthétiseur, la carte des clusters et le Taptic Engine, sur une seule horloge.</span>
+            </li>
+          </ol>
+          <p>
+            L’application livre vingt-quatre disques de ce genre — quatre
+            utilisateurs pour chacune de six époques, de 1993 à 2012 : un
+            développeur, une famille, un joueur et une secrétaire, un
+            utilisateur averti tenant la place de la famille en 1993 — et
+            permet d’en fabriquer d’autres. La suite de cette page descend la
+            chaîne depuis le haut.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="residue">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">La fragmentation</h2>
+        <div class="sheet__body">
+          <h2>La fragmentation n’est pas un réglage. C’est un résidu.</h2>
+          <p>
+            La façon évidente de fabriquer un disque fragmenté, c’est de le
+            demander : tant de fichiers, tant de morceaux chacun. Cela sonne
+            faux, parce qu’une vraie fragmentation a une texture — les fichiers
+            système d’un seul tenant au début, les objets du compilateur hachés
+            dans les trous laissés par la compilation précédente, un fichier
+            d’échange que personne ne déplace. Cette texture vient de ce qui est
+            arrivé au disque, et dans quel ordre.
+          </p>
+          <p>
+            On ne demande donc jamais une fragmentation. Un disque s’écrit comme
+            une histoire — une installation, des compilations, des
+            téléchargements, des documents enregistrés encore et encore, des
+            mises à jour — et l’histoire est rejouée, écriture par écriture et
+            suppression par suppression, à travers l’allocateur du système de
+            fichiers où elle vit. Elle est écrite avant toute allocation et ne
+            connaît rien du format, ce qui permet une expérience propre : la
+            même histoire de développeur, rejouée sur trois allocateurs, sur les
+            mêmes 512 Mo.
+          </p>
+          <div class="scroll-x">
+            <table class="spec">
+              <caption>Une histoire, trois allocateurs, 512 Mo</caption>
+              <thead>
+                <tr><th scope="col"></th><th scope="col">FAT16, 32 Ko</th><th scope="col">FAT32, 4 Ko</th><th scope="col">NTFS, 4 Ko</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Fichiers fragmentés</th><td class="num">14,5 %</td><td class="num">3,1 %</td><td class="num">1,4 %</td></tr>
+                <tr><th scope="row">Pire fichier</th><td class="num">7 morceaux</td><td class="num">98 morceaux</td><td class="num">4 morceaux</td></tr>
+                <tr><th scope="row">Trous dans l’espace libre</th><td class="num">3</td><td class="num">502</td><td class="num">78</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Aucun de ces nombres n’est un paramètre. La FAT de MS-DOS sert le
+            premier cluster libre à partir du début du volume, à chaque
+            écriture : les trous se rebouchent aussitôt, le début du disque
+            devient un gruyère dense et les fichiers récents sont hachés. FAT32
+            reprend au dernier cluster alloué : l’écriture est propre tant que
+            le curseur avance, puis il revient au début et retrouve les trous
+            laissés des mois plus tôt — la fragmentation arrive par vagues, et
+            un fichier finit en 98 morceaux. NTFS cherche un trou qui convient.
+          </p>
+          <p>
+            Un détail compte plus que la distribution des tailles : les
+            suppressions sont entrelacées avec les écritures. Une compilation
+            qui créerait tous ses objets puis les supprimerait tous d’un coup
+            rouvrirait un grand espace contigu et ne fragmenterait rien. En
+            réalité le compilateur écrit pendant que l’éditeur de liens lit,
+            l’en-tête précompilé est refait au milieu, et ce qui s’écrit à ce
+            moment-là tombe dans les trous encore ouverts.
+          </p>
+          <p>
+            Les répertoires existent et grandissent comme des fichiers, loin de
+            leur premier cluster. Les fichiers dont la taille n’est pas connue
+            d’avance — la sortie d’un compilateur, le cache d’un navigateur, un
+            document qu’on enregistre — grandissent à l’écriture au lieu
+            d’obtenir leur place d’un coup. Sur NTFS, cette seule distinction
+            fait la longue traîne des fichiers en deux à seize morceaux.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="defrag">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Les défragmenteurs</h2>
+        <div class="sheet__body">
+          <h2>Ce qu’on entend, c’est l’algorithme.</h2>
+          <p>
+            Un défragmenteur est un planificateur comme un autre : il lit la
+            carte du volume, décide quoi déplacer où, et émet des lectures et
+            des écritures. Le disque ne demande pas pourquoi. Deux outils sur
+            le même volume sonnent donc différemment pour la même raison qu’ils
+            ne durent pas le même temps : ils ne demandent pas la même chose au
+            disque.
+          </p>
+          <p>
+            Le volume ci-dessous est celui du développeur de 1993 : un disque
+            FAT16 de 210 Mo à 3 600 tr/min, plein à 72 % après deux ans de
+            compilations Borland C++, avec 342 de ses 4 027 fichiers en
+            morceaux. À gauche, le défragmenteur de l’époque, MS-DOS 6 DEFRAG,
+            auquel le modèle donne le même moteur qu’à celui de Windows 95 : ils
+            faisaient la même chose, dans le même ordre. À droite, une stratégie
+            écrite pour ce projet.
+          </p>
+        </div>
+      </div>
+      <div class="films">
+        <figure class="film">
+          <video controls preload="none" playsinline poster="../media/defrag-dos-1993.jpg" src="../media/defrag-dos-1993.mp4">
+            <a href="../media/defrag-dos-1993.mp4">Télécharger le film (MP4)</a>
+          </video>
+          <figcaption>
+            <b>MS-DOS 6 DEFRAG</b>, 24 min 42 s ramenées à une minute. Le son
+            n’est pas accéléré : c’est une suite d’extraits de quatre secondes,
+            pris là où en est l’image. Les libellés du film sont en anglais.
+          </figcaption>
+        </figure>
+        <figure class="film">
+          <video controls preload="none" playsinline poster="../media/defrag-frontier-1993.jpg" src="../media/defrag-frontier-1993.mp4">
+            <a href="../media/defrag-frontier-1993.mp4">Télécharger le film (MP4)</a>
+          </video>
+          <figcaption>
+            <b>Tassage à la frontière</b>, 5 min 31 s ramenées à une minute.
+            Même volume, même résultat : plus aucun fichier en morceaux à la fin.
+          </figcaption>
+        </figure>
+      </div>
+      <div class="sheet__grid">
+        <div class="sheet__label" aria-hidden="true"></div>
+        <div class="sheet__body">
+          <p>
+            DEFRAG tasse tous les fichiers contre le début du volume, dans
+            l’ordre de l’arborescence. Ce qui occupe la place du fichier suivant
+            est évacué au fond du volume, pour être ramené quand le balayage y
+            arrive. Sur ce disque, il déplace 3 997 fichiers, fait
+            3 090 évacuations et déplace 229 Mo — plus que le volume n’en
+            contient — en 41 703 seeks. Vingt de ses vingt-cinq minutes passent
+            dans les fichiers temporaires et les caches : des milliers de
+            fragments d’un cluster. C’est le martèlement.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">MS-DOS 6 DEFRAG · à 10 min de passe · 15 s</p>
+            <audio controls preload="none" src="../media/defrag-dos-1993.m4a">
+              <a href="../media/defrag-dos-1993.m4a">Télécharger le son (M4A)</a>
+            </audio>
+            <figcaption>Un cluster, un seek : le son dont la plupart se souviennent.</figcaption>
+          </figure>
+          <p>
+            Le tassage à la frontière part d’une règle : l’ordre du disque est
+            l’ordre à garder. Une frontière balaie le volume depuis son début,
+            et tout ce qui est sous elle est rangé. Un fichier d’un seul tenant
+            qui commence à la frontière reste où il est. Un petit trou est
+            comblé par un fichier qui devait bouger de toute façon ; sinon, le
+            fichier qui suit le trou glisse, par tronçons de la taille du trou,
+            chacun écrit dans la place que le précédent vient de quitter. Deux
+            clusters libres suffisent à tasser un volume entier, et le trou
+            grossit en montant. Les tables ne s’écrivent qu’une fois par lot, et
+            aucune écriture d’un lot ne tombe sur un cluster que le lot vient de
+            libérer : aucune écriture ne tombe donc sur une donnée encore
+            utilisée, et une coupure de courant en pleine passe laisse un volume
+            cohérent.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">Tassage à la frontière · à 3 min 20 de passe · 15 s</p>
+            <audio controls preload="none" src="../media/defrag-frontier-1993.m4a">
+              <a href="../media/defrag-frontier-1993.m4a">Télécharger le son (M4A)</a>
+            </audio>
+            <figcaption>7 288 seeks sur toute la passe, de 623 cylindres en moyenne contre 824 pour DEFRAG : le bras travaille près de la frontière au lieu de faire la navette jusqu’au fond du disque.</figcaption>
+          </figure>
+          <p>
+            Il déplace 1 484 fichiers et 120 Mo, en 5 min 31 s. Sur les douze
+            volumes FAT de la galerie, l’écart de durée est faible et fragile —
+            4 h 32 en tout contre 4 h 51, et la moindre correction du modèle
+            peut les inverser —, mais il déplace 1,4 fois moins de données et,
+            sur les volumes de 1999, ne laisse que deux trous au plus dans
+            l’espace libre, là où Windows 95 en laisse jusqu’à 59. C’est aussi
+            le seul des trois outils FAT à ranger un volume plein à 99 %, où
+            DEFRAG ne trouve plus où évacuer et rend le volume tel quel.
+          </p>
+          <p>
+            Sur les gros volumes NTFS, l’écart n’est plus de degré. La stratégie
+            de Windows 95 sur le disque familial de 320 Go de 2007 tasserait des
+            centaines de gigaoctets par un tampon de 256 Ko : 4,8 millions de
+            requêtes et 5 h 47 de passe simulée. Le défragmenteur de Windows XP,
+            sur le même volume, en émet 1,2 million et prend 29 min 21 s.
+          </p>
+          <p>
+            L’application a sept outils en tout : les deux de l’époque (DEFRAG
+            et le défragmenteur de XP, renommé pour Vista et 7), JkDefrag 3.36
+            et UltraDefrag 7.1.1 d’après leur code source, et trois écrits ici.
+            Le <a href="https://github.com/glandais/winchester#readme">README</a>
+            en donne une table par outil et par volume.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="xp">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Windows XP</h2>
+        <div class="sheet__body">
+          <h2>Entre les fichiers et le disque, un système d’exploitation.</h2>
+          <p>
+            Un démarrage n’est pas une liste de fichiers lus tour à tour. Pour
+            tout ce qui est daté de Windows XP, le modèle reproduit ce que le
+            système faisait entre le système de fichiers et le disque, jusqu’à
+            ses constantes :
+          </p>
+          <ul>
+            <li>Le préchargeur relit le démarrage dans l’ordre de son premier usage, par gros lots émis d’un coup — les enregistrements de la MFT d’abord, puis les données, puis les exécutables.</li>
+            <li>Le pilote IDE sert ce qui attend par adresse de bloc croissante depuis sa position, si bien qu’un lot s’entend comme un seul balayage du bras.</li>
+            <li>Le <i>lazy writer</i> du cache se réveille chaque seconde, trois secondes après la première page salie, et écrit un huitième des pages sales, flux par flux, le journal d’abord.</li>
+            <li>L’allocateur NTFS prend le plus petit run libre qui suffit, dans un cache de runs libres rebâti au montage ; les clusters libérés restent masqués jusqu’au point de contrôle suivant.</li>
+            <li>Le défragmenteur range d’abord les fichiers du démarrage, recolle la MFT, répare les fichiers cassés dans le plus petit trou qui les tient, vide une région quand aucun ne convient, puis tasse, par blocs de 64 Ko, chacun une transaction.</li>
+          </ul>
+          <figure class="listen">
+            <p class="listen__name">Démarrage de Windows XP · 2003 · 7 200 tr/min, palier fluide · 15 s</p>
+            <audio controls preload="none" src="../media/boot-xp-2003.m4a">
+              <a href="../media/boot-xp-2003.m4a">Télécharger le son (M4A)</a>
+            </audio>
+            <figcaption>
+              Le chargement des pilotes. Chaque lot du préchargeur est trié par
+              adresse de bloc et balayé sur le plateau dans un seul sens.
+            </figcaption>
+          </figure>
+          <p>
+            Windows 95 et 98, Vista et 7 n’ont pas ce traitement. Ils gardent un
+            modèle bâti sur leur comportement documenté, et le README dit, point
+            par point, où c’est une hypothèse.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="drive">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Le disque</h2>
+        <div class="sheet__body">
+          <h2>Déduit de fiches techniques réelles, et de l’année.</h2>
+          <p>
+            Une capacité ne suffit pas à décrire un disque : le même gigaoctet
+            est un disque entier en 1996 et un coin de plateau, lu cinq fois plus
+            vite, en 2003. Le modèle interpole donc dans le temps entre huit
+            disques réellement vendus — d’un Conner CFA170A de 1993 à tampon de
+            64 Ko à un Seagate Barracuda 7200.14 de 2012 à 64 Mo —, en prenant
+            dans leurs manuels le nombre de pistes par face, qui fixe la course
+            du bras et donc l’acoustique d’un seek, et la capacité d’une face,
+            qui fixe le nombre de plateaux.
+          </p>
+          <ul>
+            <li>Le seek suit la loi à deux régimes de Ruemmler et Wilkes (<i>IEEE Computer</i>, 1994) — une racine carrée de la distance pour les seeks courts, une droite au-delà —, découpée en accélération, croisière, freinage et stabilisation. Un seek avant une écriture se stabilise plus longtemps, comme les fiches techniques le publient.</li>
+            <li>La rotation et le transfert sont simulés secteur par secteur sur un plateau à zones, avec pas de piste et changements de tête en fin de cylindre.</li>
+            <li>Le tampon lit d’avance après une lecture ; le cache d’écriture acquitte une écriture tout de suite et la pose plus tard, dans l’ordre de l’ascenseur — le disque travaille pendant que l’ordinateur calcule.</li>
+            <li>La mise sous tension a trois temps : le moteur prend sa vitesse, les têtes se décollent du plateau, le disque cherche sa piste 0. Les disques de 2012 se garent sur une rampe, et ne se décollent ni n’atterrissent.</li>
+            <li>Les disques d’avant 1997 se recalibrent deux minutes après être prêts, puis toutes les quatre minutes : une seconde de crépitement, la signature de cette génération — et la raison pour laquelle on vendait, pour le montage vidéo, des modèles « AV » sans recalibration.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="sound">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Le son</h2>
+        <div class="sheet__body">
+          <h2>Des résonateurs qui ne changent pas de hauteur, excités par un bras qui bouge.</h2>
+          <p>
+            La première idée est d’associer à la distance du seek un échantillon
+            qu’on transpose. Cela sonne comme un jouet. Un actionneur est une
+            structure mécanique qui a ses propres modes ; un seek plus long ne
+            les transpose pas, il les excite autrement. La tête est donc un banc
+            de résonateurs à fréquences fixes — des modes vers 4,5 kHz (le
+            balancement du bras) et 5,5 kHz, et cinq autres —, excités par un
+            profil de courant tiré des quatre phases de chaque seek. Un seek
+            court n’a pas de phase de croisière : la forme du son change avec la
+            distance, pas seulement son niveau. Ce niveau suit le manuel : la
+            puissance acoustique du seek publiée par le constructeur, moins celle
+            du repos.
+          </p>
+          <p>
+            Puis la règle qui l’a fait sonner comme un disque plutôt que comme
+            une machine à écrire. Deux seeks rapprochés ne déclenchent jamais
+            deux sons séparés : ils sont fusionnés en une excitation continue,
+            passée une seule fois dans les résonateurs. L’idée vient de
+            l’émulation des lecteurs de disquettes de MAME, où redéclencher
+            l’échantillon du pas sonnait « beaucoup trop fort ». Les changements
+            de tête et les pas de piste à moins de 30 ms d’écart sont traités de
+            même — c’est pourquoi une longue lecture séquentielle s’entend comme
+            une note plutôt que comme une suite de clics, comme la lecture du
+            noyau dans le premier son de cette page.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">Le même démarrage · la tête seule</p>
+            <audio controls preload="none" src="../media/boot-1999-head.m4a">
+              <a href="../media/boot-1999-head.m4a">Télécharger le son (M4A)</a>
+            </audio>
+            <figcaption>Le bras seul, sur les mêmes vingt secondes : la note du noyau, puis les pilotes.</figcaption>
+          </figure>
+          <figure class="listen">
+            <p class="listen__name">Le même démarrage · la rotation seule</p>
+            <audio controls preload="none" src="../media/boot-1999-spindle.m4a">
+              <a href="../media/boot-1999-spindle.m4a">Télécharger le son (M4A)</a>
+            </audio>
+            <figcaption>Les plateaux seuls : la montée en vitesse, puis la voix stable de 5 400 tr/min.</figcaption>
+          </figure>
+          <p>
+            La rotation est un bruit filtré, façonné par trois chiffres de la
+            fiche technique : la vitesse, le nombre de plateaux et le palier. Les
+            roulements à billes, en usage jusque vers 2000, sifflent et battent
+            une fois par tour ; les paliers fluides ne laissent que le souffle de
+            l’air autour des plateaux.
+          </p>
+          <figure class="listen">
+            <p class="listen__name">Rotation · 1996 · 5 400 tr/min, roulement à billes</p>
+            <audio controls preload="none" src="../media/spindle-1996-ball.m4a">
+              <a href="../media/spindle-1996-ball.m4a">Télécharger le son (M4A)</a>
+            </audio>
+          </figure>
+          <figure class="listen">
+            <p class="listen__name">Rotation · 2003 · 7 200 tr/min, palier fluide</p>
+            <audio controls preload="none" src="../media/spindle-2003-fluid.m4a">
+              <a href="../media/spindle-2003-fluid.m4a">Télécharger le son (M4A)</a>
+            </audio>
+            <figcaption>Plus aigu, et plus lisse : aucun battement au tour.</figcaption>
+          </figure>
+          <p>
+            Le Taptic Engine reçoit les mêmes repères. Un seek isolé se joue en
+            ses quatre phases ; un train dense devient un seul événement
+            continu, parce qu’à 150 seeks par seconde une rafale de transitoires
+            n’est plus que de la bouillie sous la main.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="deterministic">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Le déterminisme</h2>
+        <div class="sheet__body">
+          <h2>En direct sur le téléphone, au bit près sur le bureau.</h2>
+          <p>
+            Dans l’application, rien n’est calculé d’avance. Le planificateur
+            tourne sur son propre fil et émet ses requêtes une à une ; chacune
+            traverse aussitôt la simulation du disque jusqu’à un tampon, et le
+            fil s’endort dès qu’il a environ huit secondes d’avance sur ce qu’on
+            entend. Une passe n’a pas de durée connue avant de finir, il n’y a
+            pas de retour en arrière, et un bloc de la carte change de couleur
+            exactement quand son écriture s’entend.
+          </p>
+          <p>
+            Le même code se construit en outil de rendu en ligne de commande.
+            Sa sortie est elle aussi en flux — une passe de plusieurs heures se
+            rend sans garder plus de quelques secondes en mémoire — et elle
+            garde l’ordre des additions du mixage en direct : le WAV est
+            identique au bit près. Tout le projet repose sur cette propriété :
+          </p>
+          <ul>
+            <li>Une refonte qui ne doit rien changer se vérifie en hachant 58 rendus avant et après.</li>
+            <li>Un changement de planificateur se mesure sur quelques centaines de bilans de passe — requêtes, seeks, fichiers déplacés, morceaux et trous restants — en quelques minutes, sans rendre une note.</li>
+            <li>Chaque chiffre que le README tire d’un bilan est régénéré par un script, qui dit lequel ne tient plus.</li>
+            <li>Les vidéos de l’App Store sont filmées sur un simulateur, qui n’enregistre aucun son ; le son est rendu hors ligne pour les mêmes secondes de la même passe, et tombe à moins d’une image près.</li>
+          </ul>
+          <p>
+            Chaque son et chaque film de cette page sortent de cet outil. Aucun
+            n’a été enregistré sur un appareil.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sheet container" id="estimates">
+      <div class="sheet__grid">
+        <h2 class="sheet__label">Les estimations</h2>
+        <div class="sheet__body">
+          <h2>Ce qui est mesuré, et ce qui est réglé à l’oreille.</h2>
+          <p>
+            La géométrie, les temps de seek, les tampons, les vitesses de
+            rotation et les paliers viennent des manuels des constructeurs. Le
+            timbre, non : aucun manuel ne publie le spectre de son disque, si
+            bien que les fréquences des bandes de la rotation, la profondeur du
+            battement du palier et le dosage des modes de la tête selon la
+            distance sont réglés à l’écoute. Le ronflement est le maillon le
+            plus faible — calculé depuis la vitesse de rotation, faute
+            d’enregistrement.
+          </p>
+          <p>
+            Certains comportements sont eux aussi des choix, et le code les
+            signale comme tels : l’endroit où DEFRAG évacue — le fond du volume,
+            un choix calé sur les durées de passe de l’époque ; l’ordre dans
+            lequel un disque qui se recalibre visite ses pistes de référence ;
+            et, pour NT 4, Vista et 7, quatre constantes qui bornent la
+            recherche de trous de l’allocateur NTFS. Sur le disque familial de
+            2007, l’une d’elles fait à elle seule passer la part des fichiers
+            fragmentés de 22 % à 35 %.
+          </p>
+          <p>
+            Si vous connaissez un disque ou un défragmenteur de cette époque
+            mieux que son manuel, les tickets sont ouverts.
+          </p>
+          <dl class="contact">
+            <dt>L’application</dt>
+            <dd><a href="https://apps.apple.com/fr/app/id6814382619">Winchester : défragmentation</a>, gratuite, iPhone et iPad</dd>
+            <dt>Code source</dt>
+            <dd><a href="https://github.com/glandais/winchester">github.com/glandais/winchester</a></dd>
+            <dt>Le mécanisme, étage par étage (en anglais)</dt>
+            <dd><a href="../../../how-it-works/index.html" hreflang="en">How it works</a></dd>
+            <dt>Questions et corrections</dt>
+            <dd><a href="https://github.com/glandais/winchester/issues">github.com/glandais/winchester/issues</a></dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__inner">
+        <span>Winchester : défragmentation — une application de Gabriel Landais. iOS 17 ou ultérieur.</span>
+        <nav aria-label="Pied de page">
+          <a href="../../../index.html" hreflang="en">Overview</a>
+          <a href="../../../how-it-works/index.html" hreflang="en">How it works</a>
+          <a href="../../../writing/simulating-a-hard-disk/index.html" hreflang="en">Writing</a>
+          <a href="../../../support/index.html" hreflang="en">Support</a>
+          <a href="../../../privacy/index.html" hreflang="en">Privacy</a>
+          <a href="https://apps.apple.com/fr/app/id6814382619">App Store</a>
+          <a href="https://github.com/glandais/winchester">Code source</a>
+          <a href="https://ko-fi.com/gabylandais" rel="noopener">Offrir un café</a>
+        </nav>
+      </div>
+      <p class="footer__apps">
+        Autres applications du même développeur :
+        <a href="https://glandais.github.io/aether/">Aether</a> ·
+        <a href="https://glandais.github.io/DepthWeaver/">DepthWeaver</a> ·
+        <a href="https://glandais.github.io/WhereIWas/">WhereIWas</a> ·
+        <a href="https://apps.apple.com/fr/developer/id1891310404">toutes sur l’App Store</a>
+      </p>
+      <p>
+        Les noms de disques et de logiciels appartiennent à leurs
+        propriétaires. Ils sont cités parce que l’application les imite pour
+        l’écoute ; Winchester n’est ni affiliée à leurs fabricants ni
+        approuvée par eux.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
