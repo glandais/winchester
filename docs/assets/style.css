@@ -504,7 +504,22 @@ a:hover { text-decoration-color: currentColor; }
 .spec tbody th { font-weight: 650; }
 .spec td:last-child { padding-right: 0; }
 .spec .num { font-family: var(--font-mono); font-size: 0.875rem; white-space: nowrap; }
-.spec .origin { color: var(--dim); white-space: nowrap; }
+.spec .origin { color: var(--dim); width: 30%; }
+
+/* On a phone, a three-column table of prose becomes a list of cards:
+   the tool, its origin, then what it does, one under the other. */
+@media (max-width: 36rem) {
+  .scroll-x .spec--stack { min-width: 0; }
+  .spec--stack thead {
+    position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip-path: inset(50%);
+  }
+  .spec--stack tbody, .spec--stack tr,
+  .spec--stack th, .spec--stack td { display: block; width: auto; }
+  .spec--stack tr { padding: 0.7rem 0; border-bottom: 1px solid var(--rule); }
+  .spec--stack th, .spec--stack td { padding: 0; border-bottom: 0; }
+  .spec--stack .origin { width: auto; margin: 0.1rem 0 0.35rem; }
+}
 
 /* ---------- contact list ---------- */
 
